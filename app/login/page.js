@@ -20,7 +20,7 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const result = login(email, password)
+    const result = await login(email, password)
 
     if (result.success) {
       // Redirect based on role
@@ -37,19 +37,40 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand/10 to-indigo-100 p-4">
-      <Card className="w-full max-w-md animate-fade-in">
-        <CardHeader className="space-y-1 text-center">
-          <div className="mx-auto h-12 w-12 rounded-lg bg-brand flex items-center justify-center mb-4">
-            <span className="text-white font-bold text-xl">DA</span>
+    <div className="h-screen flex">
+      {/* Left hero */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-10 flex-col justify-center gap-8">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-lg">
+            <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20 8C18.5 8 17 9 17 11V15C17 16 17.5 17 18.5 17.5L20 18.5L21.5 17.5C22.5 17 23 16 23 15V11C23 9 21.5 8 20 8Z" fill="white" opacity="0.9"/>
+              <path d="M13 14C11.5 14 10 15 10 17V25C10 27 11.5 28 13 28C14.5 28 16 27 16 25V17C16 15 14.5 14 13 14Z" fill="white" opacity="0.7"/>
+              <path d="M27 14C25.5 14 24 15 24 17V25C24 27 25.5 28 27 28C28.5 28 30 27 30 25V17C30 15 28.5 14 27 14Z" fill="white" opacity="0.7"/>
+            </svg>
           </div>
-          <CardTitle className="text-2xl font-bold">Dance Academy CRM</CardTitle>
-          <CardDescription>Sign in to access your account</CardDescription>
-        </CardHeader>
-        <CardContent>
+          <span className="text-white text-2xl font-display font-semibold">Dance Academy</span>
+        </div>
+
+        <div>
+          <h1 className="text-4xl font-display text-white leading-tight mb-2">Professional Dance<br /><span className="text-teal-400">Management System</span></h1>
+          <p className="text-slate-300 text-base max-w-md">Transform your dance academy with our comprehensive CRM solution. Manage students, classes, payments, and more.</p>
+        </div>
+      </div>
+
+      {/* Right form */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center bg-white py-12 px-6">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-6">
+            <div className="mx-auto h-10 w-10 rounded-lg bg-brand flex items-center justify-center mb-3">
+              <span className="text-white font-medium">DA</span>
+            </div>
+            <h2 className="text-2xl font-semibold text-slate-900">Dance Academy CRM</h2>
+            <p className="text-sm text-slate-500 mt-1">Sign in to access your account</p>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+            <div>
+              <Label htmlFor="email" className="text-sm text-slate-700 block mb-1">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -57,10 +78,12 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className="h-10"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+
+            <div>
+              <Label htmlFor="password" className="text-sm text-slate-700 block mb-1">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -68,29 +91,31 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                className="h-10"
               />
             </div>
+
             {error && (
               <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
                 {error}
               </div>
             )}
-            <Button type="submit" className="w-full" variant="gradient" disabled={loading}>
+
+            <Button type="submit" className="w-full h-10" variant="gradient" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
 
-          <div className="mt-6 p-4 bg-muted rounded-lg text-sm">
-            <p className="font-semibold mb-2">Demo Credentials:</p>
-            <div className="space-y-1 text-muted-foreground">
-              <p>Super Admin: superadmin@danceacademy.com</p>
-              <p>Admin: admin.stamford@danceacademy.com</p>
-              <p>Staff: staff.stamford@danceacademy.com</p>
-              <p className="mt-2">Password: <span className="font-mono">password</span></p>
-            </div>
+          <div className="mt-6 text-center">
+            <p className="text-slate-600 text-sm">
+              Don't have an account?{' '}
+              <a href="/register" className="text-teal-600 hover:text-teal-700 font-semibold hover:underline">
+                Create one
+              </a>
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
