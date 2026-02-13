@@ -104,17 +104,17 @@ export default function InboxPage() {
           "w-full md:w-auto",
           showContactList ? 'block' : 'hidden md:block'
         )}>
-          <ContactList
-            conversations={displayedConversations}
-            selectedConversation={selectedConversation}
-            onSelectConversation={handleSelectConversation}
-            selectedChannel={selectedChannel}
-            onChannelChange={setSelectedChannel}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            contactFilter={contactFilter}
-            onContactFilterChange={setContactFilter}
-          />
+        <ContactList
+          conversations={displayedConversations}
+          selectedConversation={selectedConversation}
+          onSelectConversation={handleSelectConversation}
+          selectedChannel={selectedChannel}
+          onChannelChange={setSelectedChannel}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          contactFilter={contactFilter}
+          onContactFilterChange={setContactFilter}
+        />
         </div>
 
         {/* Conversation View Panel - Show on mobile when conversation selected, always visible on tablet+ */}
@@ -122,23 +122,23 @@ export default function InboxPage() {
           "w-full md:flex-1",
           !showContactList ? 'block' : 'hidden md:block'
         )}>
-          <ConversationView
-            conversation={selectedConvData}
-            messages={conversationMessages}
-            onToggleDetails={() => setShowDetails(!showDetails)}
-            showDetails={showDetails}
-            onSendMessage={handleSendMessage}
+        <ConversationView
+          conversation={selectedConvData}
+          messages={conversationMessages}
+          onToggleDetails={() => setShowDetails(!showDetails)}
+          showDetails={showDetails}
+          onSendMessage={handleSendMessage}
             onBackClick={() => setShowContactList(true)}
-          />
+        />
         </div>
 
         {/* Contact Details Panel - Hidden on mobile, show as overlay or hidden */}
         {showDetails && selectedConvData && (
           <div className="hidden lg:block">
-            <ContactDetails
-              contact={selectedConvData.contact}
-              onClose={() => setShowDetails(false)}
-            />
+          <ContactDetails
+            contact={selectedConvData.contact}
+            onClose={() => setShowDetails(false)}
+          />
           </div>
         )}
       </div>

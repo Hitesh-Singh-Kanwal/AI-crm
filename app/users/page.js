@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Search, Mail, UserCog } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
@@ -9,7 +9,9 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { users } from '@/data/dummyData'
+import UsersDialog from '@/app/users/components/UsersDialog'
+import { getToken, getCurrentUser } from '@/lib/auth'
+import { useToast } from '@/components/ui/toast'
 import { filterByBranch } from '@/lib/branch-filter'
 import { getInitials, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -25,9 +27,64 @@ export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('All')
   const [selectedUser, setSelectedUser] = useState(null)
+  const [usersList, setUsersList] = useState([])
+  const [usersDialogOpen, setUsersDialogOpen] = useState(false)
+  const [usersDialogInitialId, setUsersDialogInitialId] = useState(null)
+  const toast = useToast()
+
+  useEffect(() => {
+    loadUsers()
+  }, [])
+
+  async function loadUsers() {
+    try {
+      const user = getCurrentUser()
+      const orgId = user?.organisationID || user?.organisationId || user?.organisation || ''
+      if (!orgId) return
+      const token = getToken()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'}/api/user?organisationID=${orgId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const json = await res.json()
+      if (json && json.success) setUsersList(json.data || [])
+    } catch (e) {
+      console.error('loadUsers', e)
+    }
+  }
+
+  function openUsersDialog() {
+    setUsersDialogInitialId(null)
+    setUsersDialogOpen(true)
+  }
+
+  function closeUsersDialog() {
+    setUsersDialogOpen(false)
+  }
+
+  async function handleDeleteUser(userId) {
+    if (!confirm('Delete this user? This cannot be undone.')) return
+    try {
+      const token = getToken()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'}/api/user/${userId}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const json = await res.json()
+      if (json && json.success) {
+        toast.success({ title: 'Deleted', message: 'User deleted' })
+        loadUsers()
+        setSelectedUser(null)
+      } else {
+        toast.error({ title: 'Delete failed', message: json?.message || 'Unable to delete user' })
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error({ title: 'Error', message: 'Unexpected error' })
+    }
+  }
 
   // Filter users by branch
-  const filteredUsers = filterByBranch(users)
+  const filteredUsers = filterByBranch(usersList)
 
   // Apply search and role filter
   const displayedUsers = filteredUsers.filter((user) => {
@@ -58,7 +115,7 @@ export default function UsersPage() {
             <option value="Staff">Staff</option>
             <option value="Teacher">Teacher</option>
           </Select>
-          <Button variant="gradient" className="w-full sm:w-auto">
+          <Button variant="gradient" className="w-full sm:w-auto" onClick={openUsersDialog}>
             <UserCog className="h-4 w-4 mr-2" />
             Add User
           </Button>
@@ -155,15 +212,31 @@ export default function UsersPage() {
                     <Mail className="h-4 w-4 mr-2" />
                     Send Email
                   </Button>
-                  <Button variant="outline" className="flex-1">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setSelectedUser(null)
+                      setUsersDialogInitialId(selectedUser._id)
+                      setUsersDialogOpen(true)
+                    }}
+                  >
                     <UserCog className="h-4 w-4 mr-2" />
-                    Edit Role
+                    Edit User
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={() => handleDeleteUser(selectedUser._id)}
+                  >
+                    Delete
                   </Button>
                 </div>
               </div>
             </DialogContent>
           )}
         </Dialog>
+        <UsersDialog open={usersDialogOpen} onClose={closeUsersDialog} users={usersList} onRefresh={loadUsers} initialUserId={usersDialogInitialId} />
       </div>
     </MainLayout>
   )
