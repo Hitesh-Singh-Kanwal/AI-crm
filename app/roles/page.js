@@ -13,7 +13,9 @@ function RolesPageInner() {
   const [roles, setRoles] = useState([])
   const [permissionsSchema, setPermissionsSchema] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [selectedRoleId, setSelectedRoleId] = useState(null)
   const [selectedRole, setSelectedRole] = useState(null)
+  const [loadingRoleDetails, setLoadingRoleDetails] = useState(false)
   const [editingRole, setEditingRole] = useState(null)
   const [isCreating, setIsCreating] = useState(false)
   const toast = useToast()
@@ -80,11 +82,49 @@ function RolesPageInner() {
     return out
   }
 
+  // Fetch single role details when selectedRoleId changes
+  useEffect(() => {
+    if (selectedRoleId) {
+      loadRoleDetails(selectedRoleId)
+    } else {
+      setSelectedRole(null)
+      setEditingRole(null)
+    }
+  }, [selectedRoleId])
+
+  async function loadRoleDetails(roleId) {
+    setLoadingRoleDetails(true)
+    try {
+      const token = getToken()
+      const res = await fetch(`${API_BASE}/api/role/${roleId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const json = await res.json()
+      if (json && json.success) {
+        const role = json.data
+        setSelectedRole(role)
+        setIsCreating(false)
+        // clone to editing state
+        setEditingRole({ role: role.role, permissions: JSON.parse(JSON.stringify(role.permissions || {})), _id: role._id })
+      } else {
+        toast.error({ title: 'Error', message: json?.message || 'Failed to load role details' })
+        setSelectedRoleId(null)
+      }
+    } catch (e) {
+      console.error('loadRoleDetails', e)
+      toast.error({ title: 'Error', message: 'Failed to load role details' })
+      setSelectedRoleId(null)
+    } finally {
+      setLoadingRoleDetails(false)
+    }
+  }
+
   function onSelectRole(role) {
-    setSelectedRole(role)
-    setIsCreating(false)
-    // clone to editing state
-    setEditingRole({ role: role.role, permissions: JSON.parse(JSON.stringify(role.permissions || {})), _id: role._id })
+    if (role && role._id) {
+      setSelectedRoleId(role._id)
+    } else {
+      setSelectedRoleId(null)
+    }
   }
 
   async function handleSave() {
@@ -109,6 +149,7 @@ function RolesPageInner() {
       if (json && json.success) {
         await loadRoles()
         setIsCreating(false)
+        setSelectedRoleId(null)
         setSelectedRole(null)
         setEditingRole(null)
       } else {
@@ -176,18 +217,25 @@ function RolesPageInner() {
   return (
     <MainLayout title="Roles" subtitle="Manage roles and permissions">
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <RolesList roles={roles} loading={loading} selectedRoleId={selectedRole?._id} onSelect={onSelectRole} onDelete={handleDelete} onCreate={openCreate} />
-        <RoleEditor
-          editingRole={editingRole}
-          isCreating={isCreating}
-          permissionsSchema={permissionsSchema}
-          onChange={(next) => setEditingRole(next)}
-          togglePermission={togglePermission}
-          onSave={handleSave}
-          onDelete={handleDelete}
-          onCancel={() => { setEditingRole(null); setIsCreating(false); setSelectedRole(null) }}
-          onBulkToggle={bulkToggleSection}
-        />
+        <RolesList roles={roles} loading={loading} selectedRoleId={selectedRoleId} onSelect={onSelectRole} onDelete={handleDelete} onCreate={openCreate} />
+        {loadingRoleDetails ? (
+          <div className="md:col-span-4 flex items-center justify-center py-12">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-brand"></div>
+            <p className="text-slate-500 ml-4">Loading role details...</p>
+          </div>
+        ) : (
+          <RoleEditor
+            editingRole={editingRole}
+            isCreating={isCreating}
+            permissionsSchema={permissionsSchema}
+            onChange={(next) => setEditingRole(next)}
+            togglePermission={togglePermission}
+            onSave={handleSave}
+            onDelete={handleDelete}
+            onCancel={() => { setEditingRole(null); setIsCreating(false); setSelectedRoleId(null); setSelectedRole(null) }}
+            onBulkToggle={bulkToggleSection}
+          />
+        )}
       </div>
       {/* Users management moved to /users */}
     </MainLayout>

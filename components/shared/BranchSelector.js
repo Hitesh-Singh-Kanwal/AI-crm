@@ -3,26 +3,45 @@
 import { useState, useEffect } from 'react'
 import { Building2, Check, ChevronsUpDown } from 'lucide-react'
 import { getSelectedBranch, setSelectedBranch, isSuperAdmin } from '@/lib/auth'
-import { branches } from '@/data/dummyData'
+import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 export default function BranchSelector() {
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState(null)
   const [query, setQuery] = useState('')
+  const [branches, setBranches] = useState([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const savedBranch = getSelectedBranch()
     setSelected(savedBranch)
+    loadBranches()
   }, [])
+
+  async function loadBranches() {
+    try {
+      setLoading(true)
+      const result = await api.get('/api/location')
+      if (result.success) {
+        // Filter only active locations
+        const activeLocations = (result.data || []).filter(loc => loc.status?.toLowerCase() === 'active')
+        setBranches(activeLocations)
+      }
+    } catch (e) {
+      console.error('Failed to load branches:', e)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   if (!isSuperAdmin()) {
     return null
   }
 
-  const selectedBranch = selected ? branches.find((b) => b.id === selected) : null
+  const selectedBranch = selected ? branches.find((b) => b._id === selected) : null
   const filteredBranches = branches.filter((branch) => {
-    const haystack = `${branch.name} ${branch.city} ${branch.state}`.toLowerCase()
+    const haystack = `${branch.name} ${branch.city || ''} ${branch.state || ''}`.toLowerCase()
     return haystack.includes(query.toLowerCase())
   })
 
@@ -75,31 +94,40 @@ export default function BranchSelector() {
 
               <div className="my-2 h-px bg-slate-200" />
 
-              {filteredBranches.length === 0 && (
+              {loading ? (
                 <div className="px-3 py-4 text-sm text-center text-slate-500">
-                  No branches found
+                  Loading branches...
                 </div>
+              ) : filteredBranches.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-center text-slate-500">
+                  {query ? 'No branches found' : 'No branches available'}
+                </div>
+              ) : (
+                filteredBranches.map((branch) => (
+                  <button
+                    key={branch._id}
+                    onClick={() => handleSelect(branch._id)}
+                    className={cn(
+                      'w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors mb-1',
+                      selected === branch._id 
+                        ? 'bg-brand text-white' 
+                        : 'hover:bg-slate-50 text-slate-700'
+                    )}
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium text-sm">{branch.name}</span>
+                      {(branch.city || branch.state) && (
+                        <span className="text-xs text-slate-500">
+                          {branch.city && branch.state 
+                            ? `${branch.city}, ${branch.state}` 
+                            : branch.city || branch.state}
+                        </span>
+                      )}
+                    </div>
+                    {selected === branch._id && <Check className="h-4 w-4" />}
+                  </button>
+                ))
               )}
-              {filteredBranches.map((branch) => (
-                <button
-                  key={branch.id}
-                  onClick={() => handleSelect(branch.id)}
-                  className={cn(
-                    'w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors mb-1',
-                    selected === branch.id 
-                      ? 'bg-brand text-white' 
-                      : 'hover:bg-slate-50 text-slate-700'
-                  )}
-                >
-                  <div className="flex flex-col items-start">
-                    <span className="font-medium text-sm">{branch.name}</span>
-                    <span className="text-xs text-slate-500">
-                      {branch.city}, {branch.state}
-                    </span>
-                  </div>
-                  {selected === branch.id && <Check className="h-4 w-4" />}
-                </button>
-              ))}
             </div>
           </div>
         </>

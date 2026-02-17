@@ -12,10 +12,16 @@ export default function MainLayout({ children, title, subtitle }) {
   const pathname = usePathname()
   const [branchVersion, setBranchVersion] = useState(0)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isClient, setIsClient] = useState(false)
+  const [isAuth, setIsAuth] = useState(false)
 
+  // Only check authentication on client side to avoid hydration mismatch
   useEffect(() => {
-    // Check authentication
-    if (!isAuthenticated()) {
+    setIsClient(true)
+    const authenticated = isAuthenticated()
+    setIsAuth(authenticated)
+
+    if (!authenticated) {
       router.push('/login')
       return
     }
@@ -35,7 +41,8 @@ export default function MainLayout({ children, title, subtitle }) {
     return () => window.removeEventListener('branch-change', handleBranchChange)
   }, [])
 
-  if (!isAuthenticated()) {
+  // Show nothing until client-side hydration is complete
+  if (!isClient || !isAuth) {
     return null
   }
 

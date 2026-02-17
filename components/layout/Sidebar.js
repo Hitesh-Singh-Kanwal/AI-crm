@@ -20,6 +20,7 @@ import {
   ChevronRight,
   LogOut,
   X,
+  Building2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getCurrentUser, logout } from '@/lib/auth'
@@ -32,6 +33,7 @@ const navigationItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, badge: null },
   { name: 'Inbox', href: '/inbox', icon: Inbox, badge: '5' },
   { name: 'Users', href: '/users', icon: Users, badge: null },
+  { name: 'Locations', href: '/locations', icon: Building2, badge: null },
   { name: 'Roles', href: '/roles', icon: Shield, badge: null },
   { name: 'Leads', href: '/leads', icon: UserPlus, badge: null },
   { name: 'Calendar', href: '/calendar', icon: Calendar, badge: null },

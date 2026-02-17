@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
-import { getToken } from '@/lib/auth'
+import LocationSelector from '@/components/shared/LocationSelector'
+import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'
 
 export default function UsersDialog({ open, onClose, users = [], onRefresh, initialUserId = null }) {
   const [editingUser, setEditingUser] = useState(null)
@@ -31,7 +31,7 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
   }
 
   function openCreate() {
-    setEditingUser({ name: '', email: '', role: '', password: '' })
+    setEditingUser({ name: '', email: '', role: '', password: '', locationID: null, phoneNumber: '', status: 'active' })
   }
 
   function closeEdit() {
@@ -42,45 +42,31 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
     if (!editingUser) return
     setLoading(true)
     try {
-      const token = getToken()
       if (editingUser._id) {
         // update
-        const res = await fetch(`${API_BASE}/api/user/${editingUser._id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            name: editingUser.name,
-            role: editingUser.role,
-          }),
+        const result = await api.put(`/api/user/${editingUser._id}`, {
+          name: editingUser.name,
+          role: editingUser.role,
+          locationID: editingUser.locationID || null,
+          phoneNumber: editingUser.phoneNumber || null,
+          status: editingUser.status || 'active',
         })
-        const json = await res.json()
-        if (json && json.success) {
+        if (result.success) {
           toast.success({ title: 'Saved', message: 'User updated' })
           closeEdit()
           onRefresh && onRefresh()
         } else {
-          toast.error({ title: 'Save failed', message: json?.message || 'Unable to update user' })
+          toast.error({ title: 'Save failed', message: result.error || 'Unable to update user' })
         }
       } else {
         // create
-        const res = await fetch(`${API_BASE}/api/user`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(editingUser),
-        })
-        const json = await res.json()
-        if (json && json.success) {
+        const result = await api.post('/api/user', editingUser)
+        if (result.success) {
           toast.success({ title: 'Created', message: 'User created' })
           closeEdit()
           onRefresh && onRefresh()
         } else {
-          toast.error({ title: 'Create failed', message: json?.message || 'Unable to create user' })
+          toast.error({ title: 'Create failed', message: result.error || 'Unable to create user' })
         }
       }
     } catch (e) {
@@ -120,10 +106,37 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
             {!editingUser && <div className="text-sm text-slate-500">Select a user to edit or create a new user.</div>}
             {editingUser && (
               <div className="space-y-3">
-                <Input value={editingUser.name} onChange={(e) => setEditingUser((p) => ({ ...p, name: e.target.value }))} placeholder="Name" />
-                <Input value={editingUser.email} onChange={(e) => setEditingUser((p) => ({ ...p, email: e.target.value }))} placeholder="Email" />
-                <Input value={editingUser.role} onChange={(e) => setEditingUser((p) => ({ ...p, role: e.target.value }))} placeholder="Role" />
-                {!editingUser._id && <Input value={editingUser.password || ''} onChange={(e) => setEditingUser((p) => ({ ...p, password: e.target.value }))} placeholder="Password" />}
+                <Input value={editingUser.name || ''} onChange={(e) => setEditingUser((p) => ({ ...p, name: e.target.value }))} placeholder="Name *" required />
+                <Input value={editingUser.email || ''} onChange={(e) => setEditingUser((p) => ({ ...p, email: e.target.value }))} placeholder="Email *" type="email" required />
+                <Input value={editingUser.role || ''} onChange={(e) => setEditingUser((p) => ({ ...p, role: e.target.value }))} placeholder="Role *" required />
+                <Input value={editingUser.phoneNumber || ''} onChange={(e) => setEditingUser((p) => ({ ...p, phoneNumber: e.target.value }))} placeholder="Phone Number" />
+                <LocationSelector
+                  value={editingUser.locationID}
+                  onChange={(locationId) => setEditingUser((p) => ({ ...p, locationID: locationId }))}
+                  placeholder="Select location (optional)"
+                  showAllOption={true}
+                />
+                {editingUser._id && (
+                  <Select 
+                    value={editingUser.status || 'active'} 
+                    onChange={(e) => setEditingUser((p) => ({ ...p, status: e.target.value }))}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </Select>
+                )}
+                {!editingUser._id && (
+                  <>
+                    <Input value={editingUser.password || ''} onChange={(e) => setEditingUser((p) => ({ ...p, password: e.target.value }))} placeholder="Password *" type="password" required />
+                    <Select 
+                      value={editingUser.status || 'active'} 
+                      onChange={(e) => setEditingUser((p) => ({ ...p, status: e.target.value }))}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </Select>
+                  </>
+                )}
                 <div className="flex items-center gap-2">
                   <Button onClick={saveUser} variant="gradient" disabled={loading}>{loading ? 'Saving...' : 'Save'}</Button>
                   <Button variant="ghost" onClick={closeEdit}>Cancel</Button>
