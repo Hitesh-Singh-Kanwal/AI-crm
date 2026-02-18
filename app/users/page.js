@@ -461,10 +461,7 @@ export default function UsersPage() {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button variant="gradient" className="flex-1">
-                    <Mail className="h-4 w-4 mr-2" />
-                    Send Email
-                  </Button>
+                 
                   <Button
                     variant="outline"
                     className="flex-1"

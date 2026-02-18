@@ -84,11 +84,9 @@ export default function RoleEditor({
         <div className="space-y-6">
           {/* Role name */}
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-900">
-              Role name
-            </h3>
+          
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              <label className="my-1.5 block text-sm font-medium text-slate-700">
                 Name
               </label>
               <Input
