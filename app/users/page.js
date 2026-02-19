@@ -388,11 +388,12 @@ export default function UsersPage() {
 
         {/* Pagination */}
         {!loading && total > 0 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-200 pt-4">
-            <div className="text-sm text-slate-600">
+          <div className="flex flex-row items-center border-t border-slate-200 pt-4">
+            <div className="text-sm text-slate-600 w-52 flex-shrink-0">
               Showing page {currentPage} of {totalPages} ({total} total {total === 1 ? 'user' : 'users'})
             </div>
-            {totalPages > 1 && (
+            <div className="flex-1 flex justify-center">
+              {totalPages > 1 && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -437,7 +438,9 @@ export default function UsersPage() {
                   Next
                 </Button>
               </div>
-            )}
+              )}
+            </div>
+            <div className="w-52 flex-shrink-0" aria-hidden="true" />
           </div>
         )}
 
