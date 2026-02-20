@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { UserPlus, X } from 'lucide-react'
 import api from '@/lib/api'
+import { getCurrentUser } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 
@@ -92,6 +93,12 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
       return
     }
 
+    const user = getCurrentUser()
+    if (!user?.organisationID && !editingLead._id) {
+      toast.error({ title: 'Validation Error', message: 'You must be logged in to an organisation to create leads' })
+      return
+    }
+
     setLoading(true)
     try {
       if (editingLead._id) {
@@ -115,7 +122,8 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
           toast.error({ title: 'Save failed', message: result.error || 'Unable to update lead' })
         }
       } else {
-        const result = await api.post('/api/lead', editingLead)
+        const payload = { ...editingLead, organisationID: user?.organisationID }
+        const result = await api.post('/api/lead', payload)
         if (result.success) {
           toast.success({ title: 'Created', message: 'Lead created successfully' })
           closeEdit()

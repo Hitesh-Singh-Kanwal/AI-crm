@@ -21,6 +21,7 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import LeadsDialog from '@/app/leads/components/LeadsDialog'
 import BulkCreateLeadsDialog from '@/app/leads/components/BulkCreateLeadsDialog'
 import api from '@/lib/api'
+import { getCurrentUser } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -87,7 +88,9 @@ export default function LeadsPage() {
   async function loadLeads() {
     try {
       setLoading(true)
+      const user = getCurrentUser()
       const params = new URLSearchParams()
+      if (user?.organisationID) params.append('organisationID', user.organisationID)
       if (debouncedSearch) params.append('search', debouncedSearch)
       if (stageFilter !== 'All') params.append('stage', stageFilter)
       if (bookingStatusFilter !== 'All') params.append('bookingStatus', bookingStatusFilter)

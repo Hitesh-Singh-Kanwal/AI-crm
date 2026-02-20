@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Upload, X, FileText, Download } from 'lucide-react'
 import api from '@/lib/api'
+import { getCurrentUser } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
 
 export default function BulkCreateLeadsDialog({ open, onClose, onRefresh }) {
@@ -85,7 +86,15 @@ export default function BulkCreateLeadsDialog({ open, onClose, onRefresh }) {
         return
       }
 
-      const result = await api.post('/api/lead/bulk', leads)
+      const user = getCurrentUser()
+      if (!user?.organisationID) {
+        toast.error({ title: 'Error', message: 'You must be logged in to an organisation to create leads' })
+        setLoading(false)
+        return
+      }
+
+      const leadsWithOrg = leads.map((lead) => ({ ...lead, organisationID: user.organisationID }))
+      const result = await api.post('/api/lead/bulk', leadsWithOrg)
       
       if (result.success) {
         toast.success({ 
