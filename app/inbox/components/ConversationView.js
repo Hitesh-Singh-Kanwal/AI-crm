@@ -1,4 +1,4 @@
-import { Info, MoreVertical, Phone, Video, Mail, ArrowLeft } from 'lucide-react'
+import { Mail, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getInitials, formatDateTime } from '@/lib/utils'
@@ -15,103 +15,121 @@ export default function ConversationView({
 }) {
   if (!conversation) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex-1 flex items-center justify-center bg-white rounded-2xl border border-slate-200 shadow-md">
         <div className="text-center">
           <Mail className="h-16 w-16 mx-auto text-slate-300 mb-4" />
           <h3 className="text-base font-semibold text-slate-900 mb-2">No Conversation Selected</h3>
-          <p className="text-sm text-slate-500">
-            Select a conversation from the list to view messages
-          </p>
+          <p className="text-sm text-slate-500">Select a conversation from the left to view messages</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm h-full">
+    <main className="flex-1 flex flex-col bg-white h-full border-l border-slate-200 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 md:p-4 border-b border-slate-200 bg-slate-50/50 flex-shrink-0">
-        <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-          {/* Back button for mobile */}
-          {onBackClick && (
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={onBackClick} 
-              className="lg:hidden h-8 w-8 flex-shrink-0"
+      <div className="p-4 border-b border-slate-100 bg-white flex-shrink-0">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            {onBackClick && (
+              <Button variant="ghost" size="icon" onClick={onBackClick} className="lg:hidden h-9 w-9">
+                <ArrowLeft className="h-4 w-4 text-slate-600" />
+              </Button>
+            )}
+            <div className="relative">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback className="bg-[color:var(--studio-primary)] text-white font-semibold text-sm">
+                  {getInitials(conversation.contact.name)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="absolute right-0 bottom-0 w-2.5 h-2.5 rounded-full ring-2 ring-white bg-[#00AA34]" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-sm font-semibold text-slate-900 truncate">{conversation.contact.name}</h4>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#64748B]">{conversation.contact.type}</span>
+                <span className="text-xs text-[#94A3B8]">•</span>
+                <span className="text-xs text-[#94A3B8]">Today</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onToggleDetails}
+              className="px-3 py-1 rounded-md text-sm bg-[color:var(--studio-primary)] text-white"
             >
-              <ArrowLeft className="h-4 w-4 text-slate-600" />
-            </Button>
-          )}
-          <Avatar className="h-9 w-9 md:h-10 md:w-10 ring-2 ring-white shadow-sm flex-shrink-0">
-            <AvatarFallback className="bg-brand text-white font-semibold text-sm">
-              {getInitials(conversation.contact.name)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <h3 className="font-semibold text-sm text-slate-900 truncate">{conversation.contact.name}</h3>
-            <p className="text-xs text-slate-500 truncate">{conversation.contact.type}</p>
+              View profile
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-0.5 md:gap-1 flex-shrink-0">
-          <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100 hidden sm:flex">
-            <Phone className="h-4 w-4 text-slate-600" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100 hidden sm:flex">
-            <Video className="h-4 w-4 text-slate-600" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onToggleDetails} className="h-8 w-8 hover:bg-slate-100 hidden lg:flex">
-            <Info className="h-4 w-4 text-slate-600" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100">
-            <MoreVertical className="h-4 w-4 text-slate-600" />
-          </Button>
+        {/* Channel tabs */}
+        <div className="mt-3 flex items-center gap-2 text-xs">
+          {['All', 'E-mail', 'SMS', 'Call'].map((tab) => (
+            <button
+              key={tab}
+              className={cn(
+                'px-3 py-1 rounded-md text-sm',
+                tab === 'All' ? 'bg-[color:var(--studio-primary-light)] text-[color:var(--studio-primary)]' : 'text-[#64748B]'
+              )}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide p-3 md:p-4 space-y-2 md:space-y-3 bg-slate-50/30">
+      <div className="flex-1 overflow-y-auto scrollbar-hide p-6 bg-slate-50">
         {messages.length === 0 ? (
-          <div className="text-center text-slate-500 text-sm py-12">
-            No messages yet. Start a conversation!
-          </div>
+          <div className="text-center text-slate-500 text-sm py-12">No messages yet. Start the conversation!</div>
         ) : (
-          messages.map((message) => {
+          messages.map((message, idx) => {
             const isInbound = message.direction === 'inbound'
+            const prev = messages[idx - 1]
+            const showDateDivider = !prev || new Date(prev.timestamp).toDateString() !== new Date(message.timestamp).toDateString()
             return (
-              <div
-                key={message.id}
-                className={cn('flex animate-fade-in', isInbound ? 'justify-start' : 'justify-end')}
-              >
-                <div className={cn('flex gap-2 max-w-[85%] sm:max-w-[75%]', !isInbound && 'flex-row-reverse')}>
-                  <Avatar className="h-6 w-6 sm:h-7 sm:w-7 ring-2 ring-white flex-shrink-0">
-                    <AvatarFallback
-                      className={cn(
-                        'text-xs font-semibold',
-                        isInbound
-                          ? 'bg-slate-200 text-slate-700'
-                          : 'bg-brand text-white'
-                      )}
-                    >
-                      {getInitials(message.sender)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
+              <div key={message.id}>
+                {showDateDivider && (
+                  <div className="flex items-center my-4">
+                    <div className="flex-1 h-px bg-[#E6EEF8]" />
+                    <div className="px-3 text-xs text-[#64748B]">{new Date(message.timestamp).toLocaleDateString()}</div>
+                    <div className="flex-1 h-px bg-[#E6EEF8]" />
+                  </div>
+                )}
+
+                <div className={cn('flex items-start gap-3 mb-4', isInbound ? 'justify-start' : 'justify-end')}>
+                  {isInbound && (
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="bg-slate-200 text-slate-700 text-xs font-semibold">
+                          {getInitials(message.sender)}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                  )}
+
+                  <div className={cn('max-w-[70%]')}>
                     <div
                       className={cn(
-                        'rounded-xl px-3 py-2 shadow-sm break-words',
-                        isInbound
-                          ? 'bg-white border border-slate-200 text-slate-900'
-                          : 'bg-brand text-white'
+                        'px-4 py-3 rounded-xl break-words shadow-sm',
+                        isInbound ? 'bg-white border border-[#EDF2F7] text-slate-900' : 'bg-[color:var(--studio-primary)] text-white'
                       )}
                     >
                       <p className="text-sm leading-relaxed">{message.content}</p>
                     </div>
-                    <p className="text-xs text-slate-400 mt-1 px-2">
-                      {formatDateTime(message.timestamp)}
-                    </p>
+                    <div className="mt-2 text-xs text-[#94A3B8]">{formatDateTime(message.timestamp)}</div>
                   </div>
+                  {!isInbound && (
+                    <div className="ml-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="bg-[color:var(--studio-primary)] text-white text-xs font-semibold">
+                          {getInitials(message.sender)}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                  )}
                 </div>
               </div>
             )
@@ -120,9 +138,9 @@ export default function ConversationView({
       </div>
 
       {/* Message Input */}
-      <MessageInput onSendMessage={onSendMessage} />
-    </div>
+      <div className="p-4 border-t border-slate-100 bg-white">
+        <MessageInput onSendMessage={onSendMessage} />
+      </div>
+    </main>
   )
 }
-
-

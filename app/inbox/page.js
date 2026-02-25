@@ -1,4 +1,4 @@
-'use client'
+ 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -20,12 +20,9 @@ export default function InboxPage() {
   const [threadMessages, setThreadMessages] = useState(initialMessages)
 
   // Filter conversations by branch
-  const filteredConversations = useMemo(
-    () => filterByBranch(conversations),
-    [conversations]
-  )
+  const filteredConversations = useMemo(() => filterByBranch(conversations), [conversations])
 
-  // Apply additional filters
+  // Normalize contact type for filters
   const normalizeContactType = (type) => {
     if (!type) return ''
     if (type.toLowerCase() === 'customer') return 'Customers'
@@ -36,8 +33,7 @@ export default function InboxPage() {
   const displayedConversations = filteredConversations.filter((conv) => {
     const matchesChannel = selectedChannel === 'All' || conv.channel === selectedChannel
     const matchesSearch = conv.contact.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesType =
-      contactFilter === 'All' || normalizeContactType(conv.contact.type) === contactFilter
+    const matchesType = contactFilter === 'All' || normalizeContactType(conv.contact.type) === contactFilter
     return matchesChannel && matchesSearch && matchesType
   })
 
@@ -47,13 +43,9 @@ export default function InboxPage() {
     }
   }, [displayedConversations, selectedConversation])
 
-  const selectedConvData = selectedConversation
-    ? displayedConversations.find((c) => c.id === selectedConversation)
-    : null
+  const selectedConvData = selectedConversation ? displayedConversations.find((c) => c.id === selectedConversation) : null
 
-  const conversationMessages = selectedConversation
-    ? threadMessages[selectedConversation] || []
-    : []
+  const conversationMessages = selectedConversation ? threadMessages[selectedConversation] || [] : []
 
   const handleSendMessage = ({ content, channel }) => {
     if (!selectedConversation || !content.trim()) return
@@ -89,61 +81,48 @@ export default function InboxPage() {
 
   const handleSelectConversation = (conversationId) => {
     setSelectedConversation(conversationId)
-    setConversations((prev) =>
-      prev.map((conv) => (conv.id === conversationId ? { ...conv, unread: 0 } : conv))
-    )
+    setConversations((prev) => prev.map((conv) => (conv.id === conversationId ? { ...conv, unread: 0 } : conv)))
     // Hide contact list on mobile when conversation is selected
     setShowContactList(false)
   }
 
   return (
     <MainLayout title="Inbox" subtitle="Manage all your conversations in one place">
-      <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-10rem)]">
-        {/* Contact List Panel - Hidden on mobile when conversation selected, always visible on tablet+ */}
-        <div className={cn(
-          "w-full md:w-auto",
-          showContactList ? 'block' : 'hidden md:block'
-        )}>
-        <ContactList
-          conversations={displayedConversations}
-          selectedConversation={selectedConversation}
-          onSelectConversation={handleSelectConversation}
-          selectedChannel={selectedChannel}
-          onChannelChange={setSelectedChannel}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          contactFilter={contactFilter}
-          onContactFilterChange={setContactFilter}
-        />
-        </div>
-
-        {/* Conversation View Panel - Show on mobile when conversation selected, always visible on tablet+ */}
-        <div className={cn(
-          "w-full md:flex-1",
-          !showContactList ? 'block' : 'hidden md:block'
-        )}>
-        <ConversationView
-          conversation={selectedConvData}
-          messages={conversationMessages}
-          onToggleDetails={() => setShowDetails(!showDetails)}
-          showDetails={showDetails}
-          onSendMessage={handleSendMessage}
-            onBackClick={() => setShowContactList(true)}
-        />
-        </div>
-
-        {/* Contact Details Panel - Hidden on mobile, show as overlay or hidden */}
-        {showDetails && selectedConvData && (
-          <div className="hidden lg:block">
-          <ContactDetails
-            contact={selectedConvData.contact}
-            onClose={() => setShowDetails(false)}
+      <div className="flex flex-col lg:flex-row gap-0 h-[calc(100vh-8rem)]">
+        {/* Left: Contact list */}
+        <div className={cn( showContactList ? 'block' : 'hidden lg:block')}>
+          <ContactList
+            conversations={displayedConversations}
+            selectedConversation={selectedConversation}
+            onSelectConversation={handleSelectConversation}
+            selectedChannel={selectedChannel}
+            onChannelChange={setSelectedChannel}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            contactFilter={contactFilter}
+            onContactFilterChange={setContactFilter}
           />
+        </div>
+
+        {/* Middle: Conversation */}
+        <div className={cn('w-full lg:flex-1', !showContactList ? 'block' : 'block')}>
+          <ConversationView
+            conversation={selectedConvData}
+            messages={conversationMessages}
+            onToggleDetails={() => setShowDetails(!showDetails)}
+            showDetails={showDetails}
+            onSendMessage={handleSendMessage}
+            onBackClick={() => setShowContactList(true)}
+          />
+        </div>
+
+        {/* Right: Details */}
+        {showDetails && selectedConvData && (
+          <div className="hidden lg:block w-80">
+            <ContactDetails contact={selectedConvData.contact} onClose={() => setShowDetails(false)} />
           </div>
         )}
       </div>
     </MainLayout>
   )
 }
-
-
