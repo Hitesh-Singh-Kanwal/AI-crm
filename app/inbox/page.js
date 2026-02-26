@@ -1,15 +1,29 @@
  'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import ContactList from '@/app/inbox/components/ContactList'
 import ConversationView from '@/app/inbox/components/ConversationView'
 import ContactDetails from '@/app/inbox/components/ContactDetails'
 import { conversations as initialConversations, messages as initialMessages } from '@/data/dummyData'
 import { filterByBranch } from '@/lib/branch-filter'
+import { useInboxHeader } from '@/contexts/InboxHeaderContext'
 import { cn } from '@/lib/utils'
 
+// Normalize contact type for filters (All, Customers, Leads, Teachers)
+function normalizeContactType(type) {
+  if (!type) return ''
+  const t = type.toLowerCase()
+  if (t === 'customer') return 'Customers'
+  if (t === 'lead') return 'Leads'
+  if (t === 'teacher') return 'Teachers'
+  return type
+}
+
 export default function InboxPage() {
+  const searchParams = useSearchParams()
+  const { setInboxTeachersCount } = useInboxHeader()
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [showDetails, setShowDetails] = useState(true)
   const [showContactList, setShowContactList] = useState(true)
@@ -19,23 +33,34 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState(initialConversations)
   const [threadMessages, setThreadMessages] = useState(initialMessages)
 
+  // Sync URL ?filter= with contactFilter (header tabs use URL)
+  const urlFilter = searchParams?.get('filter') || 'all'
+  useEffect(() => {
+    const map = { all: 'All', leads: 'Leads', teachers: 'Teachers' }
+    setContactFilter(map[urlFilter] ?? 'All')
+  }, [urlFilter])
+
   // Filter conversations by branch
   const filteredConversations = useMemo(() => filterByBranch(conversations), [conversations])
 
-  // Normalize contact type for filters
-  const normalizeContactType = (type) => {
-    if (!type) return ''
-    if (type.toLowerCase() === 'customer') return 'Customers'
-    if (type.toLowerCase() === 'lead') return 'Leads'
-    return type
-  }
+  const displayedConversations = useMemo(() => {
+    const list = filteredConversations.filter((conv) => {
+      const matchesChannel = selectedChannel === 'All' || conv.channel === selectedChannel
+      const matchesSearch = conv.contact.name.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesType = contactFilter === 'All' || normalizeContactType(conv.contact.type) === contactFilter
+      return matchesChannel && matchesSearch && matchesType
+    })
+    return list
+  }, [filteredConversations, selectedChannel, searchQuery, contactFilter])
 
-  const displayedConversations = filteredConversations.filter((conv) => {
-    const matchesChannel = selectedChannel === 'All' || conv.channel === selectedChannel
-    const matchesSearch = conv.contact.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesType = contactFilter === 'All' || normalizeContactType(conv.contact.type) === contactFilter
-    return matchesChannel && matchesSearch && matchesType
-  })
+  // Teachers count for header tab (from current branch-filtered list)
+  const teachersCount = useMemo(
+    () => filteredConversations.filter((c) => normalizeContactType(c.contact.type) === 'Teachers').length,
+    [filteredConversations]
+  )
+  useEffect(() => {
+    setInboxTeachersCount(teachersCount)
+  }, [teachersCount, setInboxTeachersCount])
 
   useEffect(() => {
     if (!selectedConversation && displayedConversations.length > 0) {
