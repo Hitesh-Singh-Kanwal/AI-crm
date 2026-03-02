@@ -1,70 +1,84 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
   Inbox,
-  Users,
   UserPlus,
-  Shield,
   Calendar,
+  Megaphone,
   BarChart3,
-  FileText,
-  Mail,
-  MessageSquare,
-  Workflow,
-  Phone,
-  ChevronLeft,
-  ChevronRight,
-  LogOut,
+  Bot,
+  Settings,
   X,
-  Building2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getCurrentUser, logout } from '@/lib/auth'
+import { getCurrentUser } from '@/lib/auth'
 import { canAccessRoute } from '@/lib/permissions'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
-import { getInitials } from '@/lib/utils'
 
-const navigationItems = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard, badge: null },
-  { name: 'Inbox', href: '/inbox', icon: Inbox, badge: '5' },
-  { name: 'Users', href: '/users', icon: Users, badge: null },
-  { name: 'Locations', href: '/locations', icon: Building2, badge: null },
-  { name: 'Roles', href: '/roles', icon: Shield, badge: null },
-  { name: 'Leads', href: '/leads', icon: UserPlus, badge: null },
-  { name: 'Calendar', href: '/calendar', icon: Calendar, badge: null },
-  { name: 'Reports', href: '/reports', icon: BarChart3, badge: null },
+// Figma: exact nav items and labels from Studio CRM sidebar (node 380-4220)
+const navItems = [
+  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Inbox', href: '/inbox', icon: Inbox },
+  { name: 'Leads', href: '/leads', icon: UserPlus },
+  { name: 'Calendar', href: '/calendar', icon: Calendar },
+  { name: 'Marketing', href: '/forms', icon: Megaphone },
+  { name: 'Reports', href: '/reports', icon: BarChart3 },
+  { name: 'AI & Automation', href: '/workflows', icon: Bot },
+  { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
-const marketingItems = [
-  { name: 'Form Builder', href: '/forms', icon: FileText, badge: null },
-  { name: 'Email Builder', href: '/emails', icon: Mail, badge: null },
-  { name: 'SMS', href: '/sms', icon: MessageSquare, badge: null },
+// Figma: exact activity card text from Subscription Section
+const upcomingTasks = [
+  { title: 'Email sent to Sarah Hahnson', description: 'Sent proposal for marketing automation' },
+  { title: 'Call with Michael Chen', description: 'Discussed enterprise requirements and pricing' },
+  { title: 'Team sync meeting', description: 'Weekly sales pipeline review' },
+  { title: 'Note added to David Kim', description: 'Interested in expanding current subscription' },
+  { title: 'Task Completed', description: 'Sent follow-up email to GlobalSoft' },
 ]
 
-const automationItems = [
-  { name: 'Workflows', href: '/workflows', icon: Workflow, badge: null },
-]
+// Image path for Upcoming Tasks memoji – place your image at public/images/sidebar-memoji.png
+const MEMOJI_IMAGE_PATH = '/images/sidebar-memoji.png'
 
-const aiItems = [
-  { name: 'AI Calling', href: '/ai-calling', icon: Phone, badge: null },
-]
+function UpcomingTasksMemoji() {
+  const [imgError, setImgError] = useState(false)
+
+  if (imgError) {
+    return (
+      <div
+        className="flex-shrink-0 rounded bg-gray-100"
+        style={{ width: 80, height: 60 }}
+        aria-hidden
+      />
+    )
+  }
+
+  return (
+    <div className="flex-shrink-0 rounded overflow-hidden" style={{ width: 80, height: 60 }}>
+      <Image
+        src={MEMOJI_IMAGE_PATH}
+        alt=""
+        width={80}
+        height={60}
+        className="object-cover w-full h-full"
+        onError={() => setImgError(true)}
+        unoptimized
+      />
+    </div>
+  )
+}
 
 export default function Sidebar({ mobileOpen, setMobileOpen }) {
-  const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const user = getCurrentUser()
 
-  // Close mobile menu on route change
   useEffect(() => {
     setMobileOpen(false)
   }, [pathname, setMobileOpen])
 
-  // Prevent body scroll when mobile menu is open
   useEffect(() => {
     if (mobileOpen) {
       document.body.style.overflow = 'hidden'
@@ -78,161 +92,140 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
 
   if (!user) return null
 
-  const NavLink = ({ item }) => {
-    if (!canAccessRoute(item.href)) return null
-
-    const isActive = pathname === item.href
-    const Icon = item.icon
-
-    return (
-      <Link
-        href={item.href}
-        title={collapsed ? item.name : undefined}
-        className={cn(
-          'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
-          isActive
-            ? 'bg-brand text-white shadow-sm'
-            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-        )}
-      >
-        <Icon className={cn('h-5 w-5 shrink-0', isActive ? 'text-white' : 'text-slate-500')} />
-        {!collapsed && (
-          <>
-            <span className="flex-1">{item.name}</span>
-            {item.badge && (
-              <Badge 
-                variant={isActive ? 'default' : 'info'} 
-                className={cn('ml-auto', isActive && 'bg-white/20 text-white border-white/30')}
-              >
-                {item.badge}
-              </Badge>
-            )}
-          </>
-        )}
-      </Link>
-    )
-  }
-
-  const NavSection = ({ title, items }) => {
-    const accessibleItems = items.filter((item) => canAccessRoute(item.href))
-    if (accessibleItems.length === 0) return null
-
-    return (
-      <div className="space-y-1">
-        {!collapsed && (
-          <h3 className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            {title}
-          </h3>
-        )}
-        {accessibleItems.map((item) => (
-          <NavLink key={item.href} item={item} />
-        ))}
-      </div>
-    )
-  }
+  const studioName = user.branchName || 'ABC Studio'
 
   return (
     <>
-      {/* Mobile Overlay */}
       {mobileOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
         />
       )}
 
-      {/* Sidebar */}
-      <div
+      {/* Side bar - Figma: W 212 + padding, H fit, gap 24, padding 4; no scroll */}
+      <aside
         className={cn(
-          'flex flex-col h-screen bg-white border-r border-slate-200 transition-all duration-300 shadow-sm',
-          // Desktop
-          'md:flex',
-          collapsed ? 'md:w-16' : 'md:w-64',
-          // Mobile
+          'flex flex-col h-screen transition-all duration-300 overflow-hidden',
           'md:relative fixed inset-y-0 left-0 z-50',
+          'w-[244px] min-w-[244px]',
           mobileOpen ? 'flex translate-x-0' : 'hidden md:flex -translate-x-full md:translate-x-0',
-          'w-64'
+          'bg-gradient-to-b from-[#4CC9F0] to-[#F72585]'
         )}
+        style={{ padding: '24px 16px', gap: 24 }}
       >
-        {/* Logo */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200">
-          {!collapsed && (
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-brand flex items-center justify-center shadow-sm">
-                <span className="text-white font-bold text-sm">DA</span>
-              </div>
-              <div>
-                <span className="font-semibold text-base text-slate-900">Dance CRM</span>
-                <p className="text-xs text-slate-500">Multi-Branch</p>
+        {/* Welcome + Menu - flex-1 min-h-0, no scroll, gap 24 (Figma auto layout) */}
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden" style={{ gap: 24 }}>
+          <div className="flex flex-col flex-shrink-0" style={{ gap: 4 }}>
+            {/* Logo Section - Figma: column, gap 4px */}
+            <div className="flex flex-col flex-shrink-0" style={{ gap: 4 }}>
+              <div
+                className="rounded-full flex-shrink-0 bg-[#7704D3]"
+                style={{ width: 32, height: 32 }}
+                aria-hidden
+              />
+              <div className="flex flex-col flex-shrink-0">
+                <p
+                  className="font-medium text-[#F9FAFB] leading-tight"
+                  style={{ fontFamily: 'Inter', fontSize: 18, lineHeight: 1.44 }}
+                >
+                  Welcome Back,<br />
+                  {studioName}
+                </p>
+                <p
+                  className="text-[#F9FAFB] flex-shrink-0"
+                  style={{ fontFamily: 'Inter', fontSize: 14, lineHeight: 1.43 }}
+                >
+                  Last Update, 3 Feb 2026
+                </p>
               </div>
             </div>
-          )}
-          {collapsed && (
-            <div className="h-9 w-9 rounded-xl bg-brand flex items-center justify-center shadow-sm mx-auto">
-              <span className="text-white font-bold text-xs">DA</span>
+
+            {/* Menu Section - Figma: borderRadius 0 24px 24px 0, padding 20px 0, gap 20px */}
+            <div
+              className="flex flex-col flex-shrink-0 w-full"
+              style={{
+                borderRadius: '0 24px 24px 0',
+                padding: '20px 0',
+                gap: 20,
+              }}
+            >
+              {navItems.map((item) => {
+                if (!canAccessRoute(item.href)) return null
+                const isActive = pathname === item.href
+                const Icon = item.icon
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      'flex flex-row items-center gap-2 w-full flex-shrink-0',
+                      isActive ? 'text-[#FAEBFC] font-bold' : 'text-[#F9FAFB] font-normal'
+                    )}
+                    style={{ fontFamily: 'Inter', fontSize: 14, lineHeight: 1.43 }}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0 text-white" strokeWidth={1.5} aria-hidden />
+                    <span>{item.name}</span>
+                  </Link>
+                )
+              })}
             </div>
-          )}
-          {/* Close button for mobile */}
-          <button
-            onClick={() => setMobileOpen(false)}
-            aria-label="Close menu"
-            className="md:hidden p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-600"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          {/* Collapse button for desktop */}
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="hidden md:block p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-600"
-          >
-            {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
-          </button>
+          </div>
         </div>
 
-      {/* Navigation */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide py-4 space-y-6 px-2">
-        <NavSection title="Main" items={navigationItems} />
-        <NavSection title="Marketing" items={marketingItems} />
-        <NavSection title="Automation" items={automationItems} />
-        <NavSection title="AI Features" items={aiItems} />
-      </div>
-
-      {/* User Profile */}
-      <div className="border-t border-slate-200 p-4 bg-slate-50/50">
-        <div className={cn('flex items-center gap-3', collapsed && 'justify-center')}>
-          <Avatar className="h-10 w-10 ring-2 ring-white shadow-sm">
-            <AvatarFallback className="bg-brand text-white font-semibold">
-              {getInitials(user.name)}
-            </AvatarFallback>
-          </Avatar>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-slate-900 truncate">{user.name}</p>
-              <p className="text-xs text-slate-500 truncate">{user.role}</p>
-              {user.branchName && (
-                <p className="text-xs text-slate-400 truncate">{user.branchName}</p>
-              )}
-            </div>
-          )}
+        {/* Subscription Section - memoji image above Upcoming Tasks */}
+        <div
+          className="flex flex-col flex-shrink-0 items-center rounded-2xl bg-white self-center"
+          style={{
+            width: 212,
+            borderRadius: 16,
+            padding: 8,
+            gap: 4,
+          }}
+        >
+          <UpcomingTasksMemoji />
+          <div className="flex flex-col w-full flex-shrink-0" style={{ gap: 4 }}>
+            <p
+              className="font-bold text-[#CD3358] w-full text-left"
+              style={{ fontFamily: 'Inter', fontSize: 12, lineHeight: 1.5 }}
+            >
+              Upcoming Tasks
+            </p>
+            <div
+              className="w-full h-px bg-gradient-to-r from-transparent via-[#E0E1E2] to-transparent opacity-90"
+              style={{ maxWidth: 196 }}
+            />
+            {upcomingTasks.map((task, i) => (
+              <div key={i} className="flex flex-col w-full" style={{ gap: 0 }}>
+                <p
+                  className="font-medium text-[#0F172A]"
+                  style={{ fontFamily: 'Inter', fontSize: 10, lineHeight: 1.6 }}
+                >
+                  {task.title}
+                </p>
+                <p
+                  className="text-[#94A3B8]"
+                  style={{ fontFamily: 'Inter', fontSize: 10, lineHeight: 1.6 }}
+                >
+                  {task.description}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-        {!collapsed && (
-          <button
-            onClick={logout}
-            className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg hover:bg-slate-100 transition-colors text-slate-600 border border-slate-200"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span>Logout</span>
-          </button>
-        )}
-      </div>
-    </div>
+      </aside>
+
+      {/* Mobile close button - absolute so it doesn't affect layout */}
+      {mobileOpen && (
+        <button
+          onClick={() => setMobileOpen(false)}
+          aria-label="Close menu"
+          className="md:hidden fixed top-6 left-[228px] z-[60] p-2 rounded-lg bg-white/90 text-gray-700 shadow"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      )}
     </>
   )
 }
-
-
