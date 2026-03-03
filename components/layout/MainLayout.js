@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { isAuthenticated } from '@/lib/auth'
 import { canAccessRoute, getDefaultRedirect } from '@/lib/permissions'
@@ -50,12 +50,14 @@ export default function MainLayout({ children, title, subtitle }) {
     <div className="flex h-screen overflow-hidden">
       <Sidebar mobileOpen={mobileMenuOpen} setMobileOpen={setMobileMenuOpen} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header 
-          title={title} 
-          subtitle={subtitle} 
-          onMenuClick={() => setMobileMenuOpen(true)} 
-        />
-        <main className="flex-1 overflow-y-auto scrollbar-hide bg-background p-4 md:p-6" key={branchVersion}>
+        <Suspense fallback={<header className="sticky top-0 z-30 min-h-[86px] border-b border-slate-200/80 bg-white" />}>
+          <Header 
+            title={title} 
+            subtitle={subtitle} 
+            onMenuClick={() => setMobileMenuOpen(true)} 
+          />
+        </Suspense>
+        <main className="flex-1 min-h-0 overflow-y-auto scrollbar-hide bg-background p-1 md:p-2" key={branchVersion}>
           {children}
         </main>
       </div>

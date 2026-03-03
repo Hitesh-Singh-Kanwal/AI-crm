@@ -1,166 +1,395 @@
+// 'use client'
+
+// import { useState } from 'react'
+// import { usePathname, useSearchParams, useRouter } from 'next/navigation'
+// import { Bell, MapPin, ChevronDown, Menu, Search } from 'lucide-react'
+// import { Button } from '@/components/ui/button'
+// import BranchSelector from '@/components/shared/BranchSelector'
+// import { getCurrentUser } from '@/lib/auth'
+// import { getInitials } from '@/lib/utils'
+// import { isSuperAdmin } from '@/lib/permissions'
+// import { cn } from '@/lib/utils'
+// import { useInboxHeader } from '@/contexts/InboxHeaderContext'
+
+// const INBOX_FILTERS = [
+//   { value: 'all', label: 'All Customers' },
+//   { value: 'leads', label: 'Leads' },
+//   { value: 'teachers', label: 'Teachers' },
+// ]
+
+// /**
+//  * Header matching Figma highlighted section: W 1204 H 86, Auto layout, Gap 24px, Padding 24px.
+//  * On Inbox: left = All Customers | Leads | Teachers tabs; right = search+notification | All Branch | profile.
+//  */
+// export default function Header({ title, subtitle, onMenuClick }) {
+//   const [showNotifications, setShowNotifications] = useState(false)
+//   const user = getCurrentUser()
+//   const { inboxTeachersCount } = useInboxHeader()
+//   const pathname = usePathname()
+//   const searchParams = useSearchParams()
+//   const router = useRouter()
+//   const isInbox = pathname?.startsWith('/inbox')
+//   const inboxFilter = (isInbox && searchParams?.get('filter')) || 'all'
+
+//   const setInboxFilter = (value) => {
+//     const params = new URLSearchParams(searchParams?.toString() || '')
+//     params.set('filter', value)
+//     router.push(`/inbox?${params.toString()}`)
+//   }
+
+//   return (
+//     <header className="sticky top-0 z-30 min-h-[86px] border-b border-slate-200/80 bg-white">
+//       <div className="flex min-h-[86px] items-center justify-between gap-6 px-6">
+//         {/* Left: on Inbox show 3 filter tabs (All Customers, Leads, Teachers); else spacer for right alignment */}
+//         {isInbox ? (
+//           <div className="flex h-[38px] items-center gap-5 shrink-0">
+//             {INBOX_FILTERS.map(({ value, label }) => {
+//               const isActive = inboxFilter === value
+//               const isTeachers = value === 'teachers'
+//               return (
+//                 <button
+//                   key={value}
+//                   onClick={() => setInboxFilter(value)}
+//                   className={cn(
+//                     'h-[38px] px-4 rounded-full text-sm font-normal transition-colors shrink-0',
+//                     isActive
+//                       ? 'bg-[var(--studio-primary)] text-white'
+//                       : 'bg-transparent text-[var(--studio-primary)] hover:bg-[var(--studio-primary-light)]'
+//                   )}
+//                 >
+//                   {isTeachers ? (
+//                     <span className="flex items-center gap-2">
+//                       <span>{label}</span>
+//                       <span
+//                         className={cn(
+//                           'min-w-[24px] h-6 px-2 rounded-full text-xs font-medium flex items-center justify-center',
+//                           isActive
+//                             ? 'bg-white text-[var(--studio-primary)]'
+//                             : 'bg-[var(--studio-primary-light)] text-[var(--studio-primary)]'
+//                         )}
+//                       >
+//                         {inboxTeachersCount}
+//                       </span>
+//                     </span>
+//                   ) : (
+//                     label
+//                   )}
+//                 </button>
+//               )
+//             })}
+//           </div>
+//         ) : (
+//           <div className="flex-1" />
+//         )}
+
+//         {/* Right: menu (mobile) + search+notification pill + All Branch + profile */}
+//         <div className="flex items-center gap-6 shrink-0">
+//         {/* Mobile: menu on far left */}
+//         <Button
+//           variant="ghost"
+//           size="icon"
+//           onClick={onMenuClick}
+//           className="md:hidden h-[38px] w-[38px] rounded-lg text-slate-600 absolute left-4"
+//           aria-label="Open menu"
+//         >
+//           <Menu className="h-5 w-5" />
+//         </Button>
+
+//         {/* Right-aligned block: Search+Notification combined | All Branch | User profile */}
+//         <div className="flex items-center gap-6">
+//         {/* 1. Notification + Search combined – pill container, inner elements 38px */}
+//         <div className="flex items-center h-[38px] gap-1 rounded-full bg-slate-100 shrink-0 px-0.5">
+//           <div className="relative">
+//             <Button
+//               variant="ghost"
+//               size="icon"
+//               onClick={() => setShowNotifications(!showNotifications)}
+//               className="h-[38px] w-[38px] rounded-full text-slate-500 hover:bg-slate-200/80 shrink-0"
+//               aria-label="Notifications"
+//             >
+//               <Bell className="h-5 w-5" />
+//             </Button>
+//             {showNotifications && (
+//               <>
+//                 <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+//                 <div className="absolute right-0 top-full mt-2 w-80 z-50 rounded-xl border border-slate-200 bg-white shadow-xl">
+//                   <div className="p-4 border-b border-slate-200">
+//                     <h3 className="font-semibold text-sm text-slate-900">Notifications</h3>
+//                   </div>
+//                   <div className="p-4 text-sm text-slate-500">No new notifications.</div>
+//                 </div>
+//               </>
+//             )}
+//           </div>
+//           <Button
+//             variant="ghost"
+//             size="icon"
+//             className="h-[38px] w-[38px] rounded-full text-slate-500 hover:bg-slate-200/80 shrink-0"
+//             aria-label="Search"
+//           >
+//             <Search className="h-5 w-5" />
+//           </Button>
+//         </div>
+
+//         {/* 2. All Branch – backend-connected; UI only. Super admin = dropdown, others = read-only label */}
+//         <div className="w-[200px] shrink-0">
+//           {isSuperAdmin() ? (
+//             <BranchSelector />
+//           ) : (
+//             <div
+//               className={cn(
+//                 'flex items-center justify-between gap-2 h-[38px] px-3 rounded-[32px]',
+//                 'bg-[#F1F5F9]'
+//               )}
+//             >
+//               <div className="flex items-center gap-1.5 min-w-0">
+//                 <MapPin className="h-5 w-5 shrink-0 text-[#94A3B8]" />
+//                 <span className="text-sm font-normal truncate" style={{ color: '#94A3B8' }}>
+//                   {user?.branchName || 'All Branch'}
+//                 </span>
+//               </div>
+//               <ChevronDown className="h-4 w-4 shrink-0 text-[#94A3B8]" />
+//             </div>
+//           )}
+//         </div>
+
+//         {/* 3. User profile – avatar + name (line 1) + email (line 2, below name) */}
+//         <div className="flex items-center gap-2 shrink-0">
+//           <div
+//             className="h-[38px] w-[38px] rounded-full bg-slate-200 flex items-center justify-center text-sm font-medium text-slate-600 shrink-0"
+//             aria-hidden
+//           >
+//             {user ? getInitials(user.name) : '?'}
+//           </div>
+//           <div className="flex flex-col items-start min-w-0 hidden sm:block">
+//             <span className="text-sm font-normal text-[#050312] block leading-tight">
+//               {user ? `Hi, ${user.name || 'User'}` : 'Hi, User'}
+//             </span>
+//             <span className="text-xs font-normal text-[#94A3B8] block leading-tight mt-0.5">
+//               {user?.email || '—'}
+//             </span>
+//           </div>
+//         </div>
+//         </div>
+//       </div>
+//       </div>
+//     </header>
+//   );
+// }
+
+
+
 'use client'
 
-import { useState } from 'react'
-import { Search, Bell, HelpCircle, Settings, Building2, Menu } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { useState, useEffect, useRef } from 'react'
+import { usePathname, useSearchParams, useRouter } from 'next/navigation'
+import { Bell, MapPin, ChevronDown, Menu, Search, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import BranchSelector from '@/components/shared/BranchSelector'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, logout } from '@/lib/auth'
+import { getInitials, cn } from '@/lib/utils'
 import { isSuperAdmin } from '@/lib/permissions'
+import { useInboxHeader } from '@/contexts/InboxHeaderContext'
+
+const INBOX_FILTERS = [
+  { value: 'all', label: 'All Customers' },
+  { value: 'leads', label: 'Leads' },
+  { value: 'teachers', label: 'Teachers' },
+]
 
 export default function Header({ title, subtitle, onMenuClick }) {
-  const [notifications, setNotifications] = useState([
-    { id: 1, title: 'New lead assigned', time: '5 minutes ago', unread: true },
-    { id: 2, title: 'Payment received', time: '1 hour ago', unread: true },
-    { id: 3, title: 'Class reminder sent', time: '2 hours ago', unread: false },
-  ])
   const [showNotifications, setShowNotifications] = useState(false)
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const profileRef = useRef(null)
   const user = getCurrentUser()
 
-  const unreadCount = notifications.filter((n) => n.unread).length
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setShowProfileMenu(false)
+      }
+    }
+    if (showProfileMenu) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showProfileMenu])
+  const { inboxTeachersCount } = useInboxHeader()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const router = useRouter()
 
-  const markAsRead = (id) => {
-    setNotifications((prev) =>
-      prev.map((notif) => (notif.id === id ? { ...notif, unread: false } : notif))
-    )
-  }
+  const isInbox = pathname?.startsWith('/inbox')
+  const inboxFilter = (isInbox && searchParams?.get('filter')) || 'all'
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((notif) => ({ ...notif, unread: false })))
+  const setInboxFilter = (value) => {
+    const params = new URLSearchParams(searchParams?.toString() || '')
+    params.set('filter', value)
+    router.push(`/inbox?${params.toString()}`)
   }
 
   return (
-    <header className="sticky top-0 z-30 h-16 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 shadow-sm">
-      <div className="flex h-full items-center justify-between px-4 md:px-6">
-        {/* Left: Mobile Menu + Title */}
-        <div className="flex items-center gap-3">
-          {/* Mobile Menu Button */}
+    <header className="sticky top-0 z-30 min-h-[86px] border-b border-slate-200/80 bg-white">
+      <div className="flex min-h-[86px] items-center justify-between px-6">
+
+        {/* LEFT SECTION — INBOX SEGMENTED TABS */}
+        {isInbox ? (
+          <div className="flex items-center h-[44px] rounded-full bg-[#F1F5F9] p-1">
+            {INBOX_FILTERS.map(({ value, label }) => {
+              const isActive = inboxFilter === value
+              const isTeachers = value === 'teachers'
+
+              return (
+                <button
+                  key={value}
+                  onClick={() => setInboxFilter(value)}
+                  className={cn(
+                    'flex items-center px-5 h-[36px] rounded-full text-sm font-medium transition-all duration-200',
+
+                    isActive
+                      ? 'text-[var(--studio-primary)] font-semibold'
+                      : 'text-slate-500 hover:text-[var(--studio-primary)]'
+                  )}
+                >
+                  <span>{label}</span>
+
+                  {isTeachers && (
+                    <span
+                      className={cn(
+                        'ml-2 min-w-[22px] h-5 px-2 rounded-full text-xs flex items-center justify-center',
+                        isActive
+                          ? 'bg-[var(--studio-primary-light)] text-[var(--studio-primary)]'
+                          : 'bg-slate-200 text-slate-600'
+                      )}
+                    >
+                      {inboxTeachersCount}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="flex-1" />
+        )}
+
+        {/* RIGHT SECTION */}
+        <div className="flex items-center gap-6">
+
+          {/* MOBILE MENU */}
           <Button
             variant="ghost"
             size="icon"
             onClick={onMenuClick}
-            className="md:hidden"
+            className="md:hidden h-[38px] w-[38px] rounded-lg text-slate-600"
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </Button>
-          
-          <div>
-            <h1 className="text-base md:text-lg font-semibold text-slate-900">{title}</h1>
-            {subtitle && <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">{subtitle}</p>}
-          </div>
-        </div>
 
-        {/* Right: Actions */}
-        <div className="flex items-center gap-2 md:gap-3">
-          {/* Branch Selector (Super Admin only) - Hidden on mobile */}
-          {isSuperAdmin() && (
-            <div className="hidden md:block">
-              <BranchSelector />
+          {/* SEARCH + NOTIFICATION PILL */}
+          <div className="flex items-center h-[38px] gap-1 rounded-full bg-slate-100 px-0.5">
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="h-[38px] w-[38px] rounded-full text-slate-500 hover:bg-slate-200/80"
+              >
+                <Bell className="h-5 w-5" />
+              </Button>
+
+              {showNotifications && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowNotifications(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-2 w-80 z-50 rounded-xl border border-slate-200 bg-white shadow-xl">
+                    <div className="p-4 border-b border-slate-200">
+                      <h3 className="font-semibold text-sm text-slate-900">
+                        Notifications
+                      </h3>
+                    </div>
+                    <div className="p-4 text-sm text-slate-500">
+                      No new notifications.
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-          )}
 
-          {/* Branch Badge (Admin/Staff) - Hidden on mobile */}
-          {!isSuperAdmin() && user?.branchName && (
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200 bg-slate-50">
-              <Building2 className="h-3.5 w-3.5 text-slate-500" />
-              <span className="text-xs font-medium text-slate-700">{user.branchName}</span>
-            </div>
-          )}
-
-          {/* Search - Hidden on mobile, show icon only */}
-          <div className="relative hidden md:block w-48 lg:w-64">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input 
-              placeholder="Search..." 
-              className="pl-9 h-9 rounded-full border-slate-200 bg-slate-50 text-sm focus:bg-white focus:border-brand" 
-            />
-          </div>
-          
-          {/* Search icon for mobile */}
-          <Button variant="ghost" size="icon" className="md:hidden">
-            <Search className="h-5 w-5" />
-          </Button>
-
-          {/* Notifications */}
-          <div className="relative">
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative"
+              className="h-[38px] w-[38px] rounded-full text-slate-500 hover:bg-slate-200/80"
             >
-              <Bell className="h-5 w-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
+              <Search className="h-5 w-5" />
             </Button>
+          </div>
 
-            {showNotifications && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setShowNotifications(false)}
-                />
-                <div className="absolute right-0 top-full mt-2 w-80 z-50 rounded-xl border border-slate-200 bg-white shadow-xl animate-scale-in">
-                  <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-                    <h3 className="font-semibold text-sm text-slate-900">Notifications</h3>
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={markAllAsRead}
-                        className="text-xs text-primary hover:underline"
-                      >
-                        Mark all as read
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-96 overflow-y-auto scrollbar-hide">
-                    {notifications.map((notif) => (
-                      <div
-                        key={notif.id}
-                        className="p-3 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
-                        onClick={() => markAsRead(notif.id)}
-                      >
-                        <div className="flex items-start gap-2">
-                          {notif.unread && (
-                            <div className="h-2 w-2 rounded-full bg-brand/100 mt-1.5 shrink-0" />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-900">{notif.title}</p>
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              {notif.time}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="p-2 border-t border-slate-200">
-                    <button className="w-full text-xs font-medium text-center py-2 hover:bg-slate-50 rounded-lg transition-colors text-slate-600">
-                      View all notifications
-                    </button>
-                  </div>
+          {/* BRANCH SELECTOR */}
+          <div className="w-[200px]">
+            {isSuperAdmin() ? (
+              <BranchSelector />
+            ) : (
+              <div className="flex items-center justify-between gap-2 h-[38px] px-3 rounded-full bg-[#F1F5F9]">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <MapPin className="h-5 w-5 text-[#94A3B8]" />
+                  <span className="text-sm truncate text-[#94A3B8]">
+                    {user?.branchName || 'All Branch'}
+                  </span>
                 </div>
-              </>
+                <ChevronDown className="h-4 w-4 text-[#94A3B8]" />
+              </div>
             )}
           </div>
 
-          {/* Help - Hidden on small mobile */}
-          <Button variant="ghost" size="icon" className="hidden sm:flex">
-            <HelpCircle className="h-5 w-5" />
-          </Button>
+          {/* USER PROFILE – click to open dropdown with Logout */}
+          <div className="relative" ref={profileRef}>
+            <button
+              type="button"
+              onClick={() => setShowProfileMenu((prev) => !prev)}
+              className="flex items-center gap-2 rounded-lg px-1 py-1.5 hover:bg-slate-100 transition-colors text-left min-w-0"
+              aria-expanded={showProfileMenu}
+              aria-haspopup="true"
+            >
+              <div className="h-[38px] w-[38px] rounded-full bg-slate-200 flex items-center justify-center text-sm font-medium text-slate-600 shrink-0">
+                {user ? getInitials(user.name) : '?'}
+              </div>
+              <div className="flex flex-col min-w-0 max-w-[140px] sm:max-w-none hidden sm:flex items-start">
+                <span className="block text-sm text-[#050312] leading-tight truncate w-full">
+                  {user ? `Hi, ${user.name}` : 'Hi, User'}
+                </span>
+                <span className="block text-xs text-[#94A3B8] leading-tight mt-1 truncate w-full">
+                  {user?.email || '—'}
+                </span>
+              </div>
+            </button>
 
-          {/* Settings - Hidden on small mobile */}
-          <Button variant="ghost" size="icon" className="hidden sm:flex">
-            <Settings className="h-5 w-5" />
-          </Button>
+            {showProfileMenu && (
+              <div
+                className="absolute right-0 top-full mt-2 w-48 z-50 rounded-lg border border-slate-200 bg-white shadow-lg py-1"
+                role="menu"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileMenu(false)
+                    logout()
+                  }}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  role="menuitem"
+                >
+                  <LogOut className="h-4 w-4 text-slate-500" />
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
     </header>
   )
 }
-
-

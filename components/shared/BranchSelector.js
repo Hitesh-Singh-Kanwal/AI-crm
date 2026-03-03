@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Building2, Check, ChevronsUpDown } from 'lucide-react'
+import { Building2, Check, ChevronDown, MapPin } from 'lucide-react'
 import { getSelectedBranch, setSelectedBranch, isSuperAdmin } from '@/lib/auth'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -53,14 +53,17 @@ export default function BranchSelector() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 transition-colors text-sm shadow-sm"
+        className="flex items-center justify-between gap-2 w-full h-[38px] px-3 rounded-[32px] bg-[#F1F5F9] hover:bg-slate-200/80 transition-colors text-sm font-normal"
+        style={{ color: '#94A3B8' }}
       >
-        <Building2 className="h-3.5 w-3.5 text-slate-600" />
-        <span className="font-medium text-slate-700">{selectedBranch ? selectedBranch.name : 'All Branches'}</span>
-        <ChevronsUpDown className="h-3.5 w-3.5 text-slate-400" />
+        <div className="flex items-center gap-1 min-w-0">
+          <MapPin className="h-5 w-5 shrink-0 text-[#94A3B8]" />
+          <span className="truncate">{selectedBranch ? selectedBranch.name : 'All Branch'}</span>
+        </div>
+        <ChevronDown className="h-4 w-4 shrink-0 text-[#94A3B8]" />
       </button>
 
       {open && (
