@@ -26,7 +26,14 @@ const bookingStatusOptions = [
   { value: 'Booked', label: 'Booked' },
 ]
 
-export default function LeadsDialog({ open, onClose, leads = [], onRefresh, initialLeadId = null }) {
+export default function LeadsDialog({
+  open,
+  onClose,
+  leads = [],
+  onRefresh,
+  initialLeadId = null,
+  viewOnly = false,
+}) {
   const [editingLead, setEditingLead] = useState(null)
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState('create')
@@ -42,7 +49,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
       const found = leads.find((l) => l._id === initialLeadId)
       if (found) {
         setEditingLead({ ...found })
-        setMode('edit')
+        setMode(viewOnly ? 'view' : 'edit')
       }
     } else {
       setEditingLead({
@@ -58,7 +65,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
       })
       setMode('create')
     }
-  }, [open, initialLeadId, leads])
+  }, [open, initialLeadId, leads, viewOnly])
 
   function openEdit(lead) {
     setEditingLead({ ...lead })
@@ -86,6 +93,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
   }
 
   async function saveLead() {
+    if (viewOnly) return
     if (!editingLead) return
 
     if (!editingLead.name || !editingLead.email || !editingLead.phoneNumber || !editingLead.location) {
@@ -149,10 +157,14 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" />
-            {mode === 'edit' ? 'Edit Lead' : 'Create New Lead'}
+            {mode === 'view' ? 'Lead Details' : mode === 'edit' ? 'Edit Lead' : 'Create New Lead'}
           </DialogTitle>
           <DialogDescription>
-            {mode === 'edit' ? 'Update lead information' : 'Add a new lead to your CRM'}
+            {mode === 'view'
+              ? 'View lead information'
+              : mode === 'edit'
+              ? 'Update lead information'
+              : 'Add a new lead to your CRM'}
           </DialogDescription>
         </DialogHeader>
 
@@ -163,6 +175,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
               <Input
                 value={editingLead.name || ''}
                 onChange={(e) => setEditingLead({ ...editingLead, name: e.target.value })}
+                disabled={viewOnly}
                 placeholder="Enter lead name"
               />
             </div>
@@ -172,6 +185,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
                 type="email"
                 value={editingLead.email || ''}
                 onChange={(e) => setEditingLead({ ...editingLead, email: e.target.value })}
+                disabled={viewOnly}
                 placeholder="Enter email address"
               />
             </div>
@@ -180,6 +194,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
               <Input
                 value={editingLead.phoneNumber || ''}
                 onChange={(e) => setEditingLead({ ...editingLead, phoneNumber: e.target.value })}
+                disabled={viewOnly}
                 placeholder="Enter phone number"
               />
             </div>
@@ -188,6 +203,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
               <Input
                 value={editingLead.location || ''}
                 onChange={(e) => setEditingLead({ ...editingLead, location: e.target.value })}
+                disabled={viewOnly}
                 placeholder="Enter location"
               />
             </div>
@@ -196,6 +212,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
               <select
                 value={editingLead.stage || 'new'}
                 onChange={(e) => setEditingLead({ ...editingLead, stage: e.target.value })}
+                disabled={viewOnly}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {stageOptions.map((opt) => (
@@ -210,6 +227,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
               <select
                 value={editingLead.bookingStatus || 'Not Booked'}
                 onChange={(e) => setEditingLead({ ...editingLead, bookingStatus: e.target.value })}
+                disabled={viewOnly}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {bookingStatusOptions.map((opt) => (
@@ -224,6 +242,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
               <Input
                 value={editingLead.assignedAiAgent || ''}
                 onChange={(e) => setEditingLead({ ...editingLead, assignedAiAgent: e.target.value })}
+                disabled={viewOnly}
                 placeholder="AI agent ID (optional)"
               />
             </div>
@@ -232,6 +251,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
               <Input
                 value={editingLead.assignedHumanAgent || ''}
                 onChange={(e) => setEditingLead({ ...editingLead, assignedHumanAgent: e.target.value })}
+                disabled={viewOnly}
                 placeholder="Human agent email/ID (optional)"
               />
             </div>
@@ -241,6 +261,7 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
                   type="checkbox"
                   checked={editingLead.isEscalated || false}
                   onChange={(e) => setEditingLead({ ...editingLead, isEscalated: e.target.checked })}
+                  disabled={viewOnly}
                   className="w-4 h-4"
                 />
                 <span className="text-sm font-medium">Is Escalated</span>
@@ -251,11 +272,13 @@ export default function LeadsDialog({ open, onClose, leads = [], onRefresh, init
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={loading}>
-            Cancel
+            {viewOnly ? 'Close' : 'Cancel'}
           </Button>
-          <Button onClick={saveLead} disabled={loading} variant="gradient">
-            {loading ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Create Lead'}
-          </Button>
+          {!viewOnly && (
+            <Button onClick={saveLead} disabled={loading} variant="gradient">
+              {loading ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Create Lead'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
