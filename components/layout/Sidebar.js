@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
@@ -25,7 +25,17 @@ const navItems = [
   { name: 'Inbox', href: '/inbox', icon: Inbox },
   { name: 'Leads', href: '/leads', icon: UserPlus },
   { name: 'Calendar', href: '/calendar', icon: Calendar },
-  { name: 'Marketing', href: '/forms', icon: Megaphone },
+  {
+    name: 'Marketing',
+    href: '/forms',
+    icon: Megaphone,
+    children: [
+      { name: 'Form Builder', href: '/forms' },
+      { name: 'Campaigns', href: '/campaigns' },
+      { name: 'Email Builder', href: '/emails' },
+      { name: 'SMS Builder', href: '/sms' },
+    ]
+  },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
   { name: 'AI & Automation', href: '/workflows', icon: Bot },
   { name: 'Settings', href: '/settings', icon: Settings },
@@ -74,10 +84,25 @@ function UpcomingTasksMemoji() {
 export default function Sidebar({ mobileOpen, setMobileOpen }) {
   const pathname = usePathname()
   const user = getCurrentUser()
+  const [openMenu, setOpenMenu] = useState(null)
+  const menuRef = useRef(null)
 
   useEffect(() => {
     setMobileOpen(false)
+    setOpenMenu(null)
   }, [pathname, setMobileOpen])
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setOpenMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   useEffect(() => {
     if (mobileOpen) {
@@ -107,7 +132,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
       {/* Side bar - Figma: W 212 + padding, H fit, gap 24, padding 4; no scroll */}
       <aside
         className={cn(
-          'flex flex-col h-screen transition-all duration-300 overflow-hidden',
+          'flex flex-col h-screen transition-all duration-300',
           'md:relative fixed inset-y-0 left-0 z-50',
           'w-[244px] min-w-[244px]',
           mobileOpen ? 'flex translate-x-0' : 'hidden md:flex -translate-x-full md:translate-x-0',
@@ -116,7 +141,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
         style={{ padding: '24px 16px', gap: 24 }}
       >
         {/* Welcome + Menu - flex-1 min-h-0, no scroll, gap 24 (Figma auto layout) */}
-        <div className="flex flex-col flex-1 min-h-0 overflow-hidden" style={{ gap: 24 }}>
+        <div className="flex flex-col flex-1 min-h-0" style={{ gap: 24 }}>
           <div className="flex flex-col flex-shrink-0" style={{ gap: 4 }}>
             {/* Logo Section - Figma: column, gap 4px */}
             <div className="flex flex-col flex-shrink-0" style={{ gap: 4 }}>
@@ -144,6 +169,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
 
             {/* Menu Section - Figma: borderRadius 0 24px 24px 0, padding 20px 0, gap 20px */}
             <div
+              ref={menuRef}
               className="flex flex-col flex-shrink-0 w-full"
               style={{
                 borderRadius: '0 24px 24px 0',
@@ -152,22 +178,77 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
               }}
             >
               {navItems.map((item) => {
-                if (!canAccessRoute(item.href)) return null
-                const isActive = pathname === item.href
+                const hasAccess = item.href ? canAccessRoute(item.href) : true
+                if (!hasAccess && !item.children) return null
+
+                const hasChildren = item.children && item.children.length > 0
+                const isActive = item.href === '/'
+                  ? pathname === '/'
+                  : (item.href && pathname.startsWith(item.href)) || (hasChildren && item.children.some(c => pathname.startsWith(c.href)))
+
                 const Icon = item.icon
+
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      'flex flex-row items-center gap-2 w-full flex-shrink-0',
-                      isActive ? 'text-[#cb17a7]' : 'text-[#F9FAFB] font-normal'
+                  <div key={item.name} className="relative w-full">
+                    {hasChildren ? (
+                      <button
+                        onClick={() => setOpenMenu(openMenu === item.name ? null : item.name)}
+                        className={cn(
+                          'flex flex-row items-center gap-2 w-full flex-shrink-0 hover:text-white',
+                          isActive ? 'text-[#cb17a7]' : 'text-[#F9FAFB] font-normal'
+                        )}
+                        style={{ fontFamily: 'Inter', fontSize: 14, lineHeight: 1.43 }}
+                      >
+                        <Icon className="w-5 h-5 flex-shrink-0" strokeWidth={1.5} aria-hidden />
+                        <span>{item.name}</span>
+                      </button>
+                    ) : (
+                      <Link
+                        href={item.href}
+                        onClick={() => setOpenMenu(null)}
+                        className={cn(
+                          'flex flex-row items-center gap-2 w-full flex-shrink-0 hover:text-white',
+                          isActive ? 'text-[#cb17a7]' : 'text-[#F9FAFB] font-normal'
+                        )}
+                        style={{ fontFamily: 'Inter', fontSize: 14, lineHeight: 1.43 }}
+                      >
+                        <Icon className="w-5 h-5 flex-shrink-0" strokeWidth={1.5} aria-hidden />
+                        <span>{item.name}</span>
+                      </Link>
                     )}
-                    style={{ fontFamily: 'Inter', fontSize: 14, lineHeight: 1.43 }}
-                  >
-                    <Icon className="w-5 h-5 flex-shrink-0" strokeWidth={1.5} aria-hidden />
-                    <span>{item.name}</span>
-                  </Link>
+
+                    {hasChildren && openMenu === item.name && (
+                      <div className="absolute left-[calc(100%+24px)] top-0 w-[200px] bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.06)] py-3 z-[60] border border-gray-100/50">
+                        <div className="px-5 mb-2 text-xs font-semibold tracking-wider text-[#94A3B8] uppercase">
+                          {item.name}
+                        </div>
+                        <div className="h-px bg-gray-100 mb-2 mx-2" />
+                        <div className="flex flex-col">
+                          {item.children.map(child => {
+                            const isChildActive = pathname === child.href;
+                            return (
+                              <Link
+                                key={child.href}
+                                href={child.href}
+                                onClick={() => {
+                                  setOpenMenu(null)
+                                  setMobileOpen(false)
+                                }}
+                                className={cn(
+                                  "px-5 py-2.5 text-sm transition-colors block w-full text-left",
+                                  isChildActive
+                                    ? "text-[#cb17a7] bg-pink-50/50"
+                                    : "text-[#475569] hover:bg-gray-50 hover:text-[#0F172A]"
+                                )}
+                              >
+                                {child.name}
+                              </Link>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )
               })}
             </div>
