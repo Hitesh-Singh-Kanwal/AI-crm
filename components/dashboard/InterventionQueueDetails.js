@@ -42,10 +42,10 @@ export default function InterventionQueueDetails() {
         boxShadow: '4px 4px 26px 0px rgba(65, 65, 65, 0.06)',
       }}
     >
-      {/* Title – Figma: style_RX9EI1, fill_OAKUOE */}
+      {/* Title – slightly smaller than original */}
       <p
-        className="uppercase font-bold tracking-wide"
-        style={{ fontFamily: 'Inter, sans-serif', fontSize: 16, lineHeight: 1.5, color: '#0F172A' }}
+        className="uppercase font-bold tracking-wide text-xs"
+        style={{ fontFamily: 'Inter, sans-serif', lineHeight: 1.5, color: '#0F172A' }}
       >
         {SECTION_TITLE}
       </p>
@@ -68,7 +68,7 @@ export default function InterventionQueueDetails() {
                 color: isActive ? '#FFFFFF' : tab.inactiveText,
                 fontFamily: 'Inter, sans-serif',
                 fontWeight: 500,
-                fontSize: 14,
+                fontSize: 13,
                 lineHeight: 1.43,
               }}
             >
@@ -125,19 +125,19 @@ export default function InterventionQueueDetails() {
                   <User className="w-6 h-6 text-slate-500" style={{ width: 24, height: 24 }} />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span style={{ fontFamily: 'Inter', fontWeight: 400, fontSize: 16, lineHeight: 1.5, color: '#0F172A' }}>
+                  <span style={{ fontFamily: 'Inter', fontWeight: 400, fontSize: 14, lineHeight: 1.5, color: '#0F172A' }}>
                     {lead.name}
                   </span>
-                  <span style={{ fontFamily: 'Inter', fontWeight: 500, fontSize: 14, lineHeight: 1.43, color: '#64748B' }}>
+                  <span style={{ fontFamily: 'Inter', fontWeight: 500, fontSize: 13, lineHeight: 1.43, color: '#64748B' }}>
                     {lead.location}
                   </span>
                 </div>
               </div>
               <div className="flex flex-col gap-0.5">
-                <span style={{ fontFamily: 'Inter', fontWeight: 400, fontSize: 14, lineHeight: 1.43, color: '#0F172A' }}>
+                <span style={{ fontFamily: 'Inter', fontWeight: 400, fontSize: 13, lineHeight: 1.43, color: '#0F172A' }}>
                   {lead.email}
                 </span>
-                <span style={{ fontFamily: 'Inter', fontWeight: 400, fontSize: 14, lineHeight: 1.43, color: '#64748B' }}>
+                <span style={{ fontFamily: 'Inter', fontWeight: 400, fontSize: 13, lineHeight: 1.43, color: '#64748B' }}>
                   {lead.phone}
                 </span>
               </div>
@@ -145,10 +145,10 @@ export default function InterventionQueueDetails() {
 
             {/* Right: time – Figma: Inter 30px Bold */}
             <div
-              className="flex-shrink-0 font-bold self-center"
+              className="flex-shrink-0 font-bold self-center text-xl sm:text-2xl"
               style={{
                 fontFamily: 'Inter, sans-serif',
-                fontSize: 30,
+                fontSize: 22,
                 lineHeight: 1.2,
                 color: lead.timeColor,
               }}
@@ -172,11 +172,11 @@ export default function InterventionQueueDetails() {
       <div className="flex flex-row items-center flex-wrap gap-1">
         <div className="flex flex-row items-center gap-1">
           <Lightbulb className="flex-shrink-0" style={{ width: 20, height: 20, color: '#9224EF' }} />
-          <span style={{ fontFamily: 'Inter', fontWeight: 500, fontSize: 14, lineHeight: 1.43, color: '#64748B' }}>
+          <span style={{ fontFamily: 'Inter', fontWeight: 500, fontSize: 13, lineHeight: 1.43, color: '#64748B' }}>
             {TIP_PREFIX}
           </span>
         </div>
-        <span style={{ fontFamily: 'Inter', fontWeight: 400, fontSize: 14, lineHeight: 1.43, color: '#94A3B8' }}>
+        <span style={{ fontFamily: 'Inter', fontWeight: 400, fontSize: 13, lineHeight: 1.43, color: '#94A3B8' }}>
           {TIP_TEXT}
         </span>
       </div>

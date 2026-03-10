@@ -45,8 +45,8 @@ export default function MyPerformanceToday({ metrics = defaultMetrics }) {
   return (
     <div className="flex flex-col gap-4">
       <p
-        className="font-bold uppercase tracking-wider"
-        style={{ fontFamily: 'Inter, sans-serif', fontSize: 16, letterSpacing: '0.12em', color: '#9224EF' }}
+        className="font-bold uppercase tracking-wider text-xs sm:text-[11px]"
+        style={{ fontFamily: 'Inter, sans-serif', letterSpacing: '0.16em', color: '#9224EF' }}
       >
         {SECTION_TITLE}
       </p>
@@ -56,7 +56,7 @@ export default function MyPerformanceToday({ metrics = defaultMetrics }) {
           <Card key={m.id} className="p-4 sm:p-5">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-2xl sm:text-3xl font-bold text-slate-900">
+                <p className="text-xl sm:text-2xl font-bold text-slate-900">
                   {m.value}
                   {m.icon === 'star' && (
                     <Star className="inline-block w-6 h-6 text-amber-400 fill-amber-400 ml-1 align-middle" />

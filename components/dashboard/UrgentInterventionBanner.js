@@ -40,12 +40,12 @@ export default function UrgentInterventionBanner({ stats = defaultStats }) {
           Urgent
         </span>
 
-        {/* Main title – dark grey/black */}
+        {/* Main title – dark grey/black, slightly smaller */}
         <span
-          className="font-medium shrink-0"
+          className="font-medium shrink-0 text-sm"
           style={{
             fontFamily: 'Inter, sans-serif',
-            fontSize: 16,
+            fontSize: 14,
             lineHeight: 1.4,
             color: TEXT_DARK,
           }}
@@ -61,7 +61,7 @@ export default function UrgentInterventionBanner({ stats = defaultStats }) {
         />
 
         {/* Metrics – dark text, thin vertical dividers */}
-        <div className="flex flex-row flex-wrap items-center gap-2 sm:gap-3 text-sm">
+        <div className="flex flex-row flex-wrap items-center gap-2 sm:gap-3 text-[11px] sm:text-xs">
           <span style={{ fontFamily: 'Inter, sans-serif', color: TEXT_DARK }}>Leads Waiting</span>
           <span className="w-px h-4 bg-slate-300 shrink-0" aria-hidden />
           <span style={{ fontFamily: 'Inter, sans-serif', color: TEXT_DARK }}>
@@ -72,10 +72,10 @@ export default function UrgentInterventionBanner({ stats = defaultStats }) {
             {waitingOver1Hour} waiting over 1 hour
           </span>
           <span
-            className="font-bold ml-0.5"
+            className="font-bold ml-0.5 text-sm"
             style={{
               fontFamily: 'Inter, sans-serif',
-              fontSize: 18,
+              fontSize: 16,
               color: RED_ERROR,
             }}
           >
@@ -86,10 +86,10 @@ export default function UrgentInterventionBanner({ stats = defaultStats }) {
 
       <Link
         href="/inbox"
-        className="flex items-center gap-1 font-medium shrink-0 transition-colors hover:opacity-80"
+        className="flex items-center gap-1 font-medium shrink-0 transition-colors hover:opacity-80 text-xs"
         style={{
           fontFamily: 'Inter, sans-serif',
-          fontSize: 14,
+          fontSize: 13,
           color: TEXT_DARK,
         }}
       >

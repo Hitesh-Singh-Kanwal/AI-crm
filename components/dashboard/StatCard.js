@@ -11,8 +11,12 @@ export default function StatCard({ icon: Icon, title, value, change, format = 'n
       <CardContent className="p-0">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">{title}</p>
-            <h3 className="text-xl md:text-2xl font-bold text-slate-900 mb-2 md:mb-3">{formattedValue}</h3>
+            <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wide mb-1">
+              {title}
+            </p>
+            <h3 className="text-lg md:text-xl font-bold text-slate-900 mb-2 md:mb-3">
+              {formattedValue}
+            </h3>
             <div className="flex items-center gap-1.5 flex-wrap">
               {isPositive ? (
                 <TrendingUp className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
