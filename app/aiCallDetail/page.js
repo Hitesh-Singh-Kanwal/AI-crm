@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { toast } from '@/components/ui/toast'
@@ -22,6 +23,8 @@ export default function AiCallDetailPage() {
   const [loading, setLoading] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const [selectedCall, setSelectedCall] = useState(null)
+  const [selectedIds, setSelectedIds] = useState([])
+  const [deletingMany, setDeletingMany] = useState(false)
 
   const totalPages = Math.max(1, Math.ceil((totalCount || 0) / ROWS_PER_PAGE))
 
@@ -80,6 +83,44 @@ export default function AiCallDetailPage() {
     }
   }
 
+  const toggleSelectOne = (id) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  const toggleSelectAllOnPage = () => {
+    if (selectedIds.length === calls.length) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(calls.map((c) => c._id))
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    if (!selectedIds.length) return
+
+    const confirmed = window.confirm(`Are you sure you want to delete ${selectedIds.length} call(s)?`)
+    if (!confirmed) return
+
+    try {
+      setDeletingMany(true)
+      const result = await api.post('/api/ai-calling/delete-many', { ids: selectedIds })
+      if (result.success) {
+        toast.success('Deleted', {
+          description: `${selectedIds.length} AI call${selectedIds.length > 1 ? 's' : ''} deleted successfully`,
+        })
+        setSelectedIds([])
+        loadCalls(currentPage, searchQuery)
+      } else {
+        toast.error('Delete failed', { description: result.error || 'Unable to delete selected calls' })
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('Error', { description: 'Unexpected error while deleting selected calls' })
+    } finally {
+      setDeletingMany(false)
+    }
+  }
+
   return (
     <MainLayout
       title="AI Call Details"
@@ -101,7 +142,7 @@ export default function AiCallDetailPage() {
           </p>
         </div>
 
-        <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="relative w-[260px] shrink-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8]" />
             <Input
@@ -116,6 +157,24 @@ export default function AiCallDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 px-3 rounded-lg border-[#E2E8F0] bg-white text-xs font-medium text-[#334155] hover:bg-slate-50"
+              onClick={toggleSelectAllOnPage}
+              disabled={!calls.length}
+            >
+              {selectedIds.length === calls.length && calls.length > 0 ? 'Clear selection' : 'Select all on page'}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="h-9 px-3 rounded-lg text-xs font-medium"
+              onClick={handleDeleteSelected}
+              disabled={!selectedIds.length || deletingMany}
+            >
+              {deletingMany ? 'Deleting…' : `Delete selected (${selectedIds.length})`}
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -156,14 +215,27 @@ export default function AiCallDetailPage() {
                   const createdLabel = createdAt ? createdAt.toLocaleString() : '-'
                   const status = call.status || 'Unknown'
 
+                  const isSelected = selectedIds.includes(call._id)
+
                   return (
                     <Card
                       key={call._id}
-                      className="group cursor-pointer border-[#E2E8F0] hover:border-[#9224EF]/60 hover:shadow-lg transition-all duration-200"
+                      className={`group cursor-pointer border-2 ${
+                        isSelected ? 'border-[#9224EF] shadow-lg' : 'border-[#E2E8F0]'
+                      } hover:border-[#9224EF]/60 hover:shadow-lg transition-all duration-200`}
                       onClick={() => setSelectedCall(call)}
                     >
                       <CardHeader className="pb-3 flex flex-row items-start justify-between space-y-0">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={isSelected}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleSelectOne(call._id)
+                            }}
+                            className="mt-1 rounded border-[#CBD5E1] data-[state=checked]:bg-[#9224EF] data-[state=checked]:border-[#9224EF]"
+                            aria-label="Select call"
+                          />
                           <div className="h-10 w-10 rounded-xl bg-[#F1F5F9] flex items-center justify-center text-[#0F172A]">
                             <PhoneCall className="h-5 w-5 text-[#6366F1]" />
                           </div>
