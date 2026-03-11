@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { Mail, Plus, Eye, Send, Sparkles, Image, Link2, Type, Columns, Minus, Trash2, GripVertical, FileText, Square } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -264,7 +264,7 @@ function DroppableEmailCanvas({ children, isEmpty }) {
   )
 }
 
-export default function EmailsPage() {
+function EmailsPageInner() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -662,5 +662,21 @@ export default function EmailsPage() {
         </div>
       )}
     </MainLayout>
+  )
+}
+
+export default function EmailsPage() {
+  return (
+    <Suspense
+      fallback={
+        <MainLayout title="Email Builder" subtitle="Create and send beautiful email campaigns">
+          <div className="flex items-center justify-center py-20">
+            <div className="h-8 w-8 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
+          </div>
+        </MainLayout>
+      }
+    >
+      <EmailsPageInner />
+    </Suspense>
   )
 }

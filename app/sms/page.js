@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { MessageSquare, Plus, Sparkles, Send } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -29,7 +29,7 @@ const templateMessages = {
   s4: 'Hi {{name}}! Want to try a free class? Reply YES to reserve your spot.',
 }
 
-export default function SMSPage() {
+function SMSPageInner() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -360,6 +360,22 @@ export default function SMSPage() {
         </div>
       )}
     </MainLayout>
+  )
+}
+
+export default function SMSPage() {
+  return (
+    <Suspense
+      fallback={
+        <MainLayout title="SMS Campaigns" subtitle="Create and send SMS messages">
+          <div className="flex items-center justify-center py-20">
+            <div className="h-8 w-8 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
+          </div>
+        </MainLayout>
+      }
+    >
+      <SMSPageInner />
+    </Suspense>
   )
 }
 

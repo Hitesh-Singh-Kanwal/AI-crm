@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -286,7 +286,7 @@ function DroppableCanvas({ children, isEmpty }) {
   )
 }
 
-export default function FormsPage() {
+function FormsPageInner() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -1194,6 +1194,22 @@ export default function FormsPage() {
         </DialogContent>
       </Dialog>
     </MainLayout>
+  )
+}
+
+export default function FormsPage() {
+  return (
+    <Suspense
+      fallback={
+        <MainLayout title="Form Builder" subtitle="Create and manage forms">
+          <div className="flex items-center justify-center py-20">
+            <div className="h-8 w-8 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
+          </div>
+        </MainLayout>
+      }
+    >
+      <FormsPageInner />
+    </Suspense>
   )
 }
 //
