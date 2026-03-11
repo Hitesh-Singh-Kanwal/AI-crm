@@ -6,7 +6,6 @@ import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
@@ -182,6 +181,11 @@ export default function MakeCallsPage() {
 
   const selectedLeads = selectedLeadsData
   const selectedPersona = personas.find((p) => p._id === selectedPersonaId) || null
+  const canContinue =
+    (wizardStep === 1 && selectedLeads.length > 0) ||
+    (wizardStep === 2 && !!selectedPersona) ||
+    wizardStep === 3 ||
+    wizardStep === 4
 
   const resetFlow = () => {
     setWizardStep(1)
@@ -264,9 +268,9 @@ export default function MakeCallsPage() {
     >
       <div className="max-w-[1204px] mx-auto grid gap-6 lg:gap-8 lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)]">
         {/* Sidebar summary */}
-        <div className="space-y-4">
-          <Card className="border-[#E2E8F0]">
-            <CardContent className="p-5 space-y-3">
+        <div className="space-y-4 lg:sticky lg:top-24 self-start">
+          <Card className="border-[#E2E8F0] bg-gradient-to-br from-white via-[#F8FAFF] to-[#EEF2FF]">
+            <CardContent className="p-5 space-y-4">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-xl bg-[#EEF2FF] flex items-center justify-center">
                   <PhoneCall className="h-5 w-5 text-[#4F46E5]" />
@@ -298,6 +302,39 @@ export default function MakeCallsPage() {
                   <span className="font-semibold text-[#0F172A]">Start now</span>
                 </div>
               </div>
+
+              {selectedLeads.length > 0 && (
+                <div className="pt-3 border-t border-[#E2E8F0]/70">
+                  <p className="text-[11px] font-medium text-[#475569] mb-2">Selected preview</p>
+                  <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                    {selectedLeads.slice(0, 6).map((lead) => (
+                      <div key={lead._id} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="h-7 w-7 rounded-full bg-white/70 border border-[#E2E8F0] flex items-center justify-center text-[10px] font-medium text-[#64748B] shrink-0">
+                            {lead.name?.charAt(0) || '?'}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-[#0F172A] truncate">{lead.name}</p>
+                            <p className="text-[11px] text-[#94A3B8] truncate">{lead.phoneNumber || '—'}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-[11px] text-[#64748B] hover:text-[#0F172A] shrink-0"
+                          onClick={() => toggleWizardLead(lead)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    {selectedLeads.length > 6 && (
+                      <p className="text-[11px] text-[#94A3B8]">
+                        +{selectedLeads.length - 6} more selected
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -317,7 +354,7 @@ export default function MakeCallsPage() {
         </div>
 
         {/* Wizard content */}
-        <div className="rounded-xl border border-[#E2E8F0] bg-white p-4 lg:p-5 shadow-sm h-full flex flex-col">
+        <div className="rounded-xl border border-[#E2E8F0] bg-white p-4 lg:p-6 shadow-sm h-full flex flex-col">
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-[#F1F5F9] px-2.5 py-1 text-xs font-medium text-[#475569] mb-2">
@@ -442,7 +479,7 @@ export default function MakeCallsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] overflow-hidden">
+                <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] overflow-hidden">
                   {wizardLeadsLoading ? (
                     <div className="flex items-center justify-center py-8">
                       <LoadingSpinner size="sm" text="Loading contacts…" />
@@ -467,15 +504,15 @@ export default function MakeCallsPage() {
                         </div>
                         <span className="w-28 text-right">Phone</span>
                       </div>
-                      <div className="max-h-64 overflow-y-auto bg-white">
+                      <div className="max-h-72 overflow-y-auto bg-white">
                         {wizardLeads.map((lead) => {
                           const isSelected = selectedLeadIds.includes(lead._id)
                           return (
                             <div
                               key={lead._id}
                               onClick={() => toggleWizardLead(lead)}
-                              className={`w-full flex items-center justify-between px-3 py-2 text-xs border-b border-[#F1F5F9] hover:bg-[#F8FAFF] cursor-pointer ${
-                                isSelected ? 'bg-[#F3E8FF]' : 'bg-white'
+                              className={`w-full flex items-center justify-between px-3 py-2.5 text-xs border-b border-[#F1F5F9] cursor-pointer transition-colors ${
+                                isSelected ? 'bg-[#F3E8FF]' : 'bg-white hover:bg-[#F8FAFF]'
                               }`}
                             >
                               <div className="flex items-center gap-2">
@@ -501,7 +538,7 @@ export default function MakeCallsPage() {
                                   </div>
                                 </div>
                               </div>
-                              <span className="w-28 text-right text-[11px] text-[#475569]">
+                              <span className="w-28 text-right text-[11px] text-[#475569] tabular-nums">
                                 {lead.phoneNumber || '—'}
                               </span>
                             </div>
@@ -579,7 +616,7 @@ export default function MakeCallsPage() {
                 )}
 
                 {!personasLoading && !personasError && personas.length > 0 && (
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
                     {personas.map((persona) => {
                       const selected = selectedPersonaId === persona._id
                       return (
@@ -587,29 +624,36 @@ export default function MakeCallsPage() {
                           key={persona._id}
                           type="button"
                           onClick={() => setSelectedPersonaId(persona._id)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs text-left ${
+                          className={`w-full rounded-xl border p-3 text-left transition-all ${
                             selected
-                              ? 'border-[#9224EF] bg-[#F3E8FF]'
+                              ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
                               : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-[#EEF2FF] flex items-center justify-center">
-                              <User className="h-4 w-4 text-[#4F46E5]" />
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className="h-9 w-9 rounded-xl bg-[#EEF2FF] flex items-center justify-center shrink-0">
+                                <User className="h-4 w-4 text-[#4F46E5]" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-[#0F172A] truncate">
+                                  {persona.voice || 'Unnamed Persona'}
+                                </p>
+                                <p className="text-[11px] text-[#94A3B8] truncate">
+                                  {persona.provider || '—'} · {persona.model || '—'}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-xs font-medium text-[#0F172A]">
-                                {persona.voice || 'Unnamed Persona'}
-                              </p>
-                              <p className="text-[11px] text-[#94A3B8]">
-                                {persona.provider || '—'} · {persona.model || '—'}
-                              </p>
-                            </div>
+                            {selected && (
+                              <span className="text-[11px] font-medium text-emerald-600 shrink-0">
+                                Selected
+                              </span>
+                            )}
                           </div>
-                          {selected && (
-                            <span className="text-[11px] font-medium text-emerald-600">
-                              Selected
-                            </span>
+                          {Array.isArray(persona.description) && persona.description.length > 0 && (
+                            <p className="text-[11px] text-[#64748B] mt-2 line-clamp-2">
+                              {persona.description.join(' · ')}
+                            </p>
                           )}
                         </button>
                       )
@@ -733,7 +777,7 @@ export default function MakeCallsPage() {
           </div>
 
           {/* Wizard footer actions */}
-          <div className="mt-4 pt-3 border-t border-[#E2E8F0] flex items-center justify-between gap-3">
+          <div className="mt-4 pt-3 border-t border-[#E2E8F0] flex items-center justify-between gap-3 sticky bottom-0 bg-white">
             <div className="text-[11px] text-[#64748B]">
               Step {wizardStep} of 4
             </div>
@@ -756,7 +800,7 @@ export default function MakeCallsPage() {
                   size="sm"
                   className="h-8 px-3 rounded-lg bg-[#9224EF] hover:bg-[#7B1FD4] text-xs text-white"
                   onClick={() => setWizardStep((s) => Math.min(4, s + 1))}
-                  disabled={launching}
+                  disabled={launching || !canContinue}
                 >
                   Continue
                 </Button>
