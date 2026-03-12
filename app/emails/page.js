@@ -1,6 +1,10 @@
 'use client'
 
+<<<<<<< HEAD
+import { useState, Suspense } from 'react'
+=======
 import { Suspense, useState } from 'react'
+>>>>>>> frontend
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { Mail, Plus, Eye, Send, Sparkles, Image, Link2, Type, Columns, Minus, Trash2, GripVertical, FileText, Square } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -667,6 +671,9 @@ function EmailsPageInner() {
 
 export default function EmailsPage() {
   return (
+<<<<<<< HEAD
+    <Suspense fallback={null}>
+=======
     <Suspense
       fallback={
         <MainLayout title="Email Builder" subtitle="Create and send beautiful email campaigns">
@@ -676,6 +683,7 @@ export default function EmailsPage() {
         </MainLayout>
       }
     >
+>>>>>>> frontend
       <EmailsPageInner />
     </Suspense>
   )

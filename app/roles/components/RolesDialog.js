@@ -36,6 +36,7 @@ export default function RolesDialog({
   const [editingRole, setEditingRole] = useState(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [effectiveSchema, setEffectiveSchema] = useState(permissionsSchema || null)
   const toast = useToast()
 
   const isCreating = !initialRoleId
@@ -54,9 +55,35 @@ export default function RolesDialog({
         .then((json) => {
           if (json?.success && json.data) {
             const role = json.data
+            const rolePermissions = JSON.parse(JSON.stringify(role.permissions || {}))
+
+            // Build schema limited to this role's sections/modules, using global schema for labels if available
+            const limitedSchema = {}
+            for (const [sectionKey, sectionVal] of Object.entries(rolePermissions)) {
+              const baseSection = permissionsSchema?.[sectionKey]
+              limitedSchema[sectionKey] = {
+                name: baseSection?.name || sectionVal.name || sectionKey,
+                permissions: {},
+              }
+
+              const sectionPerms = sectionVal.permissions || {}
+              for (const [permKey, actions] of Object.entries(sectionPerms)) {
+                const basePerm = baseSection?.permissions?.[permKey] || {}
+                limitedSchema[sectionKey].permissions[permKey] = {
+                  read: !!actions.read,
+                  write: !!actions.write,
+                  edit: !!actions.edit,
+                  delete: !!actions.delete,
+                  description: basePerm.description,
+                }
+              }
+            }
+
+            setEffectiveSchema(limitedSchema)
+
             setEditingRole({
               role: role.role,
-              permissions: JSON.parse(JSON.stringify(role.permissions || {})),
+              permissions: rolePermissions,
               _id: role._id,
             })
           } else {
@@ -71,6 +98,7 @@ export default function RolesDialog({
         })
         .finally(() => setLoading(false))
     } else {
+      setEffectiveSchema(permissionsSchema || null)
       setEditingRole({
         role: '',
         permissions: deepClonePermissions(permissionsSchema),
@@ -168,7 +196,7 @@ export default function RolesDialog({
           <RoleEditor
             editingRole={editingRole}
             isCreating={isCreating}
-            permissionsSchema={permissionsSchema}
+            permissionsSchema={effectiveSchema || permissionsSchema}
             onChange={setEditingRole}
             togglePermission={togglePermission}
             onSave={handleSave}

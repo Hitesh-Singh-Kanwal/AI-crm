@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, Mail, UserCog } from 'lucide-react'
+import { Search, Mail, UserCog, MoreHorizontal } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -10,6 +10,20 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import UsersDialog from '@/app/users/components/UsersDialog'
 import { getCurrentUser } from '@/lib/auth'
 import api from '@/lib/api'
@@ -334,47 +348,99 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* User Grid */}
+        {/* Users (row layout) */}
         {!loading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {displayedUsers.map((user, index) => (
-            <div
-              key={user._id || user.id || index}
-              onClick={() => setSelectedUserId(user._id || user.id)}
-              className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer animate-fade-in shadow-sm"
-              style={{ animationDelay: `${index * 0.05}s` }}
-            >
-              <div className="flex items-start gap-4">
-                <Avatar className="h-14 w-14">
-                  <AvatarFallback className="bg-brand text-brand-foreground text-lg">
-                    {getInitials(user.name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-slate-900 truncate">{user.name}</h3>
-                  <p className="text-sm text-slate-500 truncate mt-0.5">{user.title}</p>
-                  <Badge className={cn('mt-2 text-xs', roleColors[user.role])}>{user.role}</Badge>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-2 text-sm border-t border-slate-100 pt-4">
-                <div className="flex items-center gap-2 text-slate-600">
-                  <Mail className="h-3.5 w-3.5" />
-                  <span className="truncate text-xs">{user.email}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 text-xs">Status:</span>
-                  <Badge variant={user.status?.toLowerCase() === 'active' ? 'success' : 'error'} className="text-xs">
-                    {user.status}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 text-xs">Joined:</span>
-                  <span className="text-xs text-slate-700">{user.createdAt ? formatDate(user.createdAt) : 'N/A'}</span>
-                </div>
-              </div>
-            </div>
-          ))}
+          <div className="rounded-xl border border-[#E2E8F0] bg-white overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-[#E2E8F0] hover:bg-transparent bg-[#F8FAFC]">
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Name</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Email</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Role</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Status</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Joined</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B] w-12 text-right"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {displayedUsers.map((user, index) => (
+                  <TableRow
+                    key={user._id || user.id || index}
+                    onClick={() => setSelectedUserId(user._id || user.id)}
+                    className="cursor-pointer"
+                  >
+                    <TableCell className="py-3 px-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar className="h-9 w-9 shrink-0">
+                          <AvatarFallback className="bg-brand text-brand-foreground text-sm font-semibold">
+                            {getInitials(user.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-900 truncate">{user.name}</div>
+                          <div className="text-xs text-slate-500 truncate">{user.title}</div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-3 px-4 text-sm text-slate-600">
+                      <span className="truncate block max-w-[260px]">{user.email}</span>
+                    </TableCell>
+                    <TableCell className="py-3 px-4">
+                      <Badge className={cn('text-xs', roleColors[user.role])}>{user.role}</Badge>
+                    </TableCell>
+                    <TableCell className="py-3 px-4">
+                      <Badge
+                        variant={user.status?.toLowerCase() === 'active' ? 'success' : 'error'}
+                        className="text-xs"
+                      >
+                        {user.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="py-3 px-4 text-sm text-slate-600">
+                      {user.createdAt ? formatDate(user.createdAt) : 'N/A'}
+                    </TableCell>
+                    <TableCell className="py-3 px-4 text-right">
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation()
+                        }}
+                      >
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedUserId(user._id || user.id)
+                              }}
+                            >
+                              View
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setUsersDialogInitialId(user._id || user.id)
+                                setUsersDialogOpen(true)
+                              }}
+                            >
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => handleDeleteUser(user._id || user.id)}
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         )}
 

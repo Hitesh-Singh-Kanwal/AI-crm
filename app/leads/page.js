@@ -55,10 +55,14 @@ export default function LeadsPage() {
   const [dialogInitialLeadId, setDialogInitialLeadId] = useState(null)
   const [dialogViewOnly, setDialogViewOnly] = useState(false)
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
+  const [stageFilter, setStageFilter] = useState('')
+  const [bookingStatusFilter, setBookingStatusFilter] = useState('')
+  const [escalatedOnly, setEscalatedOnly] = useState(false)
+  const [sort, setSort] = useState('createdDesc')
 
   const totalPages = Math.max(1, Math.ceil((totalCount || 0) / ROWS_PER_PAGE))
 
-  const loadLeads = useCallback(async (page, query) => {
+  const loadLeads = useCallback(async (page, query, filters) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -68,10 +72,21 @@ export default function LeadsPage() {
       if (query) {
         params.set('search', query)
       }
+      if (filters?.stage) params.set('stage', filters.stage)
+      if (filters?.bookingStatus) params.set('bookingStatus', filters.bookingStatus)
+      if (filters?.isEscalated) params.set('isEscalated', 'true')
 
       const result = await api.get(`/api/lead?${params.toString()}`)
       if (result.success) {
-        setLeads(result.data || [])
+        let data = result.data || []
+
+        if (sort === 'nameAsc') {
+          data = [...data].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        } else if (sort === 'nameDesc') {
+          data = [...data].sort((a, b) => (b.name || '').localeCompare(a.name || ''))
+        }
+
+        setLeads(data)
         setTotalCount(result.pagination?.total || (result.data ? result.data.length : 0))
       } else {
         toast.error('Failed to load leads', { description: result.error })
@@ -83,11 +98,15 @@ export default function LeadsPage() {
       setLoading(false)
       setSelectedIds([])
     }
-  }, [])
+  }, [sort])
 
   useEffect(() => {
-    loadLeads(currentPage, searchQuery)
-  }, [currentPage, searchQuery, loadLeads])
+    loadLeads(currentPage, searchQuery, {
+      stage: stageFilter,
+      bookingStatus: bookingStatusFilter,
+      isEscalated: escalatedOnly,
+    })
+  }, [currentPage, searchQuery, stageFilter, bookingStatusFilter, escalatedOnly, loadLeads])
 
   const toggleOne = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
@@ -124,7 +143,11 @@ export default function LeadsPage() {
       const result = await api.delete(`/api/lead/${id}`)
       if (result.success) {
         toast.success('Deleted', { description: 'Lead deleted successfully' })
-        loadLeads(currentPage, searchQuery)
+        loadLeads(currentPage, searchQuery, {
+          stage: stageFilter,
+          bookingStatus: bookingStatusFilter,
+          isEscalated: escalatedOnly,
+        })
       } else {
         toast.error('Delete failed', { description: result.error || 'Unable to delete lead' })
       }
@@ -166,38 +189,111 @@ export default function LeadsPage() {
           {/* Right: all filter controls */}
           <div className="flex items-center gap-2">
             {/* Active filter pills */}
+            {stageFilter && (
+              <button
+                type="button"
+                onClick={() => setStageFilter('')}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#9224EF] text-white text-sm font-medium shrink-0"
+              >
+                {stageFilter} <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          {bookingStatusFilter && (
             <button
               type="button"
+              onClick={() => setBookingStatusFilter('')}
               className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#9224EF] text-white text-sm font-medium shrink-0"
             >
-              All Status <X className="h-3.5 w-3.5" />
+              {bookingStatusFilter} <X className="h-3.5 w-3.5" />
             </button>
+          )}
+          {escalatedOnly && (
             <button
               type="button"
+              onClick={() => setEscalatedOnly(false)}
               className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#9224EF] text-white text-sm font-medium shrink-0"
             >
-              Sort A-Z <X className="h-3.5 w-3.5" />
+              Escalated <X className="h-3.5 w-3.5" />
             </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm font-medium text-[#334155] hover:bg-slate-50 shrink-0"
-            >
-              <SlidersHorizontal className="h-4 w-4 text-[#64748B]" />
-              More filters
-            </button>
-            <Button
-              className="h-9 px-4 rounded-lg bg-[#9224EF] hover:bg-[#7B1FD4] text-white text-sm font-medium gap-2 shrink-0"
-              onClick={openCreateDialog}
-            >
-              <Plus className="h-4 w-4" />
-              Add Leads
-            </Button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm font-medium text-[#334155] hover:bg-slate-50 shrink-0"
-            >
-              Status <ChevronDown className="h-4 w-4 text-[#64748B]" />
-            </button>
+          )}
+            {sort !== 'createdDesc' && (
+              <button
+                type="button"
+                onClick={() => setSort('createdDesc')}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#9224EF] text-white text-sm font-medium shrink-0"
+              >
+                {sort === 'nameAsc' ? 'Sort A-Z' : sort} <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm font-medium text-[#334155] hover:bg-slate-50 shrink-0"
+              >
+                <SlidersHorizontal className="h-4 w-4 text-[#64748B]" />
+                More filters
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <div className="px-2 py-1.5 text-sm font-semibold text-[#0f172a]">
+                Booking status
+              </div>
+              <DropdownMenuItem onClick={() => setBookingStatusFilter('')}>All</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setBookingStatusFilter('Not Booked')}>
+                Not Booked
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setBookingStatusFilter('Booked')}>
+                Booked
+              </DropdownMenuItem>
+
+              <div className="px-2 pt-2 pb-1.5 text-sm font-semibold text-[#0f172a]">
+                Escalation
+              </div>
+              <DropdownMenuItem
+                onClick={() => setEscalatedOnly((prev) => !prev)}
+                className="flex items-center justify-between"
+              >
+                <span>Escalated only</span>
+                {escalatedOnly && (
+                  <span className="text-[10px] rounded-full bg-[#9224EF] text-white px-1.5 py-0.5">
+                    On
+                  </span>
+                )}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm font-medium text-[#334155] hover:bg-slate-50 shrink-0"
+              >
+                {stageFilter ? `Status: ${stageFilter}` : 'Status'}{' '}
+                <ChevronDown className="h-4 w-4 text-[#64748B]" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setStageFilter('')}>All</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStageFilter('new')}>New</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStageFilter('engaged')}>Engaged</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStageFilter('cold')}>Cold</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStageFilter('bookingInProgress')}>
+                Booking In Progress
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStageFilter('booked')}>Booked</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStageFilter('qualified')}>Qualified</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStageFilter('disqualified')}>Disqualified</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStageFilter('lost')}>Lost</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            className="h-9 px-4 rounded-lg bg-[#9224EF] hover:bg-[#7B1FD4] text-white text-sm font-medium gap-2 shrink-0"
+            onClick={openCreateDialog}
+          >
+            <Plus className="h-4 w-4" />
+            Add Leads
+          </Button>
           </div>
         </div>
 
@@ -216,8 +312,7 @@ export default function LeadsPage() {
                 <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Name</TableHead>
                 <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Contact</TableHead>
                 <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Status</TableHead>
-                <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Health</TableHead>
-                <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Value</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Booking Status</TableHead>
                 <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Communication</TableHead>
                 <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Created</TableHead>
                 <TableHead className="w-12 py-3 pr-4 pl-0" />
@@ -282,11 +377,6 @@ export default function LeadsPage() {
                       )}
                     >
                       {bookingStatus}
-                    </span>
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    <span className="text-sm font-normal text-[#050312]">
-                      {typeof lead.value === 'number' ? `$${lead.value.toFixed(2)}` : '-'}
                     </span>
                   </TableCell>
                   <TableCell className="py-3 px-4">
@@ -368,7 +458,13 @@ export default function LeadsPage() {
           open={dialogOpen}
           onClose={() => setDialogOpen(false)}
           leads={leads}
-          onRefresh={() => loadLeads(currentPage, searchQuery)}
+          onRefresh={() =>
+            loadLeads(currentPage, searchQuery, {
+              stage: stageFilter,
+              bookingStatus: bookingStatusFilter,
+              isEscalated: escalatedOnly,
+            })
+          }
           initialLeadId={dialogInitialLeadId}
           viewOnly={dialogViewOnly}
         />
@@ -376,7 +472,13 @@ export default function LeadsPage() {
         <BulkCreateLeadsDialog
           open={bulkDialogOpen}
           onClose={() => setBulkDialogOpen(false)}
-          onRefresh={() => loadLeads(currentPage, searchQuery)}
+          onRefresh={() =>
+            loadLeads(currentPage, searchQuery, {
+              stage: stageFilter,
+              bookingStatus: bookingStatusFilter,
+              isEscalated: escalatedOnly,
+            })
+          }
         />
       </div>
     </MainLayout>

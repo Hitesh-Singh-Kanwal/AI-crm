@@ -5,9 +5,22 @@ import { cn } from '@/lib/utils'
 
 const DropdownContext = createContext()
 
+function findScrollParent(el) {
+  let node = el?.parentElement
+  while (node) {
+    const style = window.getComputedStyle(node)
+    const overflowY = style.overflowY
+    const isScrollable = (overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight
+    if (isScrollable) return node
+    node = node.parentElement
+  }
+  return null
+}
+
 function DropdownMenu({ children }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const triggerRef = useRef(null)
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -21,7 +34,7 @@ function DropdownMenu({ children }) {
   }, [])
 
   return (
-    <DropdownContext.Provider value={{ open, setOpen }}>
+    <DropdownContext.Provider value={{ open, setOpen, triggerRef }}>
       <div ref={ref} className="relative inline-block">
         {children}
       </div>
@@ -30,23 +43,27 @@ function DropdownMenu({ children }) {
 }
 
 function DropdownMenuTrigger({ children, asChild }) {
-  const { open, setOpen } = useContext(DropdownContext)
+  const { open, setOpen, triggerRef } = useContext(DropdownContext)
 
   if (asChild) {
-    return <div onClick={() => setOpen(!open)}>{children}</div>
+    return (
+      <div ref={triggerRef} onClick={() => setOpen(!open)}>
+        {children}
+      </div>
+    )
   }
 
   return (
-    <button onClick={() => setOpen(!open)} className="focus:outline-none">
+    <button ref={triggerRef} onClick={() => setOpen(!open)} className="focus:outline-none">
       {children}
     </button>
   )
 }
 
 function DropdownMenuContent({ className, align = 'end', children }) {
-  const { open, setOpen } = useContext(DropdownContext)
-
-  if (!open) return null
+  const { open, setOpen, triggerRef } = useContext(DropdownContext)
+  const contentRef = useRef(null)
+  const [side, setSide] = useState('bottom')
 
   const alignments = {
     start: 'left-0',
@@ -54,11 +71,51 @@ function DropdownMenuContent({ className, align = 'end', children }) {
     end: 'right-0',
   }
 
+  useEffect(() => {
+    if (!open) {
+      // Reset so next open re-evaluates from default
+      setSide('bottom')
+      return
+    }
+
+    const raf = requestAnimationFrame(() => {
+      const el = contentRef.current
+      const triggerEl = triggerRef?.current
+      if (!el || !triggerEl) return
+
+      const rect = el.getBoundingClientRect()
+      const triggerRect = triggerEl.getBoundingClientRect()
+
+      const scrollParent = findScrollParent(triggerEl)
+      const bounds = scrollParent
+        ? scrollParent.getBoundingClientRect()
+        : { top: 0, bottom: (window.innerHeight || document.documentElement.clientHeight) }
+
+      const padding = 8
+      const spaceBelow = bounds.bottom - triggerRect.bottom
+      const spaceAbove = triggerRect.top - bounds.top
+
+      const needsFlip = spaceBelow < rect.height + padding && spaceAbove > spaceBelow
+      setSide(needsFlip ? 'top' : 'bottom')
+    })
+
+    return () => cancelAnimationFrame(raf)
+  }, [open, children, triggerRef])
+
+  const sideClass =
+    side === 'top'
+      ? 'bottom-full mb-2 mt-0 origin-bottom'
+      : 'top-full mt-2 origin-top'
+
+  if (!open) return null
+
   return (
     <div
+      ref={contentRef}
       className={cn(
-        'absolute z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-scale-in mt-2',
+        'absolute z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-scale-in',
         alignments[align],
+        sideClass,
         className
       )}
     >

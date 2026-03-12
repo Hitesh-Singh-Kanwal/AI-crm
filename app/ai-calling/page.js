@@ -1,17 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Phone, Plus, Play, Copy, Trash2, User, FileText, Upload, Check, Mic, BookOpen, MessageSquare } from 'lucide-react'
+import { useEffect, useState, Suspense } from 'react'
+import { Phone, Plus, Play, Copy, Trash2, User, FileText, Upload, Check, Mic } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { aiScripts, knowledgeBaseDocuments } from '@/data/dummyData'
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 const fileTypeIcons = {
   pdf: '📄',
@@ -20,14 +21,23 @@ const fileTypeIcons = {
   mp3: '🎵',
 }
 
-export default function AICallingPage() {
-  const [activeTab, setActiveTab] = useState('scripts')
+function AICallingPageInner() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const activeTab = searchParams?.get('view') || 'scripts'
   const [dragOver, setDragOver] = useState(false)
   const [personas, setPersonas] = useState([])
   const [personasLoading, setPersonasLoading] = useState(false)
   const [personasError, setPersonasError] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
   const toast = useToast()
+
+  const setActiveTab = (tab) => {
+    const params = new URLSearchParams(searchParams?.toString() || '')
+    params.set('view', tab)
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
   useEffect(() => {
     const fetchPersonas = async () => {
@@ -72,30 +82,6 @@ export default function AICallingPage() {
   return (
     <MainLayout title="AI Calling" subtitle="Manage AI-powered calling scripts and personas">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full sm:w-auto h-auto p-1 bg-muted/60 rounded-xl border border-border/50">
-          <TabsTrigger
-            value="scripts"
-            className="flex-1 sm:flex-none text-xs sm:text-sm gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg py-2.5"
-          >
-            <MessageSquare className="h-4 w-4 shrink-0" />
-            Scripts
-          </TabsTrigger>
-          <TabsTrigger
-            value="personas"
-            className="flex-1 sm:flex-none text-xs sm:text-sm gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg py-2.5"
-          >
-            <Mic className="h-4 w-4 shrink-0" />
-            AI Personas
-          </TabsTrigger>
-          <TabsTrigger
-            value="knowledge"
-            className="flex-1 sm:flex-none text-xs sm:text-sm gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg py-2.5"
-          >
-            <BookOpen className="h-4 w-4 shrink-0" />
-            Knowledge Base
-          </TabsTrigger>
-        </TabsList>
-
         {/* Scripts Tab */}
         <TabsContent value="scripts" className="space-y-6 mt-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -395,6 +381,14 @@ export default function AICallingPage() {
         </TabsContent>
       </Tabs>
     </MainLayout>
+  )
+}
+
+export default function AICallingPage() {
+  return (
+    <Suspense fallback={null}>
+      <AICallingPageInner />
+    </Suspense>
   )
 }
 

@@ -23,7 +23,16 @@ import { canAccessRoute } from '@/lib/permissions'
 // Figma: exact nav items and labels from Studio CRM sidebar (node 380-4220)
 const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Inbox', href: '/inbox', icon: Inbox },
+  {
+    name: 'Inbox',
+    href: '/inbox',
+    icon: Inbox,
+    children: [
+      { name: 'All Messages', href: '/inbox' },
+      { name: 'Human Queue', href: '/human-queue' },
+      { name: 'Calls', href: '/inbox?channel=Call' },
+    ],
+  },
   { name: 'Leads', href: '/leads', icon: UserPlus },
   { name: 'Calendar', href: '/calendar', icon: Calendar },
   {
@@ -31,16 +40,36 @@ const navItems = [
     href: '/forms',
     icon: Megaphone,
     children: [
-      { name: 'Form Builder', href: '/forms' },
+      { name: 'Forms', href: '/forms' },
       { name: 'Campaigns', href: '/campaigns' },
       { name: 'Email Builder', href: '/emails' },
       { name: 'SMS Builder', href: '/sms' },
     ]
   },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
-  { name: 'AI & Automation', href: '/workflows', icon: Bot },
-  { name: 'AI Call Detail', href: '/aiCallDetail', icon: Phone },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  {
+    name: 'AI & Automation',
+    href: '/workflows',
+    icon: Bot,
+    children: [
+      { name: 'AI Calling', href: '/ai-calling' },
+      { name: 'Workflows', href: '/workflows' },
+      { name: 'AI Calls Data', href: '/aiCallDetail' },
+      { name: 'Training', href: '/training' },
+    ],
+  },
+  {
+    name: 'Settings',
+    href: '/settings',
+    icon: Settings,
+    children: [
+      { name: 'Studio Locations', href: '/locations' },
+      { name: 'Users', href: '/users' },
+      { name: 'Roles & Permissions', href: '/roles' },
+      { name: 'Integrations', href: '/integrations' },
+      { name: 'Billing', href: '/billing' },
+    ],
+  },
 ]
 
 // Figma: exact activity card text from Subscription Section
@@ -191,25 +220,68 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
                 const Icon = item.icon
 
                 return (
-                  <div key={item.name} className="relative w-full">
+                  <div
+                    key={item.name}
+                    className="relative w-full"
+                    onMouseEnter={() => {
+                      if (hasChildren) setOpenMenu(item.name)
+                    }}
+                    onMouseLeave={() => {
+                      if (hasChildren) setOpenMenu(null)
+                    }}
+                  >
                     {hasChildren ? (
-                      <button
-                        onClick={() => setOpenMenu(openMenu === item.name ? null : item.name)}
-                        className={cn(
-                          'flex flex-row items-center gap-2 w-full flex-shrink-0 hover:text-white',
-                          isActive ? 'text-[#cb17a7]' : 'text-[#F9FAFB] font-normal'
+                      <div className="relative inline-flex">
+                        <button
+                          onClick={() => setOpenMenu(openMenu === item.name ? null : item.name)}
+                          className={cn(
+                            'flex flex-row items-center gap-2 w-full flex-shrink-0 hover:text-[#cb17a7]',
+                            isActive ? 'text-[#cb17a7]' : 'text-[#F9FAFB] font-normal'
+                          )}
+                          style={{ fontFamily: 'Inter', fontSize: 14, lineHeight: 1.43 }}
+                        >
+                          <Icon className="w-5 h-5 flex-shrink-0" strokeWidth={1.5} aria-hidden />
+                          <span>{item.name}</span>
+                        </button>
+
+                        {openMenu === item.name && (
+                          <div className="absolute left-[calc(100%+10px)] top-0 w-[200px] bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.06)] py-3 z-[60] border border-gray-100/50">
+                            <div className="px-5 mb-2 text-xs font-semibold tracking-wider text-[#94A3B8] uppercase">
+                              {item.name}
+                            </div>
+                            <div className="h-px bg-gray-100 mb-2 mx-2" />
+                            <div className="flex flex-col">
+                              {item.children.map(child => {
+                                const isChildActive = pathname === child.href;
+                                return (
+                                  <Link
+                                    key={child.href}
+                                    href={child.href}
+                                    onClick={() => {
+                                      setOpenMenu(null)
+                                      setMobileOpen(false)
+                                    }}
+                                    className={cn(
+                                      "px-5 py-2.5 text-sm transition-colors block w-full text-left",
+                                      isChildActive
+                                        ? "text-[#cb17a7] bg-pink-50/50"
+                                        : "text-[#475569] hover:bg-gray-50 hover:text-[#0F172A]"
+                                    )}
+                                  >
+                                    {child.name}
+                                  </Link>
+                                )
+                              })}
+                            </div>
+                          </div>
                         )}
-                        style={{ fontFamily: 'Inter', fontSize: 14, lineHeight: 1.43 }}
-                      >
-                        <Icon className="w-5 h-5 flex-shrink-0" strokeWidth={1.5} aria-hidden />
-                        <span>{item.name}</span>
-                      </button>
+                      </div>
                     ) : (
                       <Link
                         href={item.href}
                         onClick={() => setOpenMenu(null)}
                         className={cn(
-                          'flex flex-row items-center gap-2 w-full flex-shrink-0 hover:text-white',
+                          'flex flex-row items-center gap-2 w-full flex-shrink-0 hover:text-[#cb17a7]',
                           isActive ? 'text-[#cb17a7]' : 'text-[#F9FAFB] font-normal'
                         )}
                         style={{ fontFamily: 'Inter', fontSize: 14, lineHeight: 1.43 }}
@@ -217,38 +289,6 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
                         <Icon className="w-5 h-5 flex-shrink-0" strokeWidth={1.5} aria-hidden />
                         <span>{item.name}</span>
                       </Link>
-                    )}
-
-                    {hasChildren && openMenu === item.name && (
-                      <div className="absolute left-[calc(100%+24px)] top-0 w-[200px] bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.06)] py-3 z-[60] border border-gray-100/50">
-                        <div className="px-5 mb-2 text-xs font-semibold tracking-wider text-[#94A3B8] uppercase">
-                          {item.name}
-                        </div>
-                        <div className="h-px bg-gray-100 mb-2 mx-2" />
-                        <div className="flex flex-col">
-                          {item.children.map(child => {
-                            const isChildActive = pathname === child.href;
-                            return (
-                              <Link
-                                key={child.href}
-                                href={child.href}
-                                onClick={() => {
-                                  setOpenMenu(null)
-                                  setMobileOpen(false)
-                                }}
-                                className={cn(
-                                  "px-5 py-2.5 text-sm transition-colors block w-full text-left",
-                                  isChildActive
-                                    ? "text-[#cb17a7] bg-pink-50/50"
-                                    : "text-[#475569] hover:bg-gray-50 hover:text-[#0F172A]"
-                                )}
-                              >
-                                {child.name}
-                              </Link>
-                            )
-                          })}
-                        </div>
-                      </div>
                     )}
                   </div>
                 )

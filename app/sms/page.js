@@ -1,6 +1,10 @@
 'use client'
 
+<<<<<<< HEAD
+import { useState, Suspense } from 'react'
+=======
 import { Suspense, useState } from 'react'
+>>>>>>> frontend
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { MessageSquare, Plus, Sparkles, Send } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -365,6 +369,9 @@ function SMSPageInner() {
 
 export default function SMSPage() {
   return (
+<<<<<<< HEAD
+    <Suspense fallback={null}>
+=======
     <Suspense
       fallback={
         <MainLayout title="SMS Campaigns" subtitle="Create and send SMS messages">
@@ -374,6 +381,7 @@ export default function SMSPage() {
         </MainLayout>
       }
     >
+>>>>>>> frontend
       <SMSPageInner />
     </Suspense>
   )
