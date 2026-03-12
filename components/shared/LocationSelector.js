@@ -5,10 +5,6 @@ import { Building2, ChevronDown } from 'lucide-react'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-/**
- * Reusable Location Selector Component
- * Fetches locations from API and provides a dropdown selector
- */
 export default function LocationSelector({ 
   value, 
   onChange, 
@@ -17,6 +13,7 @@ export default function LocationSelector({
   filterActiveOnly = true,
   className = '',
   multiple = false,
+  disabled = false,
 }) {
   const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(true)
@@ -86,14 +83,18 @@ export default function LocationSelector({
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (disabled) return
+          setOpen(!open)
+        }}
         className={cn(
           'w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-200',
           'bg-white text-sm text-slate-900 hover:border-slate-300 transition-colors',
           'focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-1',
-          open && 'border-brand ring-2 ring-brand ring-offset-1'
+          open && 'border-brand ring-2 ring-brand ring-offset-1',
+          disabled && 'bg-slate-50 text-slate-400 cursor-not-allowed'
         )}
-        disabled={loading}
+        disabled={loading || disabled}
       >
           <div className="flex items-center gap-2 min-w-0 flex-1">
           <Building2 className="h-4 w-4 text-slate-400 shrink-0" />
