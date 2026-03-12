@@ -11,8 +11,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { toast } from '@/components/ui/toast'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-
 const ROWS_PER_PAGE = 10
 
 export default function AiCallDetailPage() {
@@ -122,6 +120,14 @@ export default function AiCallDetailPage() {
     }
   }
 
+  const handleOpenDetails = (call) => {
+    setSelectedCall(call)
+  }
+
+  const handleBackToList = () => {
+    setSelectedCall(null)
+  }
+
   return (
     <MainLayout
       title="AI Call Details"
@@ -129,6 +135,7 @@ export default function AiCallDetailPage() {
     >
       <div className="max-w-[1204px] mx-auto">
         <div className="flex flex-col gap-6 lg:gap-8">
+          {!selectedCall && (
           <div>
             <div className="mb-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
@@ -221,8 +228,21 @@ export default function AiCallDetailPage() {
                   const createdAt = call.createdAt ? new Date(call.createdAt) : null
                   const createdLabel = createdAt ? createdAt.toLocaleString() : '-'
                   const status = call.status || 'Unknown'
-
                   const isSelected = selectedIds.includes(call._id)
+
+                  const started = call.startedAt ? new Date(call.startedAt) : null
+                  const ended = call.endedAt ? new Date(call.endedAt) : null
+                  let durationLabel = '—'
+                  if (started && ended) {
+                    const ms = Math.max(0, ended.getTime() - started.getTime())
+                    const totalSeconds = Math.round(ms / 1000)
+                    const minutes = Math.floor(totalSeconds / 60)
+                    const seconds = totalSeconds % 60
+                    durationLabel =
+                      minutes > 0
+                        ? `${minutes}m ${seconds}s`
+                        : `${seconds}s`
+                  }
 
                   return (
                     <Card
@@ -230,7 +250,7 @@ export default function AiCallDetailPage() {
                       className={`group cursor-pointer border-2 ${
                         isSelected ? 'border-[#9224EF] shadow-lg' : 'border-[#E2E8F0]'
                       } hover:border-[#9224EF]/60 hover:shadow-lg transition-all duration-200`}
-                      onClick={() => setSelectedCall(call)}
+                      onClick={() => handleOpenDetails(call)}
                     >
                       <CardHeader className="pb-3 flex flex-row items-start justify-between space-y-0">
                         <div className="flex items-start gap-3">
@@ -250,7 +270,7 @@ export default function AiCallDetailPage() {
                             <CardTitle className="text-base">
                               {call.callId || 'Unknown Call'}
                             </CardTitle>
-                            <CardDescription className="text-xs">
+                            <CardDescription className="text-[11px] text-[#64748B]">
                               {createdLabel}
                             </CardDescription>
                           </div>
@@ -268,6 +288,10 @@ export default function AiCallDetailPage() {
                           <span className="ml-2">
                             {call.customer?.number || call.customer?.phone || '—'}
                           </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-[#64748B]">
+                          <span className="font-medium text-[#0F172A]">Duration</span>
+                          <span className="ml-2">{durationLabel}</span>
                         </div>
                         <div className="text-xs text-[#64748B]">
                           <span className="font-medium text-[#0F172A]">Summary</span>
@@ -333,115 +357,267 @@ export default function AiCallDetailPage() {
               )}
             </div>
           </div>
+          )}
 
-          {/* Details Modal */}
-          <Dialog open={!!selectedCall} onClose={() => setSelectedCall(null)} maxWidth="2xl">
-          <DialogContent
-            onClose={() => setSelectedCall(null)}
-            className="max-h-[90vh] overflow-y-auto"
-          >
-            <DialogHeader>
-              <DialogTitle>AI Call Details</DialogTitle>
-              <DialogDescription>
-                Full transcript and metadata for the selected AI call.
-              </DialogDescription>
-            </DialogHeader>
-
-            {selectedCall && (
-              <div className="mt-4 space-y-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-11 w-11 rounded-xl bg-[#EEF2FF] flex items-center justify-center">
-                      <PhoneCall className="h-5 w-5 text-[#4F46E5]" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[#0F172A]">
-                        {selectedCall.callId || 'Unknown Call'}
-                      </p>
-                      <p className="text-xs text-[#64748B]">
-                        {selectedCall.createdAt
-                          ? new Date(selectedCall.createdAt).toLocaleString()
-                          : 'Created date unknown'}
-                      </p>
-                    </div>
-                  </div>
+          {/* Full-width details view */}
+          {selectedCall && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="text-xs text-[#6366F1] hover:text-[#4F46E5] underline-offset-2 hover:underline"
+                    onClick={handleBackToList}
+                  >
+                    ← Back to all calls
+                  </button>
                   <Badge
                     variant="outline"
-                    className="self-start text-xs font-medium px-2.5 py-1 rounded-full"
+                    className="text-[11px] font-medium px-2.5 py-0.5 rounded-full"
                   >
                     {selectedCall.status || 'Unknown'}
                   </Badge>
                 </div>
+                <span className="text-[11px] text-[#94A3B8]">
+                  Created{' '}
+                  {selectedCall.createdAt
+                    ? new Date(selectedCall.createdAt).toLocaleString()
+                    : 'Unknown'}
+                </span>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
-                      Customer Number
-                    </p>
-                    <p className="font-medium text-[#0F172A]">
-                      {selectedCall.customer?.number ||
-                        selectedCall.customer?.phone ||
-                        '—'}
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
-                      Customer Name
-                    </p>
-                    <p className="font-medium text-[#0F172A]">
-                      {selectedCall.customer?.name || '—'}
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
-                      Stage
-                    </p>
-                    <p className="font-medium text-[#0F172A]">
-                      {selectedCall.stage || '—'}
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
-                      Duration
-                    </p>
-                    <p className="font-medium text-[#0F172A]">
-                      {selectedCall.duration || '—'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-wide text-[#94A3B8]">Summary</p>
-                  <p className="text-sm text-[#0F172A] bg-[#F8FAFC] rounded-lg p-3">
-                    {selectedCall.analysis?.summary || 'No summary available'}
-                  </p>
-                </div>
-
-                {selectedCall.analysis?.successEvaluation && (
-                  <div className="space-y-2">
-                    <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
-                      Success Evaluation
-                    </p>
-                    <p className="text-sm text-[#0F172A] bg-[#F1F5F9] rounded-lg p-3">
-                      {selectedCall.analysis.successEvaluation}
-                    </p>
-                  </div>
-                )}
-
-                {selectedCall.analysis?.transcript && (
-                  <div className="space-y-2">
-                    <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
-                      Transcript
-                    </p>
-                    <div className="text-sm text-[#0F172A] bg-[#F9FAFB] rounded-lg p-3 max-h-80 overflow-y-auto whitespace-pre-line">
-                      {selectedCall.analysis.transcript}
+              <Card className="border-[#E2E8F0]">
+                <CardHeader className="pb-3 flex flex-col gap-2">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-11 w-11 rounded-xl bg-[#EEF2FF] flex items-center justify-center">
+                        <PhoneCall className="h-5 w-5 text-[#4F46E5]" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base text-[#0F172A]">
+                          {selectedCall.callId || 'Unknown Call'}
+                        </CardTitle>
+                        <CardDescription className="text-xs text-[#64748B]">
+                          {selectedCall.customer?.number || 'Unknown number'} ·{' '}
+                          {selectedCall.type || 'outboundPhoneCall'}
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <div className="text-right space-y-1">
+                      <p className="text-xs text-[#64748B]">
+                        Cost:{' '}
+                        <span className="font-semibold text-[#0F172A]">
+                          {typeof selectedCall.cost === 'number'
+                            ? `$${selectedCall.cost.toFixed(4)}`
+                            : '—'}
+                        </span>
+                      </p>
+                      <p className="text-[11px] text-[#94A3B8]">
+                        Assistant ID: {selectedCall.assistantId || '—'}
+                      </p>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
+                </CardHeader>
+
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                        Customer Number
+                      </p>
+                      <p className="font-medium text-[#0F172A]">
+                        {selectedCall.customer?.number ||
+                          selectedCall.customer?.phone ||
+                          '—'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                        Phone Number Used
+                      </p>
+                      <p className="font-medium text-[#0F172A]">
+                        {selectedCall.phoneNumberId || '—'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                        Transport Provider
+                      </p>
+                      <p className="font-medium text-[#0F172A]">
+                        {selectedCall.transport?.provider || '—'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                        Call SID
+                      </p>
+                      <p className="font-medium text-[#0F172A] break-all">
+                        {selectedCall.transport?.callSid || '—'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                        Started At
+                      </p>
+                      <p className="font-medium text-[#0F172A]">
+                        {selectedCall.startedAt
+                          ? new Date(selectedCall.startedAt).toLocaleString()
+                          : '—'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                        Ended At
+                      </p>
+                      <p className="font-medium text-[#0F172A]">
+                        {selectedCall.endedAt
+                          ? new Date(selectedCall.endedAt).toLocaleString()
+                          : '—'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                        Ended Reason
+                      </p>
+                      <p className="font-medium text-[#0F172A]">
+                        {selectedCall.endedReason || '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                      Summary
+                    </p>
+                    <p className="text-sm text-[#0F172A] bg-[#F8FAFC] rounded-lg p-3">
+                      {selectedCall.analysis?.summary || selectedCall.summary || 'No summary available'}
+                    </p>
+                  </div>
+
+                  {selectedCall.analysis?.successEvaluation && (
+                    <div className="space-y-3">
+                      <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                        Success Evaluation
+                      </p>
+                      <p className="text-sm text-[#0F172A] bg-[#F1F5F9] rounded-lg p-3">
+                        {selectedCall.analysis.successEvaluation}
+                      </p>
+                    </div>
+                  )}
+
+                  {(selectedCall.artifact?.recordingUrl ||
+                    selectedCall.recordingUrl ||
+                    selectedCall.artifact?.stereoRecordingUrl ||
+                    selectedCall.stereoRecordingUrl) && (
+                    <div className="space-y-3">
+                      <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                        Recording
+                      </p>
+                      <div className="space-y-2">
+                        {selectedCall.artifact?.recordingUrl || selectedCall.recordingUrl ? (
+                          <audio
+                            controls
+                            className="w-full"
+                            src={
+                              selectedCall.artifact?.recordingUrl ||
+                              selectedCall.recordingUrl
+                            }
+                          />
+                        ) : null}
+                        <div className="flex flex-wrap gap-3 text-xs text-[#6366F1]">
+                          {selectedCall.artifact?.recordingUrl && (
+                            <a
+                              href={selectedCall.artifact.recordingUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hover:underline"
+                            >
+                              Open mono recording
+                            </a>
+                          )}
+                          {selectedCall.artifact?.stereoRecordingUrl && (
+                            <a
+                              href={selectedCall.artifact.stereoRecordingUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hover:underline"
+                            >
+                              Open stereo recording
+                            </a>
+                          )}
+                          {selectedCall.logUrl && (
+                            <a
+                              href={selectedCall.logUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hover:underline"
+                            >
+                              View raw call log
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {Array.isArray(selectedCall.artifact?.messages) &&
+                    selectedCall.artifact.messages.length > 0 && (
+                      <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                          Script (system prompt)
+                        </p>
+                        <div className="text-[11px] text-[#0F172A] bg-[#F9FAFB] rounded-lg p-3 max-h-[200px] overflow-y-auto whitespace-pre-wrap">
+                          {selectedCall.artifact.messages.find((m) => m.role === 'system')?.message ||
+                            'Script not available'}
+                        </div>
+
+                        <p className="text-xs uppercase tracking-wide text-[#94A3B8]">
+                          Turn-by-turn messages
+                        </p>
+                        <div className="max-h-[360px] overflow-y-auto border border-dashed border-[#E2E8F0] rounded-lg p-3 bg-[#F8FAFC] space-y-2">
+                          {selectedCall.artifact.messages
+                            .filter((msg) => msg.role !== 'system')
+                            .map((msg, idx) => {
+                            const role =
+                              msg.role === 'system'
+                                ? 'system'
+                                : msg.role === 'bot'
+                                ? 'ai'
+                                : 'user'
+
+                            const isAI = role === 'ai'
+                            const isUser = role === 'user'
+                            const isSystem = role === 'system'
+
+                            return (
+                              <div
+                                key={idx}
+                                className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
+                              >
+                                <div
+                                  className={`max-w-[80%] rounded-2xl px-3 py-2 text-[11px] leading-relaxed shadow-sm ${
+                                    isSystem
+                                      ? 'bg-[#E2E8F0] text-[#0F172A]'
+                                      : isAI
+                                      ? 'bg-[#EEF2FF] text-[#111827]'
+                                      : 'bg-white text-[#111827] border border-[#E2E8F0]'
+                                  } ${isUser ? 'rounded-br-sm' : isAI ? 'rounded-bl-sm' : ''}`}
+                                >
+                                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#94A3B8]">
+                                    {isSystem ? 'System' : isAI ? 'AI (Illias)' : 'Caller'}
+                                  </p>
+                                  <p className="whitespace-pre-wrap">{msg.message}</p>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
     </MainLayout>

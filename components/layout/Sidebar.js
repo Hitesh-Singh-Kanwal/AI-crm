@@ -52,6 +52,7 @@ const navItems = [
     href: '/workflows',
     icon: Bot,
     children: [
+      { name: 'Make Calls', href: '/make-calls' },
       { name: 'AI Calling', href: '/ai-calling' },
       { name: 'Workflows', href: '/workflows' },
       { name: 'AI Calls Data', href: '/aiCallDetail' },
