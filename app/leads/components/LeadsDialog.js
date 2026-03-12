@@ -9,6 +9,7 @@ import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
+import LocationSelector from '@/components/shared/LocationSelector'
 
 const stageOptions = [
   { value: 'new', label: 'New' },
@@ -200,11 +201,14 @@ export default function LeadsDialog({
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Location *</label>
-              <Input
+              <LocationSelector
                 value={editingLead.location || ''}
-                onChange={(e) => setEditingLead({ ...editingLead, location: e.target.value })}
+                onChange={(value) => setEditingLead({ ...editingLead, location: value })}
+                placeholder="Select location"
+                showAllOption={false}
+                multiple={false}
                 disabled={viewOnly}
-                placeholder="Enter location"
+                className="mt-0.5"
               />
             </div>
             <div>
