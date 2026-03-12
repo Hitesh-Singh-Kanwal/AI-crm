@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Search, Shield, Edit, Trash } from 'lucide-react'
+import { Search, Shield, Edit, Trash, MoreHorizontal } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,20 @@ import StyledSelect from '@/components/shared/StyledSelect'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import RolesDialog from '@/app/roles/components/RolesDialog'
@@ -18,6 +32,43 @@ function formatDate(value) {
   if (!value) return 'N/A'
   const d = new Date(value)
   return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString(undefined, { dateStyle: 'medium' })
+}
+
+function getEnabledPermissionSections(permissions) {
+  const perms = permissions || {}
+  const sectionKeys = Object.keys(perms)
+  const enabledSections = []
+
+  for (const sectionKey of sectionKeys) {
+    const section = perms?.[sectionKey]
+    const sectionPerms = section?.permissions || {}
+    let sectionEnabled = false
+    for (const moduleKey of Object.keys(sectionPerms)) {
+      const actions = sectionPerms?.[moduleKey]
+      const enabled =
+        actions &&
+        typeof actions === 'object' &&
+        (actions.read || actions.write || actions.edit || actions.delete)
+      if (enabled) {
+        sectionEnabled = true
+        break
+      }
+    }
+    if (sectionEnabled) enabledSections.push(sectionKey)
+  }
+
+  // de-dupe while preserving order
+  return [...new Set(enabledSections)]
+}
+
+function getPermissionActionBadges(actions) {
+  const a = actions || {}
+  return [
+    { key: 'read', label: 'Read', on: !!a.read },
+    { key: 'write', label: 'Write', on: !!a.write },
+    { key: 'edit', label: 'Edit', on: !!a.edit },
+    { key: 'delete', label: 'Delete', on: !!a.delete },
+  ]
 }
 
 export default function RolesPage() {
@@ -263,41 +314,98 @@ export default function RolesPage() {
           </div>
         )}
 
-        {/* Role Grid */}
+        {/* Roles (row layout) */}
         {!loading && (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {roles.map((role, index) => (
-              <div
-                key={role._id}
-                onClick={() => setSelectedRoleId(role._id)}
-                className={cn(
-                  'animate-fade-in cursor-pointer rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md',
-                  selectedRoleId === role._id && 'ring-2 ring-brand/30 border-brand/40'
-                )}
-                style={{ animationDelay: `${index * 0.05}s` }}
-              >
-                <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-brand/10">
-                    <Shield className="h-6 w-6 text-brand" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate font-semibold text-slate-900">{role.role}</h3>
-                    <p className="mt-0.5 truncate text-sm text-slate-500">
-                      {Object.keys(role.permissions || {}).length} permission sections
-                    </p>
-                    <Badge className="mt-2 text-xs" variant="secondary">
-                      {Object.keys(role.permissions || {}).length} sections
-                    </Badge>
-                  </div>
-                </div>
-                <div className="mt-4 space-y-2 border-t border-slate-100 pt-4 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500">Created</span>
-                    <span className="text-xs text-slate-700">{formatDate(role.createdAt)}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="rounded-xl border border-[#E2E8F0] bg-white overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-[#E2E8F0] hover:bg-transparent bg-[#F8FAFC]">
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Role</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Permissions</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Created</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B] w-12 text-right"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {roles.map((role, index) => {
+                  const enabledSections = getEnabledPermissionSections(role.permissions)
+                  const shown = enabledSections.slice(0, 3)
+                  const remaining = Math.max(0, enabledSections.length - shown.length)
+                  return (
+                    <TableRow
+                      key={role._id || index}
+                      onClick={() => setSelectedRoleId(role._id)}
+                      className={cn('cursor-pointer', selectedRoleId === role._id && 'bg-muted/50')}
+                    >
+                      <TableCell className="py-3 px-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10">
+                            <Shield className="h-4.5 w-4.5 text-brand" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-medium text-slate-900 truncate">{role.role}</div>
+                            <div className="text-xs text-slate-500 truncate">
+                              {enabledSections.length > 0 ? `${enabledSections.length} sections enabled` : 'No permissions enabled'}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
+                        <div className="flex flex-wrap gap-1.5">
+                          {shown.map((name) => (
+                            <Badge key={name} className="text-xs" variant="secondary">
+                              {name}
+                            </Badge>
+                          ))}
+                          {remaining > 0 && (
+                            <Badge className="text-xs" variant="outline">
+                              +{remaining} more
+                            </Badge>
+                          )}
+                          {enabledSections.length === 0 && (
+                            <Badge className="text-xs" variant="outline">
+                              —
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3 px-4 text-sm text-slate-600">
+                        {formatDate(role.createdAt)}
+                      </TableCell>
+                      <TableCell className="py-3 px-4 text-right">
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation()
+                          }}
+                        >
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44">
+                              <DropdownMenuItem onClick={() => setSelectedRoleId(role._id)}>
+                                View
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openEditRole(role)}>
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-red-600"
+                                onClick={() => handleDeleteRole(role._id)}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
           </div>
         )}
 
@@ -366,7 +474,7 @@ export default function RolesPage() {
         )}
 
         {/* Role Detail Modal */}
-        <Dialog open={!!selectedRoleId} onClose={() => setSelectedRoleId(null)}>
+        <Dialog open={!!selectedRoleId} onClose={() => setSelectedRoleId(null)} maxWidth="4xl">
           <DialogContent onClose={() => setSelectedRoleId(null)}>
             <DialogHeader>
               <DialogTitle>Role Details</DialogTitle>
@@ -405,6 +513,71 @@ export default function RolesPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Permissions breakdown */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-slate-900">Permissions</h4>
+                    <span className="text-xs text-slate-500">
+                      {getEnabledPermissionSections(selectedRole.permissions).join(', ') || '—'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
+                    {Object.entries(selectedRole.permissions || {}).map(([sectionKey, section]) => {
+                      const sectionName = section?.name || sectionKey
+                      const modules = Object.entries(section?.permissions || {})
+
+                      return (
+                        <div key={sectionKey} className="rounded-lg border border-slate-200 bg-white">
+                          <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-slate-900 truncate">{sectionName}</div>
+                              <div className="text-xs text-slate-500 truncate">{sectionKey}</div>
+                            </div>
+                            <Badge variant="secondary" className="text-xs shrink-0">
+                              {modules.length} modules
+                            </Badge>
+                          </div>
+
+                          <div className="px-4 py-3 space-y-2">
+                            {modules.length === 0 ? (
+                              <div className="text-sm text-slate-500">No modules</div>
+                            ) : (
+                              modules.map(([moduleKey, actions]) => {
+                                const badges = getPermissionActionBadges(actions)
+                                const enabledCount = badges.filter((b) => b.on).length
+
+                                return (
+                                  <div key={moduleKey} className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-medium text-slate-800 truncate">{moduleKey}</div>
+                                      <div className="text-xs text-slate-500 truncate">
+                                        {enabledCount > 0 ? `${enabledCount} allowed` : 'No access'}
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-wrap justify-end gap-1.5">
+                                      {badges.map((b) => (
+                                        <Badge
+                                          key={b.key}
+                                          variant={b.on ? 'success' : 'outline'}
+                                          className="text-[11px]"
+                                        >
+                                          {b.label}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <Button
                     variant="outline"

@@ -49,7 +49,7 @@ export default function MainLayout({ children, title, subtitle }) {
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar mobileOpen={mobileMenuOpen} setMobileOpen={setMobileMenuOpen} />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden md:p-2">
         <Suspense fallback={<header className="sticky top-0 z-30 min-h-[86px] border-b border-slate-200/80 bg-white" />}>
           <Header 
             title={title} 
