@@ -1,6 +1,6 @@
 'use client'
 
-import { Phone, Plus, Copy, Trash2, Tags, Pencil, Search } from 'lucide-react'
+import { Phone, Plus, Copy, Trash2, Tags, Pencil, Search, Eye } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,18 +10,12 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import CategoriesDialog from './CategoriesDialog'
 import ScriptEditorDialog from './ScriptEditorDialog'
+import ScriptPreviewDialog from './ScriptPreviewDialog'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 
 const SCRIPTS_PAGE_SIZE = 9
-
-function safeRate(conversions, calls) {
-  const c = Number(conversions || 0)
-  const t = Number(calls || 0)
-  if (!t) return '0.0%'
-  return `${((c / t) * 100).toFixed(1)}%`
-}
 
 function getScriptStats(text) {
   const t = (text || '').trim()
@@ -34,6 +28,7 @@ export default function ScriptsTab() {
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingScript, setEditingScript] = useState(null)
+  const [previewScriptId, setPreviewScriptId] = useState(null)
 
   const toast = useToast()
   const [scripts, setScripts] = useState([])
@@ -149,6 +144,7 @@ export default function ScriptsTab() {
         initialScript={editingScript}
         onSaved={fetchScripts}
       />
+      <ScriptPreviewDialog open={!!previewScriptId} onClose={() => setPreviewScriptId(null)} scriptId={previewScriptId} />
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -186,45 +182,68 @@ export default function ScriptsTab() {
           scripts.map((script, index) => (
           <Card
             key={script._id}
-            className="group overflow-hidden border-border/80 hover:border-primary/30 hover:shadow-lg transition-all duration-200 cursor-pointer animate-fade-in rounded-2xl"
+            className={cn(
+              'group overflow-hidden border transition-all duration-200 animate-fade-in rounded-2xl',
+              'border-border/80 hover:border-primary/40 hover:shadow-md bg-card'
+            )}
             style={{ animationDelay: `${index * 0.05}s` }}
-            onClick={() => {
-              setEditingScript(script)
-              setEditorOpen(true)
-            }}
           >
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="h-10 w-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/15 transition-colors shrink-0">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <div className="h-11 w-11 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0 ring-1 ring-primary/10">
                     <Phone className="h-5 w-5" />
                   </div>
-                  <div className="min-w-0">
-                    <CardTitle className="text-lg leading-tight truncate">{script.name}</CardTitle>
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="text-base font-semibold leading-tight line-clamp-2">
+                      {script.name}
+                    </CardTitle>
                     <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                         {script.categoryID?.name || 'Uncategorized'}
                       </Badge>
                       {script.subCategory && (
-                        <Badge variant="secondary" className="text-xs font-normal">
+                        <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0">
                           {script.subCategory}
                         </Badge>
                       )}
-                      <Badge variant={script.isDefault ? 'secondary' : 'outline'} className="text-xs">
-                        {script.isDefault ? 'Default' : 'Custom'}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs font-normal">
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                         {script.type || 'call'}
                       </Badge>
                     </div>
                   </div>
                 </div>
+              </div>
+            </CardHeader>
 
-                <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+            <CardContent className="space-y-4 pt-0">
+              <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2.5 border border-border/50">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="tabular-nums font-medium">{getScriptStats(script.script).lines} lines</span>
+                  <span className="opacity-50">·</span>
+                  <span className="tabular-nums">{getScriptStats(script.script).chars.toLocaleString()} chars</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Button
+                  variant="gradient"
+                  size="sm"
+                  className="text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPreviewScriptId(script._id)
+                  }}
+                  title="Preview"
+                >
+                  <Eye className="h-3.5 w-3.5 mr-1.5" />
+                  Preview
+                </Button>
+                <div className="flex items-center gap-1">
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon"
-                    className="shrink-0"
+                    className="h-8 w-8 shrink-0"
                     onClick={(e) => {
                       e.stopPropagation()
                       setEditingScript(script)
@@ -232,24 +251,24 @@ export default function ScriptsTab() {
                     }}
                     title="Edit"
                   >
-                    <Pencil className="h-3 w-3" />
+                    <Pencil className="h-3.5 w-3.5" />
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon"
-                    className="shrink-0"
+                    className="h-8 w-8 shrink-0"
                     onClick={(e) => {
                       e.stopPropagation()
                       handleCopy(script)
                     }}
                     title="Copy"
                   >
-                    <Copy className="h-3 w-3" />
+                    <Copy className="h-3.5 w-3.5" />
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon"
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
                     onClick={(e) => {
                       e.stopPropagation()
                       handleDeleteScript(script)
@@ -257,39 +276,8 @@ export default function ScriptsTab() {
                     disabled={deletingId === script._id || script.isDefault}
                     title={script.isDefault ? 'Default scripts cannot be deleted' : 'Delete'}
                   >
-                    <Trash2 className="h-3 w-3" />
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
-                </div>
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-4 pt-0">
-              <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/10 px-3 py-2">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-medium">Script</span>
-                  <span className="tabular-nums">{getScriptStats(script.script).lines} lines</span>
-                  <span className="opacity-60">·</span>
-                  <span className="tabular-nums">{getScriptStats(script.script).chars.toLocaleString()} chars</span>
-                </div>
-                <span className="text-xs text-muted-foreground">Click to edit</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <div className="flex justify-between gap-2">
-                  <span className="text-muted-foreground truncate">Total Calls</span>
-                  <span className="font-medium tabular-nums">—</span>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <span className="text-muted-foreground truncate">Conversions</span>
-                  <span className="font-medium text-green-600 tabular-nums">—</span>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <span className="text-muted-foreground truncate">Rate</span>
-                  <span className="font-medium tabular-nums">{safeRate(0, 0)}</span>
-                </div>
-                <div className="flex justify-between gap-2 col-span-2">
-                  <span className="text-muted-foreground truncate">Last Used</span>
-                  <span className="font-medium text-muted-foreground">—</span>
                 </div>
               </div>
             </CardContent>

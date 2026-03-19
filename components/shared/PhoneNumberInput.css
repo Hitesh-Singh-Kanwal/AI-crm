@@ -1,0 +1,146 @@
+/* Override react-phone-input-pro styles to match app design system */
+
+.phone-input-wrapper [class*='react_number_formatter_form'] {
+  display: flex;
+  align-items: center;
+  height: 2.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.375rem;
+  background-color: hsl(var(--background));
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.phone-input-wrapper [class*='react_number_formatter_form']:focus-within,
+.phone-input-wrapper [class*='border_onfocus'] {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+  outline: none;
+}
+
+.phone-input-wrapper [class*='react_number_formatter_input'] {
+  border: none;
+  outline: none;
+  padding: 0 0.75rem;
+  font-size: 0.875rem;
+  color: hsl(var(--foreground));
+  background: transparent;
+  height: 100%;
+}
+
+.phone-input-wrapper [class*='react_number_formatter_input']::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+/* Country selector button */
+.phone-input-wrapper [class*='react_number_formatter_dropbtn'] {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 100%;
+  min-width: 5.5rem;
+  padding: 0 0.5rem;
+  border: none;
+  border-right: 1px solid hsl(var(--border));
+  border-radius: 0.375rem 0 0 0.375rem;
+  background: hsl(var(--muted) / 0.5);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.phone-input-wrapper [class*='react_number_formatter_dropbtn']:hover {
+  background: hsl(var(--accent));
+}
+
+.phone-input-wrapper [class*='react_number_formatter_dropbtn'] [class*='react_number_formatter_selected_flag'],
+.phone-input-wrapper [class*='react_number_formatter_dropbtn'] [class*='react_number_formatter_flag'] {
+  width: 1.25rem;
+  height: 0.9375rem;
+  border-radius: 2px;
+  object-fit: cover;
+}
+
+/* Dropdown list */
+.phone-input-wrapper [class*='react_number_formatter_dropdown_content'] {
+  margin-top: 0.25rem;
+  padding: 0;
+  min-width: 16rem;
+  max-height: 16rem;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  z-index: 50;
+}
+
+/* Search input inside dropdown */
+.phone-input-wrapper [class*='react_number_formatter_dropdown_input_parent'] {
+  padding: 0.5rem;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.5);
+}
+
+.phone-input-wrapper [class*='react_number_formatter_dropdown_input'] {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  width: 100%;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.25rem;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.phone-input-wrapper [class*='react_number_formatter_dropdown_input']::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+.phone-input-wrapper [class*='react_number_formatter_dropdown_input']:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+}
+
+/* Country options */
+.phone-input-wrapper [class*='react_number_formatter_dropdown_content_child'] {
+  max-height: 12rem;
+}
+
+.phone-input-wrapper [class*='react_number_formatter_option'] {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem !important;
+  font-size: 0.875rem;
+  color: hsl(var(--foreground)) !important;
+  background: none !important;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.phone-input-wrapper [class*='react_number_formatter_option']:hover {
+  background: hsl(var(--accent)) !important;
+}
+
+.phone-input-wrapper [class*='react_number_formatter_option'] [class*='react_number_formatter_flag'] {
+  width: 1.25rem;
+  height: 0.9375rem;
+  flex-shrink: 0;
+}
+
+.phone-input-wrapper [class*='react_number_formatter_no_option'] {
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Arrow icon - subtle */
+.phone-input-wrapper [class*='react_number_formatter_arrow_parent'] svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  opacity: 0.6;
+}

@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-phone-input-pro/dist/styles/index.module.css b/node_modules/react-phone-input-pro/dist/styles/index.module.css
+index 8e613f9..3cae302 100644
+--- a/node_modules/react-phone-input-pro/dist/styles/index.module.css
++++ b/node_modules/react-phone-input-pro/dist/styles/index.module.css
+@@ -36,7 +36,7 @@
+     width: 100%;
+   }
+ 
+-  input::_webkit_input_placeholder {
++  input::-webkit-input-placeholder {
+     opacity: 0.8;
+ }
+ 

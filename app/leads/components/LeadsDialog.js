@@ -10,6 +10,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import LocationSelector from '@/components/shared/LocationSelector'
+import PhoneNumberInput from '@/components/shared/PhoneNumberInput'
 
 const stageOptions = [
   { value: 'new', label: 'New' },
@@ -192,11 +193,11 @@ export default function LeadsDialog({
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Phone Number *</label>
-              <Input
+              <PhoneNumberInput
                 value={editingLead.phoneNumber || ''}
-                onChange={(e) => setEditingLead({ ...editingLead, phoneNumber: e.target.value })}
+                onChange={(value) => setEditingLead({ ...editingLead, phoneNumber: value })}
                 disabled={viewOnly}
-                placeholder="Enter phone number"
+                placeholder="e.g. 8287032815"
               />
             </div>
             <div>
