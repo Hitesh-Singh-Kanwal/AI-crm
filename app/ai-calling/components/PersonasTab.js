@@ -1,12 +1,48 @@
 'use client'
 
-import { Check, Mic, Trash2, User } from 'lucide-react'
+import { useState } from 'react'
+import { Check, Copy, Mic, Pencil, Search, Trash2, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
+import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
+import api from '@/lib/api'
+
+const GENDER_COLORS = {
+  male: 'bg-blue-50 text-blue-700 border-blue-200',
+  female: 'bg-pink-50 text-pink-700 border-pink-200',
+}
+
+function getNextCopyName(baseName, personas = []) {
+  const root = String(baseName || 'Persona').trim() || 'Persona'
+  const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const copyPattern = new RegExp(`^${escaped} copy (\\d+)$`, 'i')
+
+  let maxCopy = 0
+  const existing = new Set(
+    personas.map((p) => String(p?.voice || '').trim().toLowerCase()).filter(Boolean)
+  )
+
+  if (!existing.has(root.toLowerCase())) {
+    return root
+  }
+
+  for (const persona of personas) {
+    const name = String(persona?.voice || '').trim()
+    const match = name.match(copyPattern)
+    if (match) {
+      const n = Number(match[1])
+      if (!Number.isNaN(n)) maxCopy = Math.max(maxCopy, n)
+    }
+  }
+
+  return `${root} copy ${maxCopy + 1}`
+}
 
 export default function PersonasTab({
   personas,
@@ -20,13 +56,101 @@ export default function PersonasTab({
   onPrevPage,
   onNextPage,
   onPageChange,
+  onRefresh,
+  searchQuery = '',
+  onSearchQueryChange,
 }) {
+  const toast = useToast()
   const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
+
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalMode, setModalMode] = useState(null) // 'duplicate' | 'edit'
+  const [targetPersona, setTargetPersona] = useState(null)
+  const [voice, setVoice] = useState('')
+  const [similarityBoost, setSimilarityBoost] = useState(0.5)
+  const [stability, setStability] = useState(0.5)
+  const [modalSaving, setModalSaving] = useState(false)
+
+  const openDuplicate = (persona) => {
+    setTargetPersona(persona)
+    setVoice(getNextCopyName(persona.voice || 'Persona', personas))
+    setSimilarityBoost(persona.similarityBoost ?? 0.5)
+    setStability(persona.stability ?? 0.5)
+    setModalMode('duplicate')
+    setModalOpen(true)
+  }
+
+  const openEdit = (persona) => {
+    setTargetPersona(persona)
+    setVoice(persona.voice || '')
+    setSimilarityBoost(persona.similarityBoost ?? 0.5)
+    setStability(persona.stability ?? 0.5)
+    setModalMode('edit')
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    if (modalSaving) return
+    setModalOpen(false)
+    setTargetPersona(null)
+    setModalMode(null)
+  }
+
+  const handleModalSave = async () => {
+    if (!targetPersona) return
+    setModalSaving(true)
+    try {
+      const payload = {
+        voice: voice.trim(),
+        similarityBoost: Number(similarityBoost),
+        stability: Number(stability),
+      }
+
+      let result
+      if (modalMode === 'duplicate') {
+        result = await api.post(`/api/ai-persona/${targetPersona._id}`, payload)
+      } else {
+        result = await api.put(`/api/ai-persona/${targetPersona._id}`, payload)
+      }
+
+      if (!result.success) {
+        toast.error({
+          title: modalMode === 'duplicate' ? 'Duplicate failed' : 'Update failed',
+          message: result.error || 'Could not save persona.',
+        })
+        return
+      }
+
+      toast.success({
+        title: modalMode === 'duplicate' ? 'Persona duplicated' : 'Persona updated',
+        message: modalMode === 'duplicate'
+          ? `"${result.data?.voice || voice}" created successfully.`
+          : 'Persona updated successfully.',
+      })
+      closeModal()
+      onRefresh?.()
+    } catch (e) {
+      console.error(e)
+      toast.error({ title: 'Error', message: 'Could not save persona.' })
+    } finally {
+      setModalSaving(false)
+    }
+  }
 
   return (
     <TabsContent value="personas" className="space-y-6 mt-6">
-      <div>
-        <p className="text-sm text-muted-foreground">Voice personas used for AI calls. Remove any you no longer need.</p>
+      <p className="text-sm text-muted-foreground">
+        Voice personas used for AI calls. Duplicate, edit, or remove as needed.
+      </p>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by voice, voiceId, model, provider, gender, description…"
+          value={searchQuery}
+          onChange={(e) => onSearchQueryChange?.(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       {personasLoading && (
@@ -63,72 +187,148 @@ export default function PersonasTab({
               <Card
                 key={persona._id}
                 className={cn(
-                  'group overflow-hidden border-border/80 hover:border-primary/30 hover:shadow-lg transition-all duration-200 rounded-xl animate-fade-in',
+                  'group flex flex-col overflow-hidden border-border/80 hover:border-primary/40 hover:shadow-lg transition-all duration-200 rounded-2xl animate-fade-in',
                   persona.visible && 'ring-2 ring-primary/20 border-primary/50'
                 )}
-                style={{ animationDelay: `${index * 0.05}s` }}
+                style={{ animationDelay: `${index * 0.04}s` }}
               >
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:bg-primary/15 transition-colors">
-                      <User className="h-6 w-6" />
+                <CardContent className="flex flex-col flex-1 p-5 gap-4">
+                  {/* Top row: avatar + name + badges */}
+                  <div className="flex items-start gap-3">
+                    <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0 group-hover:from-primary/30 transition-colors">
+                      <User className="h-5 w-5 text-primary" />
                     </div>
-                    {persona.visible && (
-                      <Badge variant="success" className="flex items-center gap-1 shrink-0">
-                        <Check className="h-3 w-3" />
-                        Active
-                      </Badge>
-                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-foreground text-sm leading-tight truncate">
+                          {persona.voice || 'Unnamed Persona'}
+                        </p>
+                        {persona.visible && (
+                          <Badge variant="success" className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5">
+                            <Check className="h-2.5 w-2.5" />
+                            Active
+                          </Badge>
+                        )}
+                        {persona.isDefault && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                            Default
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {persona.gender && (
+                          <span
+                            className={cn(
+                              'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border',
+                              GENDER_COLORS[persona.gender?.toLowerCase()] || 'bg-muted text-muted-foreground border-border'
+                            )}
+                          >
+                            {persona.gender}
+                          </span>
+                        )}
+                        {persona.provider && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-secondary-foreground border border-border/60">
+                            {persona.provider}
+                          </span>
+                        )}
+                        {persona.voiceId && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono bg-muted text-muted-foreground border border-border/60">
+                            {persona.voiceId}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <CardTitle className="mt-4 text-lg leading-tight">{persona.voice || 'Unnamed Persona'}</CardTitle>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    <Badge variant="outline" className="text-xs font-normal">
-                      {persona.gender || 'Voice'}
-                    </Badge>
-                    {persona.provider && (
-                      <Badge variant="secondary" className="text-xs font-normal">
-                        {persona.provider}
-                      </Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Description</p>
-                    <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
-                      {Array.isArray(persona.description)
-                        ? persona.description.join(' · ')
-                        : persona.description || 'No description'}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between text-sm py-1 border-t border-border/50">
-                    <span className="text-muted-foreground">Model</span>
-                    <span className="font-medium font-mono text-xs">{persona.model || '—'}</span>
-                  </div>
-                  <div className="flex justify-end pt-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDeletePersona(persona._id)
-                      }}
-                      disabled={deletingId === persona._id}
-                    >
-                      {deletingId === persona._id ? (
-                        <span className="inline-flex items-center gap-2">
-                          <span className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                          Removing…
+
+                  {/* Description tags */}
+                  {Array.isArray(persona.description) && persona.description.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {persona.description.map((tag, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] bg-muted/70 text-muted-foreground border border-border/40"
+                        >
+                          {tag}
                         </span>
-                      ) : (
-                        <>
-                          <Trash2 className="h-4 w-4 mr-1.5" />
-                          Remove
-                        </>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Stats — only for 11labs personas */}
+                  {persona.provider === '11labs' && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: 'Similarity', value: persona.similarityBoost ?? '—' },
+                        { label: 'Stability', value: persona.stability ?? '—' },
+                      ].map(({ label, value }) => (
+                        <div
+                          key={label}
+                          className="rounded-lg bg-muted/50 border border-border/40 px-3 py-2 text-center"
+                        >
+                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+                          <p className="text-sm font-semibold tabular-nums mt-0.5">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Model */}
+                  {persona.model && (
+                    <div className="flex items-center justify-between text-xs border-t border-border/40 pt-2">
+                      <span className="text-muted-foreground">Model</span>
+                      <span className="font-mono text-foreground">{persona.model}</span>
+                    </div>
+                  )}
+
+                  {/* Actions
+                      Rules:
+                      - Duplicate: only for provider === "11labs"
+                      - Edit:      only for provider === "11labs" AND isDefault === false
+                      - Delete:    only for isDefault === false
+                  */}
+                  {(persona.provider === '11labs' || !persona.isDefault) && (
+                    <div className="flex items-center gap-2 pt-1 border-t border-border/50 mt-auto">
+                      {persona.provider === '11labs' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 text-xs h-8"
+                          onClick={() => openDuplicate(persona)}
+                        >
+                          <Copy className="h-3.5 w-3.5 mr-1.5" />
+                          Duplicate
+                        </Button>
                       )}
-                    </Button>
-                  </div>
+                      {persona.provider === '11labs' && !persona.isDefault && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 text-xs h-8"
+                          onClick={() => openEdit(persona)}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                          Edit
+                        </Button>
+                      )}
+                      {!persona.isDefault && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDeletePersona(persona._id)
+                          }}
+                          disabled={deletingId === persona._id}
+                          title="Delete"
+                        >
+                          {deletingId === persona._id
+                            ? <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                            : <Trash2 className="h-3.5 w-3.5" />}
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -154,32 +354,137 @@ export default function PersonasTab({
                 </button>
               ))}
             </div>
-
             <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={onPrevPage}
-              disabled={currentPage === 1 || personasLoading}
-              className="inline-flex items-center h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            <span className="text-sm text-muted-foreground">
-              Page {currentPage} of {totalPages} ({totalCount} total)
-            </span>
-            <button
-              type="button"
-              onClick={onNextPage}
-              disabled={currentPage === totalPages || personasLoading}
-              className="inline-flex items-center h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
+              <button
+                type="button"
+                onClick={onPrevPage}
+                disabled={currentPage === 1 || personasLoading}
+                className="inline-flex items-center h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-muted-foreground">
+                Page {currentPage} of {totalPages} ({totalCount} total)
+              </span>
+              <button
+                type="button"
+                onClick={onNextPage}
+                disabled={currentPage === totalPages || personasLoading}
+                className="inline-flex items-center h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
             </div>
           </div>
         </>
       )}
+
+      {/* ── DUPLICATE / EDIT MODAL ── */}
+      <Dialog open={modalOpen} onClose={closeModal} maxWidth="md">
+        <DialogContent onClose={closeModal}>
+          <DialogHeader>
+            <DialogTitle>
+              {modalMode === 'duplicate' ? 'Duplicate persona' : 'Edit persona'}
+            </DialogTitle>
+          </DialogHeader>
+
+          {targetPersona && (
+            <div className="mt-1">
+              {/* Read-only persona info */}
+              <div className="rounded-lg bg-muted/50 border border-border/50 p-3 mb-5 flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <User className="h-4 w-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {modalMode === 'duplicate' ? `Copy of ${targetPersona.voice || 'persona'}` : targetPersona.voice}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {targetPersona.voiceId} · {targetPersona.provider} · {targetPersona.gender}
+                  </p>
+                </div>
+                {modalMode === 'duplicate' && (
+                  <Badge variant="outline" className="ml-auto shrink-0 text-xs">New copy</Badge>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">
+                    Voice name <span className="text-destructive">*</span>
+                  </label>
+                  <Input
+                    value={voice}
+                    onChange={(e) => setVoice(e.target.value)}
+                    placeholder="e.g. My Studio Voice"
+                    disabled={modalSaving}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Similarity boost</label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={similarityBoost}
+                      onChange={(e) => setSimilarityBoost(Number(e.target.value))}
+                      disabled={modalSaving}
+                      className="w-full accent-primary"
+                    />
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>0</span>
+                      <span className="font-medium text-foreground">{Number(similarityBoost).toFixed(2)}</span>
+                      <span>1</span>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Stability</label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={stability}
+                      onChange={(e) => setStability(Number(e.target.value))}
+                      disabled={modalSaving}
+                      className="w-full accent-primary"
+                    />
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>0</span>
+                      <span className="font-medium text-foreground">{Number(stability).toFixed(2)}</span>
+                      <span>1</span>
+                    </div>
+                  </div>
+                </div>
+
+                {modalMode === 'duplicate' && (
+                  <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 border border-border/40">
+                    All other settings (voice model, provider, gender, description) will be copied from the original.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
+                <Button variant="outline" onClick={closeModal} disabled={modalSaving}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="gradient"
+                  onClick={handleModalSave}
+                  disabled={modalSaving || !voice.trim()}
+                >
+                  {modalSaving
+                    ? modalMode === 'duplicate' ? 'Duplicating…' : 'Saving…'
+                    : modalMode === 'duplicate' ? 'Duplicate persona' : 'Save changes'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </TabsContent>
   )
 }
-

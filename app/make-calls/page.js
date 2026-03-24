@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, PhoneCall, Mic, ListChecks, CheckCircle2, User, FileText } from 'lucide-react'
+import { Search, PhoneCall, ListChecks, CheckCircle2, User, FileText, Bot } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ import { toast } from '@/components/ui/toast'
 
 const WIZARD_LEADS_PAGE_SIZE = 10
 const WIZARD_PERSONAS_PAGE_SIZE = 8
+const WIZARD_ASSISTANTS_PAGE_SIZE = 8
 
 const DEFAULT_ASSISTANT_OPTIONS = {
   firstMessageMode: 'assistant-speaks-first-with-model-generated-message',
@@ -20,6 +21,12 @@ const DEFAULT_ASSISTANT_OPTIONS = {
   voiceMessage: 'Hey, I tried calling you!',
   backgroundSound: 'office', // 'office' | null
   endCallMessage: 'Goodbye.',
+}
+
+function getAssistantPrimaryFileId(assistant) {
+  if (Array.isArray(assistant?.fileID)) return String(assistant.fileID[0] || '')
+  if (Array.isArray(assistant?.fileIDies)) return String(assistant.fileIDies[0] || '')
+  return String(assistant?.fileID || assistant?.fileIDies || '')
 }
 
 export default function MakeCallsPage() {
@@ -42,6 +49,13 @@ export default function MakeCallsPage() {
   const [personasLoading, setPersonasLoading] = useState(false)
   const [personasError, setPersonasError] = useState(null)
   const [selectedPersonaId, setSelectedPersonaId] = useState(null)
+  const [setupMode, setSetupMode] = useState('manual') // manual | assistant
+  const [assistants, setAssistants] = useState([])
+  const [assistantsTotal, setAssistantsTotal] = useState(0)
+  const [assistantsPage, setAssistantsPage] = useState(1)
+  const [assistantsLoading, setAssistantsLoading] = useState(false)
+  const [assistantsError, setAssistantsError] = useState(null)
+  const [selectedAssistantId, setSelectedAssistantId] = useState(null)
   const [scripts, setScripts] = useState([])
   const [scriptsLoading, setScriptsLoading] = useState(false)
   const [scriptsError, setScriptsError] = useState(null)
@@ -63,6 +77,10 @@ export default function MakeCallsPage() {
   const personasTotalPages = Math.max(
     1,
     Math.ceil((personasTotal || 0) / WIZARD_PERSONAS_PAGE_SIZE)
+  )
+  const assistantsTotalPages = Math.max(
+    1,
+    Math.ceil((assistantsTotal || 0) / WIZARD_ASSISTANTS_PAGE_SIZE)
   )
 
   const loadWizardLeads = useCallback(
@@ -140,6 +158,40 @@ export default function MakeCallsPage() {
     }
   }, [])
 
+  const loadAssistants = useCallback(async (page = 1) => {
+    setAssistantsLoading(true)
+    setAssistantsError(null)
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(WIZARD_ASSISTANTS_PAGE_SIZE),
+      })
+      const result = await api.get(`/api/ai-assistant/paginated?${params.toString()}`)
+      if (!result.success) {
+        setAssistantsError(result.error || 'Failed to load assistants')
+        return
+      }
+
+      const payload = result.data
+      const list = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.data?.data)
+        ? payload.data.data
+        : Array.isArray(payload)
+        ? payload
+        : []
+      const total =
+        payload?.pagination?.total ?? payload?.data?.pagination?.total ?? result.pagination?.total ?? list.length
+      setAssistants(Array.isArray(list) ? list : [])
+      setAssistantsTotal(total)
+    } catch (e) {
+      console.error(e)
+      setAssistantsError('Unable to load assistants')
+    } finally {
+      setAssistantsLoading(false)
+    }
+  }, [])
+
   const loadKnowledgeFiles = useCallback(async () => {
     setKnowledgeFilesLoading(true)
     setKnowledgeFilesError(null)
@@ -166,6 +218,10 @@ export default function MakeCallsPage() {
   useEffect(() => {
     loadPersonas(personasPage)
   }, [loadPersonas, personasPage])
+
+  useEffect(() => {
+    loadAssistants(assistantsPage)
+  }, [assistantsPage, loadAssistants])
 
   useEffect(() => {
     loadScripts()
@@ -203,13 +259,14 @@ export default function MakeCallsPage() {
 
   const selectedLeads = selectedLeadsData
   const selectedPersona = personas.find((p) => p._id === selectedPersonaId) || null
+  const selectedAssistant = assistants.find((a) => a._id === selectedAssistantId) || null
   const selectedScript = scripts.find((s) => s._id === selectedScriptId) || null
   const selectedKnowledgeFile =
     knowledgeFiles.find((f) => f._id === selectedKnowledgeFileId || f.fileID === selectedKnowledgeFileId) || null
   const canContinue =
     (wizardStep === 1 && selectedLeads.length > 0) ||
-    (wizardStep === 2 && !!selectedPersona) ||
-    (wizardStep === 3 && !!selectedScript) ||
+    (wizardStep === 2 && (setupMode === 'assistant' ? !!selectedAssistant : !!selectedPersona)) ||
+    (wizardStep === 3 && (setupMode === 'assistant' ? true : !!selectedScript)) ||
     wizardStep === 4
 
   const resetFlow = () => {
@@ -221,6 +278,9 @@ export default function MakeCallsPage() {
     setSelectedLeadsData([])
     setSelectedPersonaId(null)
     setPersonasPage(1)
+    setSetupMode('manual')
+    setAssistantsPage(1)
+    setSelectedAssistantId(null)
     setSelectedScriptId(null)
     setSelectedKnowledgeFileId('')
     setFirstMessageMode(DEFAULT_ASSISTANT_OPTIONS.firstMessageMode)
@@ -228,6 +288,19 @@ export default function MakeCallsPage() {
     setVoiceMessage(DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
     setBackgroundSound(DEFAULT_ASSISTANT_OPTIONS.backgroundSound)
     setEndCallMessage(DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
+  }
+
+  const applyAssistantDefaults = (assistant) => {
+    if (!assistant) return
+    setFirstMessageMode(
+      assistant.firstMessageMode || DEFAULT_ASSISTANT_OPTIONS.firstMessageMode
+    )
+    setFirstMessage(assistant.firstMessage || DEFAULT_ASSISTANT_OPTIONS.firstMessage)
+    setVoiceMessage(assistant.voiceMessage || DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
+    setBackgroundSound(
+      assistant.backgroundSound === 'office' ? 'office' : DEFAULT_ASSISTANT_OPTIONS.backgroundSound
+    )
+    setEndCallMessage(assistant.endCallMessage || DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
   }
 
   const handleLaunchCalls = async () => {
@@ -238,14 +311,21 @@ export default function MakeCallsPage() {
       setWizardStep(1)
       return
     }
-    if (!selectedPersona) {
+    if (setupMode === 'assistant' && !selectedAssistant) {
+      toast.error('Select an assistant', {
+        description: 'Choose a saved assistant in Step 2 before launching.',
+      })
+      setWizardStep(2)
+      return
+    }
+    if (setupMode !== 'assistant' && !selectedPersona) {
       toast.error('Select a persona', {
         description: 'Choose an AI persona in Step 2 before launching.',
       })
       setWizardStep(2)
       return
     }
-    if (!selectedScript) {
+    if (setupMode !== 'assistant' && !selectedScript) {
       toast.error('Select a script', {
         description: 'Choose a script in Step 3 before launching.',
       })
@@ -259,24 +339,46 @@ export default function MakeCallsPage() {
       phoneNumber: String(lead.phoneNumber ?? lead.phone ?? ''),
     }))
 
-    const assistantData = {
-      backgroundSound: backgroundSound === 'office' ? 'office' : null,
-      endCallMessage: String(endCallMessage || ''),
-      firstMessageMode: String(firstMessageMode || ''),
-      fileID: String(selectedKnowledgeFile?.fileID || selectedKnowledgeFileId || ''),
-      firstMessage:
-        firstMessageMode === 'assistant-speaks-first-with-model-generated-message'
-          ? ''
-          : String(firstMessage || ''),
-      persona: {
-        provider: selectedPersona.provider,
-        similarityBoost: Number(selectedPersona.similarityBoost ?? 0.45),
-        stability: Number(selectedPersona.stability ?? 0.2),
-        voiceId: selectedPersona.voiceId,
-      },
-      scriptData: { script: String(selectedScript.script || '') },
-      voiceMessage: String(voiceMessage || ''),
-    }
+    const assistantData =
+      setupMode === 'assistant' && selectedAssistant
+        ? {
+            backgroundSound: backgroundSound === 'office' ? 'office' : null,
+            endCallMessage: String(endCallMessage || ''),
+            firstMessageMode: String(firstMessageMode || ''),
+            fileID: String(
+              getAssistantPrimaryFileId(selectedAssistant)
+            ),
+            firstMessage:
+              firstMessageMode === 'assistant-speaks-first-with-model-generated-message'
+                ? ''
+                : String(firstMessage || ''),
+            persona: {
+              provider: selectedAssistant.persona?.provider,
+              similarityBoost: Number(selectedAssistant.persona?.similarityBoost ?? 0.45),
+              stability: Number(selectedAssistant.persona?.stability ?? 0.2),
+              voiceId: selectedAssistant.persona?.voiceId,
+            },
+            scriptData: { script: String(selectedAssistant.scriptData?.script || '') },
+            voiceMessage: String(voiceMessage || ''),
+          }
+        : {
+            backgroundSound: backgroundSound === 'office' ? 'office' : null,
+            endCallMessage: String(endCallMessage || ''),
+            firstMessageMode: String(firstMessageMode || ''),
+            fileID: String(selectedKnowledgeFile?.fileID || selectedKnowledgeFileId || ''),
+            firstMessage:
+              firstMessageMode === 'assistant-speaks-first-with-model-generated-message'
+                ? ''
+                : String(firstMessage || ''),
+            persona: {
+              provider: selectedPersona.provider,
+              similarityBoost: Number(selectedPersona.similarityBoost ?? 0.45),
+              stability: Number(selectedPersona.stability ?? 0.2),
+              voiceId: selectedPersona.voiceId,
+            },
+            scriptData: { script: String(selectedScript.script || '') },
+            voiceMessage: String(voiceMessage || ''),
+          }
 
     const payload = {
       leads: leadsPayload,
@@ -372,7 +474,7 @@ export default function MakeCallsPage() {
                 2
               </div>
               <span className="hidden sm:inline text-[11px] text-[#475569]">
-                Select persona
+                Setup
               </span>
             </div>
             <div className="flex-1 h-px bg-[#E2E8F0] mx-1" />
@@ -389,7 +491,7 @@ export default function MakeCallsPage() {
                 3
               </div>
               <span className="hidden sm:inline text-[11px] text-[#475569]">
-                Script
+                Script & settings
               </span>
             </div>
             <div className="flex-1 h-px bg-[#E2E8F0] mx-1" />
@@ -547,122 +649,259 @@ export default function MakeCallsPage() {
               </div>
             )}
 
-            {/* Step 2: select persona */}
+            {/* Step 2: setup mode */}
             {wizardStep === 2 && (
               <div className="space-y-3">
                 <div>
                   <p className="text-sm font-medium text-[#0F172A] flex items-center gap-2">
-                    <Mic className="h-4 w-4 text-[#6366F1]" />
-                    Select AI persona
+                    <Bot className="h-4 w-4 text-[#6366F1]" />
+                    Choose setup mode
                   </p>
                   <p className="text-xs text-[#64748B]">
-                    Using the same personas as the AI Calling page.
+                    Pick a saved assistant or continue with manual persona setup.
                   </p>
                 </div>
 
-                {personasLoading && (
-                  <div className="flex items-center justify-center py-8">
-                    <LoadingSpinner size="sm" text="Loading personas…" />
-                  </div>
-                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSetupMode('assistant')}
+                    className={`rounded-xl border p-3 text-left transition-all ${
+                      setupMode === 'assistant'
+                        ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
+                        : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-[#0F172A]">Use saved assistant</p>
+                    <p className="text-[11px] text-[#64748B] mt-1">
+                      Reuse persona, script, and knowledge base from AI Assist.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSetupMode('manual')}
+                    className={`rounded-xl border p-3 text-left transition-all ${
+                      setupMode === 'manual'
+                        ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
+                        : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-[#0F172A]">Manual setup</p>
+                    <p className="text-[11px] text-[#64748B] mt-1">
+                      Select persona and script manually for this run.
+                    </p>
+                  </button>
+                </div>
 
-                {personasError && !personasLoading && (
-                  <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
-                    {personasError}
-                  </div>
-                )}
-
-                {!personasLoading && !personasError && personas.length === 0 && (
-                  <div className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-3">
-                    No personas configured yet. Add personas from the AI Calling page first.
-                  </div>
-                )}
-
-                {!personasLoading && !personasError && personas.length > 0 && (
+                {setupMode === 'assistant' ? (
                   <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
-                      {personas.map((persona) => {
-                        const selected = selectedPersonaId === persona._id
-                        return (
-                          <button
-                            key={persona._id}
-                            type="button"
-                            onClick={() => setSelectedPersonaId(persona._id)}
-                            className={`w-full rounded-xl border p-3 text-left transition-all ${
-                              selected
-                                ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
-                                : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-start gap-3 min-w-0">
-                                <div className="h-9 w-9 rounded-xl bg-[#EEF2FF] flex items-center justify-center shrink-0">
-                                  <User className="h-4 w-4 text-[#4F46E5]" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-semibold text-[#0F172A] truncate">
-                                    {persona.voice || 'Unnamed Persona'}
-                                  </p>
-                                  <p className="text-[11px] text-[#94A3B8] truncate">
-                                    {[persona.provider, persona.model, persona.gender]
-                                      .filter(Boolean)
-                                      .join(' · ') || '—'}
-                                  </p>
-                                </div>
-                              </div>
-                              {selected && (
-                                <span className="text-[11px] font-medium text-emerald-600 shrink-0">
-                                  Selected
-                                </span>
-                              )}
-                            </div>
-                            {persona.description && (
-                              <p className="text-[11px] text-[#64748B] mt-2 line-clamp-2">
-                                {Array.isArray(persona.description)
-                                  ? persona.description.join(' · ')
-                                  : persona.description}
-                              </p>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-
-                    <div className="flex items-center justify-between rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
-                      <button
-                        type="button"
-                        onClick={() => setPersonasPage((p) => Math.max(1, p - 1))}
-                        disabled={personasPage === 1 || personasLoading}
-                        className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
-                      >
-                        Prev
-                      </button>
-                      <div className="flex items-center gap-1">
-                        {Array.from({ length: personasTotalPages }, (_, i) => i + 1).map((n) => (
-                          <button
-                            key={n}
-                            type="button"
-                            onClick={() => setPersonasPage(n)}
-                            disabled={personasLoading || n === personasPage}
-                            className={`h-7 min-w-7 px-2 rounded border text-[11px] ${
-                              n === personasPage
-                                ? 'border-[#9224EF] bg-[#F3E8FF] text-[#6D28D9]'
-                                : 'border-[#E2E8F0] bg-white text-[#475569]'
-                            } disabled:opacity-60`}
-                          >
-                            {n}
-                          </button>
-                        ))}
+                    {assistantsLoading && (
+                      <div className="flex items-center justify-center py-8">
+                        <LoadingSpinner size="sm" text="Loading assistants…" />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setPersonasPage((p) => Math.min(personasTotalPages, p + 1))}
-                        disabled={personasPage === personasTotalPages || personasLoading}
-                        className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
-                      >
-                        Next
-                      </button>
-                    </div>
+                    )}
+
+                    {assistantsError && !assistantsLoading && (
+                      <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
+                        {assistantsError}
+                      </div>
+                    )}
+
+                    {!assistantsLoading && !assistantsError && assistants.length === 0 && (
+                      <div className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-3">
+                        No assistants found. Create one in AI Calling → AI Assist first.
+                      </div>
+                    )}
+
+                    {!assistantsLoading && !assistantsError && assistants.length > 0 && (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
+                          {assistants.map((assistant) => {
+                            const selected = selectedAssistantId === assistant._id
+                            return (
+                              <button
+                                key={assistant._id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedAssistantId(assistant._id)
+                                  applyAssistantDefaults(assistant)
+                                }}
+                                className={`w-full rounded-xl border p-3 text-left transition-all ${
+                                  selected
+                                    ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
+                                    : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-[#0F172A] truncate">
+                                      {assistant.name || 'Unnamed assistant'}
+                                    </p>
+                                    <p className="text-[11px] text-[#94A3B8] truncate">
+                                      {[assistant.persona?.provider, assistant.persona?.voiceId]
+                                        .filter(Boolean)
+                                        .join(' · ') || '—'}
+                                    </p>
+                                  </div>
+                                  {selected && (
+                                    <span className="text-[11px] font-medium text-emerald-600 shrink-0">
+                                      Selected
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-[#64748B] mt-2 line-clamp-2 whitespace-pre-wrap">
+                                  {assistant.scriptData?.script || 'No script'}
+                                </p>
+                              </button>
+                            )
+                          })}
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
+                          <button
+                            type="button"
+                            onClick={() => setAssistantsPage((p) => Math.max(1, p - 1))}
+                            disabled={assistantsPage === 1 || assistantsLoading}
+                            className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
+                          >
+                            Prev
+                          </button>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: assistantsTotalPages }, (_, i) => i + 1).map((n) => (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => setAssistantsPage(n)}
+                                disabled={assistantsLoading || n === assistantsPage}
+                                className={`h-7 min-w-7 px-2 rounded border text-[11px] ${
+                                  n === assistantsPage
+                                    ? 'border-[#9224EF] bg-[#F3E8FF] text-[#6D28D9]'
+                                    : 'border-[#E2E8F0] bg-white text-[#475569]'
+                                } disabled:opacity-60`}
+                              >
+                                {n}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setAssistantsPage((p) => Math.min(assistantsTotalPages, p + 1))}
+                            disabled={assistantsPage === assistantsTotalPages || assistantsLoading}
+                            className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {personasLoading && (
+                      <div className="flex items-center justify-center py-8">
+                        <LoadingSpinner size="sm" text="Loading personas…" />
+                      </div>
+                    )}
+
+                    {personasError && !personasLoading && (
+                      <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
+                        {personasError}
+                      </div>
+                    )}
+
+                    {!personasLoading && !personasError && personas.length === 0 && (
+                      <div className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-3">
+                        No personas configured yet. Add personas from the AI Calling page first.
+                      </div>
+                    )}
+
+                    {!personasLoading && !personasError && personas.length > 0 && (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
+                          {personas.map((persona) => {
+                            const selected = selectedPersonaId === persona._id
+                            return (
+                              <button
+                                key={persona._id}
+                                type="button"
+                                onClick={() => setSelectedPersonaId(persona._id)}
+                                className={`w-full rounded-xl border p-3 text-left transition-all ${
+                                  selected
+                                    ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
+                                    : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex items-start gap-3 min-w-0">
+                                    <div className="h-9 w-9 rounded-xl bg-[#EEF2FF] flex items-center justify-center shrink-0">
+                                      <User className="h-4 w-4 text-[#4F46E5]" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold text-[#0F172A] truncate">
+                                        {persona.voice || 'Unnamed Persona'}
+                                      </p>
+                                      <p className="text-[11px] text-[#94A3B8] truncate">
+                                        {[persona.provider, persona.model, persona.gender]
+                                          .filter(Boolean)
+                                          .join(' · ') || '—'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {selected && (
+                                    <span className="text-[11px] font-medium text-emerald-600 shrink-0">
+                                      Selected
+                                    </span>
+                                  )}
+                                </div>
+                                {persona.description && (
+                                  <p className="text-[11px] text-[#64748B] mt-2 line-clamp-2">
+                                    {Array.isArray(persona.description)
+                                      ? persona.description.join(' · ')
+                                      : persona.description}
+                                  </p>
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
+                          <button
+                            type="button"
+                            onClick={() => setPersonasPage((p) => Math.max(1, p - 1))}
+                            disabled={personasPage === 1 || personasLoading}
+                            className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
+                          >
+                            Prev
+                          </button>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: personasTotalPages }, (_, i) => i + 1).map((n) => (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => setPersonasPage(n)}
+                                disabled={personasLoading || n === personasPage}
+                                className={`h-7 min-w-7 px-2 rounded border text-[11px] ${
+                                  n === personasPage
+                                    ? 'border-[#9224EF] bg-[#F3E8FF] text-[#6D28D9]'
+                                    : 'border-[#E2E8F0] bg-white text-[#475569]'
+                                } disabled:opacity-60`}
+                              >
+                                {n}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setPersonasPage((p) => Math.min(personasTotalPages, p + 1))}
+                            disabled={personasPage === personasTotalPages || personasLoading}
+                            className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
               </div>
@@ -677,29 +916,31 @@ export default function MakeCallsPage() {
                     Script and assistant settings
                   </p>
                   <p className="text-xs text-[#64748B]">
-                    Choose script, optional knowledge base file, and customize assistant messages.
+                    {setupMode === 'assistant'
+                      ? 'Using the selected assistant for persona/script/knowledge base. You can still customize messages below.'
+                      : 'Choose script, optional knowledge base file, and customize assistant messages.'}
                   </p>
                 </div>
 
-                {scriptsLoading && (
+                {setupMode !== 'assistant' && scriptsLoading && (
                   <div className="flex items-center justify-center py-8">
                     <LoadingSpinner size="sm" text="Loading scripts…" />
                   </div>
                 )}
 
-                {scriptsError && !scriptsLoading && (
+                {setupMode !== 'assistant' && scriptsError && !scriptsLoading && (
                   <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
                     {scriptsError}
                   </div>
                 )}
 
-                {!scriptsLoading && !scriptsError && scripts.length === 0 && (
+                {setupMode !== 'assistant' && !scriptsLoading && !scriptsError && scripts.length === 0 && (
                   <div className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-3">
                     No scripts configured yet. Add scripts from AI Calling &gt; Scripts first.
                   </div>
                 )}
 
-                {!scriptsLoading && !scriptsError && scripts.length > 0 && (
+                {setupMode !== 'assistant' && !scriptsLoading && !scriptsError && scripts.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
                     {scripts.map((script) => {
                       const selected = selectedScriptId === script._id
@@ -740,31 +981,52 @@ export default function MakeCallsPage() {
                   </div>
                 )}
 
+                {setupMode === 'assistant' && selectedAssistant && (
+                  <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-[11px] text-[#64748B] space-y-1.5">
+                    <p>
+                      <span className="font-medium text-[#475569]">Assistant:</span>{' '}
+                      {selectedAssistant.name || '—'}
+                    </p>
+                    <p>
+                      <span className="font-medium text-[#475569]">Persona voice:</span>{' '}
+                      {selectedAssistant.persona?.voiceId || '—'}
+                    </p>
+                    <p>
+                      <span className="font-medium text-[#475569]">Knowledge file:</span>{' '}
+                      {Array.isArray(selectedAssistant.fileID)
+                        ? selectedAssistant.fileID[0] || 'No file'
+                        : getAssistantPrimaryFileId(selectedAssistant) || 'No file'}
+                    </p>
+                  </div>
+                )}
+
                 <Card className="border-[#E2E8F0]">
                   <CardContent className="p-3 space-y-3">
-                    <div>
-                      <label className="text-xs font-medium text-[#475569] mb-1 block">
-                        Knowledge base file (optional)
-                      </label>
-                      <select
-                        value={selectedKnowledgeFileId}
-                        onChange={(e) => setSelectedKnowledgeFileId(e.target.value)}
-                        className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-2.5 text-xs"
-                      >
-                        <option value="">No file</option>
-                        {knowledgeFiles.map((file) => (
-                          <option key={file._id} value={file.fileID || file._id}>
-                            {file.name}
-                          </option>
-                        ))}
-                      </select>
-                      {knowledgeFilesLoading && (
-                        <p className="text-[11px] text-[#94A3B8] mt-1">Loading files…</p>
-                      )}
-                      {knowledgeFilesError && (
-                        <p className="text-[11px] text-red-600 mt-1">{knowledgeFilesError}</p>
-                      )}
-                    </div>
+                    {setupMode !== 'assistant' && (
+                      <div>
+                        <label className="text-xs font-medium text-[#475569] mb-1 block">
+                          Knowledge base file (optional)
+                        </label>
+                        <select
+                          value={selectedKnowledgeFileId}
+                          onChange={(e) => setSelectedKnowledgeFileId(e.target.value)}
+                          className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-2.5 text-xs"
+                        >
+                          <option value="">No file</option>
+                          {knowledgeFiles.map((file) => (
+                            <option key={file._id} value={file.fileID || file._id}>
+                              {file.name}
+                            </option>
+                          ))}
+                        </select>
+                        {knowledgeFilesLoading && (
+                          <p className="text-[11px] text-[#94A3B8] mt-1">Loading files…</p>
+                        )}
+                        {knowledgeFilesError && (
+                          <p className="text-[11px] text-red-600 mt-1">{knowledgeFilesError}</p>
+                        )}
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
@@ -848,7 +1110,7 @@ export default function MakeCallsPage() {
                     Review before launch
                   </p>
                   <p className="text-xs text-[#64748B]">
-                    Confirm the contacts, persona, and script that will be used for this AI calling run.
+                    Confirm the contacts and AI configuration that will be used for this run.
                   </p>
                 </div>
                 <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 space-y-2">
@@ -880,25 +1142,50 @@ export default function MakeCallsPage() {
                   )}
                 </div>
                 <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 space-y-2">
-                  <p className="font-medium text-[#0F172A] text-sm">Persona</p>
-                  {selectedPersona ? (
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-[#EEF2FF] flex items-center justify-center">
-                        <User className="h-4 w-4 text-[#4F46E5]" />
+                  <p className="font-medium text-[#0F172A] text-sm">
+                    {setupMode === 'assistant' ? 'Assistant' : 'Persona'}
+                  </p>
+                  {setupMode === 'assistant' ? (
+                    selectedAssistant ? (
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-[#EEF2FF] flex items-center justify-center">
+                          <Bot className="h-4 w-4 text-[#4F46E5]" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-[#0F172A]">
+                            {selectedAssistant.name || 'Unnamed Assistant'}
+                          </p>
+                          <p className="text-[11px] text-[#94A3B8]">
+                            {selectedAssistant.persona?.provider || '—'} ·{' '}
+                            {selectedAssistant.persona?.voiceId || '—'}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs font-medium text-[#0F172A]">
-                          {selectedPersona.voice || 'Unnamed Persona'}
-                        </p>
-                        <p className="text-[11px] text-[#94A3B8]">
-                          {selectedPersona.provider || '—'} · {selectedPersona.model || '—'}
-                        </p>
-                      </div>
-                    </div>
+                    ) : (
+                      <p className="text-xs text-[#64748B]">
+                        No assistant selected. Go back to Step 2 to choose one.
+                      </p>
+                    )
                   ) : (
-                    <p className="text-xs text-[#64748B]">
-                      No persona selected. Go back to Step 2 to choose a persona.
-                    </p>
+                    selectedPersona ? (
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-[#EEF2FF] flex items-center justify-center">
+                          <User className="h-4 w-4 text-[#4F46E5]" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-[#0F172A]">
+                            {selectedPersona.voice || 'Unnamed Persona'}
+                          </p>
+                          <p className="text-[11px] text-[#94A3B8]">
+                            {selectedPersona.provider || '—'} · {selectedPersona.model || '—'}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[#64748B]">
+                        No persona selected. Go back to Step 2 to choose a persona.
+                      </p>
+                    )
                   )}
                 </div>
                 <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 space-y-1.5">
@@ -909,16 +1196,26 @@ export default function MakeCallsPage() {
                     </div>
                     <div>
                       <p className="text-xs font-medium text-[#0F172A]">
-                        {selectedScript?.name || 'No script selected'}
+                        {setupMode === 'assistant'
+                          ? selectedAssistant?.name || 'No assistant selected'
+                          : selectedScript?.name || 'No script selected'}
                       </p>
                       <p className="text-[11px] text-[#94A3B8]">
-                        {[selectedScript?.categoryID?.name, selectedScript?.subCategory].filter(Boolean).join(' · ') || '—'}
+                        {setupMode === 'assistant'
+                          ? 'Using assistant script'
+                          : [selectedScript?.categoryID?.name, selectedScript?.subCategory]
+                              .filter(Boolean)
+                              .join(' · ') || '—'}
                       </p>
                     </div>
                   </div>
                   <p className="text-[11px] text-[#64748B]">
                     <span className="font-medium text-[#475569]">Knowledge file:</span>{' '}
-                    {selectedKnowledgeFile?.name || 'No file'}
+                    {setupMode === 'assistant'
+                      ? Array.isArray(selectedAssistant?.fileID)
+                        ? selectedAssistant?.fileID?.[0] || 'No file'
+                        : getAssistantPrimaryFileId(selectedAssistant) || 'No file'
+                      : selectedKnowledgeFile?.name || 'No file'}
                   </p>
                   <p className="text-[11px] text-[#64748B]">
                     <span className="font-medium text-[#475569]">First message mode:</span>{' '}

@@ -384,6 +384,7 @@ export default function Header({ title, subtitle, onMenuClick }) {
                 { value: 'scripts', label: 'Scripts' },
                 { value: 'personas', label: 'AI Personas' },
                 { value: 'knowledge', label: 'Knowledge Base' },
+                { value: 'assistants', label: 'AI Assist' },
               ].map(({ value, label }) => {
                 const isActive = aiCallingView === value
                 return (

@@ -10,6 +10,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ScriptsTab from './components/ScriptsTab'
 import PersonasTab from './components/PersonasTab'
 import KnowledgeBaseTab from './components/KnowledgeBaseTab'
+import AiAssistTab from './components/AiAssistTab'
 
 function AICallingPageInner() {
   const router = useRouter()
@@ -23,6 +24,8 @@ function AICallingPageInner() {
   const [personasPage, setPersonasPage] = useState(1)
   const [personasTotalPages, setPersonasTotalPages] = useState(1)
   const [personasTotal, setPersonasTotal] = useState(0)
+  const [personasSearchQuery, setPersonasSearchQuery] = useState('')
+  const [debouncedPersonasSearch, setDebouncedPersonasSearch] = useState('')
   const toast = useToast()
 
   const setActiveTab = (tab) => {
@@ -32,36 +35,47 @@ function AICallingPageInner() {
   }
 
   useEffect(() => {
-    const fetchPersonas = async () => {
-      try {
-        setPersonasLoading(true)
-        setPersonasError(null)
+    const t = setTimeout(() => setDebouncedPersonasSearch(personasSearchQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [personasSearchQuery])
 
-        const params = new URLSearchParams({
-          page: String(personasPage),
-          limit: '9',
-        })
+  useEffect(() => {
+    setPersonasPage(1)
+  }, [debouncedPersonasSearch])
 
-        const result = await api.get(`/api/ai-persona?${params.toString()}`)
-        const list = Array.isArray(result.data) ? result.data : result.data?.personas
+  const fetchPersonas = async () => {
+    try {
+      setPersonasLoading(true)
+      setPersonasError(null)
 
-        if (result.success && Array.isArray(list)) {
-          setPersonas(list)
-          const total = result.pagination?.total ?? list.length
-          setPersonasTotal(total)
-          setPersonasTotalPages(Math.max(1, Math.ceil((total || 0) / 9)))
-        } else {
-          setPersonasError(result.error || 'Failed to fetch AI personas')
-        }
-      } catch (error) {
-        setPersonasError(error.message || 'Something went wrong while fetching personas')
-      } finally {
-        setPersonasLoading(false)
+      const params = new URLSearchParams({
+        page: String(personasPage),
+        limit: '9',
+      })
+      if (debouncedPersonasSearch) params.set('search', debouncedPersonasSearch)
+
+      const result = await api.get(`/api/ai-persona?${params.toString()}`)
+      const list = Array.isArray(result.data) ? result.data : result.data?.personas
+
+      if (result.success && Array.isArray(list)) {
+        setPersonas(list)
+        const total = result.pagination?.total ?? list.length
+        setPersonasTotal(total)
+        setPersonasTotalPages(Math.max(1, Math.ceil((total || 0) / 9)))
+      } else {
+        setPersonasError(result.error || 'Failed to fetch AI personas')
       }
+    } catch (error) {
+      setPersonasError(error.message || 'Something went wrong while fetching personas')
+    } finally {
+      setPersonasLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchPersonas()
-  }, [personasPage])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personasPage, debouncedPersonasSearch])
 
   const handleDeletePersona = async (id) => {
     try {
@@ -103,8 +117,12 @@ function AICallingPageInner() {
           onPrevPage={() => setPersonasPage((p) => Math.max(1, p - 1))}
           onNextPage={() => setPersonasPage((p) => Math.min(personasTotalPages, p + 1))}
           onPageChange={(page) => setPersonasPage(page)}
+          onRefresh={fetchPersonas}
+          searchQuery={personasSearchQuery}
+          onSearchQueryChange={setPersonasSearchQuery}
         />
         <KnowledgeBaseTab />
+        <AiAssistTab />
       </Tabs>
     </MainLayout>
   )
