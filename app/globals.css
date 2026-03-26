@@ -31,6 +31,7 @@
     --studio-primary-light: #F4E9FD;
     --studio-gradient: #CE32E0;
     --studio-gradient-css: linear-gradient(90deg, #9224EF 0%, #CE32E0 100%);
+    --sidebar-gradient-css: linear-gradient(180deg, #F72585 0%, #4CC9F0 100%);
   }
 
   .dark {
@@ -142,12 +143,14 @@
     --studio-primary-light: #F4E9FD;
     --studio-gradient: #CE32E0;
     --studio-gradient-css: linear-gradient(90deg, #9224EF 0%, #CE32E0 100%);
+    --sidebar-gradient-css: linear-gradient(180deg, #F72585 0%, #4CC9F0 100%);
   }
 
   /* Background utilities */
   .bg-dancestudio { background-color: var(--studio-primary) !important; }
   .bg-dancestudio-light { background-color: var(--studio-primary-light) !important; }
   .bg-dancestudio-gradient { background: var(--studio-gradient-css) !important; }
+  .bg-sidebar-gradient { background: var(--sidebar-gradient-css) !important; }
 
   /* Text / border utilities */
   .text-dancestudio { color: var(--studio-primary) !important; }
