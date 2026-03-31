@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Copy, Mic, Pencil, Search, Trash2, User } from 'lucide-react'
+import { Check, Copy, Heart, Mic, Pencil, Search, Trash2, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
+import Switch from '@/components/ui/switch'
 import api from '@/lib/api'
 
 const GENDER_COLORS = {
@@ -62,6 +63,53 @@ export default function PersonasTab({
 }) {
   const toast = useToast()
   const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
+
+  const [togglingIds, setTogglingIds] = useState(new Set())
+  const [heartAnimIds, setHeartAnimIds] = useState(new Set())
+  // Local overrides for optimistic updates (keyed by persona._id)
+  const [overrides, setOverrides] = useState({})
+
+  const toggleFavorite = async (persona) => {
+    if (togglingIds.has(persona._id)) return
+    const current = { ...persona, ...overrides[persona._id] }
+    const next = !current.isFavorite
+    setTogglingIds((prev) => new Set(prev).add(persona._id))
+    setHeartAnimIds((prev) => new Set(prev).add(persona._id))
+    setTimeout(() => setHeartAnimIds((prev) => { const s = new Set(prev); s.delete(persona._id); return s }), 400)
+    setOverrides((prev) => ({ ...prev, [persona._id]: { ...prev[persona._id], isFavorite: next } }))
+    try {
+      const result = await api.put(`/api/ai-persona/${persona._id}`, { isFavorite: next })
+      if (!result.success) {
+        setOverrides((prev) => ({ ...prev, [persona._id]: { ...prev[persona._id], isFavorite: current.isFavorite } }))
+        toast.error({ title: 'Error', message: 'Could not update favorite.' })
+      }
+    } catch (e) {
+      setOverrides((prev) => ({ ...prev, [persona._id]: { ...prev[persona._id], isFavorite: current.isFavorite } }))
+      toast.error({ title: 'Error', message: 'Could not update favorite.' })
+    } finally {
+      setTogglingIds((prev) => { const s = new Set(prev); s.delete(persona._id); return s })
+    }
+  }
+
+  const toggleStatus = async (persona) => {
+    if (togglingIds.has(persona._id) || persona.isDefault) return
+    const current = { ...persona, ...overrides[persona._id] }
+    const next = current.status === 'active' ? 'inactive' : 'active'
+    setTogglingIds((prev) => new Set(prev).add(persona._id))
+    setOverrides((prev) => ({ ...prev, [persona._id]: { ...prev[persona._id], status: next } }))
+    try {
+      const result = await api.put(`/api/ai-persona/${persona._id}`, { status: next })
+      if (!result.success) {
+        setOverrides((prev) => ({ ...prev, [persona._id]: { ...prev[persona._id], status: current.status } }))
+        toast.error({ title: 'Error', message: 'Could not update status.' })
+      }
+    } catch (e) {
+      setOverrides((prev) => ({ ...prev, [persona._id]: { ...prev[persona._id], status: current.status } }))
+      toast.error({ title: 'Error', message: 'Could not update status.' })
+    } finally {
+      setTogglingIds((prev) => { const s = new Set(prev); s.delete(persona._id); return s })
+    }
+  }
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalMode, setModalMode] = useState(null) // 'duplicate' | 'edit'
@@ -183,12 +231,15 @@ export default function PersonasTab({
       {!personasLoading && !personasError && personas.length > 0 && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {personas.map((persona, index) => (
+            {personas.map((persona, index) => {
+              const p = { ...persona, ...overrides[persona._id] }
+              return (
               <Card
-                key={persona._id}
+                key={p._id}
                 className={cn(
                   'group flex flex-col overflow-hidden border-border/80 hover:border-primary/40 hover:shadow-lg transition-all duration-200 rounded-2xl animate-fade-in',
-                  persona.visible && 'ring-2 ring-primary/20 border-primary/50'
+                  p.visible && 'ring-2 ring-primary/20 border-primary/50',
+                  p.status === 'inactive' && 'opacity-60'
                 )}
                 style={{ animationDelay: `${index * 0.04}s` }}
               >
@@ -201,39 +252,71 @@ export default function PersonasTab({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-foreground text-sm leading-tight truncate">
-                          {persona.voice || 'Unnamed Persona'}
+                          {p.voice || 'Unnamed Persona'}
                         </p>
-                        {persona.visible && (
+                        {p.visible && (
                           <Badge variant="success" className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5">
                             <Check className="h-2.5 w-2.5" />
                             Active
                           </Badge>
                         )}
-                        {persona.isDefault && (
+                        {p.isDefault && (
                           <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
                             Default
                           </Badge>
                         )}
                       </div>
+                      {/* Heart + Status toggles */}
+                      <div className="flex items-center gap-1 mt-1.5">
+                        {!p.isDefault && (
+                          <Switch
+                            checked={p.status === 'active'}
+                            onChange={() => toggleStatus(p)}
+                            disabled={togglingIds.has(p._id)}
+                            title={p.status === 'active' ? 'Set inactive' : 'Set active'}
+                            className="disabled:opacity-40 scale-75"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleFavorite(p)}
+                          disabled={togglingIds.has(p._id)}
+                          title={p.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                          className={cn(
+                            'h-6 w-6 flex items-center justify-center rounded-full transition-all duration-200 disabled:opacity-40',
+                            p.isFavorite
+                              ? 'text-red-500 hover:bg-red-50'
+                              : 'text-muted-foreground hover:bg-muted hover:text-red-400'
+                          )}
+                        >
+                          <Heart
+                            className={cn(
+                              'h-3.5 w-3.5 transition-all duration-200',
+                              p.isFavorite && 'fill-current',
+                              heartAnimIds.has(p._id) && 'scale-125'
+                            )}
+                          />
+                        </button>
+                      </div>
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        {persona.gender && (
+                        {p.gender && (
                           <span
                             className={cn(
                               'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border',
-                              GENDER_COLORS[persona.gender?.toLowerCase()] || 'bg-muted text-muted-foreground border-border'
+                              GENDER_COLORS[p.gender?.toLowerCase()] || 'bg-muted text-muted-foreground border-border'
                             )}
                           >
-                            {persona.gender}
+                            {p.gender}
                           </span>
                         )}
-                        {persona.provider && (
+                        {p.provider && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-secondary-foreground border border-border/60">
-                            {persona.provider}
+                            {p.provider}
                           </span>
                         )}
-                        {persona.voiceId && (
+                        {p.voiceId && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono bg-muted text-muted-foreground border border-border/60">
-                            {persona.voiceId}
+                            {p.voiceId}
                           </span>
                         )}
                       </div>
@@ -241,9 +324,9 @@ export default function PersonasTab({
                   </div>
 
                   {/* Description tags */}
-                  {Array.isArray(persona.description) && persona.description.length > 0 && (
+                  {Array.isArray(p.description) && p.description.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
-                      {persona.description.map((tag, i) => (
+                      {p.description.map((tag, i) => (
                         <span
                           key={i}
                           className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] bg-muted/70 text-muted-foreground border border-border/40"
@@ -255,11 +338,11 @@ export default function PersonasTab({
                   )}
 
                   {/* Stats — only for 11labs personas */}
-                  {persona.provider === '11labs' && (
+                  {p.provider === '11labs' && (
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: 'Similarity', value: persona.similarityBoost ?? '—' },
-                        { label: 'Stability', value: persona.stability ?? '—' },
+                        { label: 'Similarity', value: p.similarityBoost ?? '—' },
+                        { label: 'Stability', value: p.stability ?? '—' },
                       ].map(({ label, value }) => (
                         <div
                           key={label}
@@ -273,10 +356,10 @@ export default function PersonasTab({
                   )}
 
                   {/* Model */}
-                  {persona.model && (
+                  {p.model && (
                     <div className="flex items-center justify-between text-xs border-t border-border/40 pt-2">
                       <span className="text-muted-foreground">Model</span>
-                      <span className="font-mono text-foreground">{persona.model}</span>
+                      <span className="font-mono text-foreground">{p.model}</span>
                     </div>
                   )}
 
@@ -286,43 +369,45 @@ export default function PersonasTab({
                       - Edit:      only for provider === "11labs" AND isDefault === false
                       - Delete:    only for isDefault === false
                   */}
-                  {(persona.provider === '11labs' || !persona.isDefault) && (
+                  {(p.provider === '11labs' || !p.isDefault) && (
                     <div className="flex items-center gap-2 pt-1 border-t border-border/50 mt-auto">
-                      {persona.provider === '11labs' && (
+                      {p.provider === '11labs' && (
                         <Button
                           variant="outline"
                           size="sm"
                           className="flex-1 text-xs h-8"
-                          onClick={() => openDuplicate(persona)}
+                          onClick={() => openDuplicate(p)}
+                          disabled={p.status === 'inactive'}
                         >
                           <Copy className="h-3.5 w-3.5 mr-1.5" />
                           Duplicate
                         </Button>
                       )}
-                      {persona.provider === '11labs' && !persona.isDefault && (
+                      {p.provider === '11labs' && !p.isDefault && (
                         <Button
                           variant="outline"
                           size="sm"
                           className="flex-1 text-xs h-8"
-                          onClick={() => openEdit(persona)}
+                          onClick={() => openEdit(p)}
+                          disabled={p.status === 'inactive'}
                         >
                           <Pencil className="h-3.5 w-3.5 mr-1.5" />
                           Edit
                         </Button>
                       )}
-                      {!persona.isDefault && (
+                      {!p.isDefault && (
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                           onClick={(e) => {
                             e.stopPropagation()
-                            onDeletePersona(persona._id)
+                            onDeletePersona(p._id)
                           }}
-                          disabled={deletingId === persona._id}
+                          disabled={deletingId === p._id}
                           title="Delete"
                         >
-                          {deletingId === persona._id
+                          {deletingId === p._id
                             ? <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
                             : <Trash2 className="h-3.5 w-3.5" />}
                         </Button>
@@ -331,7 +416,8 @@ export default function PersonasTab({
                   )}
                 </CardContent>
               </Card>
-            ))}
+            )
+            })}
           </div>
 
           {/* Pagination */}

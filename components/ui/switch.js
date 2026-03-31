@@ -10,7 +10,7 @@ const Switch = forwardRef(function Switch({ checked, onChange, className = '', .
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`${className} inline-flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${checked ? 'bg-brand' : 'bg-slate-200'}`}
+      className={`${className} inline-flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${checked ? 'bg-emerald-500' : 'bg-red-400'}`}
       {...props}
     >
       <span

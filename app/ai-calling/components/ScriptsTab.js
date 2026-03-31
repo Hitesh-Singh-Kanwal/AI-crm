@@ -1,6 +1,6 @@
 'use client'
 
-import { Phone, Plus, Copy, Trash2, Tags, Pencil, Search, Eye } from 'lucide-react'
+import { Phone, Plus, Copy, Trash2, Tags, Pencil, Search, Eye, Heart } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,6 +8,7 @@ import { TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import Switch from '@/components/ui/switch'
 import CategoriesDialog from './CategoriesDialog'
 import ScriptEditorDialog from './ScriptEditorDialog'
 import ScriptPreviewDialog from './ScriptPreviewDialog'
@@ -35,6 +36,8 @@ export default function ScriptsTab() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
+  const [togglingIds, setTogglingIds] = useState(new Set())
+  const [heartAnimIds, setHeartAnimIds] = useState(new Set())
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
@@ -101,6 +104,38 @@ export default function ScriptsTab() {
       toast.error({ title: 'Error', message: 'Could not delete script.' })
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  async function toggleFavorite(script) {
+    if (togglingIds.has(script._id)) return
+    setTogglingIds((prev) => new Set(prev).add(script._id))
+    setHeartAnimIds((prev) => new Set(prev).add(script._id))
+    setTimeout(() => setHeartAnimIds((prev) => { const s = new Set(prev); s.delete(script._id); return s }), 400)
+    const next = !script.isFavorite
+    setScripts((prev) => prev.map((s) => s._id === script._id ? { ...s, isFavorite: next } : s))
+    try {
+      const result = await api.patch(`/api/ai-script/${script._id}`, { isFavorite: next })
+      if (!result.success) setScripts((prev) => prev.map((s) => s._id === script._id ? { ...s, isFavorite: !next } : s))
+    } catch (e) {
+      setScripts((prev) => prev.map((s) => s._id === script._id ? { ...s, isFavorite: !next } : s))
+    } finally {
+      setTogglingIds((prev) => { const s = new Set(prev); s.delete(script._id); return s })
+    }
+  }
+
+  async function toggleStatus(script) {
+    if (togglingIds.has(script._id) || script.isDefault) return
+    setTogglingIds((prev) => new Set(prev).add(script._id))
+    const next = script.status === 'active' ? 'inactive' : 'active'
+    setScripts((prev) => prev.map((s) => s._id === script._id ? { ...s, status: next } : s))
+    try {
+      const result = await api.patch(`/api/ai-script/${script._id}`, { status: next })
+      if (!result.success) setScripts((prev) => prev.map((s) => s._id === script._id ? { ...s, status: script.status } : s))
+    } catch (e) {
+      setScripts((prev) => prev.map((s) => s._id === script._id ? { ...s, status: script.status } : s))
+    } finally {
+      setTogglingIds((prev) => { const s = new Set(prev); s.delete(script._id); return s })
     }
   }
 
@@ -184,7 +219,8 @@ export default function ScriptsTab() {
             key={script._id}
             className={cn(
               'group overflow-hidden border transition-all duration-200 animate-fade-in rounded-2xl',
-              'border-border/80 hover:border-primary/40 hover:shadow-md bg-card'
+              'border-border/80 hover:border-primary/40 hover:shadow-md bg-card',
+              script.status === 'inactive' && 'opacity-60'
             )}
             style={{ animationDelay: `${index * 0.05}s` }}
           >
@@ -213,6 +249,37 @@ export default function ScriptsTab() {
                     </div>
                   </div>
                 </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {!script.isDefault && (
+                    <Switch
+                      checked={script.status === 'active'}
+                      onChange={() => toggleStatus(script)}
+                      disabled={togglingIds.has(script._id)}
+                      title={script.status === 'active' ? 'Set inactive' : 'Set active'}
+                      className="disabled:opacity-40 scale-75"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleFavorite(script) }}
+                    disabled={togglingIds.has(script._id)}
+                    title={script.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                    className={cn(
+                      'h-7 w-7 flex items-center justify-center rounded-full transition-all duration-200 disabled:opacity-40',
+                      script.isFavorite
+                        ? 'text-red-500 hover:bg-red-50'
+                        : 'text-muted-foreground hover:bg-muted hover:text-red-400'
+                    )}
+                  >
+                    <Heart
+                      className={cn(
+                        'h-4 w-4 transition-all duration-200',
+                        script.isFavorite && 'fill-current',
+                        heartAnimIds.has(script._id) && 'scale-125'
+                      )}
+                    />
+                  </button>
+                </div>
               </div>
             </CardHeader>
 
@@ -234,6 +301,7 @@ export default function ScriptsTab() {
                     e.stopPropagation()
                     setPreviewScriptId(script._id)
                   }}
+                  disabled={script.status === 'inactive'}
                   title="Preview"
                 >
                   <Eye className="h-3.5 w-3.5 mr-1.5" />
@@ -249,6 +317,7 @@ export default function ScriptsTab() {
                       setEditingScript(script)
                       setEditorOpen(true)
                     }}
+                    disabled={script.status === 'inactive'}
                     title="Edit"
                   >
                     <Pencil className="h-3.5 w-3.5" />
