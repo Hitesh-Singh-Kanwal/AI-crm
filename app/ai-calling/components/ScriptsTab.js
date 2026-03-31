@@ -124,18 +124,50 @@ export default function ScriptsTab() {
     }
   }
 
-  async function toggleStatus(script) {
-    if (togglingIds.has(script._id) || script.isDefault) return
-    setTogglingIds((prev) => new Set(prev).add(script._id))
-    const next = script.status === 'active' ? 'inactive' : 'active'
-    setScripts((prev) => prev.map((s) => s._id === script._id ? { ...s, status: next } : s))
+  async function toggleStatus(scriptId, nextChecked) {
+    if (!scriptId) return
+    if (togglingIds.has(scriptId)) return
+
+    // Determine the next status from the switch's checked value.
+    const next = nextChecked ? 'active' : 'inactive'
+
+    let prevStatus
+    let isDefault = false
+
+    setTogglingIds((prev) => new Set(prev).add(scriptId))
+    setScripts((prev) =>
+      prev.map((s) => {
+        if (s._id !== scriptId) return s
+        prevStatus = s.status
+        isDefault = !!s.isDefault
+        return { ...s, status: next }
+      })
+    )
+
+    // Default scripts shouldn't be toggled; revert immediately.
+    if (isDefault) {
+      setScripts((prev) => prev.map((s) => (s._id === scriptId ? { ...s, status: prevStatus } : s)))
+      setTogglingIds((prev) => {
+        const s = new Set(prev)
+        s.delete(scriptId)
+        return s
+      })
+      return
+    }
+
     try {
-      const result = await api.patch(`/api/ai-script/${script._id}`, { status: next })
-      if (!result.success) setScripts((prev) => prev.map((s) => s._id === script._id ? { ...s, status: script.status } : s))
+      const result = await api.patch(`/api/ai-script/${scriptId}`, { status: next })
+      if (!result.success) {
+        setScripts((prev) => prev.map((s) => (s._id === scriptId ? { ...s, status: prevStatus } : s)))
+      }
     } catch (e) {
-      setScripts((prev) => prev.map((s) => s._id === script._id ? { ...s, status: script.status } : s))
+      setScripts((prev) => prev.map((s) => (s._id === scriptId ? { ...s, status: prevStatus } : s)))
     } finally {
-      setTogglingIds((prev) => { const s = new Set(prev); s.delete(script._id); return s })
+      setTogglingIds((prev) => {
+        const s = new Set(prev)
+        s.delete(scriptId)
+        return s
+      })
     }
   }
 
@@ -253,7 +285,7 @@ export default function ScriptsTab() {
                   {!script.isDefault && (
                     <Switch
                       checked={script.status === 'active'}
-                      onChange={() => toggleStatus(script)}
+                      onChange={(checked) => toggleStatus(script._id, checked)}
                       disabled={togglingIds.has(script._id)}
                       title={script.status === 'active' ? 'Set inactive' : 'Set active'}
                       className="disabled:opacity-40 scale-75"
