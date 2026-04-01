@@ -50,7 +50,7 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
     if (!templateId) return
     setSaving(true)
     try {
-      const result = await api.put(`/api/emailBuilder/${templateId}`, { body: String(body || '') })
+      const result = await api.patch(`/api/emailBuilder/${templateId}`, { body: String(body || '') })
       if (!result.success) {
         toast.error({ title: 'Update failed', message: result.error || 'Could not update email.' })
         return

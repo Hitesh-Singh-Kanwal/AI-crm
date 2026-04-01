@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Mail, Plus, Search, Trash2, Pencil, Eye, Heart } from 'lucide-react'
+import { Mail, Plus, Search, Tags, Trash2, Pencil, Eye, Heart } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
 import EmailTemplateEditorDialog from './EmailTemplateEditorDialog'
 import EmailTemplatePreviewDialog from './EmailTemplatePreviewDialog'
+import EmailCategoriesDialog from './EmailCategoriesDialog'
 
 const PAGE_SIZE = 9
 
@@ -21,6 +22,7 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
   const toast = useToast()
   const [editingId, setEditingId] = useState(null)
   const [previewId, setPreviewId] = useState(null)
+  const [categoriesOpen, setCategoriesOpen] = useState(false)
 
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(false)
@@ -168,12 +170,26 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
     <TabsContent value="templates" className="space-y-6 mt-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Manage email templates.</p>
-        <Button variant="gradient" className="w-full sm:w-auto" onClick={onCreateNew}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create template
-        </Button>
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2 shrink-0">
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => setCategoriesOpen(true)}>
+            <Tags className="h-4 w-4 mr-2" />
+            Categories
+          </Button>
+          <Button variant="gradient" className="w-full sm:w-auto" onClick={onCreateNew}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create template
+          </Button>
+        </div>
       </div>
 
+      <EmailCategoriesDialog
+        open={categoriesOpen}
+        onClose={() => setCategoriesOpen(false)}
+        onChanged={() => {
+          fetchTemplates()
+          onDataChanged?.()
+        }}
+      />
       <EmailTemplateEditorDialog open={!!editingId} onClose={() => setEditingId(null)} templateId={editingId} onSaved={fetchTemplates} />
       <EmailTemplatePreviewDialog open={!!previewId} onClose={() => setPreviewId(null)} templateId={previewId} />
 

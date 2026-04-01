@@ -1,3 +1,4 @@
+import { useState, useMemo, useEffect } from 'react'
 import { Mail, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -13,6 +14,11 @@ export default function ConversationView({
   onSendMessage,
   onBackClick,
 }) {
+  const [activeTab, setActiveTab] = useState('All')
+
+  useEffect(() => {
+    setActiveTab('All')
+  }, [conversation?.id])
   if (!conversation) {
     return (
       <div className="flex-1 flex items-center justify-center bg-white rounded-2xl border border-slate-200 shadow-md">
@@ -69,9 +75,12 @@ export default function ConversationView({
           {['All', 'E-mail', 'SMS', 'Call'].map((tab) => (
             <button
               key={tab}
+              onClick={() => setActiveTab(tab)}
               className={cn(
-                'px-3 py-1 rounded-md text-sm',
-                tab === 'All' ? 'bg-[color:var(--studio-primary-light)] text-[color:var(--studio-primary)]' : 'text-[#64748B]'
+                'px-3 py-1 rounded-md text-sm transition-colors',
+                activeTab === tab
+                  ? 'bg-[color:var(--studio-primary-light)] text-[color:var(--studio-primary)]'
+                  : 'text-[#64748B] hover:bg-slate-100'
               )}
             >
               {tab}
@@ -82,10 +91,15 @@ export default function ConversationView({
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto scrollbar-hide py-3 px-4 bg-slate-50">
-        {messages.length === 0 ? (
-          <div className="text-center text-slate-500 text-sm py-8">No messages yet. Start the conversation!</div>
-        ) : (
-          messages.map((message, idx) => {
+        {(() => {
+          const tabChannelMap = { 'E-mail': 'Email', 'SMS': 'SMS', 'Call': 'Call' }
+          const filtered = activeTab === 'All' ? messages : messages.filter((m) => m.channel === tabChannelMap[activeTab])
+          if (filtered.length === 0) return (
+            <div className="text-center text-slate-500 text-sm py-8">
+              {messages.length === 0 ? 'No messages yet. Start the conversation!' : `No ${activeTab} messages.`}
+            </div>
+          )
+          return filtered.map((message, idx) => {
             const isInbound = message.direction === 'inbound'
             const prev = messages[idx - 1]
             const showDateDivider = !prev || new Date(prev.timestamp).toDateString() !== new Date(message.timestamp).toDateString()
@@ -134,12 +148,19 @@ export default function ConversationView({
               </div>
             )
           })
-        )}
+        })()}
       </div>
 
       {/* Message Input - no separating line, white input box */}
       <div className="pt-1 pb-1 px-2 bg-slate-50">
-        <MessageInput onSendMessage={onSendMessage} />
+        {activeTab === 'Call' ? (
+          <p className="text-sm text-muted-foreground text-center py-4">Calls cannot be sent from the inbox.</p>
+        ) : (
+          <MessageInput
+            onSendMessage={onSendMessage}
+            channel={activeTab === 'All' ? conversation.channel : activeTab === 'E-mail' ? 'Email' : activeTab}
+          />
+        )}
       </div>
     </main>
   )

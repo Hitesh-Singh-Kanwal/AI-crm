@@ -1,15 +1,82 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import ContactList from '@/app/inbox/components/ContactList'
 import ConversationView from '@/app/inbox/components/ConversationView'
 import ContactDetails from '@/app/inbox/components/ContactDetails'
-import { conversations as initialConversations, messages as initialMessages } from '@/data/dummyData'
-import { filterByBranch } from '@/lib/branch-filter'
+import NewConversationDialog from '@/app/inbox/components/NewConversationDialog'
+import BatchSendDialog from '@/app/inbox/components/BatchSendDialog'
 import { useInboxHeader } from '@/contexts/InboxHeaderContext'
 import { cn } from '@/lib/utils'
+import api from '@/lib/api'
+
+function buildInboxData(smsRecords, emailRecords) {
+  const conversations = []
+  const threadMessages = {}
+
+  // Group SMS records by phoneNumber → one conversation per contact
+  const smsGroups = {}
+  for (const rec of smsRecords) {
+    const key = rec.phoneNumber
+    if (!smsGroups[key]) smsGroups[key] = []
+    smsGroups[key].push(rec)
+  }
+  for (const [phone, records] of Object.entries(smsGroups)) {
+    const convId = `sms-${phone.replace(/\W/g, '_')}`
+    const latest = records[0]
+    const lead = latest.leadID
+    conversations.push({
+      id: convId,
+      contact: { id: lead?._id || phone, name: lead?.name || phone, type: 'Lead', stage: '', nextVisit: '', phoneNumber: phone },
+      lastMessage: latest.message,
+      timestamp: latest.createdAt,
+      unread: 0,
+      channel: 'SMS',
+    })
+    threadMessages[convId] = [...records].reverse().map((rec) => ({
+      id: rec._id,
+      sender: 'You',
+      direction: 'outbound',
+      content: rec.message,
+      timestamp: rec.createdAt,
+      channel: 'SMS',
+    }))
+  }
+
+  // Group Email records by email address → one conversation per contact
+  const emailGroups = {}
+  for (const rec of emailRecords) {
+    const key = rec.email
+    if (!emailGroups[key]) emailGroups[key] = []
+    emailGroups[key].push(rec)
+  }
+  for (const [email, records] of Object.entries(emailGroups)) {
+    const convId = `email-${email.replace(/\W/g, '_')}`
+    const latest = records[0]
+    const lead = latest.leadID
+    conversations.push({
+      id: convId,
+      contact: { id: lead?._id || email, name: lead?.name || email, type: 'Lead', stage: '', nextVisit: '', email },
+      lastMessage: latest.subject,
+      timestamp: latest.createdAt,
+      unread: 0,
+      channel: 'Email',
+    })
+    threadMessages[convId] = [...records].reverse().map((rec) => ({
+      id: rec._id,
+      sender: 'You',
+      direction: 'outbound',
+      content: rec.body,
+      timestamp: rec.createdAt,
+      channel: 'Email',
+    }))
+  }
+
+  conversations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+  return { conversations, threadMessages }
+}
 
 // Normalize contact type for filters (All, Customers, Leads, Teachers)
 function normalizeContactType(type) {
@@ -30,8 +97,37 @@ function InboxPageContent() {
   const [selectedChannel, setSelectedChannel] = useState('All')
   const [searchQuery, setSearchQuery] = useState('')
   const [contactFilter, setContactFilter] = useState('All')
-  const [conversations, setConversations] = useState(initialConversations)
-  const [threadMessages, setThreadMessages] = useState(initialMessages)
+  const [conversations, setConversations] = useState([])
+  const [threadMessages, setThreadMessages] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [newConvOpen, setNewConvOpen] = useState(false)
+  const [batchOpen, setBatchOpen] = useState(false)
+
+  const fetchInboxData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [smsResult, emailResult] = await Promise.all([
+        api.get('/api/smsHistory?limit=200'),
+        api.get('/api/emailHistory?limit=200'),
+      ])
+      const smsRecords = Array.isArray(smsResult.data) ? smsResult.data : []
+      const emailRecords = Array.isArray(emailResult.data) ? emailResult.data : []
+      const { conversations: convs, threadMessages: threads } = buildInboxData(smsRecords, emailRecords)
+      setConversations(convs)
+      setThreadMessages(threads)
+    } catch (e) {
+      console.error(e)
+      setError('Failed to load inbox')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchInboxData()
+  }, [fetchInboxData])
 
   // Sync URL ?filter= with contactFilter (header tabs use URL)
   const urlFilter = searchParams?.get('filter') || 'all'
@@ -40,8 +136,7 @@ function InboxPageContent() {
     setContactFilter(map[urlFilter] ?? 'All')
   }, [urlFilter])
 
-  // Filter conversations by branch
-  const filteredConversations = useMemo(() => filterByBranch(conversations), [conversations])
+  const filteredConversations = useMemo(() => conversations, [conversations])
 
   const displayedConversations = useMemo(() => {
     const list = filteredConversations.filter((conv) => {
@@ -72,9 +167,13 @@ function InboxPageContent() {
 
   const conversationMessages = selectedConversation ? threadMessages[selectedConversation] || [] : []
 
-  const handleSendMessage = ({ content, channel }) => {
+  const handleSendMessage = async ({ content, subject, channel, scheduleNow = true, scheduleDate = null }) => {
     if (!selectedConversation || !content.trim()) return
 
+    const conv = conversations.find((c) => c.id === selectedConversation)
+    if (!conv) return
+
+    // Optimistic update
     const newMessage = {
       id: `${Date.now()}`,
       sender: 'You',
@@ -83,25 +182,60 @@ function InboxPageContent() {
       timestamp: new Date().toISOString(),
       channel,
     }
-
     setThreadMessages((prev) => ({
       ...prev,
       [selectedConversation]: [...(prev[selectedConversation] || []), newMessage],
     }))
-
     setConversations((prev) =>
-      prev.map((conv) =>
-        conv.id === selectedConversation
-          ? {
-              ...conv,
-              lastMessage: content.trim(),
-              timestamp: newMessage.timestamp,
-              unread: 0,
-              channel,
-            }
-          : conv
+      prev.map((c) =>
+        c.id === selectedConversation
+          ? { ...c, lastMessage: content.trim(), timestamp: newMessage.timestamp, unread: 0 }
+          : c
       )
     )
+
+    // Send via existing scheduler endpoints
+    try {
+      if (channel === 'SMS') {
+        await api.post('/api/sms/send-one', {
+          lead: { _id: conv.contact.id, phoneNumber: conv.contact.phoneNumber || conv.contact.name },
+          message: content.trim(),
+          scheduleNow,
+          scheduleDate,
+        })
+      } else if (channel === 'Email') {
+        await api.post('/api/email/send-one', {
+          lead: { _id: conv.contact.id, email: conv.contact.email || conv.contact.name },
+          subject: subject || '(no subject)',
+          body: content.trim(),
+          scheduleNow,
+          scheduleDate,
+        })
+      }
+    } catch (e) {
+      console.error('Failed to queue message:', e)
+    }
+  }
+
+  const handleNewConversation = ({ lead, channel }) => {
+    const convId = channel === 'SMS'
+      ? `sms-${String(lead.phoneNumber).replace(/\W/g, '_')}`
+      : `email-${String(lead.email).replace(/\W/g, '_')}`
+
+    setConversations((prev) => {
+      if (prev.find((c) => c.id === convId)) return prev
+      return [{
+        id: convId,
+        contact: { id: lead._id, name: lead.name, type: 'Lead', stage: '', nextVisit: '', phoneNumber: lead.phoneNumber, email: lead.email },
+        lastMessage: '',
+        timestamp: new Date().toISOString(),
+        unread: 0,
+        channel,
+      }, ...prev]
+    })
+    setThreadMessages((prev) => ({ ...prev, [convId]: prev[convId] || [] }))
+    setSelectedConversation(convId)
+    setShowContactList(false)
   }
 
   const handleSelectConversation = (conversationId) => {
@@ -111,8 +245,33 @@ function InboxPageContent() {
     setShowContactList(false)
   }
 
+  if (loading) {
+    return (
+      <MainLayout title="Inbox" subtitle="Manage all your conversations in one place">
+        <div className="flex items-center justify-center h-[calc(100vh-8rem)] text-slate-500">Loading conversations…</div>
+      </MainLayout>
+    )
+  }
+
+  if (error) {
+    return (
+      <MainLayout title="Inbox" subtitle="Manage all your conversations in one place">
+        <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] gap-3 text-slate-500">
+          <p>{error}</p>
+          <button onClick={fetchInboxData} className="text-sm underline">Retry</button>
+        </div>
+      </MainLayout>
+    )
+  }
+
   return (
     <MainLayout title="Inbox" subtitle="Manage all your conversations in one place">
+      <NewConversationDialog
+        open={newConvOpen}
+        onClose={() => setNewConvOpen(false)}
+        onStart={handleNewConversation}
+      />
+      <BatchSendDialog open={batchOpen} onClose={() => setBatchOpen(false)} />
       <div className="flex flex-col lg:flex-row gap-0 h-full min-h-0">
         {/* Left: Contact list */}
         <div className={cn('h-full min-h-0', showContactList ? 'flex flex-col' : 'hidden lg:flex flex-col')}>
@@ -126,6 +285,8 @@ function InboxPageContent() {
             onSearchChange={setSearchQuery}
             contactFilter={contactFilter}
             onContactFilterChange={setContactFilter}
+            onNewConversation={() => setNewConvOpen(true)}
+            onBatchSend={() => setBatchOpen(true)}
           />
         </div>
 

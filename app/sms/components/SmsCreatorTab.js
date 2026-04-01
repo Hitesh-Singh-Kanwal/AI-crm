@@ -61,7 +61,7 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
 
   const insertVariable = (v) => setMessage((m) => `${m}${m ? ' ' : ''}${v}`)
 
-  const canSave = !!name.trim() && !!message.trim() && !!categoryId
+  const canSave = !!name.trim() && !!message.trim() && !!categoryId && !!subCategory.trim()
 
   const createTemplate = async () => {
     if (!canSave) return
@@ -200,6 +200,7 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
                   <ul className="list-disc pl-4 mt-1 space-y-0.5">
                     {!name.trim() && <li>Template name</li>}
                     {!categoryId && <li>Category</li>}
+                    {!subCategory.trim() && <li>Sub-category</li>}
                     {!message.trim() && <li>Message</li>}
                   </ul>
                 </div>
