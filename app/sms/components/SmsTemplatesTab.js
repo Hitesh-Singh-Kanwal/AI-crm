@@ -1,13 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MessageSquare, Plus, Search, Tags, Trash2, Pencil, Eye } from 'lucide-react'
+import { MessageSquare, Plus, Search, Tags, Trash2, Pencil, Eye, Heart } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import Switch from '@/components/ui/switch'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
@@ -35,6 +36,8 @@ export default function SmsTemplatesTab({ onCreateNew, dataVersion = 0, onDataCh
   const [selectedIds, setSelectedIds] = useState([])
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [togglingIds, setTogglingIds] = useState(new Set())
+  const [heartAnimIds, setHeartAnimIds] = useState(new Set())
 
   const pageNumbers = useMemo(() => Array.from({ length: totalPages }, (_, i) => i + 1), [totalPages])
 
@@ -131,6 +134,38 @@ export default function SmsTemplatesTab({ onCreateNew, dataVersion = 0, onDataCh
       toast.error({ title: 'Error', message: 'Could not delete templates.' })
     } finally {
       setBulkDeleting(false)
+    }
+  }
+
+  const toggleFavorite = async (tpl) => {
+    if (togglingIds.has(tpl._id)) return
+    setTogglingIds((prev) => new Set(prev).add(tpl._id))
+    setHeartAnimIds((prev) => new Set(prev).add(tpl._id))
+    setTimeout(() => setHeartAnimIds((prev) => { const s = new Set(prev); s.delete(tpl._id); return s }), 400)
+    const next = !tpl.isFavorite
+    setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, isFavorite: next } : t))
+    try {
+      const result = await api.patch(`/api/smsBuilder/${tpl._id}`, { isFavorite: next })
+      if (!result.success) setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, isFavorite: !next } : t))
+    } catch (e) {
+      setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, isFavorite: !next } : t))
+    } finally {
+      setTogglingIds((prev) => { const s = new Set(prev); s.delete(tpl._id); return s })
+    }
+  }
+
+  const toggleStatus = async (tpl) => {
+    if (togglingIds.has(tpl._id)) return
+    setTogglingIds((prev) => new Set(prev).add(tpl._id))
+    const next = tpl.status === 'active' ? 'inactive' : 'active'
+    setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, status: next } : t))
+    try {
+      const result = await api.patch(`/api/smsBuilder/${tpl._id}`, { status: next })
+      if (!result.success) setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, status: tpl.status } : t))
+    } catch (e) {
+      setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, status: tpl.status } : t))
+    } finally {
+      setTogglingIds((prev) => { const s = new Set(prev); s.delete(tpl._id); return s })
     }
   }
 
@@ -233,13 +268,14 @@ export default function SmsTemplatesTab({ onCreateNew, dataVersion = 0, onDataCh
                 key={tpl._id}
                 className={cn(
                   'group overflow-hidden border transition-all duration-200 animate-fade-in rounded-2xl',
-                  'border-border/80 hover:border-primary/40 hover:shadow-md bg-card'
+                  'border-border/80 hover:border-primary/40 hover:shadow-md bg-card',
+                  tpl.status === 'inactive' && 'opacity-60'
                 )}
                 style={{ animationDelay: `${index * 0.04}s` }}
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <input
                           type="checkbox"
@@ -260,6 +296,35 @@ export default function SmsTemplatesTab({ onCreateNew, dataVersion = 0, onDataCh
                         )}
                       </div>
                     </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Switch
+                        checked={tpl.status === 'active'}
+                        onChange={() => toggleStatus(tpl)}
+                        disabled={togglingIds.has(tpl._id)}
+                        title={tpl.status === 'active' ? 'Set inactive' : 'Set active'}
+                        className="disabled:opacity-40 scale-75"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggleFavorite(tpl)}
+                        disabled={togglingIds.has(tpl._id)}
+                        title={tpl.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                        className={cn(
+                          'h-7 w-7 flex items-center justify-center rounded-full transition-all duration-200 disabled:opacity-40',
+                          tpl.isFavorite
+                            ? 'text-red-500 hover:bg-red-50'
+                            : 'text-muted-foreground hover:bg-muted hover:text-red-400'
+                        )}
+                      >
+                        <Heart
+                          className={cn(
+                            'h-4 w-4 transition-all duration-200',
+                            tpl.isFavorite && 'fill-current',
+                            heartAnimIds.has(tpl._id) && 'scale-125'
+                          )}
+                        />
+                      </button>
+                    </div>
                   </div>
                 </CardHeader>
 
@@ -273,6 +338,7 @@ export default function SmsTemplatesTab({ onCreateNew, dataVersion = 0, onDataCh
                       size="sm"
                       className="text-xs flex-1"
                       onClick={() => setPreviewId(tpl._id)}
+                      disabled={tpl.status === 'inactive'}
                       title="Preview"
                     >
                       <Eye className="h-3.5 w-3.5 mr-1.5" />
@@ -283,6 +349,7 @@ export default function SmsTemplatesTab({ onCreateNew, dataVersion = 0, onDataCh
                       size="sm"
                       className="text-xs flex-1"
                       onClick={() => setEditingId(tpl._id)}
+                      disabled={tpl.status === 'inactive'}
                       title="Edit"
                     >
                       <Pencil className="h-3.5 w-3.5 mr-1.5" />

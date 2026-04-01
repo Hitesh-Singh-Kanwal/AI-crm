@@ -1,15 +1,17 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download } from 'lucide-react'
+import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { formTemplates } from '@/data/dummyData'
+import api from '@/lib/api'
+import { useToast } from '@/components/ui/toast'
+import Switch from '@/components/ui/switch'
 import { formatDate } from '@/lib/utils'
 import StylePanel from '@/components/forms/StylePanel'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -287,10 +289,101 @@ function DroppableCanvas({ children, isEmpty }) {
 }
 
 function FormsPageInner() {
+  const toast = useToast()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const activeTab = searchParams.get('view') || 'templates'
+  const [forms, setForms] = useState([])
+  const [formsLoading, setFormsLoading] = useState(false)
+  const [formsError, setFormsError] = useState(null)
+  const [formsPage, setFormsPage] = useState(1)
+  const [formsTotalPages, setFormsTotalPages] = useState(1)
+  const [formsTotalCount, setFormsTotalCount] = useState(0)
+  const [formsSearch, setFormsSearch] = useState('')
+  const [formsSearchDebounced, setFormsSearchDebounced] = useState('')
+  const [heartAnimIds, setHeartAnimIds] = useState(new Set())
+  const [togglingIds, setTogglingIds] = useState(new Set())
+
+  const FORMS_PAGE_SIZE = 9
+
+  useEffect(() => {
+    const t = setTimeout(() => setFormsSearchDebounced(formsSearch), 300)
+    return () => clearTimeout(t)
+  }, [formsSearch])
+
+  useEffect(() => { setFormsPage(1) }, [formsSearchDebounced])
+
+  const fetchForms = useCallback(async () => {
+    setFormsLoading(true)
+    setFormsError(null)
+    try {
+      const params = new URLSearchParams({ page: String(formsPage), limit: String(FORMS_PAGE_SIZE) })
+      if (formsSearchDebounced.trim()) params.set('search', formsSearchDebounced.trim())
+      const result = await api.get(`/api/formBuilder?${params.toString()}`)
+      const list = Array.isArray(result.data) ? result.data : null
+      if (result.success && list) {
+        setForms(list)
+        const total = result.pagination?.total ?? list.length
+        setFormsTotalCount(total)
+        setFormsTotalPages(Math.max(1, Math.ceil(total / FORMS_PAGE_SIZE)))
+      } else {
+        setFormsError(result.error || 'Failed to fetch forms')
+      }
+    } catch (e) {
+      setFormsError('Failed to fetch forms')
+    } finally {
+      setFormsLoading(false)
+    }
+  }, [formsPage, formsSearchDebounced])
+
+  useEffect(() => { fetchForms() }, [fetchForms])
+
+  const toggleFormFavorite = async (form) => {
+    if (togglingIds.has(form._id)) return
+    setTogglingIds((prev) => new Set(prev).add(form._id))
+    setHeartAnimIds((prev) => new Set(prev).add(form._id))
+    setTimeout(() => setHeartAnimIds((prev) => { const s = new Set(prev); s.delete(form._id); return s }), 400)
+    const next = !form.isFavorite
+    setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, isFavorite: next } : f))
+    try {
+      const result = await api.put(`/api/formBuilder/${form._id}`, { isFavorite: next })
+      if (!result.success) setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, isFavorite: !next } : f))
+    } catch {
+      setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, isFavorite: !next } : f))
+    } finally {
+      setTogglingIds((prev) => { const s = new Set(prev); s.delete(form._id); return s })
+    }
+  }
+
+  const toggleFormStatus = async (form) => {
+    if (togglingIds.has(form._id)) return
+    setTogglingIds((prev) => new Set(prev).add(form._id))
+    const next = form.status === 'active' ? 'inactive' : 'active'
+    setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, status: next } : f))
+    try {
+      const result = await api.put(`/api/formBuilder/${form._id}`, { status: next })
+      if (!result.success) setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, status: form.status } : f))
+    } catch {
+      setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, status: form.status } : f))
+    } finally {
+      setTogglingIds((prev) => { const s = new Set(prev); s.delete(form._id); return s })
+    }
+  }
+
+  // Builder form metadata
+  const [formName, setFormName] = useState('')
+  const [formDescription, setFormDescription] = useState('')
+  const [editingFormId, setEditingFormId] = useState(null)
+  const [savingForm, setSavingForm] = useState(false)
+  // Delete
+  const [deletingFormId, setDeletingFormId] = useState(null)
+  // Preview modal
+  const [previewForm, setPreviewForm] = useState(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  // Clone
+  const [cloningFormId, setCloningFormId] = useState(null)
+
   const [formFields, setFormFields] = useState([
     { id: '1', type: 'text', label: 'Full Name', placeholder: 'Enter your name', required: true, styles: {} },
     { id: '2', type: 'email', label: 'Email Address', placeholder: 'your@email.com', required: true, styles: {} },
@@ -311,6 +404,104 @@ function FormsPageInner() {
     const params = new URLSearchParams(searchParams?.toString() || '')
     params.set('view', tab)
     router.push(`${pathname}?${params.toString()}`)
+  }
+
+  const saveForm = async () => {
+    if (!formName.trim()) {
+      toast.error({ title: 'Name required', message: 'Please enter a form name before saving.' })
+      return
+    }
+    if (formFields.length === 0) {
+      toast.error({ title: 'Empty form', message: 'Please add at least one field before saving.' })
+      return
+    }
+    setSavingForm(true)
+    try {
+      const htmlCode = generateExportedHTML()
+      const payload = { name: formName.trim(), description: formDescription.trim(), htmlCode }
+      const result = editingFormId
+        ? await api.put(`/api/formBuilder/${editingFormId}`, payload)
+        : await api.post('/api/formBuilder', payload)
+      if (result.success) {
+        toast.success({ title: 'Saved', message: editingFormId ? 'Form updated successfully.' : 'Form created successfully.' })
+        setEditingFormId(result.data?._id || editingFormId)
+        fetchForms()
+        setActiveTab('templates')
+      } else {
+        toast.error({ title: 'Save failed', message: result.error || 'Could not save form.' })
+      }
+    } catch (e) {
+      toast.error({ title: 'Error', message: 'Could not save form.' })
+    } finally {
+      setSavingForm(false)
+    }
+  }
+
+  const deleteForm = async (form) => {
+    if (!confirm(`Delete "${form.name}"? This cannot be undone.`)) return
+    setDeletingFormId(form._id)
+    try {
+      const result = await api.delete(`/api/formBuilder/${form._id}`)
+      if (result.success) {
+        toast.success({ title: 'Deleted', message: 'Form deleted successfully.' })
+        setForms((prev) => prev.filter((f) => f._id !== form._id))
+        setFormsTotalCount((c) => c - 1)
+      } else {
+        toast.error({ title: 'Delete failed', message: result.error || 'Could not delete form.' })
+      }
+    } catch (e) {
+      toast.error({ title: 'Error', message: 'Could not delete form.' })
+    } finally {
+      setDeletingFormId(null)
+    }
+  }
+
+  const openPreviewForm = async (form) => {
+    setPreviewForm({ name: form.name, htmlCode: form.htmlCode || '' })
+    if (!form.htmlCode) {
+      setPreviewLoading(true)
+      try {
+        const result = await api.get(`/api/formBuilder/${form._id}`)
+        if (result.success) setPreviewForm({ name: result.data.name, htmlCode: result.data.htmlCode || '' })
+      } catch (e) {}
+      finally { setPreviewLoading(false) }
+    }
+  }
+
+  const cloneForm = async (form) => {
+    if (cloningFormId) return
+    setCloningFormId(form._id)
+    try {
+      const result = await api.get(`/api/formBuilder/${form._id}`)
+      if (!result.success) { toast.error({ title: 'Error', message: 'Could not fetch form.' }); return }
+      const src = result.data
+      const cloneResult = await api.post('/api/formBuilder', {
+        name: `${src.name} copy`,
+        description: src.description,
+        htmlCode: src.htmlCode,
+        url: src.url,
+        utms: src.utms,
+      })
+      if (cloneResult.success) {
+        toast.success({ title: 'Cloned', message: `"${src.name} copy" created.` })
+        fetchForms()
+      } else {
+        toast.error({ title: 'Clone failed', message: cloneResult.error || 'Could not clone form.' })
+      }
+    } catch (e) {
+      toast.error({ title: 'Error', message: 'Could not clone form.' })
+    } finally {
+      setCloningFormId(null)
+    }
+  }
+
+  const openBuilderForNew = () => {
+    setFormName('')
+    setFormDescription('')
+    setEditingFormId(null)
+    setFormFields([])
+    setSelectedField(null)
+    setActiveTab('builder')
   }
 
   const sensors = useSensors(
@@ -788,77 +979,198 @@ function FormsPageInner() {
         {/* Templates View */}
         {activeTab === 'templates' && (
           <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <p className="text-slate-600">Browse and use pre-built form templates</p>
-            <Button variant="gradient" onClick={() => setActiveTab('builder')}>
+            <div className="flex items-center justify-between">
+              <p className="text-slate-600">Browse and manage your forms</p>
+              <Button variant="gradient" onClick={openBuilderForNew}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create New Form
+              </Button>
+            </div>
 
-              <Plus className="h-4 w-4 mr-2" />
-              Create New Form
-            </Button>
-          </div>
+            {/* Search */}
+            <div className="relative max-w-sm">
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search forms…"
+                value={formsSearch}
+                onChange={(e) => setFormsSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {formTemplates.map((template) => (
-              <Card
-                key={template.id}
-                className="relative hover:shadow-lg transition-shadow duration-200"
-              >
-                {/* Top-right CVR pill like Figma */}
-                <div className="absolute top-4 right-4">
-                  <Badge className="rounded-full bg-[#FFF4E5] text-[#F97316] px-3 py-1 text-[11px] font-medium shadow-sm">
-                    {template.conversionRate}% CVR
-                  </Badge>
-                </div>
+            {formsLoading && (
+              <div className="flex items-center justify-center py-16">
+                <div className="h-8 w-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+              </div>
+            )}
 
-                <CardHeader>
-                  <div className="flex items-start mb-2 gap-3">
-                    <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
-                      <FileText className="h-6 w-6 text-slate-600" />
-                    </div>
-                  </div>
-                  <CardTitle className="text-lg">{template.name}</CardTitle>
-                  <p className="text-sm text-slate-500">{template.description}</p>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3 mb-4">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Fields</span>
-                      <span className="font-medium text-slate-900">{template.fields}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Submissions</span>
-                      <span className="font-medium text-slate-900">{template.submissions}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Created</span>
-                      <span className="font-medium text-slate-900">{formatDate(template.createdAt)}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="gradient"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => applyTemplate(template.id)}
-                    >
-                      <Eye className="h-3.5 w-3.5 mr-1.5" />
-                      Use Template
-                    </Button>
-                    <Button variant="outline" size="sm" className="flex-1">
-                      <Copy className="h-3.5 w-3.5 mr-1.5" />
-                      Clone
-                    </Button>
+            {formsError && !formsLoading && (
+              <Card className="border-destructive/50 bg-destructive/5">
+                <CardContent className="py-8 text-center">
+                  <p className="text-sm font-medium text-destructive">{formsError}</p>
+                  <div className="mt-4 flex justify-center">
+                    <Button variant="outline" onClick={fetchForms}>Retry</Button>
                   </div>
                 </CardContent>
               </Card>
-            ))}
-          </div>
+            )}
+
+            {!formsLoading && !formsError && forms.length === 0 && (
+              <Card className="border-dashed">
+                <CardContent className="py-12 text-center">
+                  <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                    <FileText className="h-7 w-7 text-muted-foreground" />
+                  </div>
+                  <p className="font-medium text-muted-foreground">No forms yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">Create your first form to get started.</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {!formsLoading && !formsError && forms.length > 0 && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {forms.map((form) => {
+                    const isInactive = form.status === 'inactive'
+                    return (
+                      <Card
+                        key={form._id}
+                        className={`relative hover:shadow-lg transition-all duration-200${isInactive ? ' opacity-60' : ''}`}
+                      >
+                        {/* Top-right toggles */}
+                        <div className="absolute top-3 right-3 flex items-center gap-1">
+                          <Switch
+                            checked={!isInactive}
+                            onChange={() => toggleFormStatus(form)}
+                            disabled={togglingIds.has(form._id)}
+                            title={isInactive ? 'Set active' : 'Set inactive'}
+                            className="disabled:opacity-40 scale-75"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => toggleFormFavorite(form)}
+                            disabled={togglingIds.has(form._id)}
+                            title={form.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                            className={`h-7 w-7 flex items-center justify-center rounded-full transition-all duration-200 disabled:opacity-40 ${
+                              form.isFavorite ? 'text-red-500 hover:bg-red-50' : 'text-muted-foreground hover:bg-muted hover:text-red-400'
+                            }`}
+                          >
+                            <Heart className={`h-4 w-4 transition-all duration-200${form.isFavorite ? ' fill-current' : ''}${heartAnimIds.has(form._id) ? ' scale-125' : ''}`} />
+                          </button>
+                        </div>
+
+                        <CardHeader className="pr-20">
+                          <div className="flex items-start mb-2 gap-3">
+                            <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                              <FileText className="h-6 w-6 text-slate-600" />
+                            </div>
+                          </div>
+                          <CardTitle className="text-lg line-clamp-1">{form.name}</CardTitle>
+                          {form.description && <p className="text-sm text-slate-500 line-clamp-2">{form.description}</p>}
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-3 mb-4">
+                            {form.url && (
+                              <div className="flex justify-between text-sm">
+                                <span className="text-slate-500">URL</span>
+                                <span className="font-medium text-slate-900 truncate max-w-[160px]">{form.url}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between text-sm">
+                              <span className="text-slate-500">Created</span>
+                              <span className="font-medium text-slate-900">{formatDate(form.createdAt)}</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="gradient"
+                              size="sm"
+                              className="flex-1"
+                              disabled={isInactive}
+                              onClick={() => openPreviewForm(form)}
+                            >
+                              <Eye className="h-3.5 w-3.5 mr-1.5" />
+                              Preview
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1"
+                              disabled={isInactive || cloningFormId === form._id}
+                              onClick={() => cloneForm(form)}
+                            >
+                              <Copy className="h-3.5 w-3.5 mr-1.5" />
+                              {cloningFormId === form._id ? 'Cloning…' : 'Clone'}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => deleteForm(form)}
+                              disabled={deletingFormId === form._id}
+                              title="Delete"
+                            >
+                              {deletingFormId === form._id
+                                ? <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                                : <Trash2 className="h-3.5 w-3.5" />}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+
+                {/* Pagination */}
+                {formsTotalPages > 1 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormsPage((p) => Math.max(1, p - 1))}
+                      disabled={formsPage === 1 || formsLoading}
+                      className="h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-sm text-muted-foreground">
+                      Page {formsPage} of {formsTotalPages} ({formsTotalCount} total)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFormsPage((p) => Math.min(formsTotalPages, p + 1))}
+                      disabled={formsPage === formsTotalPages || formsLoading}
+                      className="h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
         {/* Builder View */}
         {activeTab === 'builder' && (
-          <div className="h-[calc(100vh-200px)] flex flex-col">
+          <div className="h-[calc(100vh-200px)] flex flex-col gap-3">
+          {/* Form name + description row */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <Input
+              placeholder="Form name (required)"
+              value={formName}
+              onChange={(e) => setFormName(e.target.value)}
+              className="max-w-xs font-medium"
+            />
+            <Input
+              placeholder="Description (optional)"
+              value={formDescription}
+              onChange={(e) => setFormDescription(e.target.value)}
+              className="max-w-sm"
+            />
+            {editingFormId && (
+              <span className="text-xs text-muted-foreground italic">Editing existing form</span>
+            )}
+          </div>
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -897,11 +1209,8 @@ function FormsPageInner() {
                       <CardTitle className="text-base">Form Preview</CardTitle>
                       <div className="flex items-center gap-2">
                        
-                        <Button variant="gradient" size="sm" onClick={() => {
-                          // Save form logic here
-                          alert('Form saved successfully!')
-                        }}>
-                          Save Form
+                        <Button variant="gradient" size="sm" onClick={saveForm} disabled={savingForm}>
+                          {savingForm ? 'Saving…' : (editingFormId ? 'Update Form' : 'Save Form')}
                         </Button>
                       </div>
 
@@ -1193,6 +1502,40 @@ function FormsPageInner() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Form Preview Modal */}
+      {previewForm && (
+        <Dialog open={!!previewForm} onClose={() => setPreviewForm(null)} maxWidth="2xl">
+          <DialogContent onClose={() => setPreviewForm(null)} className="max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogHeader className="border-b border-border pb-3 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <DialogTitle className="text-lg font-semibold">{previewForm.name}</DialogTitle>
+                <button type="button" onClick={() => setPreviewForm(null)} className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </DialogHeader>
+            <div className="flex-1 overflow-hidden min-h-0">
+              {previewLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="h-8 w-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                </div>
+              ) : previewForm.htmlCode ? (
+                <iframe
+                  srcDoc={previewForm.htmlCode}
+                  className="w-full h-full min-h-[500px] border-0 rounded-lg"
+                  title="Form preview"
+                  sandbox="allow-forms allow-scripts"
+                />
+              ) : (
+                <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+                  No preview available for this form.
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </MainLayout>
   )
 }
