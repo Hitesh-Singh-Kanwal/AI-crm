@@ -5,7 +5,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -397,6 +397,95 @@ function FormsPageInner() {
       })
     }
   }
+
+  const [gaViews, setGaViews] = useState({ allTime: 0, last30Days: 0, last7Days: 0 })
+  const [gaActiveUsers, setGaActiveUsers] = useState({ allTime: 0, last30Days: 0, last7Days: 0 })
+  const [gaPages, setGaPages] = useState({ allTime: [], last30Days: [], last7Days: [] })
+  const [gaPagesRange, setGaPagesRange] = useState('last30Days')
+  const [gaViewsLoading, setGaViewsLoading] = useState(false)
+  const [gaViewsError, setGaViewsError] = useState(null)
+
+  const formatDuration = (seconds) => {
+    const s = Number(seconds)
+    if (!Number.isFinite(s) || s <= 0) return '0s'
+    const total = Math.round(s)
+    const m = Math.floor(total / 60)
+    const r = total % 60
+    return m > 0 ? `${m}m ${r}s` : `${r}s`
+  }
+
+  const fetchGaViews = useCallback(async () => {
+    setGaViewsLoading(true)
+    setGaViewsError(null)
+    try {
+      const res = await fetch('/api/ga/forms-views')
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body?.success) {
+        setGaViewsError(body?.error || 'Failed to load Google Analytics views')
+        return
+      }
+      setGaViews({
+        allTime: Number(body.data?.views?.allTime) || 0,
+        last30Days: Number(body.data?.views?.last30Days) || 0,
+        last7Days: Number(body.data?.views?.last7Days) || 0,
+      })
+      setGaActiveUsers({
+        allTime: Number(body.data?.activeUsers?.allTime) || 0,
+        last30Days: Number(body.data?.activeUsers?.last30Days) || 0,
+        last7Days: Number(body.data?.activeUsers?.last7Days) || 0,
+      })
+      setGaPages({
+        allTime: Array.isArray(body.data?.pages?.allTime) ? body.data.pages.allTime : [],
+        last30Days: Array.isArray(body.data?.pages?.last30Days) ? body.data.pages.last30Days : [],
+        last7Days: Array.isArray(body.data?.pages?.last7Days) ? body.data.pages.last7Days : [],
+      })
+    } catch (e) {
+      setGaViewsError('Failed to load Google Analytics views')
+    } finally {
+      setGaViewsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'analytics') fetchGaViews()
+  }, [activeTab, fetchGaViews])
+
+  const extractViewTimestamps = (form) => {
+    const candidates = [
+      form?.views,
+      form?.viewEvents,
+      form?.analytics?.views,
+      form?.analytics?.viewEvents,
+    ]
+    for (const c of candidates) {
+      if (!c) continue
+      if (Array.isArray(c)) return c
+    }
+    return []
+  }
+
+  const viewsSummary = (() => {
+    const now = Date.now()
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000
+    const monthAgo = now - 30 * 24 * 60 * 60 * 1000
+
+    let all = 0
+    let lastWeek = 0
+    let lastMonth = 0
+
+    for (const f of forms) {
+      const tsList = extractViewTimestamps(f)
+      for (const t of tsList) {
+        const ms = typeof t === 'number' ? t : Date.parse(String(t))
+        if (!Number.isFinite(ms)) continue
+        all += 1
+        if (ms >= monthAgo) lastMonth += 1
+        if (ms >= weekAgo) lastWeek += 1
+      }
+    }
+
+    return { all, lastMonth, lastWeek }
+  })()
 
   // Builder form metadata
   const [formName, setFormName] = useState('')
@@ -1718,14 +1807,26 @@ ${gtagScript}
 
         {/* Analytics View */}
         {activeTab === 'analytics' && (
-          <div className="space-y-6">
+          <div className="space-y-6 relative">
+          {gaViewsLoading ? (
+            <div className="absolute inset-0 z-10 rounded-lg bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
+              <GlobalLoader text="Fetching analytics…" />
+            </div>
+          ) : null}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Total Submissions</p>
-                    <h3 className="text-3xl font-bold text-slate-900">1,446</h3>
+                    <p className="text-sm text-slate-500 mb-1">Total Views (all-time)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaViews.allTime}
+                    </h3>
+                    {gaViewsError ? (
+                      <p className="text-xs text-destructive mt-2">{gaViewsError}</p>
+                    ) : (
+                      <p className="text-xs text-slate-500 mt-2">From Google Analytics</p>
+                    )}
                   </div>
                   <div className="h-12 w-12 rounded-lg bg-brand-light flex items-center justify-center">
                     <FileText className="h-6 w-6 text-brand" />
@@ -1738,8 +1839,10 @@ ${gtagScript}
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Conversion Rate</p>
-                    <h3 className="text-3xl font-bold text-slate-900">78.5%</h3>
+                    <p className="text-sm text-slate-500 mb-1">Views (last 30 days)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaViews.last30Days}
+                    </h3>
                   </div>
                   <div className="h-12 w-12 rounded-lg bg-green-100 flex items-center justify-center">
                     <BarChart3 className="h-6 w-6 text-green-600" />
@@ -1752,8 +1855,10 @@ ${gtagScript}
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Avg. Completion Time</p>
-                    <h3 className="text-3xl font-bold text-slate-900">2.4m</h3>
+                    <p className="text-sm text-slate-500 mb-1">Views (last 7 days)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaViews.last7Days}
+                    </h3>
                   </div>
                   <div className="h-12 w-12 rounded-lg bg-purple-100 flex items-center justify-center">
                     <BarChart3 className="h-6 w-6 text-purple-600" />
@@ -1762,6 +1867,135 @@ ${gtagScript}
               </CardContent>
             </Card>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">Active Users (all-time)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaActiveUsers.allTime}
+                    </h3>
+                  </div>
+                  <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 text-slate-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">Active Users (last 30 days)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaActiveUsers.last30Days}
+                    </h3>
+                  </div>
+                  <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 text-slate-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">Active Users (last 7 days)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaActiveUsers.last7Days}
+                    </h3>
+                  </div>
+                  <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 text-slate-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="text-base">Pages and screens</CardTitle>
+                  <CardDescription>Page path and screen class</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={gaPagesRange === 'allTime' ? 'default' : 'outline'}
+                    onClick={() => setGaPagesRange('allTime')}
+                    disabled={gaViewsLoading}
+                  >
+                    All time
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={gaPagesRange === 'last30Days' ? 'default' : 'outline'}
+                    onClick={() => setGaPagesRange('last30Days')}
+                    disabled={gaViewsLoading}
+                  >
+                    Last 30 days
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={gaPagesRange === 'last7Days' ? 'default' : 'outline'}
+                    onClick={() => setGaPagesRange('last7Days')}
+                    disabled={gaViewsLoading}
+                  >
+                    Last 7 days
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <div className="overflow-auto rounded-md border border-slate-200">
+                <table className="min-w-[720px] w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr className="text-left text-slate-600">
+                      <th className="px-4 py-3 font-medium">Page path</th>
+                      <th className="px-4 py-3 font-medium text-right">Views</th>
+                      <th className="px-4 py-3 font-medium text-right">Active users</th>
+                      <th className="px-4 py-3 font-medium text-right">Views / active user</th>
+                      <th className="px-4 py-3 font-medium text-right">Avg engagement / active user</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {(gaPages?.[gaPagesRange] || []).length === 0 ? (
+                      <tr>
+                        <td className="px-4 py-6 text-slate-500" colSpan={5}>
+                          No data yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      (gaPages?.[gaPagesRange] || []).map((row, idx) => (
+                        <tr key={`${row?.pagePath || 'row'}-${idx}`} className="border-t border-slate-100">
+                          <td className="px-4 py-3 font-mono text-xs text-slate-800">
+                            {row?.pagePath || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                            {Number(row?.views) || 0}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                            {Number(row?.activeUsers) || 0}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                            {Number(row?.viewsPerActiveUser) ? Number(row.viewsPerActiveUser).toFixed(2) : '0.00'}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                            {formatDuration(row?.avgEngagementTimePerActiveUser)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
           </div>
         )}
       </div>
