@@ -15,6 +15,7 @@ import Switch from '@/components/ui/switch'
 import { formatDate } from '@/lib/utils'
 import StylePanel from '@/components/forms/StylePanel'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import { getCurrentUser } from '@/lib/auth'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DndContext,
@@ -299,7 +300,128 @@ function FormsPageInner() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const activeTab = searchParams.get('view') || 'templates'
+  const user = getCurrentUser()
+
+  // Forms list (templates view)
+  const [forms, setForms] = useState([])
+  const [formsLoading, setFormsLoading] = useState(false)
+  const [formsError, setFormsError] = useState(null)
+  const [formsPage, setFormsPage] = useState(1)
+  const [formsTotalPages, setFormsTotalPages] = useState(1)
+  const [formsTotalCount, setFormsTotalCount] = useState(0)
+  const [formsSearch, setFormsSearch] = useState('')
+  const [formsSearchDebounced, setFormsSearchDebounced] = useState('')
+  const [heartAnimIds, setHeartAnimIds] = useState(new Set())
+  const [togglingIds, setTogglingIds] = useState(new Set())
+
+  const FORMS_PAGE_SIZE = 9
+
+  useEffect(() => {
+    const t = setTimeout(() => setFormsSearchDebounced(formsSearch), 300)
+    return () => clearTimeout(t)
+  }, [formsSearch])
+
+  useEffect(() => {
+    setFormsPage(1)
+  }, [formsSearchDebounced])
+
+  const fetchForms = useCallback(async () => {
+    setFormsLoading(true)
+    setFormsError(null)
+    try {
+      const params = new URLSearchParams({ page: String(formsPage), limit: String(FORMS_PAGE_SIZE) })
+      if (formsSearchDebounced.trim()) params.set('search', formsSearchDebounced.trim())
+      const result = await api.get(`/api/formBuilder?${params.toString()}`)
+      const list = Array.isArray(result.data) ? result.data : null
+      if (result.success && list) {
+        setForms(list)
+        const total = result.pagination?.total ?? list.length
+        setFormsTotalCount(total)
+        setFormsTotalPages(Math.max(1, Math.ceil(total / FORMS_PAGE_SIZE)))
+      } else {
+        setFormsError(result.error || 'Failed to fetch forms')
+      }
+    } catch (e) {
+      setFormsError('Failed to fetch forms')
+    } finally {
+      setFormsLoading(false)
+    }
+  }, [formsPage, formsSearchDebounced])
+
+  useEffect(() => {
+    fetchForms()
+  }, [fetchForms])
+
+  const toggleFormFavorite = async (form) => {
+    if (togglingIds.has(form._id)) return
+    setTogglingIds((prev) => new Set(prev).add(form._id))
+    setHeartAnimIds((prev) => new Set(prev).add(form._id))
+    setTimeout(() => {
+      setHeartAnimIds((prev) => {
+        const s = new Set(prev)
+        s.delete(form._id)
+        return s
+      })
+    }, 400)
+    const next = !form.isFavorite
+    setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, isFavorite: next } : f)))
+    try {
+      const result = await api.put(`/api/formBuilder/${form._id}`, { isFavorite: next })
+      if (!result.success) setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, isFavorite: !next } : f)))
+    } catch {
+      setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, isFavorite: !next } : f)))
+    } finally {
+      setTogglingIds((prev) => {
+        const s = new Set(prev)
+        s.delete(form._id)
+        return s
+      })
+    }
+  }
+
+  const toggleFormStatus = async (form) => {
+    if (togglingIds.has(form._id)) return
+    setTogglingIds((prev) => new Set(prev).add(form._id))
+    const next = form.status === 'active' ? 'inactive' : 'active'
+    setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, status: next } : f)))
+    try {
+      const result = await api.put(`/api/formBuilder/${form._id}`, { status: next })
+      if (!result.success) setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, status: form.status } : f)))
+    } catch {
+      setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, status: form.status } : f)))
+    } finally {
+      setTogglingIds((prev) => {
+        const s = new Set(prev)
+        s.delete(form._id)
+        return s
+      })
+    }
+  }
+
+  // Builder form metadata
+  const [formName, setFormName] = useState('')
+  const [formDescription, setFormDescription] = useState('')
+  const [editingFormId, setEditingFormId] = useState(null)
+  const [savingForm, setSavingForm] = useState(false)
+  // Delete
+  const [deletingFormId, setDeletingFormId] = useState(null)
+  // Preview modal
+  const [previewForm, setPreviewForm] = useState(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  // Clone
+  const [cloningFormId, setCloningFormId] = useState(null)
+
+  // Backend-required hidden fields injected into exported HTML
+  const organisationID = user?.organisationID || ''
+  const formID = editingFormId || ''
+  const REQUIRED_SYSTEM_FIELDS = [
+    { id: 'sys-organisationID', type: 'hidden', name: 'organisationID', label: 'organisationID', hidden: true, locked: true, styles: {} },
+    { id: 'sys-formID', type: 'hidden', name: 'formID', label: 'formID', hidden: true, locked: true, styles: {} },
+    { id: 'sys-locationID', type: 'hidden', name: 'locationID', label: 'locationID', hidden: true, locked: true, styles: {} },
+  ]
+
   const [formFields, setFormFields] = useState([
+    ...REQUIRED_SYSTEM_FIELDS,
     { id: '1', type: 'text', label: 'Full Name', placeholder: 'Enter your name', required: true, styles: {} },
     { id: '2', type: 'email', label: 'Email Address', placeholder: 'your@email.com', required: true, styles: {} },
   ])
@@ -431,10 +553,198 @@ function FormsPageInner() {
   )
 
   const RESERVED_FIELD_NAMES = new Set(['organisationID', 'formID', 'name', 'email', 'phoneNumber', 'location', 'locationID'])
+  const SYSTEM_HIDDEN_FIELD_NAMES = new Set(['organisationID', 'formID', 'locationID'])
 
   const getFieldNameForHtml = (field) => {
     if (field?.name) return field.name
     return (field?.label || field?.id || 'field').toLowerCase().replace(/\s+/g, '_')
+  }
+
+  const parseCssSize = (value) => {
+    const v = String(value || '').trim()
+    return v || undefined
+  }
+
+  const applyPaddingShorthand = (styles, padding) => {
+    const p = String(padding || '').trim()
+    if (!p) return
+    const parts = p.split(/\s+/).filter(Boolean)
+    if (parts.length === 1) {
+      styles.paddingTop = parts[0]
+      styles.paddingRight = parts[0]
+      styles.paddingBottom = parts[0]
+      styles.paddingLeft = parts[0]
+    } else if (parts.length === 2) {
+      styles.paddingTop = parts[0]
+      styles.paddingRight = parts[1]
+      styles.paddingBottom = parts[0]
+      styles.paddingLeft = parts[1]
+    } else if (parts.length === 3) {
+      styles.paddingTop = parts[0]
+      styles.paddingRight = parts[1]
+      styles.paddingBottom = parts[2]
+      styles.paddingLeft = parts[1]
+    } else if (parts.length >= 4) {
+      styles.paddingTop = parts[0]
+      styles.paddingRight = parts[1]
+      styles.paddingBottom = parts[2]
+      styles.paddingLeft = parts[3]
+    }
+  }
+
+  const fieldTypeFromInputType = (t) => {
+    const type = String(t || '').toLowerCase()
+    if (type === 'email') return 'email'
+    if (type === 'tel') return 'phone'
+    if (type === 'phone') return 'phone'
+    if (type === 'date') return 'date'
+    if (type === 'file') return 'file'
+    if (type === 'checkbox') return 'checkbox'
+    if (type === 'radio') return 'rating'
+    return 'text'
+  }
+
+  const buildFieldFromControl = (control, idSeed) => {
+    const tag = control.tagName.toLowerCase()
+    const isTextarea = tag === 'textarea'
+    const isSelect = tag === 'select'
+    const isInput = tag === 'input'
+
+    let type = 'text'
+    if (isTextarea) type = 'textarea'
+    else if (isSelect) type = 'select'
+    else if (isInput) type = fieldTypeFromInputType(control.getAttribute('type') || 'text')
+
+    // Prefer label in the same container
+    const container = control.closest('div') || control.parentElement
+    const labelEl = container?.querySelector?.('label')
+    const labelText = (labelEl?.textContent || '').replace(/\*/g, '').trim()
+
+    const nameAttr = (control.getAttribute('name') || '').trim()
+    const placeholder = (control.getAttribute('placeholder') || '').trim()
+    const required = control.hasAttribute('required')
+
+    const styles = {}
+    // Input styling from inline styles in exported HTML
+    const cs = control.style
+    if (cs?.backgroundColor) styles.backgroundColor = cs.backgroundColor
+    if (cs?.borderWidth) styles.borderWidth = cs.borderWidth
+    if (cs?.borderStyle) styles.borderStyle = cs.borderStyle
+    if (cs?.borderColor) styles.borderColor = cs.borderColor
+    if (cs?.borderRadius) styles.borderRadius = cs.borderRadius
+    if (cs?.width) styles.width = cs.width
+    if (cs?.margin) styles.marginTop = cs.margin // preserve shorthand at least
+    if (cs?.padding) applyPaddingShorthand(styles, cs.padding)
+    if (cs?.paddingTop) styles.paddingTop = cs.paddingTop
+    if (cs?.paddingRight) styles.paddingRight = cs.paddingRight
+    if (cs?.paddingBottom) styles.paddingBottom = cs.paddingBottom
+    if (cs?.paddingLeft) styles.paddingLeft = cs.paddingLeft
+
+    // Label typography
+    const ls = labelEl?.style
+    if (ls?.fontFamily) styles.fontFamily = ls.fontFamily
+    if (ls?.fontSize) styles.fontSize = parseCssSize(ls.fontSize)
+    if (ls?.fontWeight) styles.fontWeight = ls.fontWeight
+    if (ls?.color) styles.color = ls.color
+    if (ls?.letterSpacing) styles.letterSpacing = ls.letterSpacing
+    if (ls?.textTransform) styles.textTransform = ls.textTransform
+    if (ls?.textAlign) styles.textAlign = ls.textAlign
+
+    const options = []
+    if (type === 'select') {
+      control.querySelectorAll('option').forEach((opt) => {
+        const value = (opt.getAttribute('value') || opt.textContent || '').trim()
+        const label = (opt.textContent || value).trim()
+        if (!value) return
+        options.push({ label, value })
+      })
+    }
+
+    return {
+      id: `import-${idSeed}-${Date.now()}`,
+      type,
+      label: labelText || (nameAttr ? nameAttr.replace(/[_-]+/g, ' ') : 'Field'),
+      name: nameAttr ? nameAttr.replace(/\[\]$/, '') : undefined,
+      placeholder,
+      required,
+      styles,
+      options,
+    }
+  }
+
+  const importFormIntoBuilder = async (form) => {
+    try {
+      setSavingForm(false)
+      setSelectedField(null)
+
+      let htmlCode = form?.htmlCode || ''
+      if (!htmlCode && form?._id) {
+        const result = await api.get(`/api/formBuilder/${form._id}`)
+        if (result.success) htmlCode = result.data?.htmlCode || ''
+      }
+
+      // Set metadata first (so required hidden fields pick up formID)
+      setEditingFormId(form?._id || null)
+      setFormName(form?.name || '')
+      setFormDescription(form?.description || '')
+
+      const inferred = []
+      const byName = new Map()
+
+      if (htmlCode && typeof window !== 'undefined') {
+        const doc = new DOMParser().parseFromString(htmlCode, 'text/html')
+        const formEl = doc.querySelector('form')
+
+        // Capture submit button label if present
+        const submitEl = formEl?.querySelector('button[type="submit"], input[type="submit"]')
+        const submitLabel = submitEl
+          ? (submitEl.tagName.toLowerCase() === 'input' ? submitEl.getAttribute('value') : submitEl.textContent)
+          : ''
+        if (submitLabel && submitLabel.trim()) {
+          setSubmitButton((prev) => ({ ...prev, label: submitLabel.trim() }))
+        }
+
+        const controls = formEl ? Array.from(formEl.querySelectorAll('input, textarea, select')) : []
+        controls.forEach((control, idx) => {
+          const tag = control.tagName.toLowerCase()
+          const typeAttr = tag === 'input' ? (control.getAttribute('type') || '').toLowerCase() : ''
+          const nameAttr = (control.getAttribute('name') || '').trim().replace(/\[\]$/, '')
+
+          if (typeAttr === 'submit') return
+          if (typeAttr === 'hidden') return
+          if (SYSTEM_HIDDEN_FIELD_NAMES.has(nameAttr)) return
+
+          // Group checkbox options with the same name into a single field
+          if (tag === 'input' && typeAttr === 'checkbox' && nameAttr) {
+            const existing = byName.get(nameAttr)
+            if (existing) {
+              const labelEl = control.closest('div')?.querySelector('label')
+              const optLabel = (labelEl?.textContent || control.getAttribute('value') || `Option ${existing.options.length + 1}`).trim()
+              const optValue = (control.getAttribute('value') || optLabel).trim()
+              existing.options.push({ label: optLabel, value: optValue })
+              return
+            }
+          }
+
+          const field = buildFieldFromControl(control, idx)
+          // De-dupe by name if possible
+          if (field?.name) {
+            if (byName.has(field.name)) return
+            byName.set(field.name, field)
+          }
+          inferred.push(field)
+        })
+      }
+
+      const nextFields = [...REQUIRED_SYSTEM_FIELDS, ...inferred]
+      setFormFields(nextFields)
+      const firstVisible = inferred.find((f) => f && !f.hidden && f.type !== 'hidden')
+      setSelectedField(firstVisible?.id || null)
+      setActiveTab('builder')
+    } catch (e) {
+      console.error(e)
+      toast.error({ title: 'Import failed', message: 'Could not open this form in the builder.' })
+    }
   }
 
   const addField = (type) => {
@@ -1108,7 +1418,7 @@ ${gtagScript}
                               size="sm"
                               className="flex-1"
                               disabled={isInactive}
-                              onClick={() => openPreviewForm(form)}
+                              onClick={() => importFormIntoBuilder(form)}
                             >
                               <Eye className="h-3.5 w-3.5 mr-1.5" />
                               Preview
