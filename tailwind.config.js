@@ -18,9 +18,9 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          DEFAULT: '#7C3AED',
-          light: '#C4B5FD',
-          dark: '#6D28D9',
+          DEFAULT: 'var(--studio-primary)',
+          light: 'var(--studio-primary-light)',
+          dark: '#A01860',
           foreground: '#FFFFFF',
         },
         border: 'hsl(var(--border))',

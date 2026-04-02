@@ -224,11 +224,13 @@ export default function Header({ title, subtitle, onMenuClick }) {
   const isSms = pathname?.startsWith('/sms')
   const isEmails = pathname?.startsWith('/emails')
   const isAICalling = pathname?.startsWith('/ai-calling')
+  const isWorkflows = pathname?.startsWith('/workflows')
   const inboxFilter = (isInbox && searchParams?.get('filter')) || 'all'
   const formsView = isForms ? (searchParams?.get('view') || 'templates') : null
   const smsView = isSms ? (searchParams?.get('view') || 'templates') : null
   const emailsView = isEmails ? (searchParams?.get('view') || 'templates') : null
   const aiCallingView = isAICalling ? (searchParams?.get('view') || 'scripts') : null
+  const workflowsView = isWorkflows ? (searchParams?.get('view') || 'active') : null
 
   const setInboxFilter = (value) => {
     const params = new URLSearchParams(searchParams?.toString() || '')
@@ -264,8 +266,15 @@ export default function Header({ title, subtitle, onMenuClick }) {
     router.push(`/ai-calling?${params.toString()}`)
   }
 
+  const setWorkflowsView = (value) => {
+    if (!isWorkflows) return
+    const params = new URLSearchParams(searchParams?.toString() || '')
+    params.set('view', value)
+    router.push(`/workflows?${params.toString()}`)
+  }
+
   return (
-    <header className="sticky top-0 z-30 min-h-[86px] border-b border-slate-200/80 bg-white">
+    <header className="sticky top-0 z-30 min-h-[86px] bg-white">
       <div className="flex min-h-[86px] items-center justify-between px-6">
 
         {/* LEFT SECTION — ROUTE-SPECIFIC NAV */}
@@ -391,6 +400,31 @@ export default function Header({ title, subtitle, onMenuClick }) {
                   <button
                     key={value}
                     onClick={() => setAICallingView(value)}
+                    className={cn(
+                      'text-sm font-medium transition-colors duration-200',
+                      isActive ? 'text-[var(--studio-primary)]' : 'text-slate-500'
+                    )}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : isWorkflows ? (
+          <div className="flex items-center h-[44px]">
+            <div className="flex items-center gap-8 rounded-full bg-[#F1F5F9] px-6 py-2">
+              {[
+                { value: 'active', label: 'Active (3)' },
+                { value: 'paused', label: 'Paused (1)' },
+                { value: 'drafts', label: 'Drafts (0)' },
+                { value: 'analytics', label: 'Analytics' },
+              ].map(({ value, label }) => {
+                const isActive = workflowsView === value
+                return (
+                  <button
+                    key={value}
+                    onClick={() => setWorkflowsView(value)}
                     className={cn(
                       'text-sm font-medium transition-colors duration-200',
                       isActive ? 'text-[var(--studio-primary)]' : 'text-slate-500'

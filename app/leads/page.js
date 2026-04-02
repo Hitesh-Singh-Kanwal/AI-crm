@@ -25,6 +25,7 @@ import BulkCreateLeadsDialog from './components/BulkCreateLeadsDialog'
 import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
+import GlobalLoader from '@/components/shared/GlobalLoader'
 
 const STAGE_STYLES = {
   new: 'bg-slate-200 text-slate-800',
@@ -50,7 +51,7 @@ export default function LeadsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [leads, setLeads] = useState([])
   const [totalCount, setTotalCount] = useState(0)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogInitialLeadId, setDialogInitialLeadId] = useState(null)
   const [dialogViewOnly, setDialogViewOnly] = useState(false)
@@ -108,6 +109,16 @@ export default function LeadsPage() {
     })
   }, [currentPage, searchQuery, stageFilter, bookingStatusFilter, escalatedOnly, loadLeads])
 
+  if (loading && leads.length === 0) {
+    return (
+      <MainLayout title="Leads" subtitle="">
+        <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+          <GlobalLoader variant="center" size="md" text="Loading leads…" />
+        </div>
+      </MainLayout>
+    )
+  }
+
   const toggleOne = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
@@ -163,12 +174,12 @@ export default function LeadsPage() {
         {/* Title + count + description */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-semibold text-[#050312] tracking-tight">Leads</h1>
-            <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-[#9224EF] bg-white border border-[#E2E8F0]">
+            <h1 className="text-2xl font-semibold text-foreground tracking-tight">Leads</h1>
+            <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
               {totalCount} leads
             </span>
           </div>
-          <p className="text-sm font-normal text-[#64748B]">
+          <p className="text-sm font-normal text-muted-foreground">
             Manage your team members and their account permissions here.
           </p>
         </div>
@@ -177,12 +188,12 @@ export default function LeadsPage() {
         <div className="flex items-center justify-between gap-3 mb-6">
           {/* Left: Search */}
           <div className="relative w-[220px] shrink-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8]" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 rounded-lg border-[#E2E8F0] bg-white text-sm placeholder:text-[#94A3B8]"
+              className="pl-9 h-9 rounded-lg bg-background text-sm placeholder:text-muted-foreground"
             />
           </div>
 
@@ -193,7 +204,7 @@ export default function LeadsPage() {
               <button
                 type="button"
                 onClick={() => setStageFilter('')}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#9224EF] text-white text-sm font-medium shrink-0"
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-brand text-brand-foreground text-sm font-medium shrink-0"
               >
                 {stageFilter} <X className="h-3.5 w-3.5" />
               </button>
@@ -202,7 +213,7 @@ export default function LeadsPage() {
             <button
               type="button"
               onClick={() => setBookingStatusFilter('')}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#9224EF] text-white text-sm font-medium shrink-0"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-brand text-brand-foreground text-sm font-medium shrink-0"
             >
               {bookingStatusFilter} <X className="h-3.5 w-3.5" />
             </button>
@@ -211,7 +222,7 @@ export default function LeadsPage() {
             <button
               type="button"
               onClick={() => setEscalatedOnly(false)}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#9224EF] text-white text-sm font-medium shrink-0"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-brand text-brand-foreground text-sm font-medium shrink-0"
             >
               Escalated <X className="h-3.5 w-3.5" />
             </button>
@@ -220,7 +231,7 @@ export default function LeadsPage() {
               <button
                 type="button"
                 onClick={() => setSort('createdDesc')}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#9224EF] text-white text-sm font-medium shrink-0"
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-brand text-brand-foreground text-sm font-medium shrink-0"
               >
                 {sort === 'nameAsc' ? 'Sort A-Z' : sort} <X className="h-3.5 w-3.5" />
               </button>
@@ -229,14 +240,14 @@ export default function LeadsPage() {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm font-medium text-[#334155] hover:bg-slate-50 shrink-0"
+                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 shrink-0"
               >
-                <SlidersHorizontal className="h-4 w-4 text-[#64748B]" />
+                <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
                 More filters
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <div className="px-2 py-1.5 text-sm font-semibold text-[#0f172a]">
+              <div className="px-2 py-1.5 text-sm font-semibold text-foreground">
                 Booking status
               </div>
               <DropdownMenuItem onClick={() => setBookingStatusFilter('')}>All</DropdownMenuItem>
@@ -247,7 +258,7 @@ export default function LeadsPage() {
                 Booked
               </DropdownMenuItem>
 
-              <div className="px-2 pt-2 pb-1.5 text-sm font-semibold text-[#0f172a]">
+              <div className="px-2 pt-2 pb-1.5 text-sm font-semibold text-foreground">
                 Escalation
               </div>
               <DropdownMenuItem
@@ -256,7 +267,7 @@ export default function LeadsPage() {
               >
                 <span>Escalated only</span>
                 {escalatedOnly && (
-                  <span className="text-[10px] rounded-full bg-[#9224EF] text-white px-1.5 py-0.5">
+                  <span className="text-[10px] rounded-full bg-brand text-brand-foreground px-1.5 py-0.5">
                     On
                   </span>
                 )}
@@ -267,10 +278,10 @@ export default function LeadsPage() {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm font-medium text-[#334155] hover:bg-slate-50 shrink-0"
+                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 shrink-0"
               >
                 {stageFilter ? `Status: ${stageFilter}` : 'Status'}{' '}
-                <ChevronDown className="h-4 w-4 text-[#64748B]" />
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -288,7 +299,7 @@ export default function LeadsPage() {
             </DropdownMenuContent>
           </DropdownMenu>
           <Button
-            className="h-9 px-4 rounded-lg bg-[#9224EF] hover:bg-[#7B1FD4] text-white text-sm font-medium gap-2 shrink-0"
+            className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
             onClick={openCreateDialog}
           >
             <Plus className="h-4 w-4" />
@@ -298,23 +309,23 @@ export default function LeadsPage() {
         </div>
 
         {/* Table */}
-        <div className="rounded-xl border border-[#E2E8F0] bg-white overflow-hidden">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow className="border-b border-[#E2E8F0] hover:bg-transparent bg-[#F8FAFC]">
+              <TableRow className="border-b border-border hover:bg-transparent bg-muted/30">
                 <TableHead className="w-12 py-3 pl-4 pr-0">
                   <Checkbox
                     checked={selectedIds.length === leads.length && leads.length > 0}
                     onClick={toggleAll}
-                    className="rounded border-[#CBD5E1] data-[state=checked]:bg-[#9224EF] data-[state=checked]:border-[#9224EF]"
+                    className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
                   />
                 </TableHead>
-                <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Name</TableHead>
-                <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Contact</TableHead>
-                <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Status</TableHead>
-                <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Booking Status</TableHead>
-                <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Communication</TableHead>
-                <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Created</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Name</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Contact</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Status</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Booking Status</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Communication</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Created</TableHead>
                 <TableHead className="w-12 py-3 pr-4 pl-0" />
               </TableRow>
             </TableHeader>
@@ -331,24 +342,24 @@ export default function LeadsPage() {
                 return (
                 <TableRow
                   key={lead._id}
-                  className="border-b border-[#E2E8F0] hover:bg-slate-50/80 transition-colors"
+                  className="border-b border-border hover:bg-muted/30 transition-colors"
                 >
                   <TableCell className="py-3 pl-4 pr-0">
                     <Checkbox
                       checked={selectedIds.includes(lead._id)}
                       onClick={() => toggleOne(lead._id)}
-                      className="rounded border-[#CBD5E1] data-[state=checked]:bg-[#9224EF] data-[state=checked]:border-[#9224EF]"
+                      className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
                     />
                   </TableCell>
                   <TableCell className="py-3 px-4">
                     <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-[#E2E8F0] flex items-center justify-center text-sm font-medium text-[#64748B] shrink-0">
+                      <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground shrink-0">
                         {lead.name.charAt(0)}
                       </div>
                       <div>
-                        <p className="text-sm font-normal text-[#050312] leading-tight">{lead.name}</p>
+                        <p className="text-sm font-normal text-foreground leading-tight">{lead.name}</p>
                         {lead.location && (
-                          <p className="text-xs font-normal text-[#94A3B8] leading-tight mt-0.5">
+                          <p className="text-xs font-normal text-muted-foreground leading-tight mt-0.5">
                             {lead.location}
                           </p>
                         )}
@@ -356,8 +367,8 @@ export default function LeadsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <div className="text-sm font-normal text-[#050312] leading-tight">{lead.email}</div>
-                    <div className="text-xs font-normal text-[#94A3B8] leading-tight">{lead.phoneNumber}</div>
+                    <div className="text-sm font-normal text-foreground leading-tight">{lead.email}</div>
+                    <div className="text-xs font-normal text-muted-foreground leading-tight">{lead.phoneNumber}</div>
                   </TableCell>
                   <TableCell className="py-3 px-4">
                     <span
@@ -380,7 +391,7 @@ export default function LeadsPage() {
                     </span>
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <div className="flex items-center gap-3 text-sm text-[#64748B]">
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Phone className="h-3.5 w-3.5" />
                         {lead.calls ?? 0}
@@ -396,8 +407,8 @@ export default function LeadsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <p className="text-sm font-normal text-[#050312] leading-tight">{createdLabel}</p>
-                    <p className="text-xs font-normal text-[#94A3B8] leading-tight">
+                    <p className="text-sm font-normal text-foreground leading-tight">{createdLabel}</p>
+                    <p className="text-xs font-normal text-muted-foreground leading-tight">
                       Last: {lastActiveLabel}
                     </p>
                   </TableCell>
@@ -406,7 +417,7 @@ export default function LeadsPage() {
                       <DropdownMenuTrigger asChild>
                         <button
                           type="button"
-                          className="p-1.5 rounded-md hover:bg-slate-100 text-[#64748B] hover:text-[#334155]"
+                          className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground"
                           aria-label="Actions"
                         >
                           <MoreHorizontal className="h-4 w-4" />
@@ -431,23 +442,23 @@ export default function LeadsPage() {
           </Table>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between px-4 py-3 border-t border-[#E2E8F0]">
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border">
             <button
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1 || loading}
-              className="inline-flex items-center h-8 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm font-medium text-[#334155] hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Previous
             </button>
-            <span className="text-sm text-[#64748B]">
+            <span className="text-sm text-muted-foreground">
               Page {currentPage} of {totalPages}
             </span>
             <button
               type="button"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages || loading}
-              className="inline-flex items-center h-8 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm font-medium text-[#334155] hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Next
             </button>

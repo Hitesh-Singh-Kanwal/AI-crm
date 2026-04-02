@@ -419,23 +419,23 @@ export default function MakeCallsPage() {
     >
       <div className="max-w-[960px] mx-auto">
         {/* Configure wizard */}
-        <div className="rounded-xl border border-[#E2E8F0] bg-white p-4 lg:p-6 shadow-sm h-full flex flex-col">
+        <div className="rounded-xl border border-border bg-card p-4 lg:p-6 shadow-sm h-full flex flex-col">
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-[#F1F5F9] px-2.5 py-1 text-xs font-medium text-[#475569] mb-2">
-                <PhoneCall className="h-3.5 w-3.5 text-[#6366F1]" />
+              <div className="inline-flex items-center gap-2 rounded-full bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground mb-2 border border-border/60">
+                <PhoneCall className="h-3.5 w-3.5 text-primary" />
                 AI Calling Flow
               </div>
-              <h2 className="text-base font-semibold text-[#0F172A]">
+              <h2 className="text-base font-semibold text-foreground">
                 Configure and launch
               </h2>
-              <p className="text-xs text-[#64748B] mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Move through the steps to choose contacts, a persona, and review.
               </p>
             </div>
             <button
               type="button"
-              className="text-[#64748B] hover:text-[#0F172A] text-xs"
+              className="text-muted-foreground hover:text-foreground text-xs"
               onClick={resetFlow}
             >
               Reset flow
@@ -448,66 +448,66 @@ export default function MakeCallsPage() {
               <div
                 className={`h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${
                   wizardStep === 1
-                    ? 'bg-[#9224EF] text-white'
+                    ? 'bg-brand text-brand-foreground'
                     : wizardStep > 1
                     ? 'bg-emerald-500 text-white'
-                    : 'bg-[#E2E8F0] text-[#64748B]'
+                    : 'bg-muted text-muted-foreground'
                 }`}
               >
                 1
               </div>
-              <span className="hidden sm:inline text-[11px] text-[#475569]">
+              <span className="hidden sm:inline text-[11px] text-muted-foreground">
                 Select contacts
               </span>
             </div>
-            <div className="flex-1 h-px bg-[#E2E8F0] mx-1" />
+            <div className="flex-1 h-px bg-border mx-1" />
             <div className="flex items-center gap-2">
               <div
                 className={`h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${
                   wizardStep === 2
-                    ? 'bg-[#9224EF] text-white'
+                    ? 'bg-brand text-brand-foreground'
                     : wizardStep > 2
                     ? 'bg-emerald-500 text-white'
-                    : 'bg-[#E2E8F0] text-[#64748B]'
+                    : 'bg-muted text-muted-foreground'
                 }`}
               >
                 2
               </div>
-              <span className="hidden sm:inline text-[11px] text-[#475569]">
+              <span className="hidden sm:inline text-[11px] text-muted-foreground">
                 Setup
               </span>
             </div>
-            <div className="flex-1 h-px bg-[#E2E8F0] mx-1" />
+            <div className="flex-1 h-px bg-border mx-1" />
             <div className="flex items-center gap-2">
               <div
                 className={`h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${
                   wizardStep === 3
-                    ? 'bg-[#9224EF] text-white'
+                    ? 'bg-brand text-brand-foreground'
                     : wizardStep > 3
                     ? 'bg-emerald-500 text-white'
-                    : 'bg-[#E2E8F0] text-[#64748B]'
+                    : 'bg-muted text-muted-foreground'
                 }`}
               >
                 3
               </div>
-              <span className="hidden sm:inline text-[11px] text-[#475569]">
+              <span className="hidden sm:inline text-[11px] text-muted-foreground">
                 Script & settings
               </span>
             </div>
-            <div className="flex-1 h-px bg-[#E2E8F0] mx-1" />
+            <div className="flex-1 h-px bg-border mx-1" />
             <div className="flex items-center gap-2">
               <div
                 className={`h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${
                   wizardStep === 4
-                    ? 'bg-[#9224EF] text-white'
+                    ? 'bg-brand text-brand-foreground'
                     : wizardStep > 4
                     ? 'bg-emerald-500 text-white'
-                    : 'bg-[#E2E8F0] text-[#64748B]'
+                    : 'bg-muted text-muted-foreground'
                 }`}
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
               </div>
-              <span className="hidden sm:inline text-[11px] text-[#475569]">
+              <span className="hidden sm:inline text-[11px] text-muted-foreground">
                 Review & launch
               </span>
             </div>
@@ -519,11 +519,11 @@ export default function MakeCallsPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium text-[#0F172A] flex items-center gap-2">
-                      <ListChecks className="h-4 w-4 text-[#6366F1]" />
+                    <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                      <ListChecks className="h-4 w-4 text-primary" />
                       Select contacts
                     </p>
-                    <p className="text-xs text-[#64748B]">
+                    <p className="text-xs text-muted-foreground">
                       Using the same contacts list as the Leads tab.
                     </p>
                   </div>
@@ -531,7 +531,7 @@ export default function MakeCallsPage() {
 
                 <div className="flex items-center justify-between gap-2">
                   <div className="relative w-full">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#94A3B8]" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
                       placeholder="Search contacts"
                       value={wizardLeadsSearch}
@@ -539,23 +539,23 @@ export default function MakeCallsPage() {
                         setWizardLeadsPage(1)
                         setWizardLeadsSearch(e.target.value)
                       }}
-                      className="pl-8 h-8 rounded-lg border-[#E2E8F0] bg-white text-xs placeholder:text-[#94A3B8]"
+                      className="pl-8 h-8 rounded-lg bg-background text-xs placeholder:text-muted-foreground"
                     />
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] overflow-hidden">
+                <div className="rounded-xl border border-border bg-muted/20 overflow-hidden">
                   {wizardLeadsLoading ? (
                     <div className="flex items-center justify-center py-8">
                       <LoadingSpinner size="sm" text="Loading contacts…" />
                     </div>
                   ) : wizardLeads.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-[#64748B]">
+                    <div className="py-8 text-center text-xs text-muted-foreground">
                       No contacts found. Add leads first in the Leads tab.
                     </div>
                   ) : (
                     <>
-                      <div className="flex items-center justify-between px-3 py-2 border-b border-[#E2E8F0] bg-white text-[11px] font-medium text-[#64748B]">
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-background text-[11px] font-medium text-muted-foreground">
                         <div className="flex items-center gap-2">
                           <Checkbox
                             checked={
@@ -563,21 +563,21 @@ export default function MakeCallsPage() {
                               wizardLeads.every((l) => selectedLeadIds.includes(l._id))
                             }
                             onClick={toggleWizardLeadsOnPage}
-                            className="h-3.5 w-3.5 rounded border-[#CBD5E1] data-[state=checked]:bg-[#9224EF] data-[state=checked]:border-[#9224EF]"
+                            className="h-3.5 w-3.5 rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
                           />
                           <span>Contact</span>
                         </div>
                         <span className="w-28 text-right">Phone</span>
                       </div>
-                      <div className="max-h-72 overflow-y-auto bg-white">
+                      <div className="max-h-72 overflow-y-auto bg-background">
                         {wizardLeads.map((lead) => {
                           const isSelected = selectedLeadIds.includes(lead._id)
                           return (
                             <div
                               key={lead._id}
                               onClick={() => toggleWizardLead(lead)}
-                              className={`w-full flex items-center justify-between px-3 py-2.5 text-xs border-b border-[#F1F5F9] cursor-pointer transition-colors ${
-                                isSelected ? 'bg-[#F3E8FF]' : 'bg-white hover:bg-[#F8FAFF]'
+                              className={`w-full flex items-center justify-between px-3 py-2.5 text-xs border-b border-border/60 cursor-pointer transition-colors ${
+                                isSelected ? 'bg-brand/10' : 'bg-background hover:bg-muted/30'
                               }`}
                             >
                               <div className="flex items-center gap-2">
@@ -587,30 +587,30 @@ export default function MakeCallsPage() {
                                     e.stopPropagation()
                                     toggleWizardLead(lead)
                                   }}
-                                  className="h-3.5 w-3.5 rounded border-[#CBD5E1] data-[state=checked]:bg-[#9224EF] data-[state=checked]:border-[#9224EF]"
+                                  className="h-3.5 w-3.5 rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
                                 />
                                 <div className="flex items-center gap-2">
-                                  <div className="h-7 w-7 rounded-full bg-[#E2E8F0] flex items-center justify-center text-[10px] font-medium text-[#64748B]">
+                                  <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground">
                                     {lead.name?.charAt(0) || '?'}
                                   </div>
                                   <div className="text-left">
-                                    <p className="text-xs font-medium text-[#0F172A] leading-tight">
+                                    <p className="text-xs font-medium text-foreground leading-tight">
                                       {lead.name}
                                     </p>
-                                    <p className="text-[11px] text-[#94A3B8] leading-tight">
+                                    <p className="text-[11px] text-muted-foreground leading-tight">
                                       {lead.email}
                                     </p>
                                   </div>
                                 </div>
                               </div>
-                              <span className="w-28 text-right text-[11px] text-[#475569] tabular-nums">
+                              <span className="w-28 text-right text-[11px] text-muted-foreground tabular-nums">
                                 {lead.phoneNumber || '—'}
                               </span>
                             </div>
                           )
                         })}
                       </div>
-                      <div className="flex items-center justify-between px-3 py-2 border-t border-[#E2E8F0] bg-[#F8FAFC] text-[11px] text-[#64748B]">
+                      <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-muted/20 text-[11px] text-muted-foreground">
                         <span>
                           Selected {selectedLeadIds.length} contact
                           {selectedLeadIds.length === 1 ? '' : 's'}
@@ -620,7 +620,7 @@ export default function MakeCallsPage() {
                             type="button"
                             onClick={() => setWizardLeadsPage((p) => Math.max(1, p - 1))}
                             disabled={wizardLeadsPage === 1 || wizardLeadsLoading}
-                            className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
+                            className="px-2 py-1 rounded border border-border bg-background disabled:opacity-40"
                           >
                             Prev
                           </button>
@@ -637,7 +637,7 @@ export default function MakeCallsPage() {
                             disabled={
                               wizardLeadsPage === wizardLeadsTotalPages || wizardLeadsLoading
                             }
-                            className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
+                            className="px-2 py-1 rounded border border-border bg-background disabled:opacity-40"
                           >
                             Next
                           </button>
@@ -653,11 +653,11 @@ export default function MakeCallsPage() {
             {wizardStep === 2 && (
               <div className="space-y-3">
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A] flex items-center gap-2">
-                    <Bot className="h-4 w-4 text-[#6366F1]" />
+                  <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-primary" />
                     Choose setup mode
                   </p>
-                  <p className="text-xs text-[#64748B]">
+                  <p className="text-xs text-muted-foreground">
                     Pick a saved assistant or continue with manual persona setup.
                   </p>
                 </div>
@@ -668,12 +668,12 @@ export default function MakeCallsPage() {
                     onClick={() => setSetupMode('assistant')}
                     className={`rounded-xl border p-3 text-left transition-all ${
                       setupMode === 'assistant'
-                        ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
-                        : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
+                        ? 'border-brand bg-brand/10 shadow-sm'
+                        : 'border-border bg-background hover:bg-muted/30'
                     }`}
                   >
-                    <p className="text-sm font-semibold text-[#0F172A]">Use saved assistant</p>
-                    <p className="text-[11px] text-[#64748B] mt-1">
+                    <p className="text-sm font-semibold text-foreground">Use saved assistant</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
                       Reuse persona, script, and knowledge base from AI Assist.
                     </p>
                   </button>
@@ -682,12 +682,12 @@ export default function MakeCallsPage() {
                     onClick={() => setSetupMode('manual')}
                     className={`rounded-xl border p-3 text-left transition-all ${
                       setupMode === 'manual'
-                        ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
-                        : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
+                        ? 'border-brand bg-brand/10 shadow-sm'
+                        : 'border-border bg-background hover:bg-muted/30'
                     }`}
                   >
-                    <p className="text-sm font-semibold text-[#0F172A]">Manual setup</p>
-                    <p className="text-[11px] text-[#64748B] mt-1">
+                    <p className="text-sm font-semibold text-foreground">Manual setup</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
                       Select persona and script manually for this run.
                     </p>
                   </button>
@@ -708,7 +708,7 @@ export default function MakeCallsPage() {
                     )}
 
                     {!assistantsLoading && !assistantsError && assistants.length === 0 && (
-                      <div className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-3">
+                      <div className="text-xs text-muted-foreground bg-muted/20 border border-border rounded-md px-3 py-3">
                         No assistants found. Create one in AI Calling → AI Assist first.
                       </div>
                     )}
@@ -728,16 +728,16 @@ export default function MakeCallsPage() {
                                 }}
                                 className={`w-full rounded-xl border p-3 text-left transition-all ${
                                   selected
-                                    ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
-                                    : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
+                                    ? 'border-brand bg-brand/10 shadow-sm'
+                                    : 'border-border bg-background hover:bg-muted/30'
                                 }`}
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="min-w-0">
-                                    <p className="text-sm font-semibold text-[#0F172A] truncate">
+                                    <p className="text-sm font-semibold text-foreground truncate">
                                       {assistant.name || 'Unnamed assistant'}
                                     </p>
-                                    <p className="text-[11px] text-[#94A3B8] truncate">
+                                    <p className="text-[11px] text-muted-foreground truncate">
                                       {[assistant.persona?.provider, assistant.persona?.voiceId]
                                         .filter(Boolean)
                                         .join(' · ') || '—'}
@@ -749,7 +749,7 @@ export default function MakeCallsPage() {
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-[11px] text-[#64748B] mt-2 line-clamp-2 whitespace-pre-wrap">
+                                <p className="text-[11px] text-muted-foreground mt-2 line-clamp-2 whitespace-pre-wrap">
                                   {assistant.scriptData?.script || 'No script'}
                                 </p>
                               </button>
@@ -757,12 +757,12 @@ export default function MakeCallsPage() {
                           })}
                         </div>
 
-                        <div className="flex items-center justify-between rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
+                        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
                           <button
                             type="button"
                             onClick={() => setAssistantsPage((p) => Math.max(1, p - 1))}
                             disabled={assistantsPage === 1 || assistantsLoading}
-                            className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
+                            className="px-2 py-1 rounded border border-border bg-background disabled:opacity-40"
                           >
                             Prev
                           </button>
@@ -775,8 +775,8 @@ export default function MakeCallsPage() {
                                 disabled={assistantsLoading || n === assistantsPage}
                                 className={`h-7 min-w-7 px-2 rounded border text-[11px] ${
                                   n === assistantsPage
-                                    ? 'border-[#9224EF] bg-[#F3E8FF] text-[#6D28D9]'
-                                    : 'border-[#E2E8F0] bg-white text-[#475569]'
+                                    ? 'border-brand bg-brand/10 text-brand'
+                                    : 'border-border bg-background text-muted-foreground'
                                 } disabled:opacity-60`}
                               >
                                 {n}
@@ -787,7 +787,7 @@ export default function MakeCallsPage() {
                             type="button"
                             onClick={() => setAssistantsPage((p) => Math.min(assistantsTotalPages, p + 1))}
                             disabled={assistantsPage === assistantsTotalPages || assistantsLoading}
-                            className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
+                            className="px-2 py-1 rounded border border-border bg-background disabled:opacity-40"
                           >
                             Next
                           </button>
@@ -810,7 +810,7 @@ export default function MakeCallsPage() {
                     )}
 
                     {!personasLoading && !personasError && personas.length === 0 && (
-                      <div className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-3">
+                      <div className="text-xs text-muted-foreground bg-muted/20 border border-border rounded-md px-3 py-3">
                         No personas configured yet. Add personas from the AI Calling page first.
                       </div>
                     )}
@@ -827,20 +827,20 @@ export default function MakeCallsPage() {
                                 onClick={() => setSelectedPersonaId(persona._id)}
                                 className={`w-full rounded-xl border p-3 text-left transition-all ${
                                   selected
-                                    ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
-                                    : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
+                                    ? 'border-brand bg-brand/10 shadow-sm'
+                                    : 'border-border bg-background hover:bg-muted/30'
                                 }`}
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="flex items-start gap-3 min-w-0">
-                                    <div className="h-9 w-9 rounded-xl bg-[#EEF2FF] flex items-center justify-center shrink-0">
-                                      <User className="h-4 w-4 text-[#4F46E5]" />
+                                    <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                                      <User className="h-4 w-4 text-primary" />
                                     </div>
                                     <div className="min-w-0">
-                                      <p className="text-sm font-semibold text-[#0F172A] truncate">
+                                      <p className="text-sm font-semibold text-foreground truncate">
                                         {persona.voice || 'Unnamed Persona'}
                                       </p>
-                                      <p className="text-[11px] text-[#94A3B8] truncate">
+                                      <p className="text-[11px] text-muted-foreground truncate">
                                         {[persona.provider, persona.model, persona.gender]
                                           .filter(Boolean)
                                           .join(' · ') || '—'}
@@ -854,7 +854,7 @@ export default function MakeCallsPage() {
                                   )}
                                 </div>
                                 {persona.description && (
-                                  <p className="text-[11px] text-[#64748B] mt-2 line-clamp-2">
+                                  <p className="text-[11px] text-muted-foreground mt-2 line-clamp-2">
                                     {Array.isArray(persona.description)
                                       ? persona.description.join(' · ')
                                       : persona.description}
@@ -865,12 +865,12 @@ export default function MakeCallsPage() {
                           })}
                         </div>
 
-                        <div className="flex items-center justify-between rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
+                        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
                           <button
                             type="button"
                             onClick={() => setPersonasPage((p) => Math.max(1, p - 1))}
                             disabled={personasPage === 1 || personasLoading}
-                            className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
+                            className="px-2 py-1 rounded border border-border bg-background disabled:opacity-40"
                           >
                             Prev
                           </button>
@@ -883,8 +883,8 @@ export default function MakeCallsPage() {
                                 disabled={personasLoading || n === personasPage}
                                 className={`h-7 min-w-7 px-2 rounded border text-[11px] ${
                                   n === personasPage
-                                    ? 'border-[#9224EF] bg-[#F3E8FF] text-[#6D28D9]'
-                                    : 'border-[#E2E8F0] bg-white text-[#475569]'
+                                    ? 'border-brand bg-brand/10 text-brand'
+                                    : 'border-border bg-background text-muted-foreground'
                                 } disabled:opacity-60`}
                               >
                                 {n}
@@ -895,7 +895,7 @@ export default function MakeCallsPage() {
                             type="button"
                             onClick={() => setPersonasPage((p) => Math.min(personasTotalPages, p + 1))}
                             disabled={personasPage === personasTotalPages || personasLoading}
-                            className="px-2 py-1 rounded border border-[#E2E8F0] bg-white disabled:opacity-40"
+                            className="px-2 py-1 rounded border border-border bg-background disabled:opacity-40"
                           >
                             Next
                           </button>
@@ -911,11 +911,11 @@ export default function MakeCallsPage() {
             {wizardStep === 3 && (
               <div className="space-y-3">
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A] flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-[#6366F1]" />
+                  <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
                     Script and assistant settings
                   </p>
-                  <p className="text-xs text-[#64748B]">
+                  <p className="text-xs text-muted-foreground">
                     {setupMode === 'assistant'
                       ? 'Using the selected assistant for persona/script/knowledge base. You can still customize messages below.'
                       : 'Choose script, optional knowledge base file, and customize assistant messages.'}
@@ -935,7 +935,7 @@ export default function MakeCallsPage() {
                 )}
 
                 {setupMode !== 'assistant' && !scriptsLoading && !scriptsError && scripts.length === 0 && (
-                  <div className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-3">
+                  <div className="text-xs text-muted-foreground bg-muted/20 border border-border rounded-md px-3 py-3">
                     No scripts configured yet. Add scripts from AI Calling &gt; Scripts first.
                   </div>
                 )}
@@ -953,16 +953,16 @@ export default function MakeCallsPage() {
                           }}
                           className={`w-full rounded-xl border p-3 text-left transition-all ${
                             selected
-                              ? 'border-[#9224EF] bg-[#F3E8FF] shadow-sm'
-                              : 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFF]'
+                              ? 'border-brand bg-brand/10 shadow-sm'
+                              : 'border-border bg-background hover:bg-muted/30'
                           }`}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="text-sm font-semibold text-[#0F172A] truncate">
+                              <p className="text-sm font-semibold text-foreground truncate">
                                 {script.name || 'Untitled Script'}
                               </p>
-                              <p className="text-[11px] text-[#94A3B8] truncate">
+                              <p className="text-[11px] text-muted-foreground truncate">
                                 {[script.categoryID?.name, script.subCategory].filter(Boolean).join(' · ') || '—'}
                               </p>
                             </div>
@@ -972,7 +972,7 @@ export default function MakeCallsPage() {
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-[#64748B] mt-2 line-clamp-3 whitespace-pre-wrap">
+                          <p className="text-[11px] text-muted-foreground mt-2 line-clamp-3 whitespace-pre-wrap">
                             {script.script || 'No script content'}
                           </p>
                         </button>
@@ -982,17 +982,17 @@ export default function MakeCallsPage() {
                 )}
 
                 {setupMode === 'assistant' && selectedAssistant && (
-                  <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-[11px] text-[#64748B] space-y-1.5">
+                  <div className="rounded-lg border border-border bg-muted/20 p-3 text-[11px] text-muted-foreground space-y-1.5">
                     <p>
-                      <span className="font-medium text-[#475569]">Assistant:</span>{' '}
+                      <span className="font-medium text-foreground">Assistant:</span>{' '}
                       {selectedAssistant.name || '—'}
                     </p>
                     <p>
-                      <span className="font-medium text-[#475569]">Persona voice:</span>{' '}
+                      <span className="font-medium text-foreground">Persona voice:</span>{' '}
                       {selectedAssistant.persona?.voiceId || '—'}
                     </p>
                     <p>
-                      <span className="font-medium text-[#475569]">Knowledge file:</span>{' '}
+                      <span className="font-medium text-foreground">Knowledge file:</span>{' '}
                       {Array.isArray(selectedAssistant.fileID)
                         ? selectedAssistant.fileID[0] || 'No file'
                         : getAssistantPrimaryFileId(selectedAssistant) || 'No file'}
@@ -1000,17 +1000,17 @@ export default function MakeCallsPage() {
                   </div>
                 )}
 
-                <Card className="border-[#E2E8F0]">
+                <Card className="border-border">
                   <CardContent className="p-3 space-y-3">
                     {setupMode !== 'assistant' && (
                       <div>
-                        <label className="text-xs font-medium text-[#475569] mb-1 block">
+                        <label className="text-xs font-medium text-foreground mb-1 block">
                           Knowledge base file (optional)
                         </label>
                         <select
                           value={selectedKnowledgeFileId}
                           onChange={(e) => setSelectedKnowledgeFileId(e.target.value)}
-                          className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-2.5 text-xs"
+                          className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs"
                         >
                           <option value="">No file</option>
                           {knowledgeFiles.map((file) => (
@@ -1020,7 +1020,7 @@ export default function MakeCallsPage() {
                           ))}
                         </select>
                         {knowledgeFilesLoading && (
-                          <p className="text-[11px] text-[#94A3B8] mt-1">Loading files…</p>
+                          <p className="text-[11px] text-muted-foreground mt-1">Loading files…</p>
                         )}
                         {knowledgeFilesError && (
                           <p className="text-[11px] text-red-600 mt-1">{knowledgeFilesError}</p>
@@ -1030,13 +1030,13 @@ export default function MakeCallsPage() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-medium text-[#475569] mb-1 block">
+                        <label className="text-xs font-medium text-foreground mb-1 block">
                           First message mode
                         </label>
                         <select
                           value={firstMessageMode}
                           onChange={(e) => setFirstMessageMode(e.target.value)}
-                          className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-2.5 text-xs"
+                          className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs"
                         >
                           <option value="assistant-waits-for-user">assistant-waits-for-user</option>
                           <option value="assistant-speaks-first-with-model-generated-message">
@@ -1046,7 +1046,7 @@ export default function MakeCallsPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-[#475569] mb-1 block">
+                        <label className="text-xs font-medium text-foreground mb-1 block">
                           Voice message
                         </label>
                         <Input
@@ -1057,20 +1057,20 @@ export default function MakeCallsPage() {
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-[#475569] mb-1 block">
+                        <label className="text-xs font-medium text-foreground mb-1 block">
                           Background sound
                         </label>
                         <select
                           value={backgroundSound === 'office' ? 'office' : 'none'}
                           onChange={(e) => setBackgroundSound(e.target.value === 'office' ? 'office' : null)}
-                          className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-2.5 text-xs"
+                          className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs"
                         >
                           <option value="none">none</option>
                           <option value="office">office background</option>
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-[#475569] mb-1 block">
+                        <label className="text-xs font-medium text-foreground mb-1 block">
                           End call message
                         </label>
                         <Input
@@ -1084,14 +1084,14 @@ export default function MakeCallsPage() {
 
                     {firstMessageMode !== 'assistant-speaks-first-with-model-generated-message' && (
                       <div>
-                        <label className="text-xs font-medium text-[#475569] mb-1 block">First message</label>
+                        <label className="text-xs font-medium text-foreground mb-1 block">First message</label>
                         <Input
                           value={firstMessage}
                           onChange={(e) => setFirstMessage(e.target.value)}
                           className="h-9 text-xs"
                           placeholder="Hello."
                         />
-                        <p className="text-[11px] text-[#94A3B8] mt-1">
+                        <p className="text-[11px] text-muted-foreground mt-1">
                           This will be used only when the assistant speaks first.
                         </p>
                       </div>
@@ -1105,18 +1105,18 @@ export default function MakeCallsPage() {
             {wizardStep === 4 && (
               <div className="space-y-4 text-xs">
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A] flex items-center gap-2">
+                  <p className="text-sm font-medium text-foreground flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                     Review before launch
                   </p>
-                  <p className="text-xs text-[#64748B]">
+                  <p className="text-xs text-muted-foreground">
                     Confirm the contacts and AI configuration that will be used for this run.
                   </p>
                 </div>
-                <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 space-y-2">
-                  <p className="font-medium text-[#0F172A] text-sm">Contacts</p>
+                <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+                  <p className="font-medium text-foreground text-sm">Contacts</p>
                   {selectedLeads.length === 0 ? (
-                    <p className="text-xs text-[#64748B]">
+                    <p className="text-xs text-muted-foreground">
                       No contacts selected. Go back to Step 1 to choose contacts.
                     </p>
                   ) : (
@@ -1124,14 +1124,14 @@ export default function MakeCallsPage() {
                       {selectedLeads.map((lead) => (
                         <li key={lead._id} className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <div className="h-6 w-6 rounded-full bg-[#E2E8F0] flex items-center justify-center text-[10px] font-medium text-[#64748B]">
+                            <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground">
                               {lead.name?.charAt(0) || '?'}
                             </div>
                             <div>
-                              <p className="text-xs font-medium text-[#0F172A] leading-tight">
+                              <p className="text-xs font-medium text-foreground leading-tight">
                                 {lead.name}
                               </p>
-                              <p className="text-[11px] text-[#94A3B8] leading-tight">
+                              <p className="text-[11px] text-muted-foreground leading-tight">
                                 {lead.phoneNumber}
                               </p>
                             </div>
@@ -1141,66 +1141,66 @@ export default function MakeCallsPage() {
                     </ul>
                   )}
                 </div>
-                <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 space-y-2">
-                  <p className="font-medium text-[#0F172A] text-sm">
+                <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+                  <p className="font-medium text-foreground text-sm">
                     {setupMode === 'assistant' ? 'Assistant' : 'Persona'}
                   </p>
                   {setupMode === 'assistant' ? (
                     selectedAssistant ? (
                       <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-[#EEF2FF] flex items-center justify-center">
-                          <Bot className="h-4 w-4 text-[#4F46E5]" />
+                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Bot className="h-4 w-4 text-primary" />
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-[#0F172A]">
+                          <p className="text-xs font-medium text-foreground">
                             {selectedAssistant.name || 'Unnamed Assistant'}
                           </p>
-                          <p className="text-[11px] text-[#94A3B8]">
+                          <p className="text-[11px] text-muted-foreground">
                             {selectedAssistant.persona?.provider || '—'} ·{' '}
                             {selectedAssistant.persona?.voiceId || '—'}
                           </p>
                         </div>
                       </div>
                     ) : (
-                      <p className="text-xs text-[#64748B]">
+                      <p className="text-xs text-muted-foreground">
                         No assistant selected. Go back to Step 2 to choose one.
                       </p>
                     )
                   ) : (
                     selectedPersona ? (
                       <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-[#EEF2FF] flex items-center justify-center">
-                          <User className="h-4 w-4 text-[#4F46E5]" />
+                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <User className="h-4 w-4 text-primary" />
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-[#0F172A]">
+                          <p className="text-xs font-medium text-foreground">
                             {selectedPersona.voice || 'Unnamed Persona'}
                           </p>
-                          <p className="text-[11px] text-[#94A3B8]">
+                          <p className="text-[11px] text-muted-foreground">
                             {selectedPersona.provider || '—'} · {selectedPersona.model || '—'}
                           </p>
                         </div>
                       </div>
                     ) : (
-                      <p className="text-xs text-[#64748B]">
+                      <p className="text-xs text-muted-foreground">
                         No persona selected. Go back to Step 2 to choose a persona.
                       </p>
                     )
                   )}
                 </div>
-                <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 space-y-1.5">
-                  <p className="font-medium text-[#0F172A] text-sm">Script</p>
+                <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5">
+                  <p className="font-medium text-foreground text-sm">Script</p>
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="h-7 w-7 rounded-lg bg-[#EEF2FF] flex items-center justify-center shrink-0">
-                      <FileText className="h-3.5 w-3.5 text-[#4F46E5]" />
+                    <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <FileText className="h-3.5 w-3.5 text-primary" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-[#0F172A]">
+                      <p className="text-xs font-medium text-foreground">
                         {setupMode === 'assistant'
                           ? selectedAssistant?.name || 'No assistant selected'
                           : selectedScript?.name || 'No script selected'}
                       </p>
-                      <p className="text-[11px] text-[#94A3B8]">
+                      <p className="text-[11px] text-muted-foreground">
                         {setupMode === 'assistant'
                           ? 'Using assistant script'
                           : [selectedScript?.categoryID?.name, selectedScript?.subCategory]
@@ -1209,36 +1209,36 @@ export default function MakeCallsPage() {
                       </p>
                     </div>
                   </div>
-                  <p className="text-[11px] text-[#64748B]">
-                    <span className="font-medium text-[#475569]">Knowledge file:</span>{' '}
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">Knowledge file:</span>{' '}
                     {setupMode === 'assistant'
                       ? Array.isArray(selectedAssistant?.fileID)
                         ? selectedAssistant?.fileID?.[0] || 'No file'
                         : getAssistantPrimaryFileId(selectedAssistant) || 'No file'
                       : selectedKnowledgeFile?.name || 'No file'}
                   </p>
-                  <p className="text-[11px] text-[#64748B]">
-                    <span className="font-medium text-[#475569]">First message mode:</span>{' '}
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">First message mode:</span>{' '}
                     {firstMessageMode || '—'}
                   </p>
                   {firstMessageMode !== 'assistant-speaks-first-with-model-generated-message' && (
-                    <p className="text-[11px] text-[#64748B]">
-                    <span className="font-medium text-[#475569]">First message:</span> {firstMessage || '—'}
+                    <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">First message:</span> {firstMessage || '—'}
                     </p>
                   )}
-                  <p className="text-[11px] text-[#64748B]">
-                    <span className="font-medium text-[#475569]">Voice message:</span> {voiceMessage || '—'}
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">Voice message:</span> {voiceMessage || '—'}
                   </p>
-                  <p className="text-[11px] text-[#64748B]">
-                    <span className="font-medium text-[#475569]">Background sound:</span> {backgroundSound || '—'}
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">Background sound:</span> {backgroundSound || '—'}
                   </p>
-                  <p className="text-[11px] text-[#64748B]">
-                    <span className="font-medium text-[#475569]">End call message:</span> {endCallMessage || '—'}
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">End call message:</span> {endCallMessage || '—'}
                   </p>
                 </div>
-                <div className="rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] p-3 space-y-1">
-                  <p className="text-xs text-[#64748B]">
-                    <span className="font-medium text-[#0F172A]">Schedule:</span> calls will be
+                <div className="rounded-lg border border-dashed border-border bg-muted/20 p-3 space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Schedule:</span> calls will be
                     started immediately.
                   </p>
                 </div>
@@ -1247,8 +1247,8 @@ export default function MakeCallsPage() {
           </div>
 
           {/* Wizard footer actions */}
-          <div className="mt-4 pt-3 border-t border-[#E2E8F0] flex items-center justify-between gap-3 sticky bottom-0 bg-white">
-            <div className="text-[11px] text-[#64748B]">
+          <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-3 sticky bottom-0 bg-card">
+            <div className="text-[11px] text-muted-foreground">
               Step {wizardStep} of 4
             </div>
             <div className="flex items-center gap-2">
@@ -1268,7 +1268,7 @@ export default function MakeCallsPage() {
                 <Button
                   type="button"
                   size="sm"
-                  className="h-8 px-3 rounded-lg bg-[#9224EF] hover:bg-[#7B1FD4] text-xs text-white"
+                  className="h-8 px-3 rounded-lg bg-brand hover:bg-brand-dark text-xs text-brand-foreground"
                   onClick={() => setWizardStep((s) => Math.min(4, s + 1))}
                   disabled={launching || !canContinue}
                 >

@@ -7,6 +7,7 @@ import { Tabs } from '@/components/ui/tabs'
 import SmsTemplatesTab from './components/SmsTemplatesTab'
 import SmsCreatorTab from './components/SmsCreatorTab'
 import SmsAnalyticsTab from './components/SmsAnalyticsTab'
+import GlobalLoader from '@/components/shared/GlobalLoader'
 
 function SMSPageInner() {
   const router = useRouter()
@@ -56,7 +57,7 @@ export default function SMSPage() {
       fallback={
         <MainLayout title="SMS Campaigns" subtitle="Create and send SMS messages">
           <div className="flex items-center justify-center py-20">
-            <div className="h-8 w-8 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
+            <GlobalLoader variant="inline" size="md" />
           </div>
         </MainLayout>
       }

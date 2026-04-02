@@ -1,4 +1,4 @@
-import { Search, Send, SlidersHorizontal } from 'lucide-react'
+import { Search, Send, SlidersHorizontal, Users } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -19,6 +19,8 @@ export default function ContactList({
   onSearchChange,
   contactFilter,
   onContactFilterChange,
+  onNewConversation,
+  onBatchSend,
 }) {
   return (
     <aside
@@ -32,6 +34,13 @@ export default function ContactList({
           <p className="text-xs text-slate-500">All conversations</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            className="w-8 h-8 bg-[#F8FAFC] border border-[#F1F5F9] rounded-lg flex items-center justify-center shadow-sm"
+            title="Batch send"
+            onClick={() => onBatchSend?.()}
+          >
+            <Users className="h-4 w-4 text-[#94A3B8]" />
+          </button>
           {/* top action buttons (filter / sort) */}
           <button
             className="w-8 h-8 bg-[#F8FAFC] border border-[#F1F5F9] rounded-lg flex items-center justify-center shadow-sm"
@@ -67,10 +76,8 @@ export default function ContactList({
           {/* send icon to the right of search (as in Figma) */}
           <button
             className="ml-auto w-8 h-8 bg-[#F8FAFC] border border-[#F1F5F9] rounded-lg flex items-center justify-center shadow-sm"
-            title="Send"
-            onClick={() => {
-              /* optional quick action: open new message - noop for now */
-            }}
+            title="New conversation"
+            onClick={() => onNewConversation?.()}
           >
             <Send className="h-4 w-4 text-[#94A3B8]" />
           </button>

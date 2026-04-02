@@ -53,7 +53,7 @@ export default function SmsTemplateEditorDialog({ open, onClose, templateId, onS
     if (!templateId) return
     setSaving(true)
     try {
-      const result = await api.put(`/api/smsBuilder/${templateId}`, { message: String(message || '') })
+      const result = await api.patch(`/api/smsBuilder/${templateId}`, { message: String(message || '') })
       if (!result.success) {
         toast.error({ title: 'Update failed', message: result.error || 'Could not update template.' })
         return

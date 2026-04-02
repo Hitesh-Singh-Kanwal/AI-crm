@@ -6,7 +6,7 @@ import { User, Lightbulb } from 'lucide-react'
 // Figma: 300-27867 – Intervention Que Details (exact specs from get_figma_data)
 const SECTION_TITLE = 'INTERVENTION QUE DETAILS'
 const TABS = [
-  { id: 'all', label: 'All', count: 23, border: '#9236DC', inactiveText: '#9224EF' },
+  { id: 'all', label: 'All', count: 23, border: 'var(--studio-primary)', inactiveText: 'var(--studio-primary)' },
   { id: 'urgent', label: 'Urgent', count: 2, border: '#BB2E50', inactiveText: '#EF4444' },
   { id: 'mine', label: 'Mine', count: 8, border: '#F69833', inactiveText: '#F59E0B' },
 ]
@@ -63,7 +63,7 @@ export default function InterventionQueueDetails() {
                 padding: '8px 12px',
                 borderRadius: 4,
                 minWidth: 113,
-                background: isActive ? '#9224EF' : '#FFFFFF',
+                background: isActive ? 'var(--studio-primary)' : '#FFFFFF',
                 border: `1px solid ${isActive ? tab.border : tab.border}`,
                 color: isActive ? '#FFFFFF' : tab.inactiveText,
                 fontFamily: 'Inter, sans-serif',
@@ -171,7 +171,7 @@ export default function InterventionQueueDetails() {
       {/* Tip – Figma: Insights frame, lightbulb icon + "Tip:" + text */}
       <div className="flex flex-row items-center flex-wrap gap-1">
         <div className="flex flex-row items-center gap-1">
-          <Lightbulb className="flex-shrink-0" style={{ width: 20, height: 20, color: '#9224EF' }} />
+          <Lightbulb className="flex-shrink-0" style={{ width: 20, height: 20, color: 'var(--studio-primary)' }} />
           <span style={{ fontFamily: 'Inter', fontWeight: 500, fontSize: 13, lineHeight: 1.43, color: '#64748B' }}>
             {TIP_PREFIX}
           </span>

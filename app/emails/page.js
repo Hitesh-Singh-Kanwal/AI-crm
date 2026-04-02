@@ -7,6 +7,7 @@ import { Tabs } from '@/components/ui/tabs'
 import EmailTemplatesTab from './components/EmailTemplatesTab'
 import EmailBuilderTab from './components/EmailBuilderTab'
 import EmailAnalyticsTab from './components/EmailAnalyticsTab'
+import GlobalLoader from '@/components/shared/GlobalLoader'
 
 function EmailsPageInner() {
   const router = useRouter()
@@ -50,7 +51,7 @@ export default function EmailsPage() {
       fallback={
         <MainLayout title="Email Builder" subtitle="Create and send beautiful email campaigns">
           <div className="flex items-center justify-center py-20">
-            <div className="h-8 w-8 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
+            <GlobalLoader variant="inline" size="md" />
           </div>
         </MainLayout>
       }

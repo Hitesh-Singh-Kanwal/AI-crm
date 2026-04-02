@@ -25,7 +25,7 @@ export default function CampaignsPage() {
             <div className="space-y-6">
                 {/* Header Actions */}
                 <div className="flex items-center justify-end">
-                    <button className="flex items-center gap-2 bg-[#8B5CF6] hover:bg-[#7C3AED] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm">
+                    <button className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm">
                         <Plus className="w-4 h-4" />
                         Create Campaign
                     </button>
@@ -35,7 +35,7 @@ export default function CampaignsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     {stats.map((stat) => (
                         <div key={stat.id} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex flex-col items-start gap-3">
-                            <h3 className="text-xs font-bold text-[#A855F7] tracking-wider uppercase">{stat.title}</h3>
+                            <h3 className="text-xs font-bold text-brand tracking-wider uppercase">{stat.title}</h3>
                             <p className={`text-4xl font-bold ${stat.color}`}>{stat.value}</p>
                         </div>
                     ))}

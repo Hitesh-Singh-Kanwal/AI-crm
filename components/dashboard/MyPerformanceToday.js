@@ -46,7 +46,7 @@ export default function MyPerformanceToday({ metrics = defaultMetrics }) {
     <div className="flex flex-col gap-4">
       <p
         className="font-bold uppercase tracking-wider text-xs sm:text-[11px]"
-        style={{ fontFamily: 'Inter, sans-serif', letterSpacing: '0.16em', color: '#9224EF' }}
+        style={{ fontFamily: 'Inter, sans-serif', letterSpacing: '0.16em', color: 'var(--studio-primary)' }}
       >
         {SECTION_TITLE}
       </p>

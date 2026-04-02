@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Columns,
   FileText,
@@ -263,6 +263,8 @@ export default function EmailBuilderTab({ onCreated }) {
   const toast = useToast()
 
   const [to, setTo] = useState('')
+  const [categories, setCategories] = useState([])
+  const [categoryId, setCategoryId] = useState('')
   // Per backend contract:
   // - `subject` is used as the template "name"
   // - `body` is used as the template "description"
@@ -281,6 +283,19 @@ export default function EmailBuilderTab({ onCreated }) {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
+
+  const fetchCategories = useCallback(async () => {
+    const result = await api.get('/api/emailBuilder/category')
+    const list = result.data?.categories ?? result.data
+    if (result.success && Array.isArray(list)) {
+      setCategories(list)
+      setCategoryId((prev) => (prev || (list.length > 0 ? list[0]._id : '')))
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchCategories()
+  }, [fetchCategories])
 
   const addBlock = (type) => {
     const bt = contentBlocks.find((b) => b.id === type)
@@ -357,6 +372,10 @@ export default function EmailBuilderTab({ onCreated }) {
       toast.error({ title: 'Missing description', message: 'Please enter a description.' })
       return
     }
+    if (!categoryId) {
+      toast.error({ title: 'Missing category', message: 'Please select a category.' })
+      return
+    }
     if (emailBlocks.length === 0) {
       toast.error({ title: 'Empty email', message: 'Add at least one block.' })
       return
@@ -365,7 +384,7 @@ export default function EmailBuilderTab({ onCreated }) {
     try {
       const htmlBody = blocksToHtml(emailBlocks)
       const payload = {
-        to: String(to || '').trim(),
+        categoryID: categoryId,
         subject: templateName.trim(),
         body: templateDescription.trim(),
         htmlBody,
@@ -428,8 +447,17 @@ export default function EmailBuilderTab({ onCreated }) {
 
                   <div className="mt-4 grid grid-cols-1 gap-3">
                     <div>
-                      <Label className="text-xs">To (optional for templates)</Label>
-                      <Input value={to} onChange={(e) => setTo(e.target.value)} placeholder="student@example.com" className="mt-1" />
+                      <Label className="text-xs">Category</Label>
+                      <select
+                        value={categoryId}
+                        onChange={(e) => setCategoryId(e.target.value)}
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        <option value="">Select a category…</option>
+                        {categories.map((cat) => (
+                          <option key={cat._id} value={cat._id}>{cat.name}</option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <Label className="text-xs">Template name</Label>

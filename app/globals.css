@@ -12,7 +12,7 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --primary: 330 74% 45%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -24,13 +24,20 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --ring: 330 74% 45%;
     --radius: 0.5rem;
     /* Studio CRM brand colors (used across the app) */
-    --studio-primary: #9224EF;
-    --studio-primary-light: #F4E9FD;
+    --studio-primary: #C81D77;
+    --studio-primary-light: #FCE7F3;
     --studio-gradient: #CE32E0;
-    --studio-gradient-css: linear-gradient(90deg, #9224EF 0%, #CE32E0 100%);
+    --studio-gradient-css: linear-gradient(90deg, #C81D77 0%, #CE32E0 100%);
+    --sidebar-gradient-css: linear-gradient(180deg, #F72585 0%, #4CC9F0 100%);
+    --bar-gradient-css: linear-gradient(180deg, #6E1041 0%, #F72585 100%);
+    --side-gradient-css: linear-gradient(180deg, #ADE6F8 0%, #45B7DA 100%);
+    --bar-gradient-start: #6E1041;
+    --bar-gradient-end: #F72585;
+    --side-gradient-start: #ADE6F8;
+    --side-gradient-end: #45B7DA;
   }
 
   .dark {
@@ -138,16 +145,24 @@
 @layer utilities {
   /* Theme toggle example (apply to <html> or <body>) */
   .theme-dancestudio {
-    --studio-primary: #9224EF;
-    --studio-primary-light: #F4E9FD;
+    --studio-primary: #C81D77;
+    --studio-primary-light: #FCE7F3;
     --studio-gradient: #CE32E0;
-    --studio-gradient-css: linear-gradient(90deg, #9224EF 0%, #CE32E0 100%);
+    --studio-gradient-css: linear-gradient(90deg, #C81D77 0%, #CE32E0 100%);
+    --sidebar-gradient-css: linear-gradient(180deg, #F72585 0%, #4CC9F0 100%);
+    --bar-gradient-css: linear-gradient(180deg, #6E1041 0%, #F72585 100%);
+    --side-gradient-css: linear-gradient(180deg, #ADE6F8 0%, #45B7DA 100%);
+    --bar-gradient-start: #6E1041;
+    --bar-gradient-end: #F72585;
+    --side-gradient-start: #ADE6F8;
+    --side-gradient-end: #45B7DA;
   }
 
   /* Background utilities */
   .bg-dancestudio { background-color: var(--studio-primary) !important; }
   .bg-dancestudio-light { background-color: var(--studio-primary-light) !important; }
   .bg-dancestudio-gradient { background: var(--studio-gradient-css) !important; }
+  .bg-sidebar-gradient { background: var(--sidebar-gradient-css) !important; }
 
   /* Text / border utilities */
   .text-dancestudio { color: var(--studio-primary) !important; }
@@ -157,6 +172,124 @@
   .btn-dancestudio {
     background: var(--studio-gradient-css) !important;
     color: white !important;
+  }
+}
+
+/* GlobalLoader — liquid blob (size via --gl-blob-size on container) */
+@layer utilities {
+  @keyframes global-loader-blob1 {
+    0%,
+    100% {
+      transform: scale(1) translateX(0);
+      border-radius: 50%;
+    }
+    33% {
+      transform: scale(1.3) translateX(calc(var(--gl-blob-size) * 0.3));
+      border-radius: 40% 60% 30% 70% / 60% 30% 70% 40%;
+    }
+    66% {
+      transform: scale(0.8) translateX(calc(var(--gl-blob-size) * 0.6));
+      border-radius: 30% 70% 60% 40% / 40% 60% 30% 70%;
+    }
+  }
+
+  @keyframes global-loader-blob2 {
+    0%,
+    100% {
+      transform: scale(0.5) translateX(0);
+      opacity: 0.7;
+      border-radius: 50%;
+    }
+    33% {
+      transform: scale(1.1) translateX(calc(var(--gl-blob-size) * -0.4));
+      opacity: 1;
+      border-radius: 60% 40% 70% 30% / 30% 70% 40% 60%;
+    }
+    66% {
+      transform: scale(1.5) translateX(calc(var(--gl-blob-size) * -0.8));
+      opacity: 0.8;
+      border-radius: 70% 30% 40% 60% / 60% 40% 70% 30%;
+    }
+  }
+
+  @keyframes global-loader-trail {
+    0%,
+    100% {
+      opacity: 0;
+      transform: scaleX(0.15) translateX(0);
+    }
+    45% {
+      opacity: 0.08;
+      transform: scaleX(0.6) translateX(2%);
+    }
+    50% {
+      opacity: 0.62;
+      transform: scaleX(1.45) translateX(0);
+    }
+    55% {
+      opacity: 0.08;
+      transform: scaleX(0.6) translateX(-2%);
+    }
+  }
+
+  @keyframes global-loader-ambient {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: translate(-50%, -50%) scale(0.94);
+    }
+    50% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.06);
+    }
+  }
+
+  .global-loader-blob1 {
+    animation: global-loader-blob1 3.2s cubic-bezier(0.65, 0, 0.32, 1) infinite;
+    will-change: transform;
+  }
+
+  .global-loader-blob2 {
+    animation: global-loader-blob2 3.2s cubic-bezier(0.65, 0, 0.32, 1) infinite;
+    animation-delay: 0.14s;
+    will-change: transform;
+  }
+
+  .global-loader-trail {
+    animation: global-loader-trail 3.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+    animation-delay: 0.08s;
+    will-change: transform, opacity;
+  }
+
+  .global-loader-ambient {
+    animation: global-loader-ambient 3.2s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .global-loader-blob1,
+    .global-loader-blob2,
+    .global-loader-trail,
+    .global-loader-ambient {
+      animation: none !important;
+    }
+
+    .global-loader-blob1,
+    .global-loader-blob2 {
+      transform: scale(1) translateX(0);
+      border-radius: 50%;
+      opacity: 0.92;
+      will-change: auto;
+    }
+
+    .global-loader-trail {
+      opacity: 0;
+      transform: scaleX(0.3);
+    }
+
+    .global-loader-ambient {
+      opacity: 0.65;
+      transform: translate(-50%, -50%) scale(1);
+    }
   }
 }
 

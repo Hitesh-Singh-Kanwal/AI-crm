@@ -183,108 +183,118 @@ export default function LocationsPage() {
     <MainLayout title="Locations" subtitle="Manage branch locations and their details">
       <div className="space-y-4 md:space-y-6">
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4">
-          <div className="relative flex-1 max-w-full sm:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name, city, or email..."
-              className="pl-9"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-slate-900">Locations</h2>
+            <p className="text-sm text-slate-500">Manage branch locations and their details</p>
           </div>
-          <StyledSelect
-            value={statusFilter}
-            onChange={(value) => {
-              setStatusFilter(value)
-              setCurrentPage(1) // Reset to first page when filter changes
-            }}
-            options={[
-              { value: 'All', label: 'All Status' },
-              { value: 'active', label: 'Active' },
-              { value: 'inactive', label: 'Inactive' }
-            ]}
-            placeholder="All Status"
-            className="w-full sm:w-48"
-          />
-          <div className="relative w-full sm:w-40">
-            {!showCustomLimit ? (
-              <StyledSelect
-                value={[10, 20, 50, 100].includes(limit) ? limit.toString() : 'custom'}
-                onChange={(value) => {
-                  if (value === 'custom') {
-                    setShowCustomLimit(true)
-                    setCustomLimit(limit.toString())
-                  } else {
-                    const newLimit = parseInt(value)
-                    setLimit(newLimit)
-                    setCurrentPage(1)
-                  }
-                }}
-                options={[
-                  { value: '10', label: '10 per page' },
-                  { value: '20', label: '20 per page' },
-                  { value: '50', label: '50 per page' },
-                  { value: '100', label: '100 per page' },
-                  { value: 'custom', label: `${limit} per page (custom)` }
-                ]}
-                placeholder="10 per page"
-                className="w-full"
+
+          <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end md:w-auto md:flex-nowrap md:gap-4">
+            <div className="relative w-full sm:w-[360px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, city, or email..."
+                className="pl-9"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
-            ) : (
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min="1"
-                  max="1000"
-                  value={customLimit}
-                  onChange={(e) => setCustomLimit(e.target.value)}
-                  onBlur={() => {
-                    const newLimit = parseInt(customLimit)
-                    if (newLimit && newLimit >= 1 && newLimit <= 1000) {
+            </div>
+
+            <StyledSelect
+              value={statusFilter}
+              onChange={(value) => {
+                setStatusFilter(value)
+                setCurrentPage(1) // Reset to first page when filter changes
+              }}
+              options={[
+                { value: 'All', label: 'All Status' },
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' }
+              ]}
+              placeholder="All Status"
+              className="w-full sm:w-48"
+            />
+
+            <div className="relative w-full sm:w-40">
+              {!showCustomLimit ? (
+                <StyledSelect
+                  value={[10, 20, 50, 100].includes(limit) ? limit.toString() : 'custom'}
+                  onChange={(value) => {
+                    if (value === 'custom') {
+                      setShowCustomLimit(true)
+                      setCustomLimit(limit.toString())
+                    } else {
+                      const newLimit = parseInt(value)
                       setLimit(newLimit)
                       setCurrentPage(1)
-                      setShowCustomLimit(false)
-                    } else {
-                      setCustomLimit(limit.toString())
-                      setShowCustomLimit(false)
                     }
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                  options={[
+                    { value: '10', label: '10 per page' },
+                    { value: '20', label: '20 per page' },
+                    { value: '50', label: '50 per page' },
+                    { value: '100', label: '100 per page' },
+                    { value: 'custom', label: `${limit} per page (custom)` }
+                  ]}
+                  placeholder="10 per page"
+                  className="w-full"
+                />
+              ) : (
+                <div className="flex items-center justify-end gap-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={customLimit}
+                    onChange={(e) => setCustomLimit(e.target.value)}
+                    onBlur={() => {
                       const newLimit = parseInt(customLimit)
                       if (newLimit && newLimit >= 1 && newLimit <= 1000) {
                         setLimit(newLimit)
                         setCurrentPage(1)
                         setShowCustomLimit(false)
+                      } else {
+                        setCustomLimit(limit.toString())
+                        setShowCustomLimit(false)
                       }
-                    } else if (e.key === 'Escape') {
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const newLimit = parseInt(customLimit)
+                        if (newLimit && newLimit >= 1 && newLimit <= 1000) {
+                          setLimit(newLimit)
+                          setCurrentPage(1)
+                          setShowCustomLimit(false)
+                        }
+                      } else if (e.key === 'Escape') {
+                        setShowCustomLimit(false)
+                        setCustomLimit(limit.toString())
+                      }
+                    }}
+                    placeholder="Enter limit"
+                    className="w-24"
+                    autoFocus
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
                       setShowCustomLimit(false)
                       setCustomLimit(limit.toString())
-                    }
-                  }}
-                  placeholder="Enter limit"
-                  className="w-24"
-                  autoFocus
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setShowCustomLimit(false)
-                    setCustomLimit(limit.toString())
-                  }}
-                  className="px-2"
-                >
-                  ×
-                </Button>
-              </div>
-            )}
+                    }}
+                    className="px-2"
+                  >
+                    ×
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <Button variant="gradient" className="w-full sm:w-auto" onClick={openLocationsDialog}>
+              <Building2 className="h-4 w-4 mr-2" />
+              Add Location
+            </Button>
           </div>
-          <Button variant="gradient" className="w-full sm:w-auto" onClick={openLocationsDialog}>
-            <Building2 className="h-4 w-4 mr-2" />
-            Add Location
-          </Button>
         </div>
 
         {/* Loading State */}

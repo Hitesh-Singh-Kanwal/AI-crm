@@ -10,7 +10,7 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
 
-export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
+export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
   const toast = useToast()
   const [loading, setLoading] = useState(false)
   const [categories, setCategories] = useState([])
@@ -30,7 +30,7 @@ export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
     setLoading(true)
     setError(null)
     try {
-      const result = await api.get('/api/smsBuilder/categories')
+      const result = await api.get('/api/emailBuilder/category')
       const list = result.data?.categories ?? result.data
       if (result.success && Array.isArray(list)) {
         setCategories(list)
@@ -54,7 +54,7 @@ export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
     if (!name) return
     setSaving(true)
     try {
-      const result = await api.post('/api/smsBuilder/categories', { name })
+      const result = await api.post('/api/emailBuilder/category', { name })
       if (!result.success) {
         toast.error({ title: 'Create failed', message: result.error || 'Could not create category.' })
         return
@@ -86,7 +86,7 @@ export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
     if (!editingId || !name) return
     setSaving(true)
     try {
-      const result = await api.patch(`/api/smsBuilder/categories/${editingId}`, { name })
+      const result = await api.patch(`/api/emailBuilder/category/${editingId}`, { name })
       if (!result.success) {
         toast.error({ title: 'Update failed', message: result.error || 'Could not update category.' })
         return
@@ -108,7 +108,7 @@ export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
     if (!confirm(`Delete category "${cat.name}"? This may affect templates.`)) return
     setDeletingId(cat._id)
     try {
-      const result = await api.delete(`/api/smsBuilder/categories/${cat._id}`)
+      const result = await api.delete(`/api/emailBuilder/category/${cat._id}`)
       if (!result.success) {
         toast.error({ title: 'Delete failed', message: result.error || 'Could not delete category.' })
         return
@@ -128,7 +128,7 @@ export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
     <Dialog open={open} onClose={onClose} maxWidth="2xl">
       <DialogContent className="max-h-[90vh] overflow-y-auto" onClose={onClose}>
         <DialogHeader>
-          <DialogTitle>SMS categories</DialogTitle>
+          <DialogTitle>Email categories</DialogTitle>
         </DialogHeader>
 
         <div className="mt-4 space-y-4">
@@ -138,6 +138,7 @@ export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
               onChange={(e) => setNewName(e.target.value)}
               placeholder="New category name"
               disabled={saving}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             />
             <Button variant="gradient" onClick={handleCreate} disabled={saving || !newName.trim()}>
               <Plus className="h-4 w-4 mr-2" />
@@ -172,6 +173,7 @@ export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
                         value={editingName}
                         onChange={(e) => setEditingName(e.target.value)}
                         disabled={saving}
+                        onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
                       />
                       <div className="flex items-center gap-2">
                         <Button variant="gradient" size="sm" onClick={saveEdit} disabled={saving || !editingName.trim()}>
@@ -217,4 +219,3 @@ export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
     </Dialog>
   )
 }
-
