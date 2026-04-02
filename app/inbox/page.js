@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import ContactList from '@/app/inbox/components/ContactList'
@@ -11,6 +11,7 @@ import BatchSendDialog from '@/app/inbox/components/BatchSendDialog'
 import { useInboxHeader } from '@/contexts/InboxHeaderContext'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import GlobalLoader from '@/components/shared/GlobalLoader'
 
 function buildInboxData(smsRecords, emailRecords) {
   const conversations = []
@@ -103,6 +104,70 @@ function InboxPageContent() {
   const [error, setError] = useState(null)
   const [newConvOpen, setNewConvOpen] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
+  const selectedConversationRef = useRef(null)
+
+  const upsertConversationAndAppendMessage = useCallback((payload) => {
+    const { convId, contact, channel, content, subject, timestamp } = payload
+
+    const effectiveChannel = channel === 'Email' ? 'Email' : 'SMS'
+    const lastMessage = effectiveChannel === 'Email' ? (subject || content) : content
+
+    const newMessage = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      sender: 'You',
+      direction: 'outbound',
+      content,
+      timestamp,
+      channel: effectiveChannel,
+    }
+
+    setThreadMessages((prev) => ({
+      ...prev,
+      [convId]: [...(prev[convId] || []), newMessage],
+    }))
+
+    setConversations((prev) => {
+      const exists = prev.some((c) => c.id === convId)
+      const nextRow = {
+        id: convId,
+        contact,
+        lastMessage,
+        timestamp,
+        unread: 0,
+        channel: effectiveChannel,
+      }
+      const updated = exists ? prev.map((c) => (c.id === convId ? { ...c, ...nextRow } : c)) : [nextRow, ...prev]
+      return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    })
+  }, [])
+
+  const handleBatchSent = useCallback((result) => {
+    const { channel, leads, subject, content, timestamp } = result || {}
+    if (!Array.isArray(leads) || !content) return
+
+    for (const lead of leads) {
+      const convId = channel === 'SMS'
+        ? `sms-${String(lead.phoneNumber).replace(/\W/g, '_')}`
+        : `email-${String(lead.email).replace(/\W/g, '_')}`
+
+      upsertConversationAndAppendMessage({
+        convId,
+        contact: {
+          id: lead._id,
+          name: lead.name,
+          type: 'Lead',
+          stage: '',
+          nextVisit: '',
+          phoneNumber: lead.phoneNumber,
+          email: lead.email,
+        },
+        channel,
+        subject,
+        content,
+        timestamp: timestamp || new Date().toISOString(),
+      })
+    }
+  }, [upsertConversationAndAppendMessage])
 
   const fetchInboxData = useCallback(async () => {
     setLoading(true)
@@ -163,15 +228,31 @@ function InboxPageContent() {
     }
   }, [displayedConversations, selectedConversation])
 
-  const selectedConvData = selectedConversation ? displayedConversations.find((c) => c.id === selectedConversation) : null
+  useEffect(() => {
+    selectedConversationRef.current = selectedConversation
+  }, [selectedConversation])
+
+  const selectedConvData = selectedConversation
+    ? (displayedConversations.find((c) => c.id === selectedConversation) ||
+      conversations.find((c) => c.id === selectedConversation))
+    : null
 
   const conversationMessages = selectedConversation ? threadMessages[selectedConversation] || [] : []
 
   const handleSendMessage = async ({ content, subject, channel, scheduleNow = true, scheduleDate = null }) => {
-    if (!selectedConversation || !content.trim()) return
+    const convId = selectedConversationRef.current || selectedConversation
+    if (!convId || !content.trim()) return
 
-    const conv = conversations.find((c) => c.id === selectedConversation)
-    if (!conv) return
+    const convFromUI =
+      convId
+        ? (displayedConversations.find((c) => c.id === convId) || conversations.find((c) => c.id === convId))
+        : null
+
+    // If the user just created a new conversation and sends immediately, the state update
+    // from `handleNewConversation` may not have landed yet. In that case we still want
+    // to optimistically create/update the conversation row.
+    const fallbackContact = convFromUI?.contact || { id: convId, name: 'New conversation', type: 'Lead' }
+    const effectiveChannel = channel || convFromUI?.channel || 'SMS'
 
     // Optimistic update
     const newMessage = {
@@ -180,32 +261,43 @@ function InboxPageContent() {
       direction: 'outbound',
       content: content.trim(),
       timestamp: new Date().toISOString(),
-      channel,
+      channel: effectiveChannel,
     }
     setThreadMessages((prev) => ({
       ...prev,
-      [selectedConversation]: [...(prev[selectedConversation] || []), newMessage],
+      [convId]: [...(prev[convId] || []), newMessage],
     }))
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === selectedConversation
-          ? { ...c, lastMessage: content.trim(), timestamp: newMessage.timestamp, unread: 0 }
-          : c
-      )
-    )
+    setConversations((prev) => {
+      const exists = prev.some((c) => c.id === convId)
+      const nextRow = {
+        id: convId,
+        contact: fallbackContact,
+        lastMessage: effectiveChannel === 'Email' ? (subject || content.trim()) : content.trim(),
+        timestamp: newMessage.timestamp,
+        unread: 0,
+        channel: effectiveChannel,
+      }
+
+      const updated = exists
+        ? prev.map((c) => (c.id === convId ? { ...c, ...nextRow } : c))
+        : [nextRow, ...prev]
+
+      // Keep newest conversations at the top, like the initial fetch does.
+      return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    })
 
     // Send via existing scheduler endpoints
     try {
-      if (channel === 'SMS') {
+      if (effectiveChannel === 'SMS') {
         await api.post('/api/sms/send-one', {
-          lead: { _id: conv.contact.id, phoneNumber: conv.contact.phoneNumber || conv.contact.name },
+          lead: { _id: fallbackContact.id, phoneNumber: fallbackContact.phoneNumber || fallbackContact.name },
           message: content.trim(),
           scheduleNow,
           scheduleDate,
         })
-      } else if (channel === 'Email') {
+      } else if (effectiveChannel === 'Email') {
         await api.post('/api/email/send-one', {
-          lead: { _id: conv.contact.id, email: conv.contact.email || conv.contact.name },
+          lead: { _id: fallbackContact.id, email: fallbackContact.email || fallbackContact.name },
           subject: subject || '(no subject)',
           body: content.trim(),
           scheduleNow,
@@ -222,6 +314,9 @@ function InboxPageContent() {
       ? `sms-${String(lead.phoneNumber).replace(/\W/g, '_')}`
       : `email-${String(lead.email).replace(/\W/g, '_')}`
 
+    // Make this conversation id available immediately for a fast send.
+    selectedConversationRef.current = convId
+
     setConversations((prev) => {
       if (prev.find((c) => c.id === convId)) return prev
       return [{
@@ -235,6 +330,10 @@ function InboxPageContent() {
     })
     setThreadMessages((prev) => ({ ...prev, [convId]: prev[convId] || [] }))
     setSelectedConversation(convId)
+    // Ensure the newly created thread is visible immediately even if the user has filters applied.
+    setSelectedChannel('All')
+    setSearchQuery('')
+    setContactFilter('All')
     setShowContactList(false)
   }
 
@@ -248,7 +347,9 @@ function InboxPageContent() {
   if (loading) {
     return (
       <MainLayout title="Inbox" subtitle="Manage all your conversations in one place">
-        <div className="flex items-center justify-center h-[calc(100vh-8rem)] text-slate-500">Loading conversations…</div>
+        <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+          <GlobalLoader variant="center" size="md" text="Loading conversations…" />
+        </div>
       </MainLayout>
     )
   }
@@ -271,7 +372,11 @@ function InboxPageContent() {
         onClose={() => setNewConvOpen(false)}
         onStart={handleNewConversation}
       />
-      <BatchSendDialog open={batchOpen} onClose={() => setBatchOpen(false)} />
+      <BatchSendDialog
+        open={batchOpen}
+        onClose={() => setBatchOpen(false)}
+        onSent={handleBatchSent}
+      />
       <div className="flex flex-col lg:flex-row gap-0 h-full min-h-0">
         {/* Left: Contact list */}
         <div className={cn('h-full min-h-0', showContactList ? 'flex flex-col' : 'hidden lg:flex flex-col')}>
@@ -317,7 +422,9 @@ export default function InboxPage() {
   return (
     <Suspense fallback={
       <MainLayout title="Inbox" subtitle="Manage all your conversations in one place">
-        <div className="flex items-center justify-center h-[calc(100vh-8rem)] text-slate-500">Loading...</div>
+        <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+          <GlobalLoader variant="center" size="md" text="Loading conversations…" />
+        </div>
       </MainLayout>
     }>
       <InboxPageContent />

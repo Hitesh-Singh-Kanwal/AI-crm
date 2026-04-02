@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
+import GlobalLoader from '@/components/shared/GlobalLoader'
 import api from '@/lib/api'
 
 const ASSISTANTS_PAGE_SIZE = 9
@@ -486,7 +487,7 @@ export default function AiAssistTab() {
                       title="Delete"
                     >
                       {deletingId === assistant._id
-                        ? <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                        ? <GlobalLoader variant="inline" size="xs" />
                         : <Trash2 className="h-3.5 w-3.5" />}
                     </Button>
                   </div>
@@ -561,7 +562,7 @@ export default function AiAssistTab() {
           <div className="mt-5 space-y-4">
             {(editorLoading || optionsLoading) && (
               <div className="flex items-center gap-2 py-2">
-                <span className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                <GlobalLoader variant="inline" size="sm" />
                 <span className="text-xs text-muted-foreground">
                   {editorLoading ? 'Loading assistant details…' : 'Loading options…'}
                 </span>

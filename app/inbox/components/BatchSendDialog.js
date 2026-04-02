@@ -14,7 +14,7 @@ import { useToast } from '@/components/ui/toast'
 import { getInitials } from '@/lib/utils'
 import api from '@/lib/api'
 
-export default function BatchSendDialog({ open, onClose }) {
+export default function BatchSendDialog({ open, onClose, onSent }) {
   const toast = useToast()
 
   const [channel, setChannel] = useState('SMS')
@@ -126,6 +126,16 @@ export default function BatchSendDialog({ open, onClose }) {
           return
         }
       }
+
+      onSent?.({
+        channel,
+        leads: selectedLeads,
+        subject: subject.trim(),
+        content: message.trim(),
+        scheduleNow: scheduleMode === 'now',
+        scheduleDate: scheduleMode === 'later' ? new Date(scheduleDate).toISOString() : null,
+        timestamp: new Date().toISOString(),
+      })
 
       toast.success({
         title: scheduleMode === 'now' ? 'Sent' : 'Scheduled',

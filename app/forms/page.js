@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/toast'
 import Switch from '@/components/ui/switch'
 import { formatDate } from '@/lib/utils'
 import StylePanel from '@/components/forms/StylePanel'
+import GlobalLoader from '@/components/shared/GlobalLoader'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DndContext,
@@ -1000,7 +1001,7 @@ function FormsPageInner() {
 
             {formsLoading && (
               <div className="flex items-center justify-center py-16">
-                <div className="h-8 w-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                <GlobalLoader variant="inline" size="md" />
               </div>
             )}
 
@@ -1111,7 +1112,7 @@ function FormsPageInner() {
                               title="Delete"
                             >
                               {deletingFormId === form._id
-                                ? <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                                ? <GlobalLoader variant="inline" size="xs" />
                                 : <Trash2 className="h-3.5 w-3.5" />}
                             </Button>
                           </div>
@@ -1518,7 +1519,7 @@ function FormsPageInner() {
             <div className="flex-1 overflow-hidden min-h-0">
               {previewLoading ? (
                 <div className="flex items-center justify-center py-16">
-                  <div className="h-8 w-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                  <GlobalLoader variant="inline" size="md" />
                 </div>
               ) : previewForm.htmlCode ? (
                 <iframe
@@ -1546,7 +1547,7 @@ export default function FormsPage() {
       fallback={
         <MainLayout title="Form Builder" subtitle="Create and manage forms">
           <div className="flex items-center justify-center py-20">
-            <div className="h-8 w-8 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
+            <GlobalLoader variant="inline" size="md" />
           </div>
         </MainLayout>
       }

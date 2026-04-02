@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
+import GlobalLoader from '@/components/shared/GlobalLoader'
 import { toast } from '@/components/ui/toast'
 const ROWS_PER_PAGE = 10
 
@@ -320,7 +321,7 @@ export default function AiCallDetailPage() {
                             aria-label="Delete call"
                           >
                             {deletingId === call._id ? (
-                              <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                              <GlobalLoader variant="inline" size="sm" />
                             ) : (
                               <Trash2 className="h-4 w-4" />
                             )}
