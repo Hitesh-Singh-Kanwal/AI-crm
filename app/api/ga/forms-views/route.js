@@ -12,7 +12,19 @@ function jsonError(message, status = 500) {
   return NextResponse.json({ success: false, error: message }, { status })
 }
 
-export async function GET() {
+export async function GET(request) {
+  // Optional query param:
+  // - pagesDimension=pagePath | pageTitle
+  // Defaults to pagePath.
+  let pagesDimension = 'pagePath'
+  try {
+    const url = new URL(request.url)
+    const q = url.searchParams.get('pagesDimension')
+    if (q === 'pageTitle' || q === 'pagePath') pagesDimension = q
+  } catch {
+    // ignore
+  }
+
   // We support the env style you already have in `.env`:
   // - PROPERTY_ID
   // - GA_CREDENTIALS_PATH (service account json)
@@ -46,7 +58,7 @@ export async function GET() {
     const getPages = (report) => {
       const rows = Array.isArray(report?.rows) ? report.rows : []
       return rows.map((r) => {
-        const pagePath = r?.dimensionValues?.[0]?.value || ''
+        const primaryValue = r?.dimensionValues?.[0]?.value || ''
         const screenClass = r?.dimensionValues?.[1]?.value || ''
         const viewsValue = r?.metricValues?.[0]?.value
         const activeUsersValue = r?.metricValues?.[1]?.value
@@ -58,7 +70,7 @@ export async function GET() {
         const viewsPerActiveUser = Number(viewsPerActiveUserValue)
         const avgEngagementTimePerActiveUser = Number(avgEngagementTimePerActiveUserValue)
         return {
-          pagePath,
+          value: primaryValue,
           screenClass,
           views: Number.isFinite(views) ? views : 0,
           activeUsers: Number.isFinite(activeUsers) ? activeUsers : 0,
@@ -70,12 +82,25 @@ export async function GET() {
       })
     }
 
+    const getGeo = (report, keyName) => {
+      const rows = Array.isArray(report?.rows) ? report.rows : []
+      return rows.map((r) => {
+        const key = r?.dimensionValues?.[0]?.value || ''
+        const activeUsersValue = r?.metricValues?.[0]?.value
+        const activeUsers = Number(activeUsersValue)
+        return {
+          [keyName]: key,
+          activeUsers: Number.isFinite(activeUsers) ? activeUsers : 0,
+        }
+      })
+    }
+
     const runPagesReport = async (dateRanges) => {
       const [report] = await client.runReport({
         property,
         dateRanges,
         // GA4 "Pages and screens" — use unified screen dimension for compatibility
-        dimensions: [{ name: 'pagePath' }, { name: 'unifiedScreenClass' }],
+        dimensions: [{ name: pagesDimension }, { name: 'unifiedScreenClass' }],
         metrics: [
           { name: 'screenPageViews' },
           { name: 'activeUsers' },
@@ -85,6 +110,18 @@ export async function GET() {
         ],
         orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
         limit: 25,
+      })
+      return report
+    }
+
+    const runGeoReport = async (dimensionName, dateRanges) => {
+      const [report] = await client.runReport({
+        property,
+        dateRanges,
+        dimensions: [{ name: dimensionName }],
+        metrics: [{ name: 'activeUsers' }],
+        orderBys: [{ metric: { metricName: 'activeUsers' }, desc: true }],
+        limit: 20,
       })
       return report
     }
@@ -136,6 +173,18 @@ export async function GET() {
     const last30PagesReport = await runPagesReport([{ startDate: '30daysAgo', endDate: 'today' }])
     const last7PagesReport = await runPagesReport([{ startDate: '7daysAgo', endDate: 'today' }])
 
+    const allTimeCountriesReport = await runGeoReport('country', [{ startDate: '2015-08-14', endDate: 'today' }])
+    const last30CountriesReport = await runGeoReport('country', [{ startDate: '30daysAgo', endDate: 'today' }])
+    const last7CountriesReport = await runGeoReport('country', [{ startDate: '7daysAgo', endDate: 'today' }])
+
+    const allTimeRegionsReport = await runGeoReport('region', [{ startDate: '2015-08-14', endDate: 'today' }])
+    const last30RegionsReport = await runGeoReport('region', [{ startDate: '30daysAgo', endDate: 'today' }])
+    const last7RegionsReport = await runGeoReport('region', [{ startDate: '7daysAgo', endDate: 'today' }])
+
+    const allTimeCitiesReport = await runGeoReport('city', [{ startDate: '2015-08-14', endDate: 'today' }])
+    const last30CitiesReport = await runGeoReport('city', [{ startDate: '30daysAgo', endDate: 'today' }])
+    const last7CitiesReport = await runGeoReport('city', [{ startDate: '7daysAgo', endDate: 'today' }])
+
     return NextResponse.json({
       success: true,
       data: {
@@ -150,9 +199,27 @@ export async function GET() {
           last7Days: getTotal(last7ActiveUsersReport),
         },
         pages: {
+          dimension: pagesDimension,
           allTime: getPages(allTimePagesReport),
           last30Days: getPages(last30PagesReport),
           last7Days: getPages(last7PagesReport),
+        },
+        demographics: {
+          countries: {
+            allTime: getGeo(allTimeCountriesReport, 'country'),
+            last30Days: getGeo(last30CountriesReport, 'country'),
+            last7Days: getGeo(last7CountriesReport, 'country'),
+          },
+          regions: {
+            allTime: getGeo(allTimeRegionsReport, 'region'),
+            last30Days: getGeo(last30RegionsReport, 'region'),
+            last7Days: getGeo(last7RegionsReport, 'region'),
+          },
+          cities: {
+            allTime: getGeo(allTimeCitiesReport, 'city'),
+            last30Days: getGeo(last30CitiesReport, 'city'),
+            last7Days: getGeo(last7CitiesReport, 'city'),
+          },
         },
       },
     })

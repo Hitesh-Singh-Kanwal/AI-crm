@@ -16,6 +16,7 @@ import { formatDate } from '@/lib/utils'
 import StylePanel from '@/components/forms/StylePanel'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { getCurrentUser } from '@/lib/auth'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DndContext,
@@ -402,8 +403,27 @@ function FormsPageInner() {
   const [gaActiveUsers, setGaActiveUsers] = useState({ allTime: 0, last30Days: 0, last7Days: 0 })
   const [gaPages, setGaPages] = useState({ allTime: [], last30Days: [], last7Days: [] })
   const [gaPagesRange, setGaPagesRange] = useState('last30Days')
+  const [gaPagesDimension, setGaPagesDimension] = useState('pagePath') // pagePath | pageTitle
+  const [gaDemographics, setGaDemographics] = useState({
+    countries: { allTime: [], last30Days: [], last7Days: [] },
+    regions: { allTime: [], last30Days: [], last7Days: [] },
+    cities: { allTime: [], last30Days: [], last7Days: [] },
+  })
+  const [gaDemographicsRange, setGaDemographicsRange] = useState('last30Days')
   const [gaViewsLoading, setGaViewsLoading] = useState(false)
   const [gaViewsError, setGaViewsError] = useState(null)
+
+  // Theme-aligned palette (brand + semantic accents via CSS vars)
+  const COUNTRY_COLORS = [
+    'var(--studio-primary)',
+    'var(--studio-gradient)',
+    'hsl(var(--primary))',
+    'hsl(var(--ring))',
+    'hsl(var(--destructive))',
+    'hsl(var(--foreground) / 0.85)',
+    'hsl(var(--foreground) / 0.65)',
+    'hsl(var(--foreground) / 0.45)',
+  ]
 
   const formatDuration = (seconds) => {
     const s = Number(seconds)
@@ -414,11 +434,42 @@ function FormsPageInner() {
     return m > 0 ? `${m}m ${r}s` : `${r}s`
   }
 
+  const makePieSegments = (items) => {
+    const total = items.reduce((sum, it) => sum + (Number(it?.value) || 0), 0)
+    if (!total) return { total: 0, segments: [] }
+    let start = 0
+    const segments = items.map((it, idx) => {
+      const v = Number(it?.value) || 0
+      const frac = v / total
+      const seg = { ...it, startFrac: start, endFrac: start + frac, color: COUNTRY_COLORS[idx % COUNTRY_COLORS.length] }
+      start += frac
+      return seg
+    })
+    return { total, segments }
+  }
+
+  const segmentLabelPosition = (cx, cy, r, startFrac, endFrac) => {
+    const mid = (startFrac + endFrac) / 2
+    const angle = mid * Math.PI * 2 - Math.PI / 2
+    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) }
+  }
+
+  const describeArc = (cx, cy, r, startFrac, endFrac) => {
+    const startAngle = startFrac * Math.PI * 2 - Math.PI / 2
+    const endAngle = endFrac * Math.PI * 2 - Math.PI / 2
+    const x1 = cx + r * Math.cos(startAngle)
+    const y1 = cy + r * Math.sin(startAngle)
+    const x2 = cx + r * Math.cos(endAngle)
+    const y2 = cy + r * Math.sin(endAngle)
+    const largeArc = endFrac - startFrac > 0.5 ? 1 : 0
+    return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`
+  }
+
   const fetchGaViews = useCallback(async () => {
     setGaViewsLoading(true)
     setGaViewsError(null)
     try {
-      const res = await fetch('/api/ga/forms-views')
+      const res = await fetch(`/api/ga/forms-views?pagesDimension=${encodeURIComponent(gaPagesDimension)}`)
       const body = await res.json().catch(() => null)
       if (!res.ok || !body?.success) {
         setGaViewsError(body?.error || 'Failed to load Google Analytics views')
@@ -439,12 +490,30 @@ function FormsPageInner() {
         last30Days: Array.isArray(body.data?.pages?.last30Days) ? body.data.pages.last30Days : [],
         last7Days: Array.isArray(body.data?.pages?.last7Days) ? body.data.pages.last7Days : [],
       })
+      const demo = body.data?.demographics || {}
+      setGaDemographics({
+        countries: {
+          allTime: Array.isArray(demo?.countries?.allTime) ? demo.countries.allTime : [],
+          last30Days: Array.isArray(demo?.countries?.last30Days) ? demo.countries.last30Days : [],
+          last7Days: Array.isArray(demo?.countries?.last7Days) ? demo.countries.last7Days : [],
+        },
+        regions: {
+          allTime: Array.isArray(demo?.regions?.allTime) ? demo.regions.allTime : [],
+          last30Days: Array.isArray(demo?.regions?.last30Days) ? demo.regions.last30Days : [],
+          last7Days: Array.isArray(demo?.regions?.last7Days) ? demo.regions.last7Days : [],
+        },
+        cities: {
+          allTime: Array.isArray(demo?.cities?.allTime) ? demo.cities.allTime : [],
+          last30Days: Array.isArray(demo?.cities?.last30Days) ? demo.cities.last30Days : [],
+          last7Days: Array.isArray(demo?.cities?.last7Days) ? demo.cities.last7Days : [],
+        },
+      })
     } catch (e) {
       setGaViewsError('Failed to load Google Analytics views')
     } finally {
       setGaViewsLoading(false)
     }
-  }, [])
+  }, [gaPagesDimension])
 
   useEffect(() => {
     if (activeTab === 'analytics') fetchGaViews()
@@ -1920,8 +1989,172 @@ ${gtagScript}
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <CardTitle className="text-base">Pages and screens</CardTitle>
-                  <CardDescription>Page path and screen class</CardDescription>
+                  <CardTitle className="text-base">Demographics</CardTitle>
+                  <CardDescription>Active users distribution</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={gaDemographicsRange === 'allTime' ? 'default' : 'outline'}
+                    onClick={() => setGaDemographicsRange('allTime')}
+                    disabled={gaViewsLoading}
+                  >
+                    All time
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={gaDemographicsRange === 'last30Days' ? 'default' : 'outline'}
+                    onClick={() => setGaDemographicsRange('last30Days')}
+                    disabled={gaViewsLoading}
+                  >
+                    Last 30 days
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={gaDemographicsRange === 'last7Days' ? 'default' : 'outline'}
+                    onClick={() => setGaDemographicsRange('last7Days')}
+                    disabled={gaViewsLoading}
+                  >
+                    Last 7 days
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2">
+              {(() => {
+                const mkItems = (raw, key) => {
+                  const rows = Array.isArray(raw) ? raw : []
+                  const filtered = rows.filter((x) => x && (Number(x.activeUsers) || 0) > 0)
+                  const top = filtered
+                    .slice(0, 5)
+                    .map((x) => ({ label: x?.[key] || '(not set)', value: Number(x.activeUsers) || 0 }))
+                  const otherValue = filtered.slice(5).reduce((sum, x) => sum + (Number(x?.activeUsers) || 0), 0)
+                  return otherValue > 0 ? [...top, { label: 'Other', value: otherValue }] : top
+                }
+
+                const countryItems = mkItems(gaDemographics?.countries?.[gaDemographicsRange], 'country')
+                const regionItems = mkItems(gaDemographics?.regions?.[gaDemographicsRange], 'region')
+                const cityItems = mkItems(gaDemographics?.cities?.[gaDemographicsRange], 'city')
+
+                const charts = [
+                  { title: 'Country', items: countryItems, aria: 'Active users by country' },
+                  { title: 'Region', items: regionItems, aria: 'Active users by region' },
+                  { title: 'Town/City', items: cityItems, aria: 'Active users by city' },
+                ]
+
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {charts.map((c, cIdx) => {
+                      const { total, segments } = makePieSegments(c.items)
+                      if (!segments.length) {
+                        return (
+                          <div key={c.title} className="rounded-lg border border-slate-200 bg-white p-4">
+                            <div className="text-sm font-semibold text-slate-900">{c.title}</div>
+                            <div className="text-sm text-slate-500 py-8">No data yet.</div>
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <div key={c.title} className="rounded-lg border border-slate-200 bg-white p-4">
+                          <div className="text-sm font-semibold text-slate-900 mb-3">{c.title}</div>
+                          <div className="flex items-start gap-4">
+                            <svg width="200" height="200" viewBox="0 0 220 220" role="img" aria-label={c.aria}>
+                              <defs>
+                                <filter id={`pieShadow-${cIdx}`} x="-20%" y="-20%" width="140%" height="140%">
+                                  <feDropShadow dx="0" dy="6" stdDeviation="6" floodColor="rgba(15, 23, 42, 0.12)" />
+                                </filter>
+                              </defs>
+                              <circle cx="110" cy="110" r="92" fill="hsl(var(--muted))" />
+                              {segments.map((s, idx) => (
+                                <path
+                                  key={idx}
+                                  d={describeArc(110, 110, 90, s.startFrac, s.endFrac)}
+                                  fill={s.color}
+                                  filter={`url(#pieShadow-${cIdx})`}
+                                  stroke="hsl(var(--card))"
+                                  strokeWidth="2"
+                                />
+                              ))}
+                              {segments.map((s, idx) => {
+                                const pct = total ? (s.value / total) * 100 : 0
+                                if (pct < 4) return null
+                                const { x, y } = segmentLabelPosition(110, 110, 62, s.startFrac, s.endFrac)
+                                return (
+                                  <text
+                                    key={`t-${idx}`}
+                                    x={x}
+                                    y={y}
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    fill="white"
+                                    fontSize="14"
+                                    fontWeight="700"
+                                  >
+                                    {Math.round(pct)}%
+                                  </text>
+                                )
+                              })}
+                            </svg>
+
+                            <div className="flex-1 space-y-2 pt-1">
+                              {segments.map((s, idx) => (
+                                <div key={idx} className="flex items-center justify-between gap-3 text-sm">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                                    <span className="truncate text-slate-700">{s.label}</span>
+                                  </div>
+                                  <div className="shrink-0 tabular-nums text-slate-900 font-medium">{s.value}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base">Pages and screens</CardTitle>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          disabled={gaViewsLoading}
+                          className="h-7 w-7 border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-slate-700 shadow-sm"
+                          title="Change pages dimension"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="min-w-[260px]">
+                        <DropdownMenuItem
+                          onClick={() => setGaPagesDimension('pagePath')}
+                          className={gaPagesDimension === 'pagePath' ? 'bg-accent text-accent-foreground' : ''}
+                        >
+                          Page path + screen class
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setGaPagesDimension('pageTitle')}
+                          className={gaPagesDimension === 'pageTitle' ? 'bg-accent text-accent-foreground' : ''}
+                        >
+                          Page title + screen class
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <CardDescription>
+                    {gaPagesDimension === 'pageTitle' ? 'Page title and screen class' : 'Page path and screen class'}
+                  </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -1956,7 +2189,9 @@ ${gtagScript}
                 <table className="min-w-[720px] w-full text-sm">
                   <thead className="bg-slate-50">
                     <tr className="text-left text-slate-600">
-                      <th className="px-4 py-3 font-medium">Page path</th>
+                      <th className="px-4 py-3 font-medium">
+                        {gaPagesDimension === 'pageTitle' ? 'Page title' : 'Page path'}
+                      </th>
                       <th className="px-4 py-3 font-medium text-right">Views</th>
                       <th className="px-4 py-3 font-medium text-right">Active users</th>
                       <th className="px-4 py-3 font-medium text-right">Views / active user</th>
@@ -1972,9 +2207,9 @@ ${gtagScript}
                       </tr>
                     ) : (
                       (gaPages?.[gaPagesRange] || []).map((row, idx) => (
-                        <tr key={`${row?.pagePath || 'row'}-${idx}`} className="border-t border-slate-100">
+                        <tr key={`${row?.value || 'row'}-${idx}`} className="border-t border-slate-100">
                           <td className="px-4 py-3 font-mono text-xs text-slate-800">
-                            {row?.pagePath || '—'}
+                            {row?.value || '—'}
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums text-slate-900">
                             {Number(row?.views) || 0}
@@ -1996,6 +2231,7 @@ ${gtagScript}
               </div>
             </CardContent>
           </Card>
+
           </div>
         )}
       </div>
