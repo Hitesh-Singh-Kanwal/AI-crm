@@ -5,9 +5,10 @@ import { Building2, ChevronDown } from 'lucide-react'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-export default function LocationSelector({ 
-  value, 
-  onChange, 
+export default function LocationSelector({
+  value,
+  onChange,
+  onChangeObject,
   placeholder = 'Select location...',
   showAllOption = false,
   filterActiveOnly = true,
@@ -164,6 +165,7 @@ export default function LocationSelector({
                       // keep dropdown open to allow multiple selection
                     } else {
                       onChange(location._id)
+                      onChangeObject?.(location)
                       setOpen(false)
                     }
                   }}

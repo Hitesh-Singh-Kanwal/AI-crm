@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, Eye, Workflow, Mail, Phone, MessageSquare, Clock3, Search, Filter, FolderOpen } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import GlobalLoader from '@/components/shared/GlobalLoader'
 
 const workflowData = [
   {
@@ -176,7 +177,7 @@ function WorkflowCard({ workflow }) {
   )
 }
 
-export default function WorkflowsPage() {
+function WorkflowsPageInner() {
   const [isBuilding, setIsBuilding] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
   const [sequenceName, setSequenceName] = useState('')
@@ -579,6 +580,22 @@ export default function WorkflowsPage() {
         </div>
       )}
     </MainLayout>
+  )
+}
+
+export default function WorkflowsPage() {
+  return (
+    <Suspense
+      fallback={
+        <MainLayout title="AI & Automation" subtitle="Automate your marketing and follow-ups">
+          <div className="flex items-center justify-center py-20">
+            <GlobalLoader variant="inline" size="md" text="Loading workflows…" />
+          </div>
+        </MainLayout>
+      }
+    >
+      <WorkflowsPageInner />
+    </Suspense>
   )
 }
 

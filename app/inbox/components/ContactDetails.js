@@ -2,11 +2,25 @@ import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getInitials } from '@/lib/utils'
 
-export default function ContactDetails({ contact, onClose }) {
+export default function ContactDetails({ contact, leadData, onClose }) {
   if (!contact) return null
-const memberships = contact.memberships || []
-  const moneyCredits = contact.moneyCredits || '$0.00'
-  const classAppointmentCredit = contact.classAppointmentCredit ?? 0
+
+  // Use leadData (full API response) when available, fall back to contact
+  const lead = leadData || {}
+  const name = lead.name || contact.name
+  const email = lead.email || contact.email || ''
+  const phoneNumber = lead.phoneNumber || contact.phoneNumber || ''
+  const stage = lead.stage ? capitalize(lead.stage) : null
+  const bookingStatus = lead.bookingStatus || null
+  const rawLocation = lead.location || null
+  // Guard against raw ObjectIds stored in the location field (legacy data issue)
+  const location = rawLocation && /^[a-f0-9]{24}$/i.test(rawLocation) ? null : rawLocation
+  const isEscalated = lead.isEscalated ?? null
+  const assignedAiAgent = lead.assignedAiAgent || null
+  const assignedHumanAgent = lead.assignedHumanAgent || null
+  const activeSalesJourney = Array.isArray(lead.flowInstances) && lead.flowInstances.length > 0
+    ? `${lead.flowInstances.length} active flow${lead.flowInstances.length > 1 ? 's' : ''}`
+    : null
 
   return (
     <aside
@@ -34,54 +48,39 @@ const memberships = contact.memberships || []
           }}
         >
           <span className="text-xl font-bold text-purple-600">
-            {getInitials(contact.name)}
+            {getInitials(name)}
           </span>
         </div>
 
-        <h2 className="text-base font-semibold text-slate-900">{contact.name}</h2>
-        {contact.phone && (
-          <p className="text-sm text-slate-500 mt-0.5">{contact.phone}</p>
-        )}
+        <h2 className="text-base font-semibold text-slate-900">{name}</h2>
+        {phoneNumber && <p className="text-sm text-slate-500 mt-0.5">{phoneNumber}</p>}
+        {email && <p className="text-xs text-slate-400 mt-0.5">{email}</p>}
       </div>
 
-      {/* Info Rows */}
+      {/* Lead Info */}
       <div className="px-5 py-4 space-y-4 border-b border-slate-100">
-        <InfoRow label="Lead Stage" value={contact.leadStage || 'No Stage'} />
+        <InfoRow label="Lead Stage" value={stage || 'No Stage'} />
         <InfoRow
           label="Active sales journey"
-          value={contact.activeSalesJourney || 'No active sales journey'}
-          valueClassName={!contact.activeSalesJourney ? 'text-red-500 font-medium' : 'text-slate-700'}
+          value={activeSalesJourney || 'No active sales journey'}
+          valueClassName={!activeSalesJourney ? 'text-red-500 font-medium' : 'text-slate-700'}
         />
-        <InfoRow label="Next visit" value={contact.nextVisit || 'No scheduled visit'} />
+        <InfoRow
+          label="Booking Status"
+          value={bookingStatus || 'Not Booked'}
+          valueClassName={bookingStatus === 'Booked' ? 'text-green-600 font-medium' : 'text-slate-700'}
+        />
+        {location && <InfoRow label="Location" value={location} />}
+        {isEscalated !== null && (
+          <InfoRow
+            label="Escalated"
+            value={isEscalated ? 'Yes' : 'No'}
+            valueClassName={isEscalated ? 'text-red-500 font-medium' : 'text-slate-700'}
+          />
+        )}
+        {assignedAiAgent && <InfoRow label="AI Agent" value={assignedAiAgent} />}
+        {assignedHumanAgent && <InfoRow label="Human Agent" value={assignedHumanAgent} />}
       </div>
-
-      {/* Active Memberships */}
-      {memberships.length > 0 && (
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-800 mb-3">Active memberships</h3>
-          <div className="space-y-3">
-            {memberships.map((m, i) => (
-              <div key={i}>
-                <p className="text-sm font-medium" style={{ color: m.color || '#6366F1' }}>
-                  {m.name}
-                </p>
-                {m.creditsRemaining != null && (
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Remaining:{' '}
-                    <span className="text-slate-700 font-medium">{m.creditsRemaining} credits</span>
-                  </p>
-                )}
-                {m.renewsExpires && (
-                  <p className="text-xs text-slate-500">
-                    Renews/Expires:{' '}
-                    <span className="text-slate-700 font-medium">{m.renewsExpires}</span>
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Account Totals */}
       <div className="px-5 py-4">
@@ -89,16 +88,21 @@ const memberships = contact.memberships || []
         <div className="space-y-3">
           <div>
             <p className="text-xs text-slate-500">Money Credits</p>
-            <p className="text-sm font-semibold text-slate-800">{moneyCredits}</p>
+            <p className="text-sm font-semibold text-slate-800">$0.00</p>
           </div>
           <div>
             <p className="text-xs text-slate-500">Class/Appointment credit</p>
-            <p className="text-sm font-semibold text-slate-800">{classAppointmentCredit}</p>
+            <p className="text-sm font-semibold text-slate-800">0</p>
           </div>
         </div>
       </div>
     </aside>
   )
+}
+
+function capitalize(str) {
+  if (!str) return str
+  return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
 function InfoRow({ label, value, valueClassName = 'text-slate-700' }) {

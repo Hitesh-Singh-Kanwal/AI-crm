@@ -117,6 +117,7 @@ export default function LeadsDialog({
           email: editingLead.email,
           phoneNumber: editingLead.phoneNumber,
           location: editingLead.location,
+          locationID: editingLead.locationID,
           stage: editingLead.stage,
           bookingStatus: editingLead.bookingStatus,
           assignedAiAgent: editingLead.assignedAiAgent || '',
@@ -203,8 +204,9 @@ export default function LeadsDialog({
             <div>
               <label className="block text-sm font-medium mb-1">Location *</label>
               <LocationSelector
-                value={editingLead.location || ''}
-                onChange={(value) => setEditingLead({ ...editingLead, location: value })}
+                value={editingLead.locationID || editingLead.location || ''}
+                onChange={(id) => setEditingLead({ ...editingLead, locationID: id })}
+                onChangeObject={(loc) => setEditingLead((prev) => ({ ...prev, location: loc.name, locationID: loc._id }))}
                 placeholder="Select location"
                 showAllOption={false}
                 multiple={false}

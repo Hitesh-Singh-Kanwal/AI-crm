@@ -17,62 +17,81 @@ function buildInboxData(smsRecords, emailRecords) {
   const conversations = []
   const threadMessages = {}
 
-  // Group SMS records by phoneNumber → one conversation per contact
-  const smsGroups = {}
+  // Group all records by lead._id so one lead = one conversation thread
+  const contactGroups = {}
+
   for (const rec of smsRecords) {
-    const key = rec.phoneNumber
-    if (!smsGroups[key]) smsGroups[key] = []
-    smsGroups[key].push(rec)
-  }
-  for (const [phone, records] of Object.entries(smsGroups)) {
-    const convId = `sms-${phone.replace(/\W/g, '_')}`
-    const latest = records[0]
-    const lead = latest.leadID
-    conversations.push({
-      id: convId,
-      contact: { id: lead?._id || phone, name: lead?.name || phone, type: 'Lead', stage: '', nextVisit: '', phoneNumber: phone },
-      lastMessage: latest.message,
-      timestamp: latest.createdAt,
-      unread: 0,
-      channel: 'SMS',
-    })
-    threadMessages[convId] = [...records].reverse().map((rec) => ({
+    const lead = rec.leadID
+    const key = lead?._id ? `lead-${lead._id}` : `sms-${String(rec.phoneNumber).replace(/\W/g, '_')}`
+    if (!contactGroups[key]) {
+      contactGroups[key] = {
+        contact: {
+          id: lead?._id || rec.phoneNumber,
+          name: lead?.name || rec.phoneNumber,
+          type: 'Lead',
+          stage: '',
+          nextVisit: '',
+          phoneNumber: rec.phoneNumber || '',
+          email: '',
+        },
+        messages: [],
+      }
+    } else if (rec.phoneNumber && !contactGroups[key].contact.phoneNumber) {
+      contactGroups[key].contact.phoneNumber = rec.phoneNumber
+    }
+    contactGroups[key].messages.push({
       id: rec._id,
       sender: 'You',
       direction: 'outbound',
       content: rec.message,
       timestamp: rec.createdAt,
       channel: 'SMS',
-    }))
+    })
   }
 
-  // Group Email records by email address → one conversation per contact
-  const emailGroups = {}
   for (const rec of emailRecords) {
-    const key = rec.email
-    if (!emailGroups[key]) emailGroups[key] = []
-    emailGroups[key].push(rec)
-  }
-  for (const [email, records] of Object.entries(emailGroups)) {
-    const convId = `email-${email.replace(/\W/g, '_')}`
-    const latest = records[0]
-    const lead = latest.leadID
-    conversations.push({
-      id: convId,
-      contact: { id: lead?._id || email, name: lead?.name || email, type: 'Lead', stage: '', nextVisit: '', email },
-      lastMessage: latest.subject,
-      timestamp: latest.createdAt,
-      unread: 0,
-      channel: 'Email',
-    })
-    threadMessages[convId] = [...records].reverse().map((rec) => ({
+    const lead = rec.leadID
+    const key = lead?._id ? `lead-${lead._id}` : `email-${String(rec.email).replace(/\W/g, '_')}`
+    if (!contactGroups[key]) {
+      contactGroups[key] = {
+        contact: {
+          id: lead?._id || rec.email,
+          name: lead?.name || rec.email,
+          type: 'Lead',
+          stage: '',
+          nextVisit: '',
+          phoneNumber: '',
+          email: rec.email || '',
+        },
+        messages: [],
+      }
+    } else {
+      if (rec.email && !contactGroups[key].contact.email) {
+        contactGroups[key].contact.email = rec.email
+      }
+    }
+    contactGroups[key].messages.push({
       id: rec._id,
       sender: 'You',
       direction: 'outbound',
       content: rec.body,
       timestamp: rec.createdAt,
       channel: 'Email',
-    }))
+    })
+  }
+
+  for (const [convId, group] of Object.entries(contactGroups)) {
+    const sortedMessages = [...group.messages].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+    const latest = sortedMessages[sortedMessages.length - 1]
+    conversations.push({
+      id: convId,
+      contact: group.contact,
+      lastMessage: latest.content,
+      timestamp: latest.timestamp,
+      unread: 0,
+      channel: latest.channel,
+    })
+    threadMessages[convId] = sortedMessages
   }
 
   conversations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
@@ -104,6 +123,7 @@ function InboxPageContent() {
   const [error, setError] = useState(null)
   const [newConvOpen, setNewConvOpen] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
+  const [selectedLeadData, setSelectedLeadData] = useState(null)
   const selectedConversationRef = useRef(null)
 
   const upsertConversationAndAppendMessage = useCallback((payload) => {
@@ -146,9 +166,11 @@ function InboxPageContent() {
     if (!Array.isArray(leads) || !content) return
 
     for (const lead of leads) {
-      const convId = channel === 'SMS'
-        ? `sms-${String(lead.phoneNumber).replace(/\W/g, '_')}`
-        : `email-${String(lead.email).replace(/\W/g, '_')}`
+      const convId = lead._id
+        ? `lead-${lead._id}`
+        : channel === 'SMS'
+          ? `sms-${String(lead.phoneNumber).replace(/\W/g, '_')}`
+          : `email-${String(lead.email).replace(/\W/g, '_')}`
 
       upsertConversationAndAppendMessage({
         convId,
@@ -232,6 +254,27 @@ function InboxPageContent() {
     selectedConversationRef.current = selectedConversation
   }, [selectedConversation])
 
+  // Fetch full lead profile when conversation changes
+  useEffect(() => {
+    if (!selectedConversation) {
+      setSelectedLeadData(null)
+      return
+    }
+    const conv = conversations.find((c) => c.id === selectedConversation)
+    const leadId = conv?.contact?.id
+    if (!leadId || !selectedConversation.startsWith('lead-')) {
+      setSelectedLeadData(null)
+      return
+    }
+    let cancelled = false
+    api.get(`/api/lead/${leadId}`).then((res) => {
+      if (!cancelled) setSelectedLeadData(res.data || null)
+    }).catch(() => {
+      if (!cancelled) setSelectedLeadData(null)
+    })
+    return () => { cancelled = true }
+  }, [selectedConversation, conversations])
+
   const selectedConvData = selectedConversation
     ? (displayedConversations.find((c) => c.id === selectedConversation) ||
       conversations.find((c) => c.id === selectedConversation))
@@ -310,9 +353,11 @@ function InboxPageContent() {
   }
 
   const handleNewConversation = ({ lead, channel }) => {
-    const convId = channel === 'SMS'
-      ? `sms-${String(lead.phoneNumber).replace(/\W/g, '_')}`
-      : `email-${String(lead.email).replace(/\W/g, '_')}`
+    const convId = lead._id
+      ? `lead-${lead._id}`
+      : channel === 'SMS'
+        ? `sms-${String(lead.phoneNumber).replace(/\W/g, '_')}`
+        : `email-${String(lead.email).replace(/\W/g, '_')}`
 
     // Make this conversation id available immediately for a fast send.
     selectedConversationRef.current = convId
@@ -410,7 +455,7 @@ function InboxPageContent() {
         {/* Right: Details */}
         {showDetails && selectedConvData && (
           <div className="hidden lg:flex flex-col w-80 min-h-0 h-full">
-            <ContactDetails contact={selectedConvData.contact} onClose={() => setShowDetails(false)} />
+            <ContactDetails contact={selectedConvData.contact} leadData={selectedLeadData} onClose={() => setShowDetails(false)} />
           </div>
         )}
       </div>
