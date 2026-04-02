@@ -413,6 +413,11 @@ function FormsPageInner() {
   const [gaViewsLoading, setGaViewsLoading] = useState(false)
   const [gaViewsError, setGaViewsError] = useState(null)
 
+  // Templates/forms table (NOT from Google Analytics; from existing backend forms API)
+  const [analyticsForms, setAnalyticsForms] = useState([])
+  const [analyticsFormsLoading, setAnalyticsFormsLoading] = useState(false)
+  const [analyticsFormsError, setAnalyticsFormsError] = useState(null)
+
   // Theme-aligned palette (brand + semantic accents via CSS vars)
   const COUNTRY_COLORS = [
     'var(--studio-primary)',
@@ -515,9 +520,33 @@ function FormsPageInner() {
     }
   }, [gaPagesDimension])
 
+  const fetchAnalyticsForms = useCallback(async () => {
+    setAnalyticsFormsLoading(true)
+    setAnalyticsFormsError(null)
+    try {
+      // Use backend forms API for templates table:
+      // http://localhost:8080/api/formBuilder?page=1&limit=9
+      const params = new URLSearchParams({ page: '1', limit: '9' })
+      const result = await api.get(`/api/formBuilder?${params.toString()}`)
+      const list = Array.isArray(result.data) ? result.data : null
+      if (result.success && list) {
+        setAnalyticsForms(list)
+      } else {
+        setAnalyticsFormsError(result.error || 'Failed to load forms for analytics')
+      }
+    } catch {
+      setAnalyticsFormsError('Failed to load forms for analytics')
+    } finally {
+      setAnalyticsFormsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
-    if (activeTab === 'analytics') fetchGaViews()
-  }, [activeTab, fetchGaViews])
+    if (activeTab === 'analytics') {
+      fetchGaViews()
+      fetchAnalyticsForms()
+    }
+  }, [activeTab, fetchGaViews, fetchAnalyticsForms])
 
   const extractViewTimestamps = (form) => {
     const candidates = [
@@ -1882,6 +1911,53 @@ ${gtagScript}
               <GlobalLoader text="Fetching analytics…" />
             </div>
           ) : null}
+          {!gaViewsLoading && analyticsFormsLoading ? (
+            <div className="absolute inset-0 z-10 rounded-lg bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
+              <GlobalLoader text="Loading templates…" />
+            </div>
+          ) : null}
+          {(() => {
+            // Dummy submissions + conversion rate (until real submission tracking exists)
+            const baseViews = Number(gaViews?.last30Days) || 0
+            const submissionRate = 0.12 // 12% dummy baseline
+            const totalSubmissions = Math.max(0, Math.round(baseViews * submissionRate))
+            const conversionRate = baseViews > 0 ? (totalSubmissions / baseViews) * 100 : 0
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500 mb-1">Total form submissions</p>
+                        <h3 className="text-3xl font-bold text-slate-900 tabular-nums">
+                          {gaViewsLoading ? '—' : totalSubmissions}
+                        </h3>
+                      </div>
+                      <div className="h-12 w-12 rounded-lg bg-brand-light flex items-center justify-center">
+                        <FileText className="h-6 w-6 text-brand" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500 mb-1">Conversion rate</p>
+                        <h3 className="text-3xl font-bold text-slate-900 tabular-nums">
+                          {gaViewsLoading ? '—' : `${conversionRate.toFixed(1)}%`}
+                        </h3>
+                      </div>
+                      <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
+                        <BarChart3 className="h-6 w-6 text-slate-700" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )
+          })()}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
               <CardContent className="p-6">
@@ -2066,16 +2142,28 @@ ${gtagScript}
                                 </filter>
                               </defs>
                               <circle cx="110" cy="110" r="92" fill="hsl(var(--muted))" />
-                              {segments.map((s, idx) => (
-                                <path
-                                  key={idx}
-                                  d={describeArc(110, 110, 90, s.startFrac, s.endFrac)}
-                                  fill={s.color}
+                              {segments.length === 1 ? (
+                                <circle
+                                  cx="110"
+                                  cy="110"
+                                  r="90"
+                                  fill={segments[0].color}
                                   filter={`url(#pieShadow-${cIdx})`}
                                   stroke="hsl(var(--card))"
                                   strokeWidth="2"
                                 />
-                              ))}
+                              ) : (
+                                segments.map((s, idx) => (
+                                  <path
+                                    key={idx}
+                                    d={describeArc(110, 110, 90, s.startFrac, s.endFrac)}
+                                    fill={s.color}
+                                    filter={`url(#pieShadow-${cIdx})`}
+                                    stroke="hsl(var(--card))"
+                                    strokeWidth="2"
+                                  />
+                                ))
+                              )}
                               {segments.map((s, idx) => {
                                 const pct = total ? (s.value / total) * 100 : 0
                                 if (pct < 4) return null
@@ -2087,7 +2175,7 @@ ${gtagScript}
                                     y={y}
                                     textAnchor="middle"
                                     dominantBaseline="middle"
-                                    fill="white"
+                                    fill={segments.length === 1 ? 'hsl(var(--primary-foreground))' : 'white'}
                                     fontSize="14"
                                     fontWeight="700"
                                   >
@@ -2229,6 +2317,69 @@ ${gtagScript}
                   </tbody>
                 </table>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="text-base">Templates</CardTitle>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2">
+              {analyticsFormsError ? (
+                <div className="text-sm text-destructive">{analyticsFormsError}</div>
+              ) : (
+                (() => {
+                  const list = Array.isArray(analyticsForms) ? analyticsForms : []
+                  // Some backends mark templates explicitly; fall back to showing whatever the API returns.
+                  const hasTemplateFlag = list.some((f) => typeof f?.isTemplate === 'boolean' || typeof f?.template === 'boolean')
+                  const rows = hasTemplateFlag ? list.filter((f) => f?.isTemplate || f?.template) : list
+                  if (!rows.length) return <div className="text-sm text-slate-500 py-4">No forms found.</div>
+                  return (
+                    <div className="overflow-auto rounded-md border border-slate-200">
+                      <table className="min-w-[720px] w-full text-sm">
+                        <thead className="bg-slate-50">
+                          <tr className="text-left text-slate-600">
+                            <th className="px-4 py-3 font-medium">View</th>
+                            <th className="px-4 py-3 font-medium">Form</th>
+                            <th className="px-4 py-3 font-medium">Template</th>
+                            <th className="px-4 py-3 font-medium">Status</th>
+                            <th className="px-4 py-3 font-medium">Updated</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white">
+                          {rows.map((f) => (
+                            <tr key={f._id} className="border-t border-slate-100">
+                              <td className="px-4 py-3">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  title="View template analytics"
+                                  onClick={() => router.push(`/forms/template-analytics/${f._id}`)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </td>
+                              <td className="px-4 py-3 text-slate-900 font-medium">{f?.name || 'Untitled'}</td>
+                              <td className="px-4 py-3 text-slate-700">
+                                {typeof f?.isTemplate === 'boolean' ? (f.isTemplate ? 'Yes' : 'No') : (f?.fromTemplate ? 'From template' : '—')}
+                              </td>
+                              <td className="px-4 py-3 text-slate-700">{f?.status || '—'}</td>
+                              <td className="px-4 py-3 text-slate-700">
+                                {f?.updatedAt ? formatDate(f.updatedAt) : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                })()
+              )}
             </CardContent>
           </Card>
 
