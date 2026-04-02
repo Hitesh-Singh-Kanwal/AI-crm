@@ -8,6 +8,68 @@ function env(name) {
   return v && String(v).trim() ? String(v).trim() : null
 }
 
+/** Private keys in .env often use literal `\n` — normalize for the Google client. */
+function normalizePrivateKey(key) {
+  if (!key) return null
+  return String(key).replace(/\\n/g, '\n')
+}
+
+/**
+ * Inline credentials work on any host (Vercel, another laptop) without a local json file path.
+ * Priority: GA_CREDENTIALS_BASE64 → GA_CREDENTIALS_JSON → GA4_CLIENT_EMAIL + GA4_PRIVATE_KEY.
+ */
+function getInlineServiceAccount() {
+  const fromBase64 = env('GA_CREDENTIALS_BASE64')
+  if (fromBase64) {
+    try {
+      const raw = Buffer.from(fromBase64, 'base64').toString('utf8')
+      const parsed = JSON.parse(raw)
+      const client_email = parsed.client_email
+      const private_key = normalizePrivateKey(parsed.private_key)
+      const project_id = parsed.project_id || null
+      if (client_email && private_key) return { client_email, private_key, project_id }
+    } catch {
+      // fall through
+    }
+  }
+  const jsonRaw = env('GA_CREDENTIALS_JSON')
+  if (jsonRaw) {
+    try {
+      const parsed = JSON.parse(jsonRaw)
+      const client_email = parsed.client_email
+      const private_key = normalizePrivateKey(parsed.private_key)
+      const project_id = parsed.project_id || null
+      if (client_email && private_key) return { client_email, private_key, project_id }
+    } catch {
+      // fall through
+    }
+  }
+  const client_email = env('GA4_CLIENT_EMAIL') || env('GOOGLE_CLIENT_EMAIL')
+  const private_key = normalizePrivateKey(env('GA4_PRIVATE_KEY') || env('GOOGLE_PRIVATE_KEY'))
+  const project_id = env('GA4_PROJECT_ID') || env('GOOGLE_CLOUD_PROJECT') || env('GCLOUD_PROJECT')
+  if (client_email && private_key) return { client_email, private_key, project_id }
+  return null
+}
+
+function createAnalyticsClient() {
+  const inline = getInlineServiceAccount()
+  if (inline) {
+    return new BetaAnalyticsDataClient({
+      credentials: {
+        client_email: inline.client_email,
+        private_key: inline.private_key,
+      },
+      ...(inline.project_id ? { projectId: inline.project_id } : {}),
+    })
+  }
+  const credPath = env('GA_CREDENTIALS_PATH') || env('GOOGLE_APPLICATION_CREDENTIALS')
+  if (credPath) {
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = credPath
+    return new BetaAnalyticsDataClient()
+  }
+  return null
+}
+
 function jsonError(message, status = 500) {
   return NextResponse.json({ success: false, error: message }, { status })
 }
@@ -25,28 +87,22 @@ export async function GET(request) {
     // ignore
   }
 
-  // We support the env style you already have in `.env`:
-  // - PROPERTY_ID
-  // - GA_CREDENTIALS_PATH (service account json)
-  // You can also use GA4_PROPERTY_ID + GOOGLE_APPLICATION_CREDENTIALS.
+  // PROPERTY_ID (or GA4_PROPERTY_ID) for GA4.
+  // Credentials (pick one): inline env (portable) OR path to service-account json (local).
   const propertyId = env('GA4_PROPERTY_ID') || env('PROPERTY_ID')
-  const credPath = env('GA_CREDENTIALS_PATH') || env('GOOGLE_APPLICATION_CREDENTIALS')
-
-  if (credPath) {
-    // Ensure the library reads the intended key.
-    process.env.GOOGLE_APPLICATION_CREDENTIALS = credPath
-  }
 
   if (!propertyId) {
     return jsonError('Missing PROPERTY_ID (or GA4_PROPERTY_ID) for GA4.', 400)
   }
 
-  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    return jsonError('Missing GA_CREDENTIALS_PATH (service-account json path).', 400)
-  }
-
   try {
-    const client = new BetaAnalyticsDataClient()
+    const client = createAnalyticsClient()
+    if (!client) {
+      return jsonError(
+        'Missing GA credentials. Use one of: GA_CREDENTIALS_BASE64, GA_CREDENTIALS_JSON, GA4_CLIENT_EMAIL+GA4_PRIVATE_KEY, or GA_CREDENTIALS_PATH / GOOGLE_APPLICATION_CREDENTIALS (path to service-account json on that machine).',
+        400,
+      )
+    }
     const property = `properties/${String(propertyId).replace(/^properties\//, '')}`
 
     const getTotal = (report) => {
