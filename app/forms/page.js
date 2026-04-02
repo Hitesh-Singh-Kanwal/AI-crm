@@ -419,11 +419,25 @@ function FormsPageInner() {
     { id: 'sys-formID', type: 'hidden', name: 'formID', label: 'formID', hidden: true, locked: true, styles: {} },
     { id: 'sys-locationID', type: 'hidden', name: 'locationID', label: 'locationID', hidden: true, locked: true, styles: {} },
   ]
+  const REQUIRED_LEAD_FIELDS = [
+    { id: 'req-name', type: 'text', name: 'name', label: 'Name', placeholder: 'Enter your name', required: true, locked: true, styles: {} },
+    { id: 'req-email', type: 'email', name: 'email', label: 'Email', placeholder: 'you@email.com', required: true, locked: true, styles: {} },
+    { id: 'req-phoneNumber', type: 'phone', name: 'phoneNumber', label: 'Phone Number', placeholder: '(555) 123-4567', required: true, locked: true, styles: {} },
+    { id: 'req-location', type: 'text', name: 'location', label: 'Location', placeholder: 'Enter location', required: true, locked: true, styles: {} },
+  ]
+  const REQUIRED_FIELD_NAMES = new Set([
+    'organisationID',
+    'formID',
+    'locationID',
+    'name',
+    'email',
+    'phoneNumber',
+    'location',
+  ])
 
   const [formFields, setFormFields] = useState([
     ...REQUIRED_SYSTEM_FIELDS,
-    { id: '1', type: 'text', label: 'Full Name', placeholder: 'Enter your name', required: true, styles: {} },
-    { id: '2', type: 'email', label: 'Email Address', placeholder: 'your@email.com', required: true, styles: {} },
+    ...REQUIRED_LEAD_FIELDS,
   ])
   const [selectedField, setSelectedField] = useState(null)
   const [activeId, setActiveId] = useState(null)
@@ -536,7 +550,7 @@ function FormsPageInner() {
     setFormName('')
     setFormDescription('')
     setEditingFormId(null)
-    setFormFields([])
+    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...REQUIRED_LEAD_FIELDS])
     setSelectedField(null)
     setActiveTab('builder')
   }
@@ -736,9 +750,11 @@ function FormsPageInner() {
         })
       }
 
-      const nextFields = [...REQUIRED_SYSTEM_FIELDS, ...inferred]
+      // Ensure required lead fields always exist, and avoid duplicates
+      const inferredFiltered = inferred.filter((f) => !REQUIRED_FIELD_NAMES.has(String(f?.name || '').trim()))
+      const nextFields = [...REQUIRED_SYSTEM_FIELDS, ...REQUIRED_LEAD_FIELDS, ...inferredFiltered]
       setFormFields(nextFields)
-      const firstVisible = inferred.find((f) => f && !f.hidden && f.type !== 'hidden')
+      const firstVisible = [...REQUIRED_LEAD_FIELDS, ...inferredFiltered].find((f) => f && !f.hidden && f.type !== 'hidden')
       setSelectedField(firstVisible?.id || null)
       setActiveTab('builder')
     } catch (e) {
@@ -770,8 +786,8 @@ function FormsPageInner() {
       styles: {},
     }))
     // Prevent template fields from duplicating reserved backend field names (e.g. a second "email")
-    const filtered = normalized.filter((f) => !RESERVED_FIELD_NAMES.has(getFieldNameForHtml(f)))
-    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...filtered])
+    const filtered = normalized.filter((f) => !REQUIRED_FIELD_NAMES.has(getFieldNameForHtml(f)))
+    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...REQUIRED_LEAD_FIELDS, ...filtered])
     setSelectedField(normalized[0]?.id || null)
     setActiveTab('builder')
   }
