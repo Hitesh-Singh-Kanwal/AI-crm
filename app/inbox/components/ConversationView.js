@@ -5,6 +5,9 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getInitials, formatDateTime } from '@/lib/utils'
 import MessageInput from './MessageInput'
 import { cn } from '@/lib/utils'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 
 export default function ConversationView({
   conversation,
@@ -131,7 +134,26 @@ export default function ConversationView({
                         isInbound ? 'bg-white border border-[#EDF2F7] text-slate-900' : 'bg-[color:var(--studio-primary)] text-white'
                       )}
                     >
-                      <p className="text-sm leading-relaxed">{message.content}</p>
+                      <div
+                        className={cn(
+                          'text-sm leading-relaxed',
+                          // Give markdown elements consistent spacing + wrapping
+                          '[&_*]:break-words [&_p]:whitespace-pre-wrap [&_p]:m-0 [&_p+p]:mt-2 [&_ul]:mt-2 [&_ul]:pl-5 [&_ul]:list-disc [&_ol]:mt-2 [&_ol]:pl-5 [&_ol]:list-decimal [&_li]:mt-1',
+                          isInbound ? '[&_a]:text-[color:var(--studio-primary)]' : '[&_a]:text-white [&_a]:underline'
+                        )}
+                      >
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkBreaks]}
+                          skipHtml
+                          components={{
+                            a: ({ node, ...props }) => (
+                              <a {...props} target="_blank" rel="noreferrer noopener" />
+                            ),
+                          }}
+                        >
+                          {String(message.content || '')}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                     <div className="mt-2 text-xs text-[#94A3B8]">{formatDateTime(message.timestamp)}</div>
                   </div>
