@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
-import { Search, Shield, Edit, Trash, MoreHorizontal } from 'lucide-react'
+import React, { useEffect, useState, useMemo } from 'react'
+import { Search, Shield, Edit, Trash, MoreHorizontal, ChevronDown, ChevronRight } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -69,6 +69,97 @@ function getPermissionActionBadges(actions) {
     { key: 'edit', label: 'Edit', on: !!a.edit },
     { key: 'delete', label: 'Delete', on: !!a.delete },
   ]
+}
+
+function PermissionsTable({ permissions }) {
+  const [expandedSections, setExpandedSections] = useState({})
+
+  function toggleSection(key) {
+    setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const entries = Object.entries(permissions || {})
+
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold text-slate-900">Permissions</h4>
+      <div className="rounded-lg border border-slate-200">
+        {/* Header */}
+        <div className="grid grid-cols-[2rem_1fr_6rem] bg-slate-50 border-b border-slate-200 px-2 py-2.5 text-xs font-medium text-slate-500">
+          <div />
+          <div>Section</div>
+          <div className="text-right pr-2">Modules</div>
+        </div>
+
+        {entries.map(([sectionKey, section], idx) => {
+          const sectionName = section?.name || sectionKey
+          const modules = Object.entries(section?.permissions || {})
+          const isExpanded = !!expandedSections[sectionKey]
+          const isLast = idx === entries.length - 1
+
+          return (
+            <div key={sectionKey} className={!isLast || isExpanded ? 'border-b border-slate-200' : ''}>
+              {/* Section row */}
+              <div
+                onClick={() => toggleSection(sectionKey)}
+                className="grid grid-cols-[2rem_1fr_6rem] items-center px-2 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
+              >
+                <div className="text-slate-400 flex items-center">
+                  {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </div>
+                <div className="font-medium text-slate-900 text-sm">{sectionName}</div>
+                <div className="flex justify-end pr-2">
+                  <Badge variant="secondary" className="text-xs">{modules.length} modules</Badge>
+                </div>
+              </div>
+
+              {/* Expanded modules */}
+              {isExpanded && (
+                <div className="bg-slate-50/60 border-t border-slate-100 px-4 py-3">
+                  {modules.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-1">No modules configured</p>
+                  ) : (
+                    <div>
+                      <div className="flex justify-between pb-2 border-b border-slate-200 text-xs font-medium text-slate-400">
+                        <span>Module</span>
+                        <span>Allowed actions</span>
+                      </div>
+                      {modules.map(([moduleKey, actions], mIdx) => {
+                        const badges = getPermissionActionBadges(actions)
+                        const enabledCount = badges.filter((b) => b.on).length
+                        return (
+                          <div
+                            key={moduleKey}
+                            className={`flex items-center justify-between py-2 ${mIdx < modules.length - 1 ? 'border-b border-slate-100' : ''}`}
+                          >
+                            <div>
+                              <span className="text-sm font-medium text-slate-800">
+                                {moduleKey === '*' ? 'Master' : moduleKey}
+                              </span>
+                              <span className="ml-2 text-xs text-slate-400">
+                                {enabledCount > 0 ? `${enabledCount} allowed` : 'No access'}
+                              </span>
+                            </div>
+                            <div className="flex gap-1.5">
+                              {badges.map((b) => (
+                                <Badge key={b.key} variant={b.on ? 'success' : 'outline'} className="text-[11px]">
+                                  {b.label}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export default function RolesPage() {
@@ -474,7 +565,7 @@ export default function RolesPage() {
         )}
 
         {/* Role Detail Modal */}
-        <Dialog open={!!selectedRoleId} onClose={() => setSelectedRoleId(null)} maxWidth="4xl">
+        <Dialog open={!!selectedRoleId} onClose={() => setSelectedRoleId(null)} maxWidth="6xl">
           <DialogContent onClose={() => setSelectedRoleId(null)}>
             <DialogHeader>
               <DialogTitle>Role Details</DialogTitle>
@@ -515,68 +606,7 @@ export default function RolesPage() {
                 </div>
 
                 {/* Permissions breakdown */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-slate-900">Permissions</h4>
-                    <span className="text-xs text-slate-500">
-                      {getEnabledPermissionSections(selectedRole.permissions).join(', ') || '—'}
-                    </span>
-                  </div>
-
-                  <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
-                    {Object.entries(selectedRole.permissions || {}).map(([sectionKey, section]) => {
-                      const sectionName = section?.name || sectionKey
-                      const modules = Object.entries(section?.permissions || {})
-
-                      return (
-                        <div key={sectionKey} className="rounded-lg border border-slate-200 bg-white">
-                          <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium text-slate-900 truncate">{sectionName}</div>
-                              <div className="text-xs text-slate-500 truncate">{sectionKey}</div>
-                            </div>
-                            <Badge variant="secondary" className="text-xs shrink-0">
-                              {modules.length} modules
-                            </Badge>
-                          </div>
-
-                          <div className="px-4 py-3 space-y-2">
-                            {modules.length === 0 ? (
-                              <div className="text-sm text-slate-500">No modules</div>
-                            ) : (
-                              modules.map(([moduleKey, actions]) => {
-                                const badges = getPermissionActionBadges(actions)
-                                const enabledCount = badges.filter((b) => b.on).length
-
-                                return (
-                                  <div key={moduleKey} className="flex items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <div className="text-sm font-medium text-slate-800 truncate">{moduleKey}</div>
-                                      <div className="text-xs text-slate-500 truncate">
-                                        {enabledCount > 0 ? `${enabledCount} allowed` : 'No access'}
-                                      </div>
-                                    </div>
-                                    <div className="flex flex-wrap justify-end gap-1.5">
-                                      {badges.map((b) => (
-                                        <Badge
-                                          key={b.key}
-                                          variant={b.on ? 'success' : 'outline'}
-                                          className="text-[11px]"
-                                        >
-                                          {b.label}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )
-                              })
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
+                <PermissionsTable permissions={selectedRole.permissions} />
 
                 <div className="flex gap-2">
                   <Button

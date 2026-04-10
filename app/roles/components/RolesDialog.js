@@ -182,7 +182,7 @@ export default function RolesDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="2xl">
+    <Dialog open={open} onClose={onClose} maxWidth="4xl">
       <DialogContent onClose={onClose} className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isCreating ? 'Create Role' : 'Edit Role'}</DialogTitle>

@@ -169,7 +169,7 @@ export default function RoleEditor({
                                   >
                                     <TableCell>
                                       <div>
-                                        <p className="font-medium text-slate-900">{permKey}</p>
+                                        <p className="font-medium text-slate-900">{permKey === '*' ? 'Master' : permKey}</p>
                                         {permVal.description && (
                                           <p className="text-xs text-slate-500">
                                             {permVal.description}

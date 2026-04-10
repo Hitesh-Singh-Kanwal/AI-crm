@@ -15,13 +15,18 @@ function Dialog({ open, onClose, children, maxWidth = 'lg' }) {
     '2xl': 'max-w-2xl',
     '3xl': 'max-w-3xl',
     '4xl': 'max-w-4xl',
+    '5xl': 'max-w-5xl',
+    '6xl': 'max-w-6xl',
+    '7xl': 'max-w-7xl',
     full: 'max-w-full',
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative z-50 w-full ${maxWidthClasses[maxWidth] || maxWidthClasses.lg} animate-scale-in`}>{children}</div>
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div className={`relative z-50 w-full ${maxWidthClasses[maxWidth] || maxWidthClasses.lg} animate-scale-in`}>{children}</div>
+      </div>
     </div>
   )
 }
