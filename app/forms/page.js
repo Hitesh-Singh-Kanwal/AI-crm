@@ -5,7 +5,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +15,8 @@ import Switch from '@/components/ui/switch'
 import { formatDate } from '@/lib/utils'
 import StylePanel from '@/components/forms/StylePanel'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import { getCurrentUser } from '@/lib/auth'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DndContext,
@@ -152,12 +154,16 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
           <GripVertical className="h-4 w-4 text-slate-500" />
         </button>
         <button
-          className="p-1.5 hover:bg-red-50 rounded bg-white border border-slate-200 shadow-sm"
+          className={`p-1.5 rounded bg-white border border-slate-200 shadow-sm ${
+            field.locked ? 'opacity-40 cursor-not-allowed' : 'hover:bg-red-50'
+          }`}
           onClick={(e) => {
             e.stopPropagation()
+            if (field.locked) return
             onRemove(field.id)
           }}
-          title="Remove field"
+          title={field.locked ? 'This field is required' : 'Remove field'}
+          disabled={field.locked}
         >
           <Trash2 className="h-4 w-4 text-slate-500 hover:text-red-500" />
         </button>
@@ -295,6 +301,9 @@ function FormsPageInner() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const activeTab = searchParams.get('view') || 'templates'
+  const user = getCurrentUser()
+
+  // Forms list (templates view)
   const [forms, setForms] = useState([])
   const [formsLoading, setFormsLoading] = useState(false)
   const [formsError, setFormsError] = useState(null)
@@ -313,7 +322,9 @@ function FormsPageInner() {
     return () => clearTimeout(t)
   }, [formsSearch])
 
-  useEffect(() => { setFormsPage(1) }, [formsSearchDebounced])
+  useEffect(() => {
+    setFormsPage(1)
+  }, [formsSearchDebounced])
 
   const fetchForms = useCallback(async () => {
     setFormsLoading(true)
@@ -338,22 +349,34 @@ function FormsPageInner() {
     }
   }, [formsPage, formsSearchDebounced])
 
-  useEffect(() => { fetchForms() }, [fetchForms])
+  useEffect(() => {
+    fetchForms()
+  }, [fetchForms])
 
   const toggleFormFavorite = async (form) => {
     if (togglingIds.has(form._id)) return
     setTogglingIds((prev) => new Set(prev).add(form._id))
     setHeartAnimIds((prev) => new Set(prev).add(form._id))
-    setTimeout(() => setHeartAnimIds((prev) => { const s = new Set(prev); s.delete(form._id); return s }), 400)
+    setTimeout(() => {
+      setHeartAnimIds((prev) => {
+        const s = new Set(prev)
+        s.delete(form._id)
+        return s
+      })
+    }, 400)
     const next = !form.isFavorite
-    setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, isFavorite: next } : f))
+    setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, isFavorite: next } : f)))
     try {
       const result = await api.put(`/api/formBuilder/${form._id}`, { isFavorite: next })
-      if (!result.success) setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, isFavorite: !next } : f))
+      if (!result.success) setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, isFavorite: !next } : f)))
     } catch {
-      setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, isFavorite: !next } : f))
+      setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, isFavorite: !next } : f)))
     } finally {
-      setTogglingIds((prev) => { const s = new Set(prev); s.delete(form._id); return s })
+      setTogglingIds((prev) => {
+        const s = new Set(prev)
+        s.delete(form._id)
+        return s
+      })
     }
   }
 
@@ -361,16 +384,206 @@ function FormsPageInner() {
     if (togglingIds.has(form._id)) return
     setTogglingIds((prev) => new Set(prev).add(form._id))
     const next = form.status === 'active' ? 'inactive' : 'active'
-    setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, status: next } : f))
+    setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, status: next } : f)))
     try {
       const result = await api.put(`/api/formBuilder/${form._id}`, { status: next })
-      if (!result.success) setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, status: form.status } : f))
+      if (!result.success) setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, status: form.status } : f)))
     } catch {
-      setForms((prev) => prev.map((f) => f._id === form._id ? { ...f, status: form.status } : f))
+      setForms((prev) => prev.map((f) => (f._id === form._id ? { ...f, status: form.status } : f)))
     } finally {
-      setTogglingIds((prev) => { const s = new Set(prev); s.delete(form._id); return s })
+      setTogglingIds((prev) => {
+        const s = new Set(prev)
+        s.delete(form._id)
+        return s
+      })
     }
   }
+
+  const [gaViews, setGaViews] = useState({ allTime: 0, last30Days: 0, last7Days: 0 })
+  const [gaActiveUsers, setGaActiveUsers] = useState({ allTime: 0, last30Days: 0, last7Days: 0 })
+  const [gaPages, setGaPages] = useState({ allTime: [], last30Days: [], last7Days: [] })
+  const [gaPagesRange, setGaPagesRange] = useState('last30Days')
+  const [gaPagesDimension, setGaPagesDimension] = useState('pagePath') // pagePath | pageTitle
+  const [gaDemographics, setGaDemographics] = useState({
+    countries: { allTime: [], last30Days: [], last7Days: [] },
+    regions: { allTime: [], last30Days: [], last7Days: [] },
+    cities: { allTime: [], last30Days: [], last7Days: [] },
+  })
+  const [gaDemographicsRange, setGaDemographicsRange] = useState('last30Days')
+  const [gaViewsLoading, setGaViewsLoading] = useState(false)
+  const [gaViewsError, setGaViewsError] = useState(null)
+
+  // Templates/forms table (NOT from Google Analytics; from existing backend forms API)
+  const [analyticsForms, setAnalyticsForms] = useState([])
+  const [analyticsFormsLoading, setAnalyticsFormsLoading] = useState(false)
+  const [analyticsFormsError, setAnalyticsFormsError] = useState(null)
+
+  // Theme-aligned palette (brand + semantic accents via CSS vars)
+  const COUNTRY_COLORS = [
+    'var(--studio-primary)',
+    'var(--studio-gradient)',
+    'hsl(var(--primary))',
+    'hsl(var(--ring))',
+    'hsl(var(--destructive))',
+    'hsl(var(--foreground) / 0.85)',
+    'hsl(var(--foreground) / 0.65)',
+    'hsl(var(--foreground) / 0.45)',
+  ]
+
+  const formatDuration = (seconds) => {
+    const s = Number(seconds)
+    if (!Number.isFinite(s) || s <= 0) return '0s'
+    const total = Math.round(s)
+    const m = Math.floor(total / 60)
+    const r = total % 60
+    return m > 0 ? `${m}m ${r}s` : `${r}s`
+  }
+
+  const makePieSegments = (items) => {
+    const total = items.reduce((sum, it) => sum + (Number(it?.value) || 0), 0)
+    if (!total) return { total: 0, segments: [] }
+    let start = 0
+    const segments = items.map((it, idx) => {
+      const v = Number(it?.value) || 0
+      const frac = v / total
+      const seg = { ...it, startFrac: start, endFrac: start + frac, color: COUNTRY_COLORS[idx % COUNTRY_COLORS.length] }
+      start += frac
+      return seg
+    })
+    return { total, segments }
+  }
+
+  const segmentLabelPosition = (cx, cy, r, startFrac, endFrac) => {
+    const mid = (startFrac + endFrac) / 2
+    const angle = mid * Math.PI * 2 - Math.PI / 2
+    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) }
+  }
+
+  const describeArc = (cx, cy, r, startFrac, endFrac) => {
+    const startAngle = startFrac * Math.PI * 2 - Math.PI / 2
+    const endAngle = endFrac * Math.PI * 2 - Math.PI / 2
+    const x1 = cx + r * Math.cos(startAngle)
+    const y1 = cy + r * Math.sin(startAngle)
+    const x2 = cx + r * Math.cos(endAngle)
+    const y2 = cy + r * Math.sin(endAngle)
+    const largeArc = endFrac - startFrac > 0.5 ? 1 : 0
+    return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`
+  }
+
+  const fetchGaViews = useCallback(async () => {
+    setGaViewsLoading(true)
+    setGaViewsError(null)
+    try {
+      const res = await fetch(`/api/ga/forms-views?pagesDimension=${encodeURIComponent(gaPagesDimension)}`)
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body?.success) {
+        setGaViewsError(body?.error || 'Failed to load Google Analytics views')
+        return
+      }
+      setGaViews({
+        allTime: Number(body.data?.views?.allTime) || 0,
+        last30Days: Number(body.data?.views?.last30Days) || 0,
+        last7Days: Number(body.data?.views?.last7Days) || 0,
+      })
+      setGaActiveUsers({
+        allTime: Number(body.data?.activeUsers?.allTime) || 0,
+        last30Days: Number(body.data?.activeUsers?.last30Days) || 0,
+        last7Days: Number(body.data?.activeUsers?.last7Days) || 0,
+      })
+      setGaPages({
+        allTime: Array.isArray(body.data?.pages?.allTime) ? body.data.pages.allTime : [],
+        last30Days: Array.isArray(body.data?.pages?.last30Days) ? body.data.pages.last30Days : [],
+        last7Days: Array.isArray(body.data?.pages?.last7Days) ? body.data.pages.last7Days : [],
+      })
+      const demo = body.data?.demographics || {}
+      setGaDemographics({
+        countries: {
+          allTime: Array.isArray(demo?.countries?.allTime) ? demo.countries.allTime : [],
+          last30Days: Array.isArray(demo?.countries?.last30Days) ? demo.countries.last30Days : [],
+          last7Days: Array.isArray(demo?.countries?.last7Days) ? demo.countries.last7Days : [],
+        },
+        regions: {
+          allTime: Array.isArray(demo?.regions?.allTime) ? demo.regions.allTime : [],
+          last30Days: Array.isArray(demo?.regions?.last30Days) ? demo.regions.last30Days : [],
+          last7Days: Array.isArray(demo?.regions?.last7Days) ? demo.regions.last7Days : [],
+        },
+        cities: {
+          allTime: Array.isArray(demo?.cities?.allTime) ? demo.cities.allTime : [],
+          last30Days: Array.isArray(demo?.cities?.last30Days) ? demo.cities.last30Days : [],
+          last7Days: Array.isArray(demo?.cities?.last7Days) ? demo.cities.last7Days : [],
+        },
+      })
+    } catch (e) {
+      setGaViewsError('Failed to load Google Analytics views')
+    } finally {
+      setGaViewsLoading(false)
+    }
+  }, [gaPagesDimension])
+
+  const fetchAnalyticsForms = useCallback(async () => {
+    setAnalyticsFormsLoading(true)
+    setAnalyticsFormsError(null)
+    try {
+      // Use backend forms API for templates table:
+      // http://localhost:8080/api/formBuilder?page=1&limit=9
+      const params = new URLSearchParams({ page: '1', limit: '9' })
+      const result = await api.get(`/api/formBuilder?${params.toString()}`)
+      const list = Array.isArray(result.data) ? result.data : null
+      if (result.success && list) {
+        setAnalyticsForms(list)
+      } else {
+        setAnalyticsFormsError(result.error || 'Failed to load forms for analytics')
+      }
+    } catch {
+      setAnalyticsFormsError('Failed to load forms for analytics')
+    } finally {
+      setAnalyticsFormsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'analytics') {
+      fetchGaViews()
+      fetchAnalyticsForms()
+    }
+  }, [activeTab, fetchGaViews, fetchAnalyticsForms])
+
+  const extractViewTimestamps = (form) => {
+    const candidates = [
+      form?.views,
+      form?.viewEvents,
+      form?.analytics?.views,
+      form?.analytics?.viewEvents,
+    ]
+    for (const c of candidates) {
+      if (!c) continue
+      if (Array.isArray(c)) return c
+    }
+    return []
+  }
+
+  const viewsSummary = (() => {
+    const now = Date.now()
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000
+    const monthAgo = now - 30 * 24 * 60 * 60 * 1000
+
+    let all = 0
+    let lastWeek = 0
+    let lastMonth = 0
+
+    for (const f of forms) {
+      const tsList = extractViewTimestamps(f)
+      for (const t of tsList) {
+        const ms = typeof t === 'number' ? t : Date.parse(String(t))
+        if (!Number.isFinite(ms)) continue
+        all += 1
+        if (ms >= monthAgo) lastMonth += 1
+        if (ms >= weekAgo) lastWeek += 1
+      }
+    }
+
+    return { all, lastMonth, lastWeek }
+  })()
 
   // Builder form metadata
   const [formName, setFormName] = useState('')
@@ -385,9 +598,33 @@ function FormsPageInner() {
   // Clone
   const [cloningFormId, setCloningFormId] = useState(null)
 
+  // Backend-required hidden fields injected into exported HTML
+  const organisationID = user?.organisationID || ''
+  const formID = editingFormId || ''
+  const REQUIRED_SYSTEM_FIELDS = [
+    { id: 'sys-organisationID', type: 'hidden', name: 'organisationID', label: 'organisationID', hidden: true, locked: true, styles: {} },
+    { id: 'sys-formID', type: 'hidden', name: 'formID', label: 'formID', hidden: true, locked: true, styles: {} },
+    { id: 'sys-locationID', type: 'hidden', name: 'locationID', label: 'locationID', hidden: true, locked: true, styles: {} },
+  ]
+  const REQUIRED_LEAD_FIELDS = [
+    { id: 'req-name', type: 'text', name: 'name', label: 'Name', placeholder: 'Enter your name', required: true, locked: true, styles: {} },
+    { id: 'req-email', type: 'email', name: 'email', label: 'Email', placeholder: 'you@email.com', required: true, locked: true, styles: {} },
+    { id: 'req-phoneNumber', type: 'phone', name: 'phoneNumber', label: 'Phone Number', placeholder: '(555) 123-4567', required: true, locked: true, styles: {} },
+    { id: 'req-location', type: 'text', name: 'location', label: 'Location', placeholder: 'Enter location', required: true, locked: true, styles: {} },
+  ]
+  const REQUIRED_FIELD_NAMES = new Set([
+    'organisationID',
+    'formID',
+    'locationID',
+    'name',
+    'email',
+    'phoneNumber',
+    'location',
+  ])
+
   const [formFields, setFormFields] = useState([
-    { id: '1', type: 'text', label: 'Full Name', placeholder: 'Enter your name', required: true, styles: {} },
-    { id: '2', type: 'email', label: 'Email Address', placeholder: 'your@email.com', required: true, styles: {} },
+    ...REQUIRED_SYSTEM_FIELDS,
+    ...REQUIRED_LEAD_FIELDS,
   ])
   const [selectedField, setSelectedField] = useState(null)
   const [activeId, setActiveId] = useState(null)
@@ -500,7 +737,7 @@ function FormsPageInner() {
     setFormName('')
     setFormDescription('')
     setEditingFormId(null)
-    setFormFields([])
+    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...REQUIRED_LEAD_FIELDS])
     setSelectedField(null)
     setActiveTab('builder')
   }
@@ -515,6 +752,203 @@ function FormsPageInner() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   )
+
+  const RESERVED_FIELD_NAMES = new Set(['organisationID', 'formID', 'name', 'email', 'phoneNumber', 'location', 'locationID'])
+  const SYSTEM_HIDDEN_FIELD_NAMES = new Set(['organisationID', 'formID', 'locationID'])
+
+  const getFieldNameForHtml = (field) => {
+    if (field?.name) return field.name
+    return (field?.label || field?.id || 'field').toLowerCase().replace(/\s+/g, '_')
+  }
+
+  const parseCssSize = (value) => {
+    const v = String(value || '').trim()
+    return v || undefined
+  }
+
+  const applyPaddingShorthand = (styles, padding) => {
+    const p = String(padding || '').trim()
+    if (!p) return
+    const parts = p.split(/\s+/).filter(Boolean)
+    if (parts.length === 1) {
+      styles.paddingTop = parts[0]
+      styles.paddingRight = parts[0]
+      styles.paddingBottom = parts[0]
+      styles.paddingLeft = parts[0]
+    } else if (parts.length === 2) {
+      styles.paddingTop = parts[0]
+      styles.paddingRight = parts[1]
+      styles.paddingBottom = parts[0]
+      styles.paddingLeft = parts[1]
+    } else if (parts.length === 3) {
+      styles.paddingTop = parts[0]
+      styles.paddingRight = parts[1]
+      styles.paddingBottom = parts[2]
+      styles.paddingLeft = parts[1]
+    } else if (parts.length >= 4) {
+      styles.paddingTop = parts[0]
+      styles.paddingRight = parts[1]
+      styles.paddingBottom = parts[2]
+      styles.paddingLeft = parts[3]
+    }
+  }
+
+  const fieldTypeFromInputType = (t) => {
+    const type = String(t || '').toLowerCase()
+    if (type === 'email') return 'email'
+    if (type === 'tel') return 'phone'
+    if (type === 'phone') return 'phone'
+    if (type === 'date') return 'date'
+    if (type === 'file') return 'file'
+    if (type === 'checkbox') return 'checkbox'
+    if (type === 'radio') return 'rating'
+    return 'text'
+  }
+
+  const buildFieldFromControl = (control, idSeed) => {
+    const tag = control.tagName.toLowerCase()
+    const isTextarea = tag === 'textarea'
+    const isSelect = tag === 'select'
+    const isInput = tag === 'input'
+
+    let type = 'text'
+    if (isTextarea) type = 'textarea'
+    else if (isSelect) type = 'select'
+    else if (isInput) type = fieldTypeFromInputType(control.getAttribute('type') || 'text')
+
+    // Prefer label in the same container
+    const container = control.closest('div') || control.parentElement
+    const labelEl = container?.querySelector?.('label')
+    const labelText = (labelEl?.textContent || '').replace(/\*/g, '').trim()
+
+    const nameAttr = (control.getAttribute('name') || '').trim()
+    const placeholder = (control.getAttribute('placeholder') || '').trim()
+    const required = control.hasAttribute('required')
+
+    const styles = {}
+    // Input styling from inline styles in exported HTML
+    const cs = control.style
+    if (cs?.backgroundColor) styles.backgroundColor = cs.backgroundColor
+    if (cs?.borderWidth) styles.borderWidth = cs.borderWidth
+    if (cs?.borderStyle) styles.borderStyle = cs.borderStyle
+    if (cs?.borderColor) styles.borderColor = cs.borderColor
+    if (cs?.borderRadius) styles.borderRadius = cs.borderRadius
+    if (cs?.width) styles.width = cs.width
+    if (cs?.margin) styles.marginTop = cs.margin // preserve shorthand at least
+    if (cs?.padding) applyPaddingShorthand(styles, cs.padding)
+    if (cs?.paddingTop) styles.paddingTop = cs.paddingTop
+    if (cs?.paddingRight) styles.paddingRight = cs.paddingRight
+    if (cs?.paddingBottom) styles.paddingBottom = cs.paddingBottom
+    if (cs?.paddingLeft) styles.paddingLeft = cs.paddingLeft
+
+    // Label typography
+    const ls = labelEl?.style
+    if (ls?.fontFamily) styles.fontFamily = ls.fontFamily
+    if (ls?.fontSize) styles.fontSize = parseCssSize(ls.fontSize)
+    if (ls?.fontWeight) styles.fontWeight = ls.fontWeight
+    if (ls?.color) styles.color = ls.color
+    if (ls?.letterSpacing) styles.letterSpacing = ls.letterSpacing
+    if (ls?.textTransform) styles.textTransform = ls.textTransform
+    if (ls?.textAlign) styles.textAlign = ls.textAlign
+
+    const options = []
+    if (type === 'select') {
+      control.querySelectorAll('option').forEach((opt) => {
+        const value = (opt.getAttribute('value') || opt.textContent || '').trim()
+        const label = (opt.textContent || value).trim()
+        if (!value) return
+        options.push({ label, value })
+      })
+    }
+
+    return {
+      id: `import-${idSeed}-${Date.now()}`,
+      type,
+      label: labelText || (nameAttr ? nameAttr.replace(/[_-]+/g, ' ') : 'Field'),
+      name: nameAttr ? nameAttr.replace(/\[\]$/, '') : undefined,
+      placeholder,
+      required,
+      styles,
+      options,
+    }
+  }
+
+  const importFormIntoBuilder = async (form) => {
+    try {
+      setSavingForm(false)
+      setSelectedField(null)
+
+      let htmlCode = form?.htmlCode || ''
+      if (!htmlCode && form?._id) {
+        const result = await api.get(`/api/formBuilder/${form._id}`)
+        if (result.success) htmlCode = result.data?.htmlCode || ''
+      }
+
+      // Set metadata first (so required hidden fields pick up formID)
+      setEditingFormId(form?._id || null)
+      setFormName(form?.name || '')
+      setFormDescription(form?.description || '')
+
+      const inferred = []
+      const byName = new Map()
+
+      if (htmlCode && typeof window !== 'undefined') {
+        const doc = new DOMParser().parseFromString(htmlCode, 'text/html')
+        const formEl = doc.querySelector('form')
+
+        // Capture submit button label if present
+        const submitEl = formEl?.querySelector('button[type="submit"], input[type="submit"]')
+        const submitLabel = submitEl
+          ? (submitEl.tagName.toLowerCase() === 'input' ? submitEl.getAttribute('value') : submitEl.textContent)
+          : ''
+        if (submitLabel && submitLabel.trim()) {
+          setSubmitButton((prev) => ({ ...prev, label: submitLabel.trim() }))
+        }
+
+        const controls = formEl ? Array.from(formEl.querySelectorAll('input, textarea, select')) : []
+        controls.forEach((control, idx) => {
+          const tag = control.tagName.toLowerCase()
+          const typeAttr = tag === 'input' ? (control.getAttribute('type') || '').toLowerCase() : ''
+          const nameAttr = (control.getAttribute('name') || '').trim().replace(/\[\]$/, '')
+
+          if (typeAttr === 'submit') return
+          if (typeAttr === 'hidden') return
+          if (SYSTEM_HIDDEN_FIELD_NAMES.has(nameAttr)) return
+
+          // Group checkbox options with the same name into a single field
+          if (tag === 'input' && typeAttr === 'checkbox' && nameAttr) {
+            const existing = byName.get(nameAttr)
+            if (existing) {
+              const labelEl = control.closest('div')?.querySelector('label')
+              const optLabel = (labelEl?.textContent || control.getAttribute('value') || `Option ${existing.options.length + 1}`).trim()
+              const optValue = (control.getAttribute('value') || optLabel).trim()
+              existing.options.push({ label: optLabel, value: optValue })
+              return
+            }
+          }
+
+          const field = buildFieldFromControl(control, idx)
+          // De-dupe by name if possible
+          if (field?.name) {
+            if (byName.has(field.name)) return
+            byName.set(field.name, field)
+          }
+          inferred.push(field)
+        })
+      }
+
+      // Ensure required lead fields always exist, and avoid duplicates
+      const inferredFiltered = inferred.filter((f) => !REQUIRED_FIELD_NAMES.has(String(f?.name || '').trim()))
+      const nextFields = [...REQUIRED_SYSTEM_FIELDS, ...REQUIRED_LEAD_FIELDS, ...inferredFiltered]
+      setFormFields(nextFields)
+      const firstVisible = [...REQUIRED_LEAD_FIELDS, ...inferredFiltered].find((f) => f && !f.hidden && f.type !== 'hidden')
+      setSelectedField(firstVisible?.id || null)
+      setActiveTab('builder')
+    } catch (e) {
+      console.error(e)
+      toast.error({ title: 'Import failed', message: 'Could not open this form in the builder.' })
+    }
+  }
 
   const addField = (type) => {
     const fieldType = fieldTypes.find(ft => ft.id === type)
@@ -538,12 +972,16 @@ function FormsPageInner() {
       id: `${templateId}-${index}-${Date.now()}`,
       styles: {},
     }))
-    setFormFields(normalized)
+    // Prevent template fields from duplicating reserved backend field names (e.g. a second "email")
+    const filtered = normalized.filter((f) => !REQUIRED_FIELD_NAMES.has(getFieldNameForHtml(f)))
+    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...REQUIRED_LEAD_FIELDS, ...filtered])
     setSelectedField(normalized[0]?.id || null)
     setActiveTab('builder')
   }
 
   const removeField = (id) => {
+    const field = formFields.find((f) => f.id === id)
+    if (field?.locked) return
     setFormFields(formFields.filter((f) => f.id !== id))
     if (selectedField === id) setSelectedField(null)
   }
@@ -596,6 +1034,19 @@ function FormsPageInner() {
   }
 
   const generateFieldHTML = (field) => {
+    if (field.type === 'hidden' || field.hidden) {
+      if (field.name === 'organisationID') {
+        return `<input type="hidden" name="organisationID" value="${organisationID}" />`
+      }
+      if (field.name === 'formID') {
+        return `<input type="hidden" name="formID" value="${formID}" />`
+      }
+      if (field.name === 'locationID') {
+        return `<input type="hidden" name="locationID" value="" />`
+      }
+      return `<input type="hidden" name="${field.name || field.id}" value="" />`
+    }
+
     const fieldStyles = field.styles || {}
     const styleString = `
       background-color: ${fieldStyles.backgroundColor || '#ffffff'};
@@ -632,10 +1083,11 @@ function FormsPageInner() {
     const labelStyleString = labelStyleParts.join('; ')
 
     let fieldHTML = ''
+    const fieldName = getFieldNameForHtml(field)
     
     if (field.type === 'textarea') {
       fieldHTML = `<textarea 
-        name="${field.label.toLowerCase().replace(/\s+/g, '_')}" 
+        name="${fieldName}" 
         placeholder="${field.placeholder || ''}" 
         ${field.required ? 'required' : ''}
         style="${styleString}"
@@ -648,7 +1100,7 @@ function FormsPageInner() {
         return `<option value="${v}">${l}</option>`
       }).join('')
       fieldHTML = `<select 
-        name="${field.label.toLowerCase().replace(/\s+/g, '_')}" 
+        name="${fieldName}" 
         ${field.required ? 'required' : ''}
         style="${styleString}"
       >
@@ -661,12 +1113,12 @@ function FormsPageInner() {
         const l = (opt.label || opt.value || `Option ${idx+1}`).toString().replace(/"/g, '&quot;')
         const id = `${field.id}_${v}`
         return `<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem;">
-          <input type="checkbox" name="${field.label.toLowerCase().replace(/\s+/g, '_')}[]" id="${id}" value="${v}" ${field.required ? 'required' : ''} style="width: auto;" />
+          <input type="checkbox" name="${fieldName}[]" id="${id}" value="${v}" ${field.required ? 'required' : ''} style="width: auto;" />
           <label for="${id}" style="font-size:0.875rem; color:#475569;">${l}</label>
         </div>`
       }).join('')
       fieldHTML = optsHtml || `<div style="display:flex; align-items:center; gap:0.5rem;">
-        <input type="checkbox" name="${field.label.toLowerCase().replace(/\s+/g, '_')}" id="${field.id}" ${field.required ? 'required' : ''} style="width: auto;" />
+        <input type="checkbox" name="${fieldName}" id="${field.id}" ${field.required ? 'required' : ''} style="width: auto;" />
         <label for="${field.id}" style="font-size:0.875rem; color:#475569;">${field.placeholder || 'Checkbox option'}</label>
       </div>`
     } else if (field.type === 'rating') {
@@ -674,7 +1126,7 @@ function FormsPageInner() {
         ${[1, 2, 3, 4, 5].map(star => `
           <input 
             type="radio" 
-            name="${field.label.toLowerCase().replace(/\s+/g, '_')}" 
+            name="${fieldName}" 
             value="${star}" 
             id="${field.id}_${star}"
             ${field.required ? 'required' : ''}
@@ -691,7 +1143,7 @@ function FormsPageInner() {
     } else {
       fieldHTML = `<input 
         type="${field.type}" 
-        name="${field.label.toLowerCase().replace(/\s+/g, '_')}" 
+        name="${fieldName}" 
         placeholder="${field.placeholder || ''}" 
         ${field.required ? 'required' : ''}
         style="${styleString}"
@@ -714,7 +1166,29 @@ function FormsPageInner() {
       return ''
     }
 
-    const fieldsHTML = formFields.map(field => generateFieldHTML(field)).join('\n')
+    // De-dupe by HTML field name to avoid FormData arrays + duplicated UI fields
+    const seenNames = new Set()
+    const fieldsHTML = formFields
+      .filter((field) => {
+        const key = getFieldNameForHtml(field)
+        if (!key) return true
+        if (seenNames.has(key)) return false
+        seenNames.add(key)
+        return true
+      })
+      .map((field) => generateFieldHTML(field))
+      .join('\n')
+    // Analytics snippet injected into exported HTML <head>
+    const gtagScript = `  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-4PKNTJ6CWT"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-4PKNTJ6CWT');
+  </script>
+`
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -803,30 +1277,89 @@ function FormsPageInner() {
       opacity: 0.8;
     }
   </style>
+${gtagScript}
 </head>
 <body>
   <div class="form-container">
-    <form id="exportedForm" action="#" method="POST" onsubmit="event.preventDefault(); alert('Form submitted! (This is a demo - configure your form action URL)');">
+    <form id="exportedForm" action="#" method="POST">
       ${fieldsHTML}
       <button type="submit" class="submit-btn">${submitButton.label}</button>
     </form>
   </div>
   <script>
-    // Rating star interaction
-    document.querySelectorAll('input[type="radio"][name*="rating"]').forEach(radio => {
-      radio.addEventListener('change', function() {
-        const name = this.name;
-        const value = parseInt(this.value);
-        document.querySelectorAll(\`input[type="radio"][name="\${name}"]\`).forEach((r, index) => {
-          const label = document.querySelector(\`label[for="\${r.id}"]\`);
-          if (index < value) {
-            label.style.color = '#fbbf24';
-          } else {
-            label.style.color = '#cbd5e1';
+    (function() {
+      const form = document.getElementById('exportedForm');
+      if (form) {
+        form.addEventListener('submit', async function(event) {
+          event.preventDefault();
+
+          // Capture page URL (prefer top-level URL; fallback to referrer / iframe URL)
+          let capturedUrl = '';
+          try {
+            capturedUrl = (window.top && window.top.location && window.top.location.href) ? window.top.location.href : '';
+          } catch (e) {
+            capturedUrl = '';
+          }
+          if (!capturedUrl) capturedUrl = document.referrer || '';
+          if (!capturedUrl) capturedUrl = window.location.href || '';
+
+          const urlInput = form.querySelector('input[name="url"]');
+          if (urlInput) urlInput.value = capturedUrl;
+
+          const formData = new FormData(form);
+          const payload = {};
+
+          formData.forEach((value, key) => {
+            const normalizedKey = key.endsWith('[]') ? key.slice(0, -2) : key;
+            if (payload[normalizedKey] === undefined) payload[normalizedKey] = value;
+            else if (Array.isArray(payload[normalizedKey])) payload[normalizedKey].push(value);
+            else payload[normalizedKey] = [payload[normalizedKey], value];
+          });
+
+          const pickFirst = (v) => Array.isArray(v) ? v[0] : v;
+          payload.name = payload.name || pickFirst(payload.full_name) || pickFirst(payload.student_name) || pickFirst(payload.parent_name);
+          payload.email = payload.email || pickFirst(payload.email_address) || pickFirst(payload.parent_email);
+          payload.phone = payload.phone || pickFirst(payload.phone_number) || pickFirst(payload.phone);
+          payload.source = payload.source || 'Website';
+          payload.url = capturedUrl;
+          // Safety: ensure backend required ids are scalar even if duplicated somehow
+          payload.organisationID = pickFirst(payload.organisationID);
+          payload.formID = pickFirst(payload.formID);
+
+          try {
+            const res = await fetch('https://98.88.253.231.sslip.io/api/lead/form', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            const body = await res.json().catch(() => null);
+            if (res.ok) {
+              alert('Form submitted successfully!');
+            } else {
+              alert(body?.message || 'Form submission failed');
+            }
+          } catch (err) {
+            alert('Network error while submitting form');
           }
         });
+      }
+
+      // Rating star interaction
+      document.querySelectorAll('input[type="radio"][name*="rating"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+          const name = this.name;
+          const value = parseInt(this.value);
+          document.querySelectorAll('input[type="radio"][name="' + name + '"]').forEach((r, index) => {
+            const label = document.querySelector('label[for="' + r.id + '"]');
+            if (index < value) {
+              label.style.color = '#fbbf24';
+            } else {
+              label.style.color = '#cbd5e1';
+            }
+          });
+        });
       });
-    });
+    })();
   </script>
 </body>
 </html>`
@@ -1088,7 +1621,7 @@ function FormsPageInner() {
                               size="sm"
                               className="flex-1"
                               disabled={isInactive}
-                              onClick={() => openPreviewForm(form)}
+                              onClick={() => importFormIntoBuilder(form)}
                             >
                               <Eye className="h-3.5 w-3.5 mr-1.5" />
                               Preview
@@ -1231,8 +1764,8 @@ function FormsPageInner() {
                         </div>
                       ) : (
                         <div className="space-y-4 pl-10 pr-2">
-                          <SortableContext items={formFields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
-                            {formFields.map((field) => (
+                          <SortableContext items={formFields.filter((f) => !f.hidden && f.type !== 'hidden').map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                            {formFields.filter((f) => !f.hidden && f.type !== 'hidden').map((field) => (
                               <SortableFieldItem
                                 key={field.id}
                                 field={field}
@@ -1372,14 +1905,73 @@ function FormsPageInner() {
 
         {/* Analytics View */}
         {activeTab === 'analytics' && (
-          <div className="space-y-6">
+          <div className="space-y-6 relative">
+          {gaViewsLoading ? (
+            <div className="absolute inset-0 z-10 rounded-lg bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
+              <GlobalLoader text="Fetching analytics…" />
+            </div>
+          ) : null}
+          {!gaViewsLoading && analyticsFormsLoading ? (
+            <div className="absolute inset-0 z-10 rounded-lg bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
+              <GlobalLoader text="Loading templates…" />
+            </div>
+          ) : null}
+          {(() => {
+            // Dummy submissions + conversion rate (until real submission tracking exists)
+            const baseViews = Number(gaViews?.last30Days) || 0
+            const submissionRate = 0.12 // 12% dummy baseline
+            const totalSubmissions = Math.max(0, Math.round(baseViews * submissionRate))
+            const conversionRate = baseViews > 0 ? (totalSubmissions / baseViews) * 100 : 0
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500 mb-1">Total form submissions</p>
+                        <h3 className="text-3xl font-bold text-slate-900 tabular-nums">
+                          {gaViewsLoading ? '—' : totalSubmissions}
+                        </h3>
+                      </div>
+                      <div className="h-12 w-12 rounded-lg bg-brand-light flex items-center justify-center">
+                        <FileText className="h-6 w-6 text-brand" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500 mb-1">Conversion rate</p>
+                        <h3 className="text-3xl font-bold text-slate-900 tabular-nums">
+                          {gaViewsLoading ? '—' : `${conversionRate.toFixed(1)}%`}
+                        </h3>
+                      </div>
+                      <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
+                        <BarChart3 className="h-6 w-6 text-slate-700" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )
+          })()}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Total Submissions</p>
-                    <h3 className="text-3xl font-bold text-slate-900">1,446</h3>
+                    <p className="text-sm text-slate-500 mb-1">Total Views (all-time)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaViews.allTime}
+                    </h3>
+                    {gaViewsError ? (
+                      <p className="text-xs text-destructive mt-2">{gaViewsError}</p>
+                    ) : (
+                      <p className="text-xs text-slate-500 mt-2">From Google Analytics</p>
+                    )}
                   </div>
                   <div className="h-12 w-12 rounded-lg bg-brand-light flex items-center justify-center">
                     <FileText className="h-6 w-6 text-brand" />
@@ -1392,8 +1984,10 @@ function FormsPageInner() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Conversion Rate</p>
-                    <h3 className="text-3xl font-bold text-slate-900">78.5%</h3>
+                    <p className="text-sm text-slate-500 mb-1">Views (last 30 days)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaViews.last30Days}
+                    </h3>
                   </div>
                   <div className="h-12 w-12 rounded-lg bg-green-100 flex items-center justify-center">
                     <BarChart3 className="h-6 w-6 text-green-600" />
@@ -1406,8 +2000,10 @@ function FormsPageInner() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Avg. Completion Time</p>
-                    <h3 className="text-3xl font-bold text-slate-900">2.4m</h3>
+                    <p className="text-sm text-slate-500 mb-1">Views (last 7 days)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaViews.last7Days}
+                    </h3>
                   </div>
                   <div className="h-12 w-12 rounded-lg bg-purple-100 flex items-center justify-center">
                     <BarChart3 className="h-6 w-6 text-purple-600" />
@@ -1416,6 +2012,377 @@ function FormsPageInner() {
               </CardContent>
             </Card>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">Active Users (all-time)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaActiveUsers.allTime}
+                    </h3>
+                  </div>
+                  <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 text-slate-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">Active Users (last 30 days)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaActiveUsers.last30Days}
+                    </h3>
+                  </div>
+                  <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 text-slate-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">Active Users (last 7 days)</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      {gaViewsLoading ? '—' : gaActiveUsers.last7Days}
+                    </h3>
+                  </div>
+                  <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 text-slate-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="text-base">Demographics</CardTitle>
+                  <CardDescription>Active users distribution</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={gaDemographicsRange === 'allTime' ? 'default' : 'outline'}
+                    onClick={() => setGaDemographicsRange('allTime')}
+                    disabled={gaViewsLoading}
+                  >
+                    All time
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={gaDemographicsRange === 'last30Days' ? 'default' : 'outline'}
+                    onClick={() => setGaDemographicsRange('last30Days')}
+                    disabled={gaViewsLoading}
+                  >
+                    Last 30 days
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={gaDemographicsRange === 'last7Days' ? 'default' : 'outline'}
+                    onClick={() => setGaDemographicsRange('last7Days')}
+                    disabled={gaViewsLoading}
+                  >
+                    Last 7 days
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2">
+              {(() => {
+                const mkItems = (raw, key) => {
+                  const rows = Array.isArray(raw) ? raw : []
+                  const filtered = rows.filter((x) => x && (Number(x.activeUsers) || 0) > 0)
+                  const top = filtered
+                    .slice(0, 5)
+                    .map((x) => ({ label: x?.[key] || '(not set)', value: Number(x.activeUsers) || 0 }))
+                  const otherValue = filtered.slice(5).reduce((sum, x) => sum + (Number(x?.activeUsers) || 0), 0)
+                  return otherValue > 0 ? [...top, { label: 'Other', value: otherValue }] : top
+                }
+
+                const countryItems = mkItems(gaDemographics?.countries?.[gaDemographicsRange], 'country')
+                const regionItems = mkItems(gaDemographics?.regions?.[gaDemographicsRange], 'region')
+                const cityItems = mkItems(gaDemographics?.cities?.[gaDemographicsRange], 'city')
+
+                const charts = [
+                  { title: 'Country', items: countryItems, aria: 'Active users by country' },
+                  { title: 'Region', items: regionItems, aria: 'Active users by region' },
+                  { title: 'Town/City', items: cityItems, aria: 'Active users by city' },
+                ]
+
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {charts.map((c, cIdx) => {
+                      const { total, segments } = makePieSegments(c.items)
+                      if (!segments.length) {
+                        return (
+                          <div key={c.title} className="rounded-lg border border-slate-200 bg-white p-4">
+                            <div className="text-sm font-semibold text-slate-900">{c.title}</div>
+                            <div className="text-sm text-slate-500 py-8">No data yet.</div>
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <div key={c.title} className="rounded-lg border border-slate-200 bg-white p-4">
+                          <div className="text-sm font-semibold text-slate-900 mb-3">{c.title}</div>
+                          <div className="flex items-start gap-4">
+                            <svg width="200" height="200" viewBox="0 0 220 220" role="img" aria-label={c.aria}>
+                              <defs>
+                                <filter id={`pieShadow-${cIdx}`} x="-20%" y="-20%" width="140%" height="140%">
+                                  <feDropShadow dx="0" dy="6" stdDeviation="6" floodColor="rgba(15, 23, 42, 0.12)" />
+                                </filter>
+                              </defs>
+                              <circle cx="110" cy="110" r="92" fill="hsl(var(--muted))" />
+                              {segments.length === 1 ? (
+                                <circle
+                                  cx="110"
+                                  cy="110"
+                                  r="90"
+                                  fill={segments[0].color}
+                                  filter={`url(#pieShadow-${cIdx})`}
+                                  stroke="hsl(var(--card))"
+                                  strokeWidth="2"
+                                />
+                              ) : (
+                                segments.map((s, idx) => (
+                                  <path
+                                    key={idx}
+                                    d={describeArc(110, 110, 90, s.startFrac, s.endFrac)}
+                                    fill={s.color}
+                                    filter={`url(#pieShadow-${cIdx})`}
+                                    stroke="hsl(var(--card))"
+                                    strokeWidth="2"
+                                  />
+                                ))
+                              )}
+                              {segments.map((s, idx) => {
+                                const pct = total ? (s.value / total) * 100 : 0
+                                if (pct < 4) return null
+                                const { x, y } = segmentLabelPosition(110, 110, 62, s.startFrac, s.endFrac)
+                                return (
+                                  <text
+                                    key={`t-${idx}`}
+                                    x={x}
+                                    y={y}
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    fill={segments.length === 1 ? 'hsl(var(--primary-foreground))' : 'white'}
+                                    fontSize="14"
+                                    fontWeight="700"
+                                  >
+                                    {Math.round(pct)}%
+                                  </text>
+                                )
+                              })}
+                            </svg>
+
+                            <div className="flex-1 space-y-2 pt-1">
+                              {segments.map((s, idx) => (
+                                <div key={idx} className="flex items-center justify-between gap-3 text-sm">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                                    <span className="truncate text-slate-700">{s.label}</span>
+                                  </div>
+                                  <div className="shrink-0 tabular-nums text-slate-900 font-medium">{s.value}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base">Pages and screens</CardTitle>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          disabled={gaViewsLoading}
+                          className="h-7 w-7 border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-slate-700 shadow-sm"
+                          title="Change pages dimension"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="min-w-[260px]">
+                        <DropdownMenuItem
+                          onClick={() => setGaPagesDimension('pagePath')}
+                          className={gaPagesDimension === 'pagePath' ? 'bg-accent text-accent-foreground' : ''}
+                        >
+                          Page path + screen class
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setGaPagesDimension('pageTitle')}
+                          className={gaPagesDimension === 'pageTitle' ? 'bg-accent text-accent-foreground' : ''}
+                        >
+                          Page title + screen class
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <CardDescription>
+                    {gaPagesDimension === 'pageTitle' ? 'Page title and screen class' : 'Page path and screen class'}
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={gaPagesRange === 'allTime' ? 'default' : 'outline'}
+                    onClick={() => setGaPagesRange('allTime')}
+                    disabled={gaViewsLoading}
+                  >
+                    All time
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={gaPagesRange === 'last30Days' ? 'default' : 'outline'}
+                    onClick={() => setGaPagesRange('last30Days')}
+                    disabled={gaViewsLoading}
+                  >
+                    Last 30 days
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={gaPagesRange === 'last7Days' ? 'default' : 'outline'}
+                    onClick={() => setGaPagesRange('last7Days')}
+                    disabled={gaViewsLoading}
+                  >
+                    Last 7 days
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <div className="overflow-auto rounded-md border border-slate-200">
+                <table className="min-w-[720px] w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr className="text-left text-slate-600">
+                      <th className="px-4 py-3 font-medium">
+                        {gaPagesDimension === 'pageTitle' ? 'Page title' : 'Page path'}
+                      </th>
+                      <th className="px-4 py-3 font-medium text-right">Views</th>
+                      <th className="px-4 py-3 font-medium text-right">Active users</th>
+                      <th className="px-4 py-3 font-medium text-right">Views / active user</th>
+                      <th className="px-4 py-3 font-medium text-right">Avg engagement / active user</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {(gaPages?.[gaPagesRange] || []).length === 0 ? (
+                      <tr>
+                        <td className="px-4 py-6 text-slate-500" colSpan={5}>
+                          No data yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      (gaPages?.[gaPagesRange] || []).map((row, idx) => (
+                        <tr key={`${row?.value || 'row'}-${idx}`} className="border-t border-slate-100">
+                          <td className="px-4 py-3 font-mono text-xs text-slate-800">
+                            {row?.value || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                            {Number(row?.views) || 0}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                            {Number(row?.activeUsers) || 0}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                            {Number(row?.viewsPerActiveUser) ? Number(row.viewsPerActiveUser).toFixed(2) : '0.00'}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                            {formatDuration(row?.avgEngagementTimePerActiveUser)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="text-base">Templates</CardTitle>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2">
+              {analyticsFormsError ? (
+                <div className="text-sm text-destructive">{analyticsFormsError}</div>
+              ) : (
+                (() => {
+                  const list = Array.isArray(analyticsForms) ? analyticsForms : []
+                  // Some backends mark templates explicitly; fall back to showing whatever the API returns.
+                  const hasTemplateFlag = list.some((f) => typeof f?.isTemplate === 'boolean' || typeof f?.template === 'boolean')
+                  const rows = hasTemplateFlag ? list.filter((f) => f?.isTemplate || f?.template) : list
+                  if (!rows.length) return <div className="text-sm text-slate-500 py-4">No forms found.</div>
+                  return (
+                    <div className="overflow-auto rounded-md border border-slate-200">
+                      <table className="min-w-[720px] w-full text-sm">
+                        <thead className="bg-slate-50">
+                          <tr className="text-left text-slate-600">
+                            <th className="px-4 py-3 font-medium">View</th>
+                            <th className="px-4 py-3 font-medium">Form</th>
+                            <th className="px-4 py-3 font-medium">Template</th>
+                            <th className="px-4 py-3 font-medium">Status</th>
+                            <th className="px-4 py-3 font-medium">Updated</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white">
+                          {rows.map((f) => (
+                            <tr key={f._id} className="border-t border-slate-100">
+                              <td className="px-4 py-3">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  title="View template analytics"
+                                  onClick={() => router.push(`/forms/template-analytics/${f._id}`)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </td>
+                              <td className="px-4 py-3 text-slate-900 font-medium">{f?.name || 'Untitled'}</td>
+                              <td className="px-4 py-3 text-slate-700">
+                                {typeof f?.isTemplate === 'boolean' ? (f.isTemplate ? 'Yes' : 'No') : (f?.fromTemplate ? 'From template' : '—')}
+                              </td>
+                              <td className="px-4 py-3 text-slate-700">{f?.status || '—'}</td>
+                              <td className="px-4 py-3 text-slate-700">
+                                {f?.updatedAt ? formatDate(f.updatedAt) : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                })()
+              )}
+            </CardContent>
+          </Card>
+
           </div>
         )}
       </div>
@@ -1434,35 +2401,13 @@ function FormsPageInner() {
                 <p className="text-slate-500">No fields to preview. Add fields to your form first.</p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg p-8 shadow-sm border border-slate-200 space-y-4" style={{ maxWidth: '600px', margin: '0 auto' }}>
-                {formFields.map(field => renderPreviewField(field))}
-                <div className="pt-6 border-t border-slate-200">
-                  <button 
-                    className="w-full text-white font-medium py-3 px-6 rounded-md hover:opacity-90 transition-opacity"
-                    style={{
-                      background: submitButton.styles?.backgroundColor || '#2563eb',
-                      fontFamily: submitButton.styles?.fontFamily,
-                      fontSize: submitButton.styles?.fontSize,
-                      fontWeight: submitButton.styles?.fontWeight,
-                      color: submitButton.styles?.color || 'white',
-                      padding: submitButton.styles?.paddingTop ? `${submitButton.styles.paddingTop} ${submitButton.styles.paddingRight || submitButton.styles.paddingTop} ${submitButton.styles.paddingBottom || submitButton.styles.paddingTop} ${submitButton.styles.paddingLeft || submitButton.styles.paddingTop}` : undefined,
-                      ...(submitButton.styles?.borderWidth ? { 
-                        borderWidth: submitButton.styles.borderWidth,
-                        borderStyle: submitButton.styles.borderStyle || 'solid',
-                        borderColor: submitButton.styles.borderColor || '#e2e8f0'
-                      } : { border: 'none' }),
-                      borderRadius: submitButton.styles?.borderRadius,
-                      width: submitButton.styles?.width || '100%',
-                      margin: submitButton.styles?.marginTop ? `${submitButton.styles.marginTop} ${submitButton.styles.marginRight || '0'} ${submitButton.styles.marginBottom || '0'} ${submitButton.styles.marginLeft || '0'}` : undefined,
-                      /* typography support */
-                      letterSpacing: submitButton.styles?.letterSpacing,
-                      textTransform: submitButton.styles?.textTransform,
-                      textAlign: submitButton.styles?.textAlign,
-                    }}
-                  >
-                    {submitButton.label}
-                  </button>
-                </div>
+              <div className="bg-white rounded-lg shadow-sm border border-slate-200" style={{ maxWidth: '600px', margin: '0 auto', overflow: 'hidden' }}>
+                <iframe
+                  title="Form Preview"
+                  sandbox="allow-scripts allow-forms allow-same-origin"
+                  srcDoc={generateExportedHTML()}
+                  style={{ width: '100%', height: '620px', border: 0, display: 'block' }}
+                />
               </div>
             )}
           </div>

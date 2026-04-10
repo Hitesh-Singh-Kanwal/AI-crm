@@ -22,27 +22,33 @@ function buildInboxData(smsRecords, emailRecords) {
 
   for (const rec of smsRecords) {
     const lead = rec.leadID
+    const status = String(rec?.status || '').toLowerCase()
+    const isInbound = status === 'received' || status === 'inbound'
+    const resolvedPhone =
+      lead?.phoneNumber ||
+      (isInbound ? (rec?.from || rec?.phoneNumber) : (rec?.to || rec?.phoneNumber)) ||
+      ''
     const key = lead?._id ? `lead-${lead._id}` : `sms-${String(rec.phoneNumber).replace(/\W/g, '_')}`
     if (!contactGroups[key]) {
       contactGroups[key] = {
         contact: {
           id: lead?._id || rec.phoneNumber,
-          name: lead?.name || rec.phoneNumber,
+          name: lead?.name || resolvedPhone || rec.phoneNumber,
           type: 'Lead',
           stage: '',
           nextVisit: '',
-          phoneNumber: rec.phoneNumber || '',
+          phoneNumber: resolvedPhone,
           email: '',
         },
         messages: [],
       }
-    } else if (rec.phoneNumber && !contactGroups[key].contact.phoneNumber) {
-      contactGroups[key].contact.phoneNumber = rec.phoneNumber
+    } else if (resolvedPhone && !contactGroups[key].contact.phoneNumber) {
+      contactGroups[key].contact.phoneNumber = resolvedPhone
     }
     contactGroups[key].messages.push({
       id: rec._id,
-      sender: 'You',
-      direction: 'outbound',
+      sender: isInbound ? (lead?.name || resolvedPhone || 'Unknown') : 'You',
+      direction: isInbound ? 'inbound' : 'outbound',
       content: rec.message,
       timestamp: rec.createdAt,
       channel: 'SMS',
