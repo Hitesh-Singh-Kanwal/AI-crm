@@ -23,10 +23,16 @@ const DEFAULT_ASSISTANT_OPTIONS = {
   endCallMessage: 'Goodbye.',
 }
 
-function getAssistantPrimaryFileId(assistant) {
-  if (Array.isArray(assistant?.fileID)) return String(assistant.fileID[0] || '')
-  if (Array.isArray(assistant?.fileIDies)) return String(assistant.fileIDies[0] || '')
-  return String(assistant?.fileID || assistant?.fileIDies || '')
+function getAssistantFileIds(assistant) {
+  const rawIds = [
+    ...(Array.isArray(assistant?.fileIDs) ? assistant.fileIDs : []),
+    ...(Array.isArray(assistant?.fileIDies) ? assistant.fileIDies : []),
+    ...(Array.isArray(assistant?.fileID) ? assistant.fileID : []),
+    ...(!Array.isArray(assistant?.fileIDs) && assistant?.fileIDs ? [assistant.fileIDs] : []),
+    ...(!Array.isArray(assistant?.fileIDies) && assistant?.fileIDies ? [assistant.fileIDies] : []),
+    ...(!Array.isArray(assistant?.fileID) && assistant?.fileID ? [assistant.fileID] : []),
+  ]
+  return [...new Set(rawIds.map((id) => String(id || '').trim()).filter(Boolean))]
 }
 
 export default function MakeCallsPage() {
@@ -63,7 +69,7 @@ export default function MakeCallsPage() {
   const [knowledgeFiles, setKnowledgeFiles] = useState([])
   const [knowledgeFilesLoading, setKnowledgeFilesLoading] = useState(false)
   const [knowledgeFilesError, setKnowledgeFilesError] = useState(null)
-  const [selectedKnowledgeFileId, setSelectedKnowledgeFileId] = useState('')
+  const [selectedKnowledgeFileIds, setSelectedKnowledgeFileIds] = useState([])
   const [firstMessageMode, setFirstMessageMode] = useState(DEFAULT_ASSISTANT_OPTIONS.firstMessageMode)
   const [firstMessage, setFirstMessage] = useState(DEFAULT_ASSISTANT_OPTIONS.firstMessage)
   const [voiceMessage, setVoiceMessage] = useState(DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
@@ -261,8 +267,9 @@ export default function MakeCallsPage() {
   const selectedPersona = personas.find((p) => p._id === selectedPersonaId) || null
   const selectedAssistant = assistants.find((a) => a._id === selectedAssistantId) || null
   const selectedScript = scripts.find((s) => s._id === selectedScriptId) || null
-  const selectedKnowledgeFile =
-    knowledgeFiles.find((f) => f._id === selectedKnowledgeFileId || f.fileID === selectedKnowledgeFileId) || null
+  const selectedKnowledgeFiles = knowledgeFiles.filter((f) =>
+    selectedKnowledgeFileIds.includes(String(f.fileID || f._id || ''))
+  )
   const canContinue =
     (wizardStep === 1 && selectedLeads.length > 0) ||
     (wizardStep === 2 && (setupMode === 'assistant' ? !!selectedAssistant : !!selectedPersona)) ||
@@ -282,7 +289,7 @@ export default function MakeCallsPage() {
     setAssistantsPage(1)
     setSelectedAssistantId(null)
     setSelectedScriptId(null)
-    setSelectedKnowledgeFileId('')
+    setSelectedKnowledgeFileIds([])
     setFirstMessageMode(DEFAULT_ASSISTANT_OPTIONS.firstMessageMode)
     setFirstMessage(DEFAULT_ASSISTANT_OPTIONS.firstMessage)
     setVoiceMessage(DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
@@ -301,6 +308,15 @@ export default function MakeCallsPage() {
       assistant.backgroundSound === 'office' ? 'office' : DEFAULT_ASSISTANT_OPTIONS.backgroundSound
     )
     setEndCallMessage(assistant.endCallMessage || DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
+  }
+
+  const toggleKnowledgeFileId = (fileId) => {
+    const normalizedId = String(fileId || '')
+    setSelectedKnowledgeFileIds((prev) =>
+      prev.includes(normalizedId)
+        ? prev.filter((id) => id !== normalizedId)
+        : [...prev, normalizedId]
+    )
   }
 
   const handleLaunchCalls = async () => {
@@ -345,9 +361,7 @@ export default function MakeCallsPage() {
             backgroundSound: backgroundSound === 'office' ? 'office' : null,
             endCallMessage: String(endCallMessage || ''),
             firstMessageMode: String(firstMessageMode || ''),
-            fileID: String(
-              getAssistantPrimaryFileId(selectedAssistant)
-            ),
+            fileIDs: getAssistantFileIds(selectedAssistant),
             firstMessage:
               firstMessageMode === 'assistant-speaks-first-with-model-generated-message'
                 ? ''
@@ -365,7 +379,7 @@ export default function MakeCallsPage() {
             backgroundSound: backgroundSound === 'office' ? 'office' : null,
             endCallMessage: String(endCallMessage || ''),
             firstMessageMode: String(firstMessageMode || ''),
-            fileID: String(selectedKnowledgeFile?.fileID || selectedKnowledgeFileId || ''),
+            fileIDs: selectedKnowledgeFileIds,
             firstMessage:
               firstMessageMode === 'assistant-speaks-first-with-model-generated-message'
                 ? ''
@@ -992,10 +1006,8 @@ export default function MakeCallsPage() {
                       {selectedAssistant.persona?.voiceId || '—'}
                     </p>
                     <p>
-                      <span className="font-medium text-foreground">Knowledge file:</span>{' '}
-                      {Array.isArray(selectedAssistant.fileID)
-                        ? selectedAssistant.fileID[0] || 'No file'
-                        : getAssistantPrimaryFileId(selectedAssistant) || 'No file'}
+                      <span className="font-medium text-foreground">Knowledge files:</span>{' '}
+                      {getAssistantFileIds(selectedAssistant).join(', ') || 'No file'}
                     </p>
                   </div>
                 )}
@@ -1005,20 +1017,31 @@ export default function MakeCallsPage() {
                     {setupMode !== 'assistant' && (
                       <div>
                         <label className="text-xs font-medium text-foreground mb-1 block">
-                          Knowledge base file (optional)
+                          Knowledge base files (optional)
                         </label>
-                        <select
-                          value={selectedKnowledgeFileId}
-                          onChange={(e) => setSelectedKnowledgeFileId(e.target.value)}
-                          className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs"
-                        >
-                          <option value="">No file</option>
-                          {knowledgeFiles.map((file) => (
-                            <option key={file._id} value={file.fileID || file._id}>
-                              {file.name}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-background px-2.5 py-2 space-y-2">
+                          {knowledgeFiles.length === 0 ? (
+                            <p className="text-[11px] text-muted-foreground">No files available.</p>
+                          ) : (
+                            knowledgeFiles.map((file) => {
+                              const id = String(file.fileID || file._id || '')
+                              const checked = selectedKnowledgeFileIds.includes(id)
+                              return (
+                                <label
+                                  key={file._id}
+                                  className="flex items-center gap-2 text-xs text-foreground cursor-pointer"
+                                >
+                                  <Checkbox
+                                    checked={checked}
+                                    onClick={() => toggleKnowledgeFileId(id)}
+                                    className="h-3.5 w-3.5 rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
+                                  />
+                                  <span className="truncate">{file.name}</span>
+                                </label>
+                              )
+                            })
+                          )}
+                        </div>
                         {knowledgeFilesLoading && (
                           <p className="text-[11px] text-muted-foreground mt-1">Loading files…</p>
                         )}
@@ -1210,12 +1233,10 @@ export default function MakeCallsPage() {
                     </div>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    <span className="font-medium text-foreground">Knowledge file:</span>{' '}
+                    <span className="font-medium text-foreground">Knowledge files:</span>{' '}
                     {setupMode === 'assistant'
-                      ? Array.isArray(selectedAssistant?.fileID)
-                        ? selectedAssistant?.fileID?.[0] || 'No file'
-                        : getAssistantPrimaryFileId(selectedAssistant) || 'No file'
-                      : selectedKnowledgeFile?.name || 'No file'}
+                      ? getAssistantFileIds(selectedAssistant).join(', ') || 'No file'
+                      : selectedKnowledgeFiles.map((f) => f.name).join(', ') || 'No file'}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     <span className="font-medium text-foreground">First message mode:</span>{' '}
