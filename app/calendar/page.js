@@ -113,7 +113,7 @@ function buildMockEvents(rangeStart, rangeEnd) {
 
   while (cursor <= rangeEnd) {
     const seed = getDateSeed(cursor)
-    const dailyCount = 10 + (seed % 8) // 10..17/day to stress test
+    const dailyCount = 1 + (seed % 2) // 10..17/day to stress test
 
     for (let i = 0; i < dailyCount; i++) {
       const tutor = TUTORS[(seed + i) % TUTORS.length]
@@ -575,7 +575,7 @@ export default function CalendarPage() {
     <MainLayout title="Calendar" subtitle="">
       <div className="w-full h-full">
         <div className="bg-white rounded-[24px_0px_24px_24px] w-full flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
-          <div className="shrink-0 px-6 pt-6 flex items-center justify-between gap-3">
+          <div className="shrink-0 px-6 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <SmallRoundedButton onClick={goToToday}>Today</SmallRoundedButton>
               <div className="flex items-center gap-3">
