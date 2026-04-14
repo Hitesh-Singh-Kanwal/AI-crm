@@ -162,7 +162,7 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
             </div>
 
             {/* Account Settings Section */}
-            <div className="space-y-4 pt-4 border-t border-slate-200">
+            <div className="space-y-4 pt-4 border-t border-border">
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Account Settings</h3>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">Location</label>
@@ -197,7 +197,7 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
               <Button variant="ghost" onClick={closeEdit} disabled={loading}>
                 Cancel
               </Button>

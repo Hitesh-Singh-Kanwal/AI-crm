@@ -83,7 +83,7 @@ function PermissionsTable({ permissions }) {
   return (
     <div className="space-y-2">
       <h4 className="text-sm font-semibold text-foreground">Permissions</h4>
-      <div className="rounded-lg border border-slate-200">
+      <div className="rounded-lg border border-border">
         {/* Header */}
         <div className="grid grid-cols-[2rem_1fr_6rem] bg-muted/40 border-b border-border px-2 py-2.5 text-xs font-medium text-muted-foreground">
           <div />
@@ -102,7 +102,7 @@ function PermissionsTable({ permissions }) {
               {/* Section row */}
               <div
                 onClick={() => toggleSection(sectionKey)}
-                className="grid grid-cols-[2rem_1fr_6rem] items-center px-2 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
+                className="grid grid-cols-[2rem_1fr_6rem] items-center px-2 py-3 cursor-pointer hover:bg-muted/40 transition-colors"
               >
                 <div className="text-muted-foreground/80 flex items-center">
                   {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -115,7 +115,7 @@ function PermissionsTable({ permissions }) {
 
               {/* Expanded modules */}
               {isExpanded && (
-                <div className="bg-slate-50/60 border-t border-slate-100 px-4 py-3">
+                <div className="bg-muted/40 border-t border-border px-4 py-3">
                   {modules.length === 0 ? (
                     <p className="text-xs text-muted-foreground/80 py-1">No modules configured</p>
                   ) : (
@@ -130,7 +130,7 @@ function PermissionsTable({ permissions }) {
                         return (
                           <div
                             key={moduleKey}
-                            className={`flex items-center justify-between py-2 ${mIdx < modules.length - 1 ? 'border-b border-slate-100' : ''}`}
+                            className={`flex items-center justify-between py-2 ${mIdx < modules.length - 1 ? 'border-b border-border' : ''}`}
                           >
                             <div>
                               <span className="text-sm font-medium text-foreground">
@@ -411,10 +411,10 @@ export default function RolesPage() {
             <Table>
               <TableHeader>
                 <TableRow className="border-b border-border hover:bg-transparent bg-muted/40">
-                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Role</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Permissions</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Created</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B] w-12 text-right"></TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Role</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Permissions</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Created</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground w-12 text-right"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -502,7 +502,7 @@ export default function RolesPage() {
 
         {/* Pagination */}
         {!loading && total > 0 && (
-          <div className="flex flex-row items-center border-t border-slate-200 pt-4">
+          <div className="flex flex-row items-center border-t border-border pt-4">
             <div className="text-sm text-muted-foreground w-52 flex-shrink-0">
               Showing page {currentPage} of {totalPages} ({total} total {total === 1 ? 'role' : 'roles'})
             </div>

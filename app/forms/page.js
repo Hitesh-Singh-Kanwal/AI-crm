@@ -1907,12 +1907,12 @@ ${gtagScript}
         {activeTab === 'analytics' && (
           <div className="space-y-6 relative">
           {gaViewsLoading ? (
-            <div className="absolute inset-0 z-10 rounded-lg bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
+            <div className="absolute inset-0 z-10 rounded-lg bg-background/70 backdrop-blur-[1px] flex items-center justify-center">
               <GlobalLoader text="Fetching analytics…" />
             </div>
           ) : null}
           {!gaViewsLoading && analyticsFormsLoading ? (
-            <div className="absolute inset-0 z-10 rounded-lg bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
+            <div className="absolute inset-0 z-10 rounded-lg bg-background/70 backdrop-blur-[1px] flex items-center justify-center">
               <GlobalLoader text="Loading templates…" />
             </div>
           ) : null}
@@ -1928,8 +1928,8 @@ ${gtagScript}
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-slate-500 mb-1">Total form submissions</p>
-                        <h3 className="text-3xl font-bold text-slate-900 tabular-nums">
+                        <p className="text-sm text-muted-foreground mb-1">Total form submissions</p>
+                        <h3 className="text-3xl font-bold text-foreground tabular-nums">
                           {gaViewsLoading ? '—' : totalSubmissions}
                         </h3>
                       </div>
@@ -1944,13 +1944,13 @@ ${gtagScript}
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-slate-500 mb-1">Conversion rate</p>
-                        <h3 className="text-3xl font-bold text-slate-900 tabular-nums">
+                        <p className="text-sm text-muted-foreground mb-1">Conversion rate</p>
+                        <h3 className="text-3xl font-bold text-foreground tabular-nums">
                           {gaViewsLoading ? '—' : `${conversionRate.toFixed(1)}%`}
                         </h3>
                       </div>
-                      <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
-                        <BarChart3 className="h-6 w-6 text-slate-700" />
+                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                        <BarChart3 className="h-6 w-6 text-muted-foreground" />
                       </div>
                     </div>
                   </CardContent>
@@ -1963,14 +1963,14 @@ ${gtagScript}
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Total Views (all-time)</p>
-                    <h3 className="text-3xl font-bold text-slate-900">
+                    <p className="text-sm text-muted-foreground mb-1">Total Views (all-time)</p>
+                    <h3 className="text-3xl font-bold text-foreground">
                       {gaViewsLoading ? '—' : gaViews.allTime}
                     </h3>
                     {gaViewsError ? (
                       <p className="text-xs text-destructive mt-2">{gaViewsError}</p>
                     ) : (
-                      <p className="text-xs text-slate-500 mt-2">From Google Analytics</p>
+                      <p className="text-xs text-muted-foreground mt-2">From Google Analytics</p>
                     )}
                   </div>
                   <div className="h-12 w-12 rounded-lg bg-brand-light flex items-center justify-center">
@@ -1984,8 +1984,8 @@ ${gtagScript}
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Views (last 30 days)</p>
-                    <h3 className="text-3xl font-bold text-slate-900">
+                    <p className="text-sm text-muted-foreground mb-1">Views (last 30 days)</p>
+                    <h3 className="text-3xl font-bold text-foreground">
                       {gaViewsLoading ? '—' : gaViews.last30Days}
                     </h3>
                   </div>
@@ -2000,8 +2000,8 @@ ${gtagScript}
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Views (last 7 days)</p>
-                    <h3 className="text-3xl font-bold text-slate-900">
+                    <p className="text-sm text-muted-foreground mb-1">Views (last 7 days)</p>
+                    <h3 className="text-3xl font-bold text-foreground">
                       {gaViewsLoading ? '—' : gaViews.last7Days}
                     </h3>
                   </div>
@@ -2017,13 +2017,13 @@ ${gtagScript}
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Active Users (all-time)</p>
-                    <h3 className="text-3xl font-bold text-slate-900">
+                    <p className="text-sm text-muted-foreground mb-1">Active Users (all-time)</p>
+                    <h3 className="text-3xl font-bold text-foreground">
                       {gaViewsLoading ? '—' : gaActiveUsers.allTime}
                     </h3>
                   </div>
-                  <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
-                    <BarChart3 className="h-6 w-6 text-slate-700" />
+                  <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 text-muted-foreground" />
                   </div>
                 </div>
               </CardContent>
@@ -2033,13 +2033,13 @@ ${gtagScript}
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Active Users (last 30 days)</p>
-                    <h3 className="text-3xl font-bold text-slate-900">
+                    <p className="text-sm text-muted-foreground mb-1">Active Users (last 30 days)</p>
+                    <h3 className="text-3xl font-bold text-foreground">
                       {gaViewsLoading ? '—' : gaActiveUsers.last30Days}
                     </h3>
                   </div>
-                  <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
-                    <BarChart3 className="h-6 w-6 text-slate-700" />
+                  <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 text-muted-foreground" />
                   </div>
                 </div>
               </CardContent>
@@ -2049,13 +2049,13 @@ ${gtagScript}
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500 mb-1">Active Users (last 7 days)</p>
-                    <h3 className="text-3xl font-bold text-slate-900">
+                    <p className="text-sm text-muted-foreground mb-1">Active Users (last 7 days)</p>
+                    <h3 className="text-3xl font-bold text-foreground">
                       {gaViewsLoading ? '—' : gaActiveUsers.last7Days}
                     </h3>
                   </div>
-                  <div className="h-12 w-12 rounded-lg bg-slate-100 flex items-center justify-center">
-                    <BarChart3 className="h-6 w-6 text-slate-700" />
+                  <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 text-muted-foreground" />
                   </div>
                 </div>
               </CardContent>
@@ -2124,16 +2124,16 @@ ${gtagScript}
                       const { total, segments } = makePieSegments(c.items)
                       if (!segments.length) {
                         return (
-                          <div key={c.title} className="rounded-lg border border-slate-200 bg-white p-4">
-                            <div className="text-sm font-semibold text-slate-900">{c.title}</div>
-                            <div className="text-sm text-slate-500 py-8">No data yet.</div>
+                          <div key={c.title} className="rounded-lg border border-border bg-card p-4">
+                            <div className="text-sm font-semibold text-foreground">{c.title}</div>
+                            <div className="text-sm text-muted-foreground py-8">No data yet.</div>
                           </div>
                         )
                       }
 
                       return (
-                        <div key={c.title} className="rounded-lg border border-slate-200 bg-white p-4">
-                          <div className="text-sm font-semibold text-slate-900 mb-3">{c.title}</div>
+                        <div key={c.title} className="rounded-lg border border-border bg-card p-4">
+                          <div className="text-sm font-semibold text-foreground mb-3">{c.title}</div>
                           <div className="flex items-start gap-4">
                             <svg width="200" height="200" viewBox="0 0 220 220" role="img" aria-label={c.aria}>
                               <defs>
@@ -2190,9 +2190,9 @@ ${gtagScript}
                                 <div key={idx} className="flex items-center justify-between gap-3 text-sm">
                                   <div className="flex items-center gap-2 min-w-0">
                                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.color }} />
-                                    <span className="truncate text-slate-700">{s.label}</span>
+                                    <span className="truncate text-muted-foreground">{s.label}</span>
                                   </div>
-                                  <div className="shrink-0 tabular-nums text-slate-900 font-medium">{s.value}</div>
+                                  <div className="shrink-0 tabular-nums text-foreground font-medium">{s.value}</div>
                                 </div>
                               ))}
                             </div>
@@ -2218,7 +2218,7 @@ ${gtagScript}
                           variant="outline"
                           size="icon"
                           disabled={gaViewsLoading}
-                          className="h-7 w-7 border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-slate-700 shadow-sm"
+                          className="h-7 w-7 border-border bg-muted/50 hover:bg-muted text-muted-foreground shadow-sm"
                           title="Change pages dimension"
                         >
                           <ChevronDown className="h-4 w-4" />
@@ -2273,10 +2273,10 @@ ${gtagScript}
               </div>
             </CardHeader>
             <CardContent className="pt-2">
-              <div className="overflow-auto rounded-md border border-slate-200">
+              <div className="overflow-auto rounded-md border border-border">
                 <table className="min-w-[720px] w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr className="text-left text-slate-600">
+                  <thead className="bg-muted/40">
+                    <tr className="text-left text-muted-foreground">
                       <th className="px-4 py-3 font-medium">
                         {gaPagesDimension === 'pageTitle' ? 'Page title' : 'Page path'}
                       </th>
@@ -2286,29 +2286,29 @@ ${gtagScript}
                       <th className="px-4 py-3 font-medium text-right">Avg engagement / active user</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white">
+                  <tbody className="bg-card">
                     {(gaPages?.[gaPagesRange] || []).length === 0 ? (
                       <tr>
-                        <td className="px-4 py-6 text-slate-500" colSpan={5}>
+                        <td className="px-4 py-6 text-muted-foreground" colSpan={5}>
                           No data yet.
                         </td>
                       </tr>
                     ) : (
                       (gaPages?.[gaPagesRange] || []).map((row, idx) => (
-                        <tr key={`${row?.value || 'row'}-${idx}`} className="border-t border-slate-100">
-                          <td className="px-4 py-3 font-mono text-xs text-slate-800">
+                        <tr key={`${row?.value || 'row'}-${idx}`} className="border-t border-border">
+                          <td className="px-4 py-3 font-mono text-xs text-foreground">
                             {row?.value || '—'}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">
                             {Number(row?.views) || 0}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">
                             {Number(row?.activeUsers) || 0}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">
                             {Number(row?.viewsPerActiveUser) ? Number(row.viewsPerActiveUser).toFixed(2) : '0.00'}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">
                             {formatDuration(row?.avgEngagementTimePerActiveUser)}
                           </td>
                         </tr>
@@ -2337,12 +2337,12 @@ ${gtagScript}
                   // Some backends mark templates explicitly; fall back to showing whatever the API returns.
                   const hasTemplateFlag = list.some((f) => typeof f?.isTemplate === 'boolean' || typeof f?.template === 'boolean')
                   const rows = hasTemplateFlag ? list.filter((f) => f?.isTemplate || f?.template) : list
-                  if (!rows.length) return <div className="text-sm text-slate-500 py-4">No forms found.</div>
+                  if (!rows.length) return <div className="text-sm text-muted-foreground py-4">No forms found.</div>
                   return (
-                    <div className="overflow-auto rounded-md border border-slate-200">
+                    <div className="overflow-auto rounded-md border border-border">
                       <table className="min-w-[720px] w-full text-sm">
-                        <thead className="bg-slate-50">
-                          <tr className="text-left text-slate-600">
+                        <thead className="bg-muted/40">
+                          <tr className="text-left text-muted-foreground">
                             <th className="px-4 py-3 font-medium">View</th>
                             <th className="px-4 py-3 font-medium">Form</th>
                             <th className="px-4 py-3 font-medium">Template</th>
@@ -2350,9 +2350,9 @@ ${gtagScript}
                             <th className="px-4 py-3 font-medium">Updated</th>
                           </tr>
                         </thead>
-                        <tbody className="bg-white">
+                        <tbody className="bg-card">
                           {rows.map((f) => (
-                            <tr key={f._id} className="border-t border-slate-100">
+                            <tr key={f._id} className="border-t border-border">
                               <td className="px-4 py-3">
                                 <Button
                                   variant="outline"
@@ -2364,12 +2364,12 @@ ${gtagScript}
                                   <Eye className="h-4 w-4" />
                                 </Button>
                               </td>
-                              <td className="px-4 py-3 text-slate-900 font-medium">{f?.name || 'Untitled'}</td>
-                              <td className="px-4 py-3 text-slate-700">
+                              <td className="px-4 py-3 text-foreground font-medium">{f?.name || 'Untitled'}</td>
+                              <td className="px-4 py-3 text-muted-foreground">
                                 {typeof f?.isTemplate === 'boolean' ? (f.isTemplate ? 'Yes' : 'No') : (f?.fromTemplate ? 'From template' : '—')}
                               </td>
-                              <td className="px-4 py-3 text-slate-700">{f?.status || '—'}</td>
-                              <td className="px-4 py-3 text-slate-700">
+                              <td className="px-4 py-3 text-muted-foreground">{f?.status || '—'}</td>
+                              <td className="px-4 py-3 text-muted-foreground">
                                 {f?.updatedAt ? formatDate(f.updatedAt) : '—'}
                               </td>
                             </tr>

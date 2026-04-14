@@ -99,7 +99,7 @@ export default function RoleEditor({
           </div>
 
           {/* Permissions */}
-          <div className="space-y-4 border-t border-slate-200 pt-6">
+          <div className="space-y-4 border-t border-border pt-6">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-foreground">
               Permissions
             </h3>
@@ -115,7 +115,7 @@ export default function RoleEditor({
                   return (
                     <div
                       key={sectionKey}
-                      className="rounded-xl border border-slate-200 bg-slate-50/50 overflow-hidden"
+                      className="rounded-xl border border-border bg-muted/40 overflow-hidden"
                     >
                       <button
                         type="button"
@@ -135,7 +135,7 @@ export default function RoleEditor({
                         <div className="border-t border-border bg-card">
                           <Table>
                             <TableHeader>
-                              <TableRow className="bg-slate-50 hover:bg-slate-50">
+                              <TableRow className="bg-muted/40 hover:bg-muted/40">
                                 <TableHead className="font-semibold text-foreground">
                                   Resource
                                 </TableHead>
@@ -165,7 +165,7 @@ export default function RoleEditor({
                                 return (
                                   <TableRow
                                     key={permKey}
-                                    className="hover:bg-slate-50/50"
+                                    className="hover:bg-muted/40"
                                   >
                                     <TableCell>
                                       <div>
@@ -224,7 +224,7 @@ export default function RoleEditor({
 
           {/* Actions when embedded */}
           {embedded && (
-            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-4">
+            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
               {editingRole?._id && (
                 <Button
                   type="button"

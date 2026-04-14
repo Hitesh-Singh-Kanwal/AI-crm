@@ -13,8 +13,8 @@ function TabButton({ label, active, onClick }) {
       className={[
         'h-11 px-3 text-[12px] font-medium border-b-2 transition-colors',
         active
-          ? 'text-[#0F172A] border-[#0EA5E9]'
-          : 'text-[#64748B] border-transparent hover:text-[#334155]',
+          ? 'text-foreground border-primary'
+          : 'text-muted-foreground border-transparent hover:text-foreground',
       ].join(' ')}
     >
       {label}
@@ -23,7 +23,7 @@ function TabButton({ label, active, onClick }) {
 }
 
 function Label({ children }) {
-  return <label className="block mb-1.5 text-[12px] font-medium text-[#334155]">{children}</label>
+  return <label className="block mb-1.5 text-[12px] font-medium text-foreground">{children}</label>
 }
 
 function Input({ placeholder }) {
@@ -31,7 +31,7 @@ function Input({ placeholder }) {
     <input
       type="text"
       placeholder={placeholder}
-      className="h-10 w-full rounded-lg border border-[#E2E8F0] px-3 text-[12px] text-[#334155] outline-none focus:border-[#0EA5E9]"
+      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
     />
   )
 }
@@ -39,10 +39,10 @@ function Input({ placeholder }) {
 function Select({ placeholder }) {
   return (
     <div className="relative">
-      <select className="h-10 w-full appearance-none rounded-lg border border-[#E2E8F0] px-3 pr-8 text-[12px] text-[#64748B] outline-none focus:border-[#0EA5E9]">
+      <select className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-muted-foreground outline-none focus:border-primary">
         <option>{placeholder}</option>
       </select>
-      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
     </div>
   )
 }
@@ -52,7 +52,7 @@ function TextArea({ placeholder }) {
     <textarea
       rows={3}
       placeholder={placeholder}
-      className="w-full resize-none rounded-lg border border-[#E2E8F0] px-3 py-2 text-[12px] text-[#334155] outline-none focus:border-[#0EA5E9]"
+      className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] text-foreground outline-none focus:border-primary"
     />
   )
 }
@@ -61,7 +61,7 @@ function TimeRangeField() {
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
       <Select placeholder="09:10 AM" />
-      <span className="text-[12px] text-[#64748B]">to</span>
+      <span className="text-[12px] text-muted-foreground">to</span>
       <Select placeholder="10:10 AM" />
     </div>
   )
@@ -70,7 +70,7 @@ function TimeRangeField() {
 function AppointmentFields() {
   return (
     <>
-      <h3 className="mb-4 text-[14px] font-semibold text-[#0F172A]">Individual Appointment</h3>
+      <h3 className="mb-4 text-[14px] font-semibold text-foreground">Individual Appointment</h3>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label>Instructor</Label>
@@ -115,7 +115,7 @@ function AppointmentFields() {
 function ToDoFields() {
   return (
     <div className="grid grid-cols-2 gap-3">
-      <h3 className="col-span-2 mb-1 text-[14px] font-semibold text-[#0F172A]">To Do</h3>
+      <h3 className="col-span-2 mb-1 text-[14px] font-semibold text-foreground">To Do</h3>
       <div className="col-span-2">
         <Label>Title</Label>
         <Input placeholder="Study" />
@@ -153,7 +153,7 @@ function ToDoFields() {
 function GroupClassFields() {
   return (
     <div className="grid grid-cols-2 gap-3">
-      <h3 className="col-span-2 mb-1 text-[14px] font-semibold text-[#0F172A]">Group Class</h3>
+      <h3 className="col-span-2 mb-1 text-[14px] font-semibold text-foreground">Group Class</h3>
       <div className="col-span-2">
         <Label>Group Name</Label>
         <Input placeholder="Enter Group Name" />
@@ -193,7 +193,7 @@ function GroupClassFields() {
 function RecordOnlyFields() {
   return (
     <div className="grid grid-cols-2 gap-3">
-      <h3 className="col-span-2 mb-1 text-[14px] font-semibold text-[#0F172A]">Record Only</h3>
+      <h3 className="col-span-2 mb-1 text-[14px] font-semibold text-foreground">Record Only</h3>
       <div>
         <Label>Instructor</Label>
         <Select placeholder="Select Instructor" />
@@ -233,8 +233,8 @@ export default function AppointmentComposerPanel({ onClose }) {
   }, [activeTab])
 
   return (
-    <aside className="h-full w-[430px] shrink-0 rounded-xl border border-[#E2E8F0] bg-white shadow-[0px_10px_35px_rgba(15,23,42,0.08)]">
-      <div className="flex items-center justify-between border-b border-[#E2E8F0] pr-1">
+    <aside className="h-full w-[430px] shrink-0 rounded-xl border border-border bg-card shadow-lg">
+      <div className="flex items-center justify-between border-b border-border pr-1">
         <div className="flex items-center overflow-x-auto">
           {TABS.map((tab) => (
             <TabButton key={tab} label={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)} />
@@ -244,7 +244,7 @@ export default function AppointmentComposerPanel({ onClose }) {
           type="button"
           onClick={onClose}
           aria-label="Close appointment panel"
-          className="grid h-8 w-8 place-items-center rounded-full text-[#94A3B8] hover:bg-[#F8FAFC]"
+          className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-muted"
         >
           <X className="h-4 w-4" />
         </button>
@@ -252,17 +252,17 @@ export default function AppointmentComposerPanel({ onClose }) {
 
       <div className="flex h-[calc(100%-44px)] flex-col">
         <div className="flex-1 overflow-y-auto p-4">{tabContent}</div>
-        <div className="grid grid-cols-2 gap-3 border-t border-[#E2E8F0] p-4">
+        <div className="grid grid-cols-2 gap-3 border-t border-border p-4">
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg border border-[#E2E8F0] text-[12px] font-semibold text-[#475569]"
+            className="h-10 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40"
           >
             Cancel
           </button>
           <button
             type="button"
-            className="h-10 rounded-lg bg-[#D61F8C] text-[12px] font-semibold text-white hover:bg-[#C2187E]"
+            className="h-10 rounded-lg bg-brand text-[12px] font-semibold text-brand-foreground hover:bg-brand-dark"
           >
             Save Changes
           </button>

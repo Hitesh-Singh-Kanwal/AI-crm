@@ -186,7 +186,7 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
             </div>
 
             {/* Address Details Section */}
-            <div className="space-y-4 pt-4 border-t border-slate-200">
+            <div className="space-y-4 pt-4 border-t border-border">
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Address Details</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -217,7 +217,7 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
             </div>
 
             {/* Contact & Status Section */}
-            <div className="space-y-4 pt-4 border-t border-slate-200">
+            <div className="space-y-4 pt-4 border-t border-border">
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Contact & Status</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -240,7 +240,7 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
               <Button variant="ghost" onClick={closeEdit} disabled={loading}>
                 Cancel
               </Button>

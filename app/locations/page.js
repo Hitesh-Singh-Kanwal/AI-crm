@@ -332,7 +332,7 @@ export default function LocationsPage() {
                 </div>
               </div>
 
-              <div className="mt-4 space-y-2 text-sm border-t border-slate-100 pt-4">
+              <div className="mt-4 space-y-2 text-sm border-t border-border pt-4">
                 {location.address && (
                   <div className="flex items-start gap-2 text-muted-foreground">
                     <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -352,7 +352,7 @@ export default function LocationsPage() {
                   </div>
                 )}
                 {location.createdAt && (
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
                     <span className="text-muted-foreground text-xs">Created:</span>
                     <span className="text-xs text-foreground">{formatDate(location.createdAt)}</span>
                   </div>
@@ -365,7 +365,7 @@ export default function LocationsPage() {
 
         {/* Pagination */}
         {!loading && total > 0 && (
-          <div className="flex flex-row items-center border-t border-slate-200 pt-4">
+          <div className="flex flex-row items-center border-t border-border pt-4">
             <div className="text-sm text-muted-foreground w-52 flex-shrink-0">
               Showing page {currentPage} of {totalPages} ({total} total {total === 1 ? 'location' : 'locations'})
             </div>

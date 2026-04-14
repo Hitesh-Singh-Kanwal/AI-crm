@@ -94,8 +94,8 @@
     --studio-gradient-css: linear-gradient(90deg, #ec4899 0%, #e879f9 100%);
     --sidebar-gradient-css: linear-gradient(
       180deg,
-      hsl(var(--card)) 0%,
-      hsl(var(--background)) 100%
+      hsl(222 24% 6.5%) 0%,
+      hsl(222 30% 4.5%) 100%
     );
     --bar-gradient-css: linear-gradient(180deg, #831843 0%, #f472b6 100%);
     --side-gradient-css: linear-gradient(180deg, #67e8f9 0%, #0ea5e9 100%);
@@ -205,6 +205,56 @@
 
 .calendar-shell .fc .fc-event {
   border-radius: 6px;
+}
+
+/* FullCalendar dark/light consistency for week/month views */
+.calendar-shell .fc-theme-standard {
+  --fc-border-color: hsl(var(--border) / 0.6);
+  --fc-page-bg-color: hsl(var(--background));
+  --fc-neutral-bg-color: hsl(var(--muted) / 0.4);
+}
+
+.calendar-shell .fc-theme-standard th,
+.calendar-shell .fc-theme-standard td,
+.calendar-shell .fc .fc-scrollgrid,
+.calendar-shell .fc .fc-scrollgrid-section > * {
+  border-color: hsl(var(--border) / 0.6) !important;
+}
+
+.calendar-shell .fc .fc-col-header-cell,
+.calendar-shell .fc .fc-daygrid-day,
+.calendar-shell .fc .fc-timegrid-slot,
+.calendar-shell .fc .fc-timegrid-axis,
+.calendar-shell .fc .fc-timegrid-col,
+.calendar-shell .fc .fc-daygrid-day-frame {
+  background: hsl(var(--background));
+}
+
+.calendar-shell .fc .fc-col-header-cell-cushion,
+.calendar-shell .fc .fc-daygrid-day-number,
+.calendar-shell .fc .fc-timegrid-axis-cushion,
+.calendar-shell .fc .fc-timegrid-slot-label-cushion {
+  color: hsl(var(--foreground));
+}
+
+.calendar-shell .fc .fc-daygrid-day.fc-day-other {
+  background: hsl(var(--muted) / 0.35);
+}
+
+.calendar-shell .fc .fc-timegrid-slot-minor {
+  border-top-style: solid;
+  border-top-color: hsl(var(--border) / 0.7);
+}
+
+.calendar-shell .fc .fc-popover {
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--popover-foreground));
+}
+
+.calendar-shell .fc .fc-popover .fc-popover-header {
+  background: hsl(var(--muted) / 0.6);
+  color: hsl(var(--foreground));
 }
 
 /* Scrollbar Styling */
