@@ -116,6 +116,37 @@
   }
 }
 
+/* FullCalendar overrides */
+.calendar-shell .fc {
+  height: 100%;
+}
+
+.calendar-shell .fc .fc-toolbar {
+  display: none;
+}
+
+.calendar-shell .fc .fc-timegrid-now-indicator-line {
+  border-color: #16A34A;
+}
+
+.calendar-shell .fc .fc-timegrid-now-indicator-arrow {
+  border-top-color: #16A34A;
+  border-bottom-color: #16A34A;
+}
+
+.calendar-shell .fc .fc-day-today {
+  background: rgba(22, 163, 74, 0.08) !important;
+}
+
+.calendar-shell .fc .fc-more-link {
+  color: #0F172A;
+  font-weight: 600;
+}
+
+.calendar-shell .fc .fc-event {
+  border-radius: 6px;
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;
