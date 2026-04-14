@@ -8,6 +8,7 @@ import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getCurrentUser } from '@/lib/auth'
 import { canAccessRoute } from '@/lib/permissions'
+import { upcomingTasks as sidebarUpcomingTasks } from '@/data/dummyData'
 
 const navItems = [
   { name: 'Dashboard', href: '/', iconSrc: '/figma/sidebar/dashboard-selected.svg', iconSize: 24, labelStyle: 'bold' },
@@ -85,6 +86,15 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
     for (const item of navItems) map.set(item.name, item)
     return map
   }, [])
+
+  const taskDateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+      }),
+    []
+  )
 
   useEffect(() => {
     setMobileOpen(false)
@@ -329,7 +339,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
         </div>
 
         {/* Subscription section */}
-        <div className="flex flex-col items-center gap-1 p-1 rounded-lg bg-white/20 w-[112px]">
+        <div className="relative group flex flex-col items-center gap-1 p-1 rounded-lg bg-white/20 w-[112px]">
           <div className="w-[62px] h-[46.5px] overflow-hidden rounded">
             <Image
               src="/figma/sidebar/upcoming-memoji.png"
@@ -341,6 +351,20 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
             />
           </div>
           <div className="text-[#F72585] font-bold text-[10px] leading-[16px]">Upcoming Tasks</div>
+
+          <div className="pointer-events-none absolute left-[118px] bottom-0 w-[260px] rounded-xl border border-slate-200 bg-white p-3 opacity-0 shadow-[0_8px_24px_rgba(15,23,42,0.12)] transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 z-50">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Upcoming Tasks</div>
+            <div className="space-y-2">
+              {sidebarUpcomingTasks.map((task) => (
+                <div key={task.id} className="rounded-lg border border-slate-100 px-2.5 py-2">
+                  <div className="text-xs font-medium text-slate-900 leading-4">{task.title}</div>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    Due {taskDateFormatter.format(new Date(task.dueDate))} - {task.assignee}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </aside>
 
