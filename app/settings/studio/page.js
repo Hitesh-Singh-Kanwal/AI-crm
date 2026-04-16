@@ -181,7 +181,7 @@ export default function LocationsPage() {
 
   return (
     <MainLayout title="Locations" subtitle="Manage branch locations and their details">
-      <div className="space-y-4 md:space-y-6">
+      <div className="space-y-4 md:space-y-6 min-h-full flex flex-col">
         {/* Filters */}
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
           <div className="min-w-0">
@@ -365,7 +365,7 @@ export default function LocationsPage() {
 
         {/* Pagination */}
         {!loading && total > 0 && (
-          <div className="flex flex-row items-center border-t border-border pt-4">
+          <div className="flex flex-row items-center border-t border-border pt-4 mt-auto">
             <div className="text-sm text-muted-foreground w-52 flex-shrink-0">
               Showing page {currentPage} of {totalPages} ({total} total {total === 1 ? 'location' : 'locations'})
             </div>

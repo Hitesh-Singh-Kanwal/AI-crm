@@ -25,6 +25,29 @@ function getScriptStats(text) {
   return { lines, chars: t.length }
 }
 
+function extractScriptsPayload(result) {
+  const payload = result?.data
+  const list = Array.isArray(payload?.Scripts)
+    ? payload.Scripts
+    : Array.isArray(payload?.scripts)
+    ? payload.scripts
+    : Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.data?.Scripts)
+    ? payload.data.Scripts
+    : Array.isArray(payload?.data?.scripts)
+    ? payload.data.scripts
+    : Array.isArray(payload)
+    ? payload
+    : []
+  const pagination = payload?.pagination || payload?.data?.pagination || result?.pagination
+  return {
+    list: Array.isArray(list) ? list : [],
+    total: pagination?.total ?? (Array.isArray(list) ? list.length : 0),
+    totalPages: pagination?.totalPages ?? pagination?.pages,
+  }
+}
+
 export default function ScriptsTab() {
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
@@ -65,12 +88,16 @@ export default function ScriptsTab() {
       })
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
       const result = await api.get(`/api/ai-script/paginated?${params.toString()}`)
-      const list = result.data?.Scripts ?? result.data?.scripts ?? result.data
-      if (result.success && Array.isArray(list)) {
+      if (result.success) {
+        const { list, total, totalPages: totalPagesFromApi } = extractScriptsPayload(result)
+        const nextTotalPages = Math.max(1, totalPagesFromApi ?? Math.ceil(total / SCRIPTS_PAGE_SIZE))
+        if (page > nextTotalPages) {
+          setPage(nextTotalPages)
+          return
+        }
         setScripts(list)
-        const total = result.pagination?.total ?? list.length
         setTotalCount(total)
-        setTotalPages(Math.max(1, Math.ceil(total / SCRIPTS_PAGE_SIZE)))
+        setTotalPages(nextTotalPages)
       } else {
         setError(result.error || 'Failed to fetch scripts')
       }
@@ -182,7 +209,7 @@ export default function ScriptsTab() {
   }
 
   return (
-    <TabsContent value="scripts" className="space-y-6 mt-6">
+    <TabsContent value="scripts" className="mt-6 flex-1 min-h-0 flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Manage AI calling scripts and track performance.</p>
         <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2 shrink-0">
@@ -387,7 +414,7 @@ export default function ScriptsTab() {
       </div>
 
       {!loading && !error && scripts.length > 0 && (
-        <div className="flex flex-col gap-3 pt-2">
+        <div className="flex flex-col gap-3 pt-2 mt-auto">
           <div className="flex items-center justify-center gap-1.5 flex-wrap">
             {pageNumbers.map((n) => (
               <button

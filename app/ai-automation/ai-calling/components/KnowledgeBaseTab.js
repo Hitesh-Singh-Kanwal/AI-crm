@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ExternalLink, FileText, Pencil, Search, Trash2, Upload } from 'lucide-react'
+import { Clock3, ExternalLink, FileText, HardDrive, Pencil, Search, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
@@ -30,6 +30,71 @@ function formatUploadedAt(iso) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleString()
+}
+
+function parseSizeToBytes(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value > 0 ? value : 0
+  if (typeof value !== 'string') return 0
+
+  const normalized = value.trim().toUpperCase()
+  const match = normalized.match(/^([\d.]+)\s*(B|KB|MB|GB|TB)?$/)
+  if (!match) return 0
+
+  const num = Number(match[1])
+  if (!Number.isFinite(num)) return 0
+
+  const unit = match[2] || 'B'
+  const unitMap = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }
+  return Math.round(num * (unitMap[unit] || 1))
+}
+
+function getDocSizeBytes(doc) {
+  const candidates = [
+    doc?.size,
+    doc?.fileSize,
+    doc?.file_size,
+    doc?.sizeBytes,
+    doc?.bytes,
+    doc?.metadata?.size,
+  ]
+  for (const value of candidates) {
+    const parsed = parseSizeToBytes(value)
+    if (parsed > 0) return parsed
+  }
+  return 0
+}
+
+function formatFileSize(bytes) {
+  const b = Number(bytes)
+  if (!Number.isFinite(b) || b <= 0) return '—'
+  if (b < 1024) return `${b} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let size = b / 1024
+  let idx = 0
+  while (size >= 1024 && idx < units.length - 1) {
+    size /= 1024
+    idx += 1
+  }
+  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[idx]}`
+}
+
+function extractFilesPayload(result) {
+  const payload = result?.data
+  const list = Array.isArray(payload?.files)
+    ? payload.files
+    : Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.data?.files)
+    ? payload.data.files
+    : Array.isArray(payload)
+    ? payload
+    : []
+  const pagination = payload?.pagination || payload?.data?.pagination || result?.pagination
+  return {
+    list: Array.isArray(list) ? list : [],
+    total: pagination?.total ?? (Array.isArray(list) ? list.length : 0),
+    totalPages: pagination?.totalPages ?? pagination?.pages,
+  }
 }
 
 export default function KnowledgeBaseTab() {
@@ -71,12 +136,16 @@ export default function KnowledgeBaseTab() {
       })
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
       const result = await api.get(`/api/ai-script/file/paginated?${params.toString()}`)
-      const list = result.data?.files ?? result.data
-      if (result.success && Array.isArray(list)) {
+      if (result.success) {
+        const { list, total, totalPages: totalPagesFromApi } = extractFilesPayload(result)
+        const nextTotalPages = Math.max(1, totalPagesFromApi ?? Math.ceil(total / FILES_PAGE_SIZE))
+        if (page > nextTotalPages) {
+          setPage(nextTotalPages)
+          return
+        }
         setFiles(list)
-        const total = result.pagination?.total ?? list.length
         setTotalCount(total)
-        setTotalPages(Math.max(1, Math.ceil(total / FILES_PAGE_SIZE)))
+        setTotalPages(nextTotalPages)
       } else {
         setError(result.error || 'Failed to fetch files')
       }
@@ -92,9 +161,17 @@ export default function KnowledgeBaseTab() {
     fetchFiles()
   }, [fetchFiles])
 
-  const totalSizeLabel = useMemo(() => {
-    return '—'
-  }, [])
+  const totalSizeLabel = useMemo(() => formatFileSize(files.reduce((sum, doc) => sum + getDocSizeBytes(doc), 0)), [files])
+  const latestUploadLabel = useMemo(() => {
+    if (!files.length) return '—'
+    let latest = null
+    for (const file of files) {
+      const d = file?.uploadedAt ? new Date(file.uploadedAt) : null
+      if (!d || Number.isNaN(d.getTime())) continue
+      if (!latest || d.getTime() > latest.getTime()) latest = d
+    }
+    return latest ? latest.toLocaleString() : '—'
+  }, [files])
 
   async function handleDelete(file) {
     if (!file?._id) return
@@ -118,11 +195,47 @@ export default function KnowledgeBaseTab() {
   }
 
   return (
-    <TabsContent value="knowledge" className="space-y-6 mt-6">
+    <TabsContent value="knowledge" className="mt-6 flex-1 min-h-0 flex flex-col gap-6">
       <div>
         <p className="text-sm text-muted-foreground">
           Upload documents for AI training. Supported: PDF, DOCX, TXT, MP3 (max 10MB).
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="rounded-xl border-border/80 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total documents</p>
+                <p className="text-2xl font-bold mt-1 tabular-nums">{totalCount}</p>
+              </div>
+              <FileText className="h-10 w-10 text-primary/30" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="rounded-xl border-border/80">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Latest upload</p>
+                <p className="text-sm font-medium mt-1 text-foreground">{latestUploadLabel}</p>
+              </div>
+              <Clock3 className="h-10 w-10 text-primary/20" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="rounded-xl border-border/80">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total size</p>
+                <p className="text-2xl font-bold mt-1 tabular-nums">{totalSizeLabel}</p>
+              </div>
+              <HardDrive className="h-10 w-10 text-primary/20" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <KnowledgeBaseUploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onUploaded={fetchFiles} />
@@ -195,7 +308,7 @@ export default function KnowledgeBaseTab() {
         </Card>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-3 flex-1 flex flex-col">
         <h3 className="text-sm font-medium text-muted-foreground">Uploaded documents</h3>
         <div className="grid grid-cols-1 gap-3">
           {!loading &&
@@ -217,6 +330,8 @@ export default function KnowledgeBaseTab() {
                       {doc.description ? <span className="truncate max-w-[26ch]">{doc.description}</span> : <span>—</span>}
                       <span>·</span>
                       <span className="whitespace-nowrap">Uploaded {formatUploadedAt(doc.uploadedAt)}</span>
+                      <span>·</span>
+                      <span className="whitespace-nowrap">Size {formatFileSize(getDocSizeBytes(doc))}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -277,7 +392,7 @@ export default function KnowledgeBaseTab() {
         </div>
 
         {!loading && !error && files.length > 0 && (
-          <div className="flex flex-col gap-3 pt-2">
+          <div className="flex flex-col gap-3 pt-2 mt-auto">
             <div className="flex items-center justify-center gap-1.5 flex-wrap">
               {pageNumbers.map((n) => (
                 <button
@@ -317,44 +432,6 @@ export default function KnowledgeBaseTab() {
             </div>
           </div>
         )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="rounded-xl border-border/80">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total documents</p>
-                <p className="text-2xl font-bold mt-1 tabular-nums">{totalCount}</p>
-              </div>
-              <FileText className="h-10 w-10 text-primary/20" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-border/80">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Latest upload</p>
-                <p className="text-sm font-medium mt-1 text-muted-foreground">
-                  {files[0]?.uploadedAt ? formatUploadedAt(files[0].uploadedAt) : '—'}
-                </p>
-              </div>
-              <Upload className="h-10 w-10 text-primary/20" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-border/80">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total size</p>
-                <p className="text-2xl font-bold mt-1 tabular-nums">{totalSizeLabel}</p>
-              </div>
-              <Upload className="h-10 w-10 text-muted-foreground/30" />
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </TabsContent>
   )

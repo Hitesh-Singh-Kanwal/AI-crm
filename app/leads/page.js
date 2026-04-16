@@ -80,6 +80,13 @@ export default function LeadsPage() {
       const result = await api.get(`/api/lead?${params.toString()}`)
       if (result.success) {
         let data = result.data || []
+        const pagination = result.data?.pagination ?? result.pagination
+        const total = pagination?.total || (result.data ? result.data.length : 0)
+        const nextTotalPages = Math.max(1, Math.ceil((total || 0) / ROWS_PER_PAGE))
+        if (page > nextTotalPages) {
+          setCurrentPage(nextTotalPages)
+          return
+        }
 
         if (sort === 'nameAsc') {
           data = [...data].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
@@ -88,7 +95,7 @@ export default function LeadsPage() {
         }
 
         setLeads(data)
-        setTotalCount(result.pagination?.total || (result.data ? result.data.length : 0))
+        setTotalCount(total)
       } else {
         toast.error('Failed to load leads', { description: result.error })
       }
@@ -170,7 +177,7 @@ export default function LeadsPage() {
 
   return (
     <MainLayout title="Leads" subtitle="">
-      <div className="max-w-[1204px] mx-auto">
+      <div className="max-w-[1204px] mx-auto min-h-full flex flex-col">
         {/* Title + count + description */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
@@ -309,7 +316,8 @@ export default function LeadsPage() {
         </div>
 
         {/* Table */}
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="rounded-xl border border-border bg-card overflow-hidden min-h-[560px] flex flex-col">
+          <div className="flex-1">
           <Table>
             <TableHeader>
               <TableRow className="border-b border-border hover:bg-transparent bg-muted/30">
@@ -440,6 +448,7 @@ export default function LeadsPage() {
             })}
             </TableBody>
           </Table>
+          </div>
 
           {/* Pagination */}
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">

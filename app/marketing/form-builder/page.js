@@ -335,10 +335,16 @@ function FormsPageInner() {
       const result = await api.get(`/api/formBuilder?${params.toString()}`)
       const list = Array.isArray(result.data) ? result.data : null
       if (result.success && list) {
+        const pagination = result.data?.pagination ?? result.pagination
+        const total = pagination?.total ?? list.length
+        const nextTotalPages = Math.max(1, Math.ceil(total / FORMS_PAGE_SIZE))
+        if (formsPage > nextTotalPages) {
+          setFormsPage(nextTotalPages)
+          return
+        }
         setForms(list)
-        const total = result.pagination?.total ?? list.length
         setFormsTotalCount(total)
-        setFormsTotalPages(Math.max(1, Math.ceil(total / FORMS_PAGE_SIZE)))
+        setFormsTotalPages(nextTotalPages)
       } else {
         setFormsError(result.error || 'Failed to fetch forms')
       }
@@ -1509,10 +1515,10 @@ ${gtagScript}
 
   return (
     <MainLayout title="Form Builder" subtitle="Create and manage forms">
-      <div className="space-y-6">
+      <div className="space-y-6 min-h-full flex flex-col">
         {/* Templates View */}
         {activeTab === 'templates' && (
-          <div className="space-y-6">
+          <div className="space-y-6 flex-1 min-h-0 flex flex-col">
             <div className="flex items-center justify-between">
               <p className="text-slate-600">Browse and manage your forms</p>
               <Button variant="gradient" onClick={openBuilderForNew}>
@@ -1657,7 +1663,7 @@ ${gtagScript}
 
                 {/* Pagination */}
                 {formsTotalPages > 1 && (
-                  <div className="flex items-center justify-between pt-2">
+                  <div className="flex items-center justify-between pt-2 mt-auto">
                     <button
                       type="button"
                       onClick={() => setFormsPage((p) => Math.max(1, p - 1))}

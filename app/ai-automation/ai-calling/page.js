@@ -12,6 +12,17 @@ import PersonasTab from './components/PersonasTab'
 import KnowledgeBaseTab from './components/KnowledgeBaseTab'
 import AiAssistTab from './components/AiAssistTab'
 
+function extractPersonasPayload(result) {
+  const payload = result?.data
+  const list = Array.isArray(payload) ? payload : payload?.personas
+  const pagination = payload?.pagination || payload?.data?.pagination || result?.pagination
+  return {
+    list: Array.isArray(list) ? list : [],
+    total: pagination?.total ?? (Array.isArray(list) ? list.length : 0),
+    totalPages: pagination?.totalPages ?? pagination?.pages,
+  }
+}
+
 function AICallingPageInner() {
   const router = useRouter()
   const pathname = usePathname()
@@ -55,13 +66,16 @@ function AICallingPageInner() {
       if (debouncedPersonasSearch) params.set('search', debouncedPersonasSearch)
 
       const result = await api.get(`/api/ai-persona?${params.toString()}`)
-      const list = Array.isArray(result.data) ? result.data : result.data?.personas
-
-      if (result.success && Array.isArray(list)) {
+      if (result.success) {
+        const { list, total, totalPages: totalPagesFromApi } = extractPersonasPayload(result)
+        const nextTotalPages = Math.max(1, totalPagesFromApi ?? Math.ceil((total || 0) / 9))
+        if (personasPage > nextTotalPages) {
+          setPersonasPage(nextTotalPages)
+          return
+        }
         setPersonas(list)
-        const total = result.pagination?.total ?? list.length
         setPersonasTotal(total)
-        setPersonasTotalPages(Math.max(1, Math.ceil((total || 0) / 9)))
+        setPersonasTotalPages(nextTotalPages)
       } else {
         setPersonasError(result.error || 'Failed to fetch AI personas')
       }
@@ -103,7 +117,8 @@ function AICallingPageInner() {
 
   return (
     <MainLayout title="AI Calling" subtitle="Manage AI-powered calling scripts and personas">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <div className="h-full min-h-full flex flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full min-h-full flex flex-col">
         <ScriptsTab />
         <PersonasTab
           personas={personas}
@@ -124,6 +139,7 @@ function AICallingPageInner() {
         <KnowledgeBaseTab />
         <AiAssistTab />
       </Tabs>
+      </div>
     </MainLayout>
   )
 }

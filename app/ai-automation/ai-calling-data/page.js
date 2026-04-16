@@ -42,8 +42,15 @@ export default function AiCallDetailPage() {
 
         const result = await api.get(`/api/ai-calling?${params.toString()}`)
         if (result.success) {
+          const pagination = result.data?.pagination ?? result.pagination
+          const total = pagination?.total || (result.data ? result.data.length : 0)
+          const nextTotalPages = Math.max(1, Math.ceil((total || 0) / ROWS_PER_PAGE))
+          if (page > nextTotalPages) {
+            setCurrentPage(nextTotalPages)
+            return
+          }
           setCalls(result.data || [])
-          setTotalCount(result.pagination?.total || (result.data ? result.data.length : 0))
+          setTotalCount(total)
         } else {
           toast.error('Failed to load AI call details', { description: result.error })
         }
@@ -134,7 +141,7 @@ export default function AiCallDetailPage() {
       title="AI Call Details"
       subtitle="Review and manage individual AI call outcomes."
     >
-      <div className="max-w-[1204px] mx-auto">
+      <div className="max-w-[1204px] mx-auto min-h-full flex flex-col">
         <div className="flex flex-col gap-6 lg:gap-8">
           {!selectedCall && (
           <div>
@@ -202,7 +209,7 @@ export default function AiCallDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="rounded-xl border border-border bg-card overflow-hidden min-h-[560px] flex flex-col">
               {loading && (
                 <div className="flex items-center justify-center py-16">
                   <LoadingSpinner size="lg" text="Loading AI call details…" />
@@ -224,7 +231,7 @@ export default function AiCallDetailPage() {
 
               {!loading && calls.length > 0 && (
                 <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 flex-1">
                 {calls.map((call) => {
                   const createdAt = call.createdAt ? new Date(call.createdAt) : null
                   const createdLabel = createdAt ? createdAt.toLocaleString() : '-'
@@ -333,7 +340,7 @@ export default function AiCallDetailPage() {
                 })}
               </div>
 
-              <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border mt-auto">
                 <button
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}

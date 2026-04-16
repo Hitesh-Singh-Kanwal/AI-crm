@@ -381,7 +381,7 @@ export default function AiAssistTab() {
   const pageNumbers = useMemo(() => Array.from({ length: totalPages }, (_, i) => i + 1), [totalPages])
 
   return (
-    <TabsContent value="assistants" className="space-y-6 mt-6">
+    <TabsContent value="assistants" className="mt-6 flex-1 min-h-0 flex flex-col gap-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
@@ -497,7 +497,7 @@ export default function AiAssistTab() {
           </div>
 
           {/* Pagination */}
-          <div className="flex flex-col gap-3 pt-2">
+          <div className="flex flex-col gap-3 pt-2 mt-auto">
             <div className="flex items-center justify-center gap-1.5 flex-wrap">
               {pageNumbers.map((n) => (
                 <button

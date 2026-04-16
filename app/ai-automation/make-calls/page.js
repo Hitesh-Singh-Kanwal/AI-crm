@@ -103,10 +103,15 @@ export default function MakeCallsPage() {
 
         const result = await api.get(`/api/lead?${params.toString()}`)
         if (result.success) {
+          const pagination = result.data?.pagination ?? result.pagination
+          const total = pagination?.total || (result.data ? result.data.length : 0)
+          const nextTotalPages = Math.max(1, Math.ceil((total || 0) / WIZARD_LEADS_PAGE_SIZE))
+          if (page > nextTotalPages) {
+            setWizardLeadsPage(nextTotalPages)
+            return
+          }
           setWizardLeads(result.data || [])
-          setWizardLeadsTotal(
-            result.pagination?.total || (result.data ? result.data.length : 0)
-          )
+          setWizardLeadsTotal(total)
         } else {
           toast.error('Failed to load contacts', { description: result.error })
         }
@@ -131,8 +136,14 @@ export default function MakeCallsPage() {
       const result = await api.get(`/api/ai-persona?${params.toString()}`)
       const list = Array.isArray(result.data) ? result.data : result.data?.personas
       if (result.success && Array.isArray(list)) {
+        const pagination = result.data?.pagination ?? result.pagination
+        const total = pagination?.total ?? list.length
+        const nextTotalPages = Math.max(1, Math.ceil((total || 0) / WIZARD_PERSONAS_PAGE_SIZE))
+        if (page > nextTotalPages) {
+          setPersonasPage(nextTotalPages)
+          return
+        }
         setPersonas(list)
-        const total = result.pagination?.total ?? list.length
         setPersonasTotal(total)
       } else {
         setPersonasError(result.error || 'Failed to load personas')

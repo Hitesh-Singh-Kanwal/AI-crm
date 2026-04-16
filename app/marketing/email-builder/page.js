@@ -27,7 +27,8 @@ function EmailsPageInner() {
   return (
     <MainLayout title="Email Builder" subtitle="Create and send beautiful email campaigns">
       {/* Tabs provider only (no duplicate visible tab list here). */}
-      <Tabs value={tabValue} onValueChange={setActiveTab} className="w-full">
+      <div className="h-full min-h-full flex flex-col">
+      <Tabs value={tabValue} onValueChange={setActiveTab} className="w-full h-full min-h-full flex flex-col">
         <EmailTemplatesTab
           dataVersion={dataVersion}
           onDataChanged={() => setDataVersion((v) => v + 1)}
@@ -41,6 +42,7 @@ function EmailsPageInner() {
         />
         <EmailAnalyticsTab />
       </Tabs>
+      </div>
     </MainLayout>
   )
 }

@@ -18,6 +18,25 @@ import EmailCategoriesDialog from './EmailCategoriesDialog'
 
 const PAGE_SIZE = 9
 
+function extractEmailTemplatesPayload(result) {
+  const payload = result?.data
+  const list = Array.isArray(payload?.emails)
+    ? payload.emails
+    : Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.data?.emails)
+    ? payload.data.emails
+    : Array.isArray(payload)
+    ? payload
+    : []
+  const pagination = payload?.pagination || payload?.data?.pagination || result?.pagination
+  return {
+    list: Array.isArray(list) ? list : [],
+    total: pagination?.total ?? (Array.isArray(list) ? list.length : 0),
+    totalPages: pagination?.totalPages ?? pagination?.pages,
+  }
+}
+
 export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onDataChanged }) {
   const toast = useToast()
   const [editingId, setEditingId] = useState(null)
@@ -57,12 +76,16 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) })
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
       const result = await api.get(`/api/emailBuilder?${params.toString()}`)
-      const list = Array.isArray(result.data) ? result.data : result.data?.emails
-      if (result.success && Array.isArray(list)) {
+      if (result.success) {
+        const { list, total, totalPages: totalPagesFromApi } = extractEmailTemplatesPayload(result)
+        const nextTotalPages = Math.max(1, totalPagesFromApi ?? Math.ceil(total / PAGE_SIZE))
+        if (page > nextTotalPages) {
+          setPage(nextTotalPages)
+          return
+        }
         setTemplates(list)
-        const total = result.pagination?.total ?? list.length
         setTotalCount(total)
-        setTotalPages(Math.max(1, Math.ceil(total / PAGE_SIZE)))
+        setTotalPages(nextTotalPages)
         setSelectedIds([])
       } else {
         setError(result.error || 'Failed to fetch email templates')
@@ -167,7 +190,7 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
   }
 
   return (
-    <TabsContent value="templates" className="space-y-6 mt-6">
+    <TabsContent value="templates" className="mt-6 flex-1 min-h-0 flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Manage email templates.</p>
         <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2 shrink-0">
@@ -358,7 +381,7 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
             ))}
           </div>
 
-          <div className="flex flex-col gap-3 pt-2">
+          <div className="flex flex-col gap-3 pt-2 mt-auto">
             <div className="flex items-center justify-center gap-1.5 flex-wrap">
               {pageNumbers.map((n) => (
                 <button

@@ -303,7 +303,7 @@ export default function RolesPage() {
 
   return (
     <MainLayout title="Roles" subtitle="Manage roles and permissions">
-      <div className="space-y-4 md:space-y-6">
+      <div className="space-y-4 md:space-y-6 min-h-full flex flex-col">
         {/* Filters */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4">
           <div className="relative flex-1 max-w-full sm:max-w-md">
@@ -407,7 +407,8 @@ export default function RolesPage() {
 
         {/* Roles (row layout) */}
         {!loading && (
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="rounded-xl border border-border bg-card overflow-hidden min-h-[460px] flex flex-col">
+            <div className="flex-1">
             <Table>
               <TableHeader>
                 <TableRow className="border-b border-border hover:bg-transparent bg-muted/40">
@@ -497,12 +498,13 @@ export default function RolesPage() {
                 })}
               </TableBody>
             </Table>
+            </div>
           </div>
         )}
 
         {/* Pagination */}
         {!loading && total > 0 && (
-          <div className="flex flex-row items-center border-t border-border pt-4">
+          <div className="flex flex-row items-center border-t border-border pt-4 mt-auto">
             <div className="text-sm text-muted-foreground w-52 flex-shrink-0">
               Showing page {currentPage} of {totalPages} ({total} total {total === 1 ? 'role' : 'roles'})
             </div>

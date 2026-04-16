@@ -28,7 +28,8 @@ function SMSPageInner() {
   return (
     <MainLayout title="SMS Campaigns" subtitle="Create and send SMS messages">
       {/* Tabs provider only (no visible tab list here). */}
-      <Tabs value={tabValue} onValueChange={setActiveTab} className="w-full">
+      <div className="h-full min-h-full flex flex-col">
+      <Tabs value={tabValue} onValueChange={setActiveTab} className="w-full h-full min-h-full flex flex-col">
         <SmsTemplatesTab
           dataVersion={dataVersion}
           onDataChanged={() => setDataVersion((v) => v + 1)}
@@ -47,6 +48,7 @@ function SMSPageInner() {
         />
         <SmsAnalyticsTab />
       </Tabs>
+      </div>
     </MainLayout>
   )
 }

@@ -170,7 +170,7 @@ export default function SmsTemplatesTab({ onCreateNew, dataVersion = 0, onDataCh
   }
 
   return (
-    <TabsContent value="templates" className="space-y-6 mt-6">
+    <TabsContent value="templates" className="mt-6 flex-1 min-h-0 flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Manage SMS templates and categories.</p>
         <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2 shrink-0">
@@ -372,7 +372,7 @@ export default function SmsTemplatesTab({ onCreateNew, dataVersion = 0, onDataCh
             ))}
           </div>
 
-          <div className="flex flex-col gap-3 pt-2">
+          <div className="flex flex-col gap-3 pt-2 mt-auto">
             <div className="flex items-center justify-center gap-1.5 flex-wrap">
               {pageNumbers.map((n) => (
                 <button
