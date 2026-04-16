@@ -76,7 +76,7 @@ export default function ScriptEditorDialog({ open, onClose, initialScript, onSav
       }
 
       const result = isEditing
-        ? await api.put(`/api/ai-script/${initialScript._id}`, payload)
+        ? await api.patch(`/api/ai-script/${initialScript._id}`, payload)
         : await api.post('/api/ai-script/', payload)
 
       if (result.success) {
