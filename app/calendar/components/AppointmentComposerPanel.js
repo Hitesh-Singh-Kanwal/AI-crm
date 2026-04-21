@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import api from '@/lib/api'
 
-// Returns "HH:MM" one hour after the given "HH:MM" string, capped at "23:00"
 function bumpHour(timeStr) {
   if (!timeStr) return ''
   const [h, m] = timeStr.split(':').map(Number)
@@ -65,6 +64,47 @@ function DateInput({ value, onChange }) {
   )
 }
 
+function MultiSelect({ values = [], onChange, options = [], placeholder }) {
+  const selected = new Set(values)
+  const available = options.filter((o) => !selected.has(o.value))
+  const selectedOptions = options.filter((o) => selected.has(o.value))
+
+  function add(val) {
+    if (val && !selected.has(val)) onChange?.([...values, val])
+  }
+  function remove(val) {
+    onChange?.(values.filter((v) => v !== val))
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-background focus-within:border-primary">
+      {selectedOptions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-2 pt-2">
+          {selectedOptions.map((opt) => (
+            <span key={opt.value} className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
+              {opt.label}
+              <button type="button" onClick={() => remove(opt.value)} className="ml-0.5 leading-none hover:text-brand/70">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <select
+          value=""
+          onChange={(e) => add(e.target.value)}
+          className="h-10 w-full appearance-none bg-transparent px-3 pr-8 text-[12px] text-foreground outline-none"
+        >
+          <option value="">{available.length === 0 ? 'All selected' : placeholder}</option>
+          {available.map((opt, i) => (
+            <option key={opt.value != null ? opt.value : i} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      </div>
+    </div>
+  )
+}
+
 function Select({ value, onChange, options = [], placeholder }) {
   return (
     <div className="relative">
@@ -115,7 +155,33 @@ function TimeRangeField({ startValue, endValue, onStartChange, onEndChange }) {
   )
 }
 
-function AppointmentFields({ form, setField, instructorOptions, customerOptions }) {
+function CreditsChip({ credits }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-semibold text-brand">
+      {credits} {credits === 1 ? 'credit' : 'credits'}
+    </span>
+  )
+}
+
+function TypeField({ value, onChange }) {
+  return (
+    <div>
+      <Label>Type</Label>
+      <Select value={value} onChange={onChange} options={TYPE_OPTIONS} placeholder="Select Type" />
+    </div>
+  )
+}
+
+function AppointmentFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap }) {
+  const selectedLesson = form.lesson_id ? lessonMap[form.lesson_id] : null
+  const lessonCredits = selectedLesson?.credits ?? null
+
+  function handleLessonChange(id) {
+    setField('lesson_id', id)
+    const lesson = lessonMap[id]
+    if (lesson?.name) setField('title', lesson.name)
+  }
+
   return (
     <>
       <h3 className="mb-4 text-[14px] font-semibold text-foreground">Individual Appointment</h3>
@@ -128,6 +194,21 @@ function AppointmentFields({ form, setField, instructorOptions, customerOptions 
             placeholder="e.g. Ballet Trial Class"
           />
         </div>
+
+        {/* Lesson selector */}
+        <div className="col-span-2">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-[12px] font-medium text-foreground">Lesson</label>
+            {lessonCredits !== null && <CreditsChip credits={lessonCredits} />}
+          </div>
+          <Select
+            value={form.lesson_id}
+            onChange={handleLessonChange}
+            options={lessonOptions}
+            placeholder="Select Lesson"
+          />
+        </div>
+
         <div>
           <Label>Instructor</Label>
           <Select
@@ -138,7 +219,12 @@ function AppointmentFields({ form, setField, instructorOptions, customerOptions 
           />
         </div>
         <div>
-          <Label>Customer</Label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-[12px] font-medium text-foreground">Customer</label>
+            {lessonCredits !== null && (
+              <span className="text-[11px] text-muted-foreground">costs {lessonCredits} credits</span>
+            )}
+          </div>
           <Select
             value={form.customer_id}
             onChange={(v) => setField('customer_id', v)}
@@ -147,22 +233,7 @@ function AppointmentFields({ form, setField, instructorOptions, customerOptions 
           />
         </div>
 
-        <div>
-          <Label>Enrolment ID</Label>
-          <Input
-            value={form.enrolment_id}
-            onChange={(v) => setField('enrolment_id', v)}
-            placeholder="Enter Enrolment ID"
-          />
-        </div>
-        <div>
-          <Label>Scheduling Code</Label>
-          <Input
-            value={form.scheduling_code}
-            onChange={(v) => setField('scheduling_code', v)}
-            placeholder="Enter Scheduling Code"
-          />
-        </div>
+        <TypeField value={form.type} onChange={(v) => setField('type', v)} />
 
         <div>
           <Label>Date</Label>
@@ -221,20 +292,12 @@ function AppointmentFields({ form, setField, instructorOptions, customerOptions 
           )}
         </div>
 
-        <div>
-          <Label>Public Note</Label>
+        <div className="col-span-2">
+          <Label>Notes</Label>
           <TextArea
             value={form.public_note}
             onChange={(v) => setField('public_note', v)}
-            placeholder="Enter your Note here"
-          />
-        </div>
-        <div>
-          <Label>Internal Note</Label>
-          <TextArea
-            value={form.internal_note}
-            onChange={(v) => setField('internal_note', v)}
-            placeholder="Enter your Note here"
+            placeholder="Enter your note here"
           />
         </div>
       </div>
@@ -259,27 +322,7 @@ function ToDoFields({ form, setField, instructorOptions }) {
           placeholder="Select Instructor"
         />
       </div>
-      <div>
-        <Label>Scheduling Code</Label>
-        <Input
-          value={form.scheduling_code}
-          onChange={(v) => setField('scheduling_code', v)}
-          placeholder="Enter Scheduling Code"
-        />
-      </div>
-      <div>
-        <Label>Status</Label>
-        <Select
-          value={form.status}
-          onChange={(v) => setField('status', v)}
-          options={[
-            { value: 'not_started', label: 'Not Started' },
-            { value: 'in_progress', label: 'In Progress' },
-            { value: 'completed', label: 'Completed' },
-          ]}
-          placeholder="Not Started"
-        />
-      </div>
+      <TypeField value={form.type} onChange={(v) => setField('type', v)} />
       <div className="col-span-2 grid grid-cols-2 gap-3">
         <div>
           <Label>Date</Label>
@@ -300,14 +343,23 @@ function ToDoFields({ form, setField, instructorOptions }) {
         <TextArea
           value={form.description}
           onChange={(v) => setField('description', v)}
-          placeholder="Enter your Description here"
+          placeholder="Enter your description here"
         />
       </div>
     </div>
   )
 }
 
-function GroupClassFields({ form, setField, instructorOptions }) {
+function GroupClassFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap }) {
+  const selectedLesson = form.lesson_id ? lessonMap[form.lesson_id] : null
+  const lessonCredits = selectedLesson?.credits ?? null
+
+  function handleLessonChange(id) {
+    setField('lesson_id', id)
+    const lesson = lessonMap[id]
+    if (lesson?.name) setField('group_name', lesson.name)
+  }
+
   return (
     <div className="grid grid-cols-2 gap-3">
       <h3 className="col-span-2 mb-1 text-[14px] font-semibold text-foreground">Group Class</h3>
@@ -319,7 +371,23 @@ function GroupClassFields({ form, setField, instructorOptions }) {
           placeholder="Enter Group Name"
         />
       </div>
-      <div>
+
+      {/* Lesson selector */}
+      <div className="col-span-2">
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-[12px] font-medium text-foreground">Lesson</label>
+          {lessonCredits !== null && <CreditsChip credits={lessonCredits} />}
+        </div>
+        <Select
+          value={form.lesson_id}
+          onChange={handleLessonChange}
+          options={lessonOptions}
+          placeholder="Select Lesson"
+        />
+      </div>
+
+      <TypeField value={form.type} onChange={(v) => setField('type', v)} />
+      <div className="col-span-2">
         <Label>Instructor</Label>
         <Select
           value={form.instructor_id}
@@ -328,27 +396,20 @@ function GroupClassFields({ form, setField, instructorOptions }) {
           placeholder="Select Instructor"
         />
       </div>
-      <div>
-        <Label>Service</Label>
-        <Input
-          value={form.service}
-          onChange={(v) => setField('service', v)}
-          placeholder="Enter Service"
-        />
-      </div>
       <div className="col-span-2">
-        <Label>Scheduling Code</Label>
-        <Input
-          value={form.scheduling_code}
-          onChange={(v) => setField('scheduling_code', v)}
-          placeholder="Enter Scheduling Code"
+        <Label>Customers</Label>
+        <MultiSelect
+          values={form.customer_ids}
+          onChange={(v) => setField('customer_ids', v)}
+          options={customerOptions}
+          placeholder="Select Customers"
         />
       </div>
       <div>
         <Label>Date</Label>
         <DateInput value={form.date} onChange={(v) => setField('date', v)} />
       </div>
-      <div>
+      <div className="col-span-2">
         <Label>Time</Label>
         <TimeRangeField
           startValue={form.start_time}
@@ -357,30 +418,46 @@ function GroupClassFields({ form, setField, instructorOptions }) {
           onEndChange={(v) => setField('end_time', v)}
         />
       </div>
-      <div>
-        <Label>Public Note</Label>
+      <div className="col-span-2">
+        <Label>Notes</Label>
         <TextArea
           value={form.public_note}
           onChange={(v) => setField('public_note', v)}
-          placeholder="Enter your Note here"
-        />
-      </div>
-      <div>
-        <Label>Internal Note</Label>
-        <TextArea
-          value={form.internal_note}
-          onChange={(v) => setField('internal_note', v)}
-          placeholder="Enter your Note here"
+          placeholder="Enter your note here"
         />
       </div>
     </div>
   )
 }
 
-function RecordOnlyFields({ form, setField, instructorOptions, customerOptions }) {
+function RecordOnlyFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap }) {
+  const selectedLesson = form.lesson_id ? lessonMap[form.lesson_id] : null
+  const lessonCredits = selectedLesson?.credits ?? null
+
+  function handleLessonChange(id) {
+    setField('lesson_id', id)
+    const lesson = lessonMap[id]
+    if (lesson?.name) setField('title', lesson.name)
+  }
+
   return (
     <div className="grid grid-cols-2 gap-3">
       <h3 className="col-span-2 mb-1 text-[14px] font-semibold text-foreground">Record Only</h3>
+
+      {/* Lesson selector */}
+      <div className="col-span-2">
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-[12px] font-medium text-foreground">Lesson</label>
+          {lessonCredits !== null && <CreditsChip credits={lessonCredits} />}
+        </div>
+        <Select
+          value={form.lesson_id}
+          onChange={handleLessonChange}
+          options={lessonOptions}
+          placeholder="Select Lesson"
+        />
+      </div>
+
       <div>
         <Label>Instructor</Label>
         <Select
@@ -391,7 +468,12 @@ function RecordOnlyFields({ form, setField, instructorOptions, customerOptions }
         />
       </div>
       <div>
-        <Label>Customer</Label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-[12px] font-medium text-foreground">Customer</label>
+          {lessonCredits !== null && (
+            <span className="text-[11px] text-muted-foreground">costs {lessonCredits} credits</span>
+          )}
+        </div>
         <Select
           value={form.customer_id}
           onChange={(v) => setField('customer_id', v)}
@@ -399,14 +481,7 @@ function RecordOnlyFields({ form, setField, instructorOptions, customerOptions }
           placeholder="Select Customer"
         />
       </div>
-      <div className="col-span-2">
-        <Label>Scheduling Code</Label>
-        <Input
-          value={form.scheduling_code}
-          onChange={(v) => setField('scheduling_code', v)}
-          placeholder="Enter Scheduling Code"
-        />
-      </div>
+      <TypeField value={form.type} onChange={(v) => setField('type', v)} />
       <div>
         <Label>Date</Label>
         <DateInput value={form.date} onChange={(v) => setField('date', v)} />
@@ -421,11 +496,11 @@ function RecordOnlyFields({ form, setField, instructorOptions, customerOptions }
         />
       </div>
       <div className="col-span-2">
-        <Label>Internal Note</Label>
+        <Label>Notes</Label>
         <TextArea
           value={form.internal_note}
           onChange={(v) => setField('internal_note', v)}
-          placeholder="Enter your Note here"
+          placeholder="Enter your note here"
         />
       </div>
     </div>
@@ -438,9 +513,19 @@ const FREQUENCY_OPTIONS = [
   { value: 'monthly', label: 'Monthly' },
 ]
 
+const TYPE_OPTIONS = [
+  { value: 'private', label: 'Private' },
+  { value: 'lesson', label: 'Lesson' },
+  { value: 'trial', label: 'Trial' },
+  { value: 'event', label: 'Event' },
+]
+
 const EMPTY_FORM = {
+  lesson_id: '',
   instructor_id: '',
+  instructor_ids: [],
   customer_id: '',
+  customer_ids: [],
   enrolment_id: '',
   scheduling_code: '',
   date: '',
@@ -449,6 +534,7 @@ const EMPTY_FORM = {
   public_note: '',
   internal_note: '',
   title: '',
+  type: '',
   status: '',
   description: '',
   group_name: '',
@@ -468,16 +554,24 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
   }))
   const [instructorOptions, setInstructorOptions] = useState([])
   const [customerOptions, setCustomerOptions] = useState([])
+  const [lessonOptions, setLessonOptions] = useState([])
+  const [lessonMap, setLessonMap] = useState({}) // id → lesson object
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState(null)
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
 
+  function handleTabChange(tab) {
+    setActiveTab(tab)
+    setField('type', TAB_TYPE_MAP[tab])
+  }
+
   useEffect(() => {
     async function loadDropdownData() {
-      const [usersResult, leadsResult] = await Promise.all([
+      const [usersResult, leadsResult, lessonsResult] = await Promise.all([
         api.get('/api/teacher?limit=200&status=active'),
         api.get('/api/customer?limit=200'),
+        api.get('/api/lesson?limit=200'),
       ])
 
       if (usersResult.success && Array.isArray(usersResult.data)) {
@@ -494,6 +588,19 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
           leadsResult.data.map((c) => ({
             value: String(c._id ?? c.id),
             label: c.name || c.email || String(c._id ?? c.id),
+          }))
+        )
+      }
+
+      if (lessonsResult.success && Array.isArray(lessonsResult.data)) {
+        const lessons = lessonsResult.data
+        const map = {}
+        lessons.forEach((l) => { map[String(l._id)] = l })
+        setLessonMap(map)
+        setLessonOptions(
+          lessons.map((l) => ({
+            value: String(l._id),
+            label: l.credits != null ? `${l.name} (${l.credits} credits)` : l.name,
           }))
         )
       }
@@ -515,9 +622,12 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
 
     const payload = {
       title: form.title || form.group_name || form.scheduling_code || 'Appointment',
-      type: TAB_TYPE_MAP[activeTab],
+      type: form.type || TAB_TYPE_MAP[activeTab],
       teacherID: form.instructor_id || undefined,
-      customerIDs: form.customer_id ? [form.customer_id] : undefined,
+      customerIDs: activeTab === 'Group Class'
+        ? (form.customer_ids.length ? form.customer_ids : undefined)
+        : (form.customer_id ? [form.customer_id] : undefined),
+      lessonID: form.lesson_id || undefined,
       startDateTime,
       endDateTime,
       notes: [form.public_note, form.internal_note].filter(Boolean).join('\n') || undefined,
@@ -547,6 +657,8 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
           setField={setField}
           instructorOptions={instructorOptions}
           customerOptions={customerOptions}
+          lessonOptions={lessonOptions}
+          lessonMap={lessonMap}
         />
       )
     }
@@ -554,7 +666,16 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
       return <ToDoFields form={form} setField={setField} instructorOptions={instructorOptions} />
     }
     if (activeTab === 'Group Class') {
-      return <GroupClassFields form={form} setField={setField} instructorOptions={instructorOptions} />
+      return (
+        <GroupClassFields
+          form={form}
+          setField={setField}
+          instructorOptions={instructorOptions}
+          customerOptions={customerOptions}
+          lessonOptions={lessonOptions}
+          lessonMap={lessonMap}
+        />
+      )
     }
     return (
       <RecordOnlyFields
@@ -562,16 +683,18 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
         setField={setField}
         instructorOptions={instructorOptions}
         customerOptions={customerOptions}
+        lessonOptions={lessonOptions}
+        lessonMap={lessonMap}
       />
     )
-  }, [activeTab, form, instructorOptions, customerOptions])
+  }, [activeTab, form, instructorOptions, customerOptions, lessonOptions, lessonMap])
 
   return (
     <aside className="h-full w-[430px] shrink-0 rounded-xl border border-border bg-card shadow-lg">
       <div className="flex items-center justify-between border-b border-border pr-1">
         <div className="flex items-center overflow-x-auto">
           {TABS.map((tab) => (
-            <TabButton key={tab} label={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)} />
+            <TabButton key={tab} label={tab} active={activeTab === tab} onClick={() => handleTabChange(tab)} />
           ))}
         </div>
         <button

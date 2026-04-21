@@ -24,7 +24,17 @@ const navItems = [
     ],
   },
   { name: 'Leads', href: '/leads', iconSrc: '/figma/sidebar/leads.svg', iconSize: 20, labelStyle: 'regular' },
-  { name: 'Calendar', href: '/calendar', iconSrc: '/figma/sidebar/calendar.svg', iconSize: 20, labelStyle: 'regular' },
+  {
+    name: 'Calendar',
+    href: '/calendar',
+    iconSrc: '/figma/sidebar/calendar.svg',
+    iconSize: 20,
+    labelStyle: 'regular',
+    children: [
+      { name: 'Calendar', href: '/calendar' },
+      { name: 'Lessons', href: '/calendar/lessons' },
+    ],
+  },
   {
     name: 'Marketing',
     href: '/marketing/form-builder',
@@ -64,6 +74,7 @@ const navItems = [
       { name: 'Users & Roles', href: '/settings/users-roles' },
       { name: 'Integrations', href: '/settings/integrations' },
       { name: 'Billing', href: '/settings/billing' },
+      { name: 'Activity Log', href: '/settings/activity-log' },
     ],
   },
 ]

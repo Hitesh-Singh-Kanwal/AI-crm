@@ -137,6 +137,8 @@ export default function EventDetailPanel({ event, onClose, onUpdated, onDeleted 
 
   const [teacherOptions, setTeacherOptions] = useState([])
   const [customerOptions, setCustomerOptions] = useState([])
+  const [customerDetails, setCustomerDetails] = useState([])
+  const [teacherDetail, setTeacherDetail] = useState(null)
 
   const [form, setForm] = useState({
     title: event.title || '',
@@ -173,6 +175,24 @@ export default function EventDetailPanel({ event, onClose, onUpdated, onDeleted 
     }
     loadOptions()
   }, [])
+
+  useEffect(() => {
+    async function loadDetails() {
+      const customerIds = (event.customerIDs || [])
+        .map((c) => (typeof c === 'object' ? c._id : c))
+        .filter(Boolean)
+      const teacherId = event.teacherID?._id ?? event.teacherID ?? null
+
+      const [customerResults, teacherRes] = await Promise.all([
+        Promise.all(customerIds.map((id) => api.get(`/api/customer/${id}`))),
+        teacherId ? api.get(`/api/teacher/${teacherId}`) : Promise.resolve(null),
+      ])
+
+      setCustomerDetails(customerResults.filter((r) => r.success).map((r) => r.data))
+      setTeacherDetail(teacherRes?.success ? teacherRes.data : null)
+    }
+    loadDetails()
+  }, [event._id])
 
   const handleUpdate = async () => {
     setError(null)
@@ -235,9 +255,6 @@ export default function EventDetailPanel({ event, onClose, onUpdated, onDeleted 
     }
     setIsDeleting(false)
   }
-
-  const teacherName = event.teacherID?.name || '—'
-  const customerNames = event.customerIDs?.map((c) => c?.name).filter(Boolean).join(', ') || '—'
 
   return (
     <aside className="h-full w-[380px] shrink-0 rounded-xl border border-border bg-card shadow-lg flex flex-col">
@@ -326,13 +343,68 @@ export default function EventDetailPanel({ event, onClose, onUpdated, onDeleted 
               <Field label="End">
                 <ReadValue>{formatDisplayTime(event.endDateTime)}</ReadValue>
               </Field>
-              <Field label="Instructor">
-                <ReadValue>{teacherName}</ReadValue>
-              </Field>
-              <Field label="Customer(s)">
-                <ReadValue>{customerNames}</ReadValue>
-              </Field>
             </div>
+
+            {/* Instructor details */}
+            <div>
+              <Label>Instructor</Label>
+              {!teacherDetail ? (
+                <p className="text-[13px] text-muted-foreground">—</p>
+              ) : (
+                <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5 mt-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                      {(teacherDetail.name || '?').charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold text-foreground truncate">{teacherDetail.name}</p>
+                      {teacherDetail.specialties?.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground truncate">{teacherDetail.specialties.join(', ')}</p>
+                      )}
+                    </div>
+                  </div>
+                  {teacherDetail.email && (
+                    <p className="text-[11px] text-muted-foreground truncate">{teacherDetail.email}</p>
+                  )}
+                  {teacherDetail.phoneNumber && (
+                    <p className="text-[11px] text-muted-foreground">{teacherDetail.phoneNumber}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Customer details */}
+            <div>
+              <Label>Customer{customerDetails.length !== 1 ? 's' : ''}</Label>
+              {customerDetails.length === 0 ? (
+                <p className="text-[13px] text-muted-foreground">—</p>
+              ) : (
+                <div className="space-y-2 mt-1">
+                  {customerDetails.map((c) => (
+                    <div key={c._id} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                            {(c.name || '?').charAt(0).toUpperCase()}
+                          </span>
+                          <span className="text-[13px] font-semibold text-foreground truncate">{c.name || '—'}</span>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                          ${c.credits ?? 0}
+                        </span>
+                      </div>
+                      {c.email && (
+                        <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>
+                      )}
+                      {c.phoneNumber && (
+                        <p className="text-[11px] text-muted-foreground">{c.phoneNumber}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {event.notes && (
               <Field label="Notes">
                 <p className="text-[12px] text-foreground whitespace-pre-wrap">{event.notes}</p>

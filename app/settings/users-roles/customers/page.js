@@ -141,13 +141,16 @@ function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
               />
             </FormField>
             <FormField label="Credits">
-              <input
-                type="number"
-                min="0"
-                value={form.credits}
-                onChange={(e) => setField('credits', e.target.value)}
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-              />
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.credits}
+                  onChange={(e) => setField('credits', e.target.value)}
+                  className="h-9 w-full rounded-lg border border-border bg-background pl-6 pr-3 text-[13px] text-foreground outline-none focus:border-primary"
+                />
+              </div>
             </FormField>
           </div>
           <FormField label="Location" required>
@@ -326,7 +329,7 @@ export default function CustomersPage() {
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
-                        {customer.credits ?? 0}
+                        ${customer.credits ?? 0}
                       </span>
                     </TableCell>
                     <TableCell className="text-[12px] text-muted-foreground">
