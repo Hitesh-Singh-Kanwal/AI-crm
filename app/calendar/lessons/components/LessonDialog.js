@@ -19,6 +19,9 @@ const EMPTY_FORM = {
   name: '',
   locationID: '',
   credits: '',
+  duration: '',
+  unit: '',
+  color: '#6366f1',
 }
 
 export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
@@ -31,8 +34,11 @@ export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
     if (lesson) {
       setForm({
         name: lesson.name || '',
-        locationID: lesson.locationID || '',
+        locationID: typeof lesson.locationID === 'object' ? (lesson.locationID?._id || '') : (lesson.locationID || ''),
         credits: lesson.credits ?? '',
+        duration: lesson.duration ?? '',
+        unit: lesson.unit ?? '',
+        color: lesson.color || '#6366f1',
       })
     } else {
       setForm(EMPTY_FORM)
@@ -55,6 +61,9 @@ export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
         name: form.name,
         locationID: form.locationID,
         credits: form.credits === '' ? 0 : Number(form.credits),
+        duration: form.duration === '' ? 50 : Number(form.duration),
+        unit: form.unit === '' ? 1 : Number(form.unit),
+        color: form.color || undefined,
       }
       const result = isEdit
         ? await api.put(`/api/lesson/${lesson._id}`, payload)
@@ -110,6 +119,50 @@ export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
                 value={form.credits}
                 onChange={(e) => set('credits', e.target.value)}
                 className="pl-6"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="lesson-duration">Duration</Label>
+              <Input
+                id="lesson-duration"
+                type="number"
+                min="0"
+                placeholder="50"
+                value={form.duration}
+                onChange={(e) => set('duration', e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="lesson-unit">Unit</Label>
+              <Input
+                id="lesson-unit"
+                type="number"
+                min="1"
+                placeholder="1"
+                value={form.unit}
+                onChange={(e) => set('unit', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lesson-color">Color</Label>
+            <div className="flex items-center gap-3">
+              <input
+                id="lesson-color"
+                type="color"
+                value={form.color || '#6366f1'}
+                onChange={(e) => set('color', e.target.value)}
+                className="h-9 w-12 rounded border border-border bg-background p-1"
+              />
+              <Input
+                value={form.color}
+                onChange={(e) => set('color', e.target.value)}
+                placeholder="#6366f1"
+                className="font-mono"
               />
             </div>
           </div>

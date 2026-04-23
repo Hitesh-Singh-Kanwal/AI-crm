@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Plus, MoreHorizontal } from 'lucide-react'
+import { Search, Plus, MoreHorizontal, FileText } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -23,23 +23,23 @@ import {
 import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
-import LessonDialog from './components/LessonDialog'
+import ServiceDialog from './components/ServiceDialog'
 
 const ROWS_PER_PAGE = 10
 
-export default function LessonsPage() {
-  const [lessons, setLessons] = useState([])
+export default function CalendarServicesPage() {
+  const [services, setServices] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingLesson, setEditingLesson] = useState(null)
+  const [editingService, setEditingService] = useState(null)
 
   const totalPages = Math.max(1, Math.ceil(totalCount / ROWS_PER_PAGE))
 
-  const loadLessons = useCallback(async (page, search) => {
+  const loadServices = useCallback(async (page, search) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -48,18 +48,17 @@ export default function LessonsPage() {
       })
       if (search) params.set('search', search)
 
-      const result = await api.get(`/api/lesson?${params.toString()}`)
+      const result = await api.get(`/api/calendar-service?${params.toString()}`)
       if (result.success) {
         const data = Array.isArray(result.data) ? result.data : []
-        const total = result.pagination?.total ?? data.length
-        setLessons(data)
-        setTotalCount(total)
+        setServices(data)
+        setTotalCount(result.pagination?.total ?? data.length)
       } else {
-        toast.error('Failed to load lessons', { description: result.error })
+        toast.error('Failed to load services', { description: result.error })
       }
     } catch (e) {
       console.error(e)
-      toast.error('Error', { description: 'Unable to load lessons' })
+      toast.error('Error', { description: 'Unable to load services' })
     } finally {
       setLoading(false)
       setSelectedIds([])
@@ -67,80 +66,88 @@ export default function LessonsPage() {
   }, [])
 
   useEffect(() => {
-    loadLessons(currentPage, searchQuery)
-  }, [currentPage, searchQuery, loadLessons])
+    loadServices(currentPage, searchQuery)
+  }, [currentPage, searchQuery, loadServices])
 
   const toggleOne = (id) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
 
   const toggleAll = () => {
-    if (selectedIds.length === lessons.length) setSelectedIds([])
-    else setSelectedIds(lessons.map((l) => l._id))
+    if (selectedIds.length === services.length) setSelectedIds([])
+    else setSelectedIds(services.map((s) => s._id))
   }
 
   function openCreate() {
-    setEditingLesson(null)
+    setEditingService(null)
     setDialogOpen(true)
   }
 
-  function openEdit(lesson) {
-    setEditingLesson(lesson)
+  function openEdit(service) {
+    setEditingService(service)
     setDialogOpen(true)
   }
 
-  async function handleDelete(lesson) {
-    if (!window.confirm(`Delete "${lesson.name}"? This cannot be undone.`)) return
+  async function handleDelete(service) {
+    if (!window.confirm(`Delete "${service.serviceName}"? This cannot be undone.`)) return
     try {
-      const result = await api.delete(`/api/lesson/${lesson._id}`)
+      const result = await api.delete(`/api/calendar-service/${service._id}`)
       if (result.success) {
-        toast.success('Lesson deleted')
-        loadLessons(currentPage, searchQuery)
+        toast.success('Service deleted')
+        loadServices(currentPage, searchQuery)
       } else {
         toast.error('Delete failed', { description: result.error })
       }
     } catch (e) {
       console.error(e)
-      toast.error('Error', { description: 'Unable to delete lesson' })
+      toast.error('Error', { description: 'Unable to delete service' })
     }
   }
 
-  const isActiveLesson = (lesson) => {
-    const end = lesson?.endDate ? new Date(lesson.endDate) : null
-    return !end || end >= new Date()
+  async function handleToggleStatus(service) {
+    try {
+      const result = await api.patch(`/api/calendar-service/${service._id}/toggle`)
+      if (result.success) {
+        toast.success(`Service ${service.isActive ? 'deactivated' : 'activated'}`)
+        loadServices(currentPage, searchQuery)
+      } else {
+        toast.error('Failed', { description: result.error })
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('Error', { description: 'Unable to update service status' })
+    }
   }
 
-  if (loading && lessons.length === 0) {
+  if (loading && services.length === 0) {
     return (
-      <MainLayout title="Lessons" subtitle="">
+      <MainLayout title="Calendar Services" subtitle="">
         <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
-          <GlobalLoader variant="center" size="md" text="Loading lessons…" />
+          <GlobalLoader variant="center" size="md" text="Loading services…" />
         </div>
       </MainLayout>
     )
   }
 
   return (
-    <MainLayout title="Lessons" subtitle="">
+    <MainLayout title="Calendar Services" subtitle="">
       <div className="max-w-[1204px] mx-auto min-h-full flex flex-col">
-        {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-semibold text-foreground tracking-tight">Lessons</h1>
+            <h1 className="text-2xl font-semibold text-foreground tracking-tight">Calendar Services</h1>
             <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
-              {totalCount} {totalCount === 1 ? 'lesson' : 'lessons'}
+              {totalCount} {totalCount === 1 ? 'service' : 'services'}
             </span>
           </div>
           <p className="text-sm font-normal text-muted-foreground">
-            Manage your studio's lesson offerings.
+            Manage your studio's calendar services and offerings.
           </p>
         </div>
 
-        {/* Search + Add */}
         <div className="flex items-center justify-between gap-3 mb-6">
           <div className="relative w-[220px] shrink-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search lessons…"
+              placeholder="Search services…"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
               className="pl-9 h-9 rounded-lg bg-background text-sm placeholder:text-muted-foreground"
@@ -151,11 +158,10 @@ export default function LessonsPage() {
             onClick={openCreate}
           >
             <Plus className="h-4 w-4" />
-            Create New
+            Add Service
           </Button>
         </div>
 
-        {/* Table */}
         <div className="rounded-xl border border-border bg-card min-h-[560px] flex flex-col">
           <div className="flex-1 overflow-x-auto">
             <Table>
@@ -163,81 +169,91 @@ export default function LessonsPage() {
                 <TableRow className="border-b border-border hover:bg-transparent bg-muted/30">
                   <TableHead className="w-12 py-3 pl-4 pr-0">
                     <Checkbox
-                      checked={selectedIds.length === lessons.length && lessons.length > 0}
+                      checked={selectedIds.length === services.length && services.length > 0}
                       onClick={toggleAll}
                       className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
                     />
                   </TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Lesson</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Location Name</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Duration</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Unit</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Credits</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Color</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Active</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Service Name</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Service Code</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Location</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Description</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Documents</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Count on Calendar</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Sort Order</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Status</TableHead>
                   <TableHead className="w-12 py-3 pr-4 pl-0" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {lessons.length === 0 ? (
+                {services.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-16 text-center text-sm text-muted-foreground">
-                      {searchQuery ? 'No lessons match your search.' : 'No lessons yet. Click "Create New" to add one.'}
+                    <TableCell colSpan={10} className="py-16 text-center text-sm text-muted-foreground">
+                      {searchQuery ? 'No services match your search.' : 'No services yet. Click "Add Service" to create one.'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  lessons.map((lesson) => (
+                  services.map((service) => (
                     <TableRow
-                      key={lesson._id}
+                      key={service._id}
                       className="border-b border-border hover:bg-muted/30 transition-colors"
                     >
                       <TableCell className="py-3 pl-4 pr-0">
                         <Checkbox
-                          checked={selectedIds.includes(lesson._id)}
-                          onClick={() => toggleOne(lesson._id)}
+                          checked={selectedIds.includes(service._id)}
+                          onClick={() => toggleOne(service._id)}
                           className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
                         />
                       </TableCell>
                       <TableCell className="py-3 px-4">
-                        <p className="text-sm text-foreground">{lesson.name}</p>
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground shrink-0">
+                            {service.serviceName.charAt(0).toUpperCase()}
+                          </div>
+                          <p className="text-sm font-normal text-foreground leading-tight">{service.serviceName}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
+                        <span className="inline-flex items-center rounded px-2 py-0.5 text-xs font-mono font-medium bg-muted text-foreground border border-border">
+                          {service.serviceCode}
+                        </span>
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <p className="text-sm text-foreground">
-                          {typeof lesson.locationID === 'object' ? (lesson.locationID?.name || '—') : '—'}
+                          {service.locationID?.name || <span className="text-muted-foreground">—</span>}
+                        </p>
+                      </TableCell>
+                      <TableCell className="py-3 px-4 max-w-[200px]">
+                        <p className="text-sm text-muted-foreground truncate">
+                          {service.description || '—'}
                         </p>
                       </TableCell>
                       <TableCell className="py-3 px-4">
-                        <p className="text-sm text-foreground">{lesson.duration ?? 50}</p>
-                      </TableCell>
-                      <TableCell className="py-3 px-4">
-                        <p className="text-sm text-foreground">{lesson.unit ?? 1}</p>
-                      </TableCell>
-                      <TableCell className="py-3 px-4">
-                        <p className="text-sm text-foreground">{lesson.credits ?? 0}</p>
-                      </TableCell>
-                      <TableCell className="py-3 px-4">
-                        {lesson.color ? (
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="h-6 w-10 rounded border border-black/10 shrink-0"
-                              style={{ backgroundColor: lesson.color }}
-                            />
-                            <span className="text-xs font-mono text-muted-foreground">{lesson.color}</span>
+                        {service.documents?.length > 0 ? (
+                          <div className="flex items-center gap-1.5">
+                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-sm text-foreground">{service.documents.length}</span>
                           </div>
                         ) : (
                           <span className="text-sm text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell className="py-3 px-4">
+                        <p className="text-sm text-foreground">{service.countOnCalendar ?? 0}</p>
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
+                        <p className="text-sm text-foreground">{service.sortByOrder ?? 0}</p>
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
                         <span
                           className={[
                             'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                            isActiveLesson(lesson)
+                            service.isActive
                               ? 'bg-emerald-500/10 text-emerald-600'
                               : 'bg-muted text-muted-foreground',
                           ].join(' ')}
                         >
-                          {isActiveLesson(lesson) ? 'Active' : 'Inactive'}
+                          {service.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </TableCell>
                       <TableCell className="py-3 pr-4 pl-0">
@@ -252,10 +268,13 @@ export default function LessonsPage() {
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEdit(lesson)}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEdit(service)}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleToggleStatus(service)}>
+                              {service.isActive ? 'Deactivate' : 'Activate'}
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-red-600"
-                              onClick={() => handleDelete(lesson)}
+                              onClick={() => handleDelete(service)}
                             >
                               Delete
                             </DropdownMenuItem>
@@ -269,7 +288,6 @@ export default function LessonsPage() {
             </Table>
           </div>
 
-          {/* Pagination */}
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
             <button
               type="button"
@@ -293,11 +311,11 @@ export default function LessonsPage() {
           </div>
         </div>
 
-        <LessonDialog
+        <ServiceDialog
           open={dialogOpen}
           onClose={() => setDialogOpen(false)}
-          lesson={editingLesson}
-          onRefresh={() => loadLessons(currentPage, searchQuery)}
+          service={editingService}
+          onRefresh={() => loadServices(currentPage, searchQuery)}
         />
       </div>
     </MainLayout>

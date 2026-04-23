@@ -205,13 +205,13 @@
 
 .calendar-shell .fc .fc-event {
   border-radius: 6px;
-  overflow: hidden;
+  overflow: visible !important;
 }
 
 /* Let renderEventContent own all visual styling */
 .calendar-shell .fc .fc-event .fc-event-main {
   padding: 0;
-  overflow: hidden;
+  overflow: visible !important;
   height: 100%;
 }
 

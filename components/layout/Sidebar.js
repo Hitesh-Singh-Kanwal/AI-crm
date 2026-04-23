@@ -33,6 +33,8 @@ const navItems = [
     children: [
       { name: 'Calendar', href: '/calendar' },
       { name: 'Lessons', href: '/calendar/lessons' },
+      { name: 'Services', href: '/calendar/services' },
+      { name: 'Packages', href: '/calendar/packages' },
     ],
   },
   {

@@ -10,10 +10,13 @@ function DropdownMenu({ children }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const triggerRef = useRef(null)
+  const contentRef = useRef(null)
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) {
+      const insideTrigger = ref.current?.contains(event.target)
+      const insideContent = contentRef.current?.contains(event.target)
+      if (!insideTrigger && !insideContent) {
         setOpen(false)
       }
     }
@@ -22,7 +25,7 @@ function DropdownMenu({ children }) {
   }, [])
 
   return (
-    <DropdownContext.Provider value={{ open, setOpen, triggerRef }}>
+    <DropdownContext.Provider value={{ open, setOpen, triggerRef, contentRef }}>
       <div ref={ref} className="relative inline-block">
         {children}
       </div>
@@ -49,8 +52,7 @@ function DropdownMenuTrigger({ children, asChild }) {
 }
 
 function DropdownMenuContent({ className, align = 'end', children }) {
-  const { open, setOpen, triggerRef } = useContext(DropdownContext)
-  const contentRef = useRef(null)
+  const { open, setOpen, triggerRef, contentRef } = useContext(DropdownContext)
   const [pos, setPos] = useState(null) // { top, left, minWidth }
 
   useEffect(() => {
