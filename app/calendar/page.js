@@ -259,6 +259,17 @@ function TypeBadge({ type }) {
   );
 }
 
+function StatusBadge({ status }) {
+  if (!status || status === "scheduled") return null;
+  const s = STATUS_STYLES[status];
+  if (!s) return null;
+  return (
+    <span className={`shrink-0 rounded px-1 py-px text-[8px] font-semibold leading-none ${s.bg} ${s.text}`}>
+      {s.label}
+    </span>
+  );
+}
+
 // ─── List (Agenda) View ───────────────────────────────────────────────────────
 
 function formatListDayLabel(date) {
@@ -491,7 +502,7 @@ function ListCalendarView({ events, focusDate, onEventClick }) {
 function renderEventContent(info) {
   const { tutorName, status, effectiveStatus, color, customerNames, eventType } =
     info.event.extendedProps || {};
-  const cancelled = effectiveStatus === "cancelled";
+  const cancelled = effectiveStatus === "cancelled_no_charge" || effectiveStatus === "cancelled_charged";
   const completed = effectiveStatus === "completed";
   const accentColor = color || "var(--studio-primary)";
 
@@ -578,6 +589,11 @@ function renderEventContent(info) {
           </span>
           <TypeBadge type={eventType} />
         </div>
+        {status && status !== "scheduled" && (
+          <div className="shrink-0 mt-0.5">
+            <StatusBadge status={status} />
+          </div>
+        )}
         {showTime && (timeRange || durationLabel) && (
           <div className="text-[9px] text-muted-foreground leading-tight truncate shrink-0">
             {timeRange}{timeRange && durationLabel ? ` (${durationLabel})` : durationLabel}

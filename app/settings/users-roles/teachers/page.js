@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Plus, MoreHorizontal, Trash2, Pencil, X, ChevronDown } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Search, Plus, MoreHorizontal, Trash2, Pencil, X, ChevronDown, CalendarDays } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -243,6 +244,7 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
 }
 
 export default function TeachersPage() {
+  const router = useRouter()
   const [teachers, setTeachers] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -428,6 +430,10 @@ export default function TeachersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => router.push(`/calendar?teacherID=${teacher._id}`)}>
+                            <CalendarDays className="mr-2 h-3.5 w-3.5" />
+                            View on Calendar
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setEditingTeacher(teacher); setDialogOpen(true) }}>
                             <Pencil className="mr-2 h-3.5 w-3.5" />
                             Edit

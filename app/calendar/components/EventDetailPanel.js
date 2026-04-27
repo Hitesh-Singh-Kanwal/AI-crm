@@ -523,6 +523,27 @@ export default function EventDetailPanel({
                     </span>
                   )}
                 </div>
+                {/* Billing status */}
+                {event.calendarServiceID.isChargeable && (
+                  <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
+                    {event.chargeApplied ? (
+                      <>
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                        <span className="text-[11px] text-emerald-600 font-medium">
+                          {event.chargeMethod === "package" && "Session deducted from package"}
+                          {event.chargeMethod === "credits" && `$${Number(event.calendarServiceID.price).toFixed(2)} deducted from credits`}
+                          {event.chargeMethod === "mixed" && "Charged via package + credits"}
+                          {event.chargeMethod === "none" && "Charged"}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+                        <span className="text-[11px] text-muted-foreground">Not charged (refunded or waived)</span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

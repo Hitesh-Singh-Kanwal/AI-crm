@@ -41,7 +41,8 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
   const [isSelling, setIsSelling] = useState(false);
   const [sellError, setSellError] = useState(null);
 
-  const [paymentEvents, setPaymentEvents] = useState([]);
+  const [collectedPayments, setCollectedPayments] = useState([]);
+  const [serviceCharges, setServiceCharges] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
   const [msgMode, setMsgMode] = useState("sms"); // "sms" | "email"
@@ -51,6 +52,8 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
   const [isSendingMsg, setIsSendingMsg] = useState(false);
   const [msgSuccess, setMsgSuccess] = useState(null);
   const [msgError, setMsgError] = useState(null);
+  const [smsHistory, setSmsHistory] = useState([]);
+  const [loadingSmsHistory, setLoadingSmsHistory] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -136,13 +139,25 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
       setLoadingPayments(true);
       const result = await api.get(`/api/calendar/customer/${customerId}`);
       if (result.success && Array.isArray(result.data)) {
-        setPaymentEvents(
-          result.data
-            .filter((e) => e.payment?.collected)
-            .sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime))
-        );
+        const sorted = [...result.data].sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime));
+        setCollectedPayments(sorted.filter((e) => e.payment?.collected));
+        setServiceCharges(sorted.filter((e) => e.chargeApplied));
       }
       setLoadingPayments(false);
+    }
+    load();
+  }, [activeTab, customerId]);
+
+  useEffect(() => {
+    if (activeTab !== "messages") return;
+    async function load() {
+      setLoadingSmsHistory(true);
+      const result = await api.get(`/api/smsHistory?leadID=${customerId}&limit=100`);
+      if (result.success && Array.isArray(result.data)) {
+        const sorted = [...result.data].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        setSmsHistory(sorted);
+      }
+      setLoadingSmsHistory(false);
     }
     load();
   }, [activeTab, customerId]);
@@ -160,8 +175,13 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
         message: smsText.trim(),
         scheduleNow: true,
       });
-      if (result.success) { setMsgSuccess("SMS sent."); setSmsText(""); }
-      else setMsgError(result.error || "Failed to send SMS.");
+      if (result.success) {
+        const optimistic = { _id: Date.now(), from: "you", to: customer.phoneNumber, message: smsText.trim(), status: "queued", createdAt: new Date().toISOString() };
+        setSmsHistory((prev) => [...prev, optimistic]);
+        setSmsText("");
+      } else {
+        setMsgError(result.error || "Failed to send SMS.");
+      }
     } else {
       if (!emailSubject.trim() || !emailBody.trim()) { setMsgError("Subject and body are required."); return; }
       if (!customer.email) { setMsgError("This student has no email on file."); return; }
@@ -469,11 +489,34 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
 
                 {msgMode === "sms" ? (
                   <div className="space-y-2">
+                    {/* Conversation thread */}
+                    <div className="h-48 overflow-y-auto flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2">
+                      {loadingSmsHistory ? (
+                        <p className="text-[10px] text-muted-foreground text-center pt-4">Loading…</p>
+                      ) : smsHistory.length === 0 ? (
+                        <p className="text-[10px] text-muted-foreground text-center pt-4">No messages yet.</p>
+                      ) : (
+                        smsHistory.map((msg) => {
+                          const isInbound = msg.status === "received";
+                          return (
+                            <div key={msg._id} className={`flex flex-col ${isInbound ? "items-start" : "items-end"}`}>
+                              <div className={`max-w-[85%] px-2.5 py-1.5 rounded-xl text-[11px] leading-snug ${isInbound ? "bg-card border border-border text-foreground" : "bg-brand text-brand-foreground"}`}>
+                                {msg.message}
+                              </div>
+                              <span className="text-[9px] text-muted-foreground mt-0.5 px-1">
+                                {isInbound ? (msg.leadID?.name || "Customer") : "You"} · {new Date(msg.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    {/* Composer */}
                     <p className="text-[10px] text-muted-foreground">
                       To: {customer?.phoneNumber || <span className="text-destructive">No phone number</span>}
                     </p>
                     <textarea
-                      rows={4}
+                      rows={3}
                       value={smsText}
                       onChange={(e) => setSmsText(e.target.value)}
                       placeholder="Type your message…"
@@ -521,53 +564,109 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
             {activeTab === "payments" && (
               <div className="space-y-3">
                 {/* Summary row */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Total Collected</p>
-                    <p className="text-[18px] font-bold text-emerald-500">
-                      ${paymentEvents.reduce((sum, e) => sum + (e.payment?.amount ?? 0), 0).toFixed(2)}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-2">
+                    <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">Auto Charged</p>
+                    <p className="text-[15px] font-bold text-violet-500">
+                      ${serviceCharges.reduce((sum, e) => sum + (e.calendarServiceID?.price ?? 0), 0).toFixed(2)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Credits Balance</p>
-                    <p className="text-[18px] font-bold text-foreground">${customer.credits ?? 0}</p>
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-2">
+                    <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">Collected</p>
+                    <p className="text-[15px] font-bold text-emerald-500">
+                      ${collectedPayments.reduce((sum, e) => sum + (e.payment?.amount ?? 0), 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-2">
+                    <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">Credits</p>
+                    <p className="text-[15px] font-bold text-foreground">${customer.credits ?? 0}</p>
                   </div>
                 </div>
 
                 {loadingPayments ? (
                   <p className="text-[12px] text-muted-foreground animate-pulse">Loading…</p>
-                ) : !paymentEvents.length ? (
-                  <p className="text-[12px] text-muted-foreground">No payments recorded yet.</p>
                 ) : (
-                  paymentEvents.map((evt) => {
-                    const METHOD_LABELS = { cash: "Cash", card: "Card", online: "Online", cheque: "Cheque", other: "Other" };
-                    const method = evt.payment?.method;
-                    return (
-                      <div key={evt._id} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-[12px] font-semibold text-foreground truncate leading-tight">{evt.title}</p>
-                          <p className="shrink-0 text-[14px] font-bold text-emerald-500 leading-tight">
-                            ${(evt.payment?.amount ?? 0).toFixed(2)}
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <p className="text-[10px] text-muted-foreground">
-                            {new Date(evt.startDateTime).toLocaleDateString("en-US", {
-                              weekday: "short", month: "short", day: "numeric",
-                            })}{" · "}
-                            {new Date(evt.startDateTime).toLocaleTimeString("en-US", {
-                              hour: "numeric", minute: "2-digit", hour12: true,
-                            })}
-                          </p>
-                          {method && (
-                            <span className="rounded-full bg-muted px-2 py-0.5 text-[9px] font-semibold text-muted-foreground uppercase">
-                              {METHOD_LABELS[method] ?? method}
-                            </span>
-                          )}
-                        </div>
+                  <>
+                    {/* Service charges section */}
+                    {serviceCharges.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                          Auto-charged from bookings
+                        </p>
+                        {serviceCharges.map((evt) => {
+                          const METHOD_LABEL = {
+                            package: { text: "Package", cls: "bg-violet-500/10 text-violet-600" },
+                            credits: { text: "Credits", cls: "bg-blue-500/10 text-blue-600" },
+                            mixed:   { text: "Mixed",   cls: "bg-orange-500/10 text-orange-600" },
+                          };
+                          const m = METHOD_LABEL[evt.chargeMethod] ?? { text: "Charged", cls: "bg-muted text-muted-foreground" };
+                          return (
+                            <div key={evt._id} className="rounded-lg border border-border bg-muted/30 px-3 py-2 space-y-0.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-[12px] font-semibold text-foreground truncate">{evt.title}</p>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {evt.calendarServiceID?.price > 0 && (
+                                    <span className="text-[12px] font-bold text-violet-500">
+                                      ${Number(evt.calendarServiceID.price).toFixed(2)}
+                                    </span>
+                                  )}
+                                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${m.cls}`}>
+                                    {m.text}
+                                  </span>
+                                </div>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground">
+                                {new Date(evt.startDateTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                                {" · "}
+                                {new Date(evt.startDateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                              </p>
+                              {evt.calendarServiceID?.serviceName && (
+                                <p className="text-[10px] text-muted-foreground">{evt.calendarServiceID.serviceName}</p>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })
+                    )}
+
+                    {/* Collected payments section */}
+                    {collectedPayments.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                          Collected payments (cash / card)
+                        </p>
+                        {collectedPayments.map((evt) => {
+                          const METHOD_LABELS = { cash: "Cash", card: "Card", online: "Online", cheque: "Cheque", other: "Other" };
+                          return (
+                            <div key={evt._id} className="rounded-lg border border-border bg-muted/30 px-3 py-2 space-y-0.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-[12px] font-semibold text-foreground truncate">{evt.title}</p>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-[12px] font-bold text-emerald-500">
+                                    ${(evt.payment?.amount ?? 0).toFixed(2)}
+                                  </span>
+                                  {evt.payment?.method && (
+                                    <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
+                                      {METHOD_LABELS[evt.payment.method] ?? evt.payment.method}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground">
+                                {new Date(evt.startDateTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                                {" · "}
+                                {new Date(evt.startDateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {serviceCharges.length === 0 && collectedPayments.length === 0 && (
+                      <p className="text-[12px] text-muted-foreground">No payments recorded yet.</p>
+                    )}
+                  </>
                 )}
               </div>
             )}

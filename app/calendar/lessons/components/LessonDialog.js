@@ -21,6 +21,8 @@ const EMPTY_FORM = {
   duration: '',
   unit: '',
   color: '#6366f1',
+  startDate: '',
+  endDate: '',
 }
 
 export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
@@ -37,6 +39,8 @@ export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
         duration: lesson.duration ?? '',
         unit: lesson.unit ?? '',
         color: lesson.color || '#6366f1',
+        startDate: lesson.startDate ? lesson.startDate.slice(0, 10) : '',
+        endDate: lesson.endDate ? lesson.endDate.slice(0, 10) : '',
       })
     } else {
       setForm(EMPTY_FORM)
@@ -61,6 +65,8 @@ export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
         duration: form.duration === '' ? 50 : Number(form.duration),
         unit: form.unit === '' ? 1 : Number(form.unit),
         color: form.color || undefined,
+        startDate: form.startDate || undefined,
+        endDate: form.endDate || undefined,
       }
       const result = isEdit
         ? await api.put(`/api/lesson/${lesson._id}`, payload)
@@ -144,6 +150,27 @@ export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
                 onChange={(e) => set('color', e.target.value)}
                 placeholder="#6366f1"
                 className="font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="lesson-start">Start date</Label>
+              <Input
+                id="lesson-start"
+                type="date"
+                value={form.startDate}
+                onChange={(e) => set('startDate', e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="lesson-end">End date</Label>
+              <Input
+                id="lesson-end"
+                type="date"
+                value={form.endDate}
+                onChange={(e) => set('endDate', e.target.value)}
               />
             </div>
           </div>

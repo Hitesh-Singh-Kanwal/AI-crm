@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Plus, MoreHorizontal, Trash2, Pencil, ChevronDown } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Search, Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -186,6 +187,7 @@ function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
 }
 
 export default function CustomersPage() {
+  const router = useRouter()
   const [customers, setCustomers] = useState([])
   const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(false)
@@ -307,7 +309,11 @@ export default function CustomersPage() {
                 </TableRow>
               ) : (
                 customers.map((customer) => (
-                  <TableRow key={customer._id} className="hover:bg-muted/20">
+                  <TableRow
+                    key={customer._id}
+                    className="hover:bg-muted/20 cursor-pointer"
+                    onClick={() => router.push(`/settings/users-roles/customers/${customer._id}`)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
@@ -335,7 +341,7 @@ export default function CustomersPage() {
                     <TableCell className="text-[12px] text-muted-foreground">
                       {formatDate(customer.createdAt)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -343,6 +349,10 @@ export default function CustomersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => router.push(`/settings/users-roles/customers/${customer._id}`)}>
+                            <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                            View Profile
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setEditingCustomer(customer); setDialogOpen(true) }}>
                             <Pencil className="mr-2 h-3.5 w-3.5" />
                             Edit

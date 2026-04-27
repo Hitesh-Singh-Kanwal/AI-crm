@@ -89,6 +89,8 @@ const EMPTY_FORM = {
   payment_collected:   false,
   payment_amount:      "",
   payment_method:      "",
+  group_sell_package:  false,
+  group_package_id:    "",
 };
 
 // ─── Primitive UI components ──────────────────────────────────────────────────
@@ -476,8 +478,21 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
 
 // ─── Student picker (single) ──────────────────────────────────────────────────
 
-function StudentPicker({ value, onChange, options, onNewCustomer }) {
+function StudentPicker({ value, onChange, options, onNewCustomer, lessonOptions = [], onEnrollStudent }) {
   const [showNew, setShowNew] = useState(false);
+  const [newStudentId, setNewStudentId] = useState(null);
+  const [enrollLessonId, setEnrollLessonId] = useState("");
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [enrollDone, setEnrollDone] = useState(false);
+
+  async function handleEnroll() {
+    if (!enrollLessonId || !newStudentId) return;
+    setIsEnrolling(true);
+    await onEnrollStudent?.(newStudentId, enrollLessonId);
+    setEnrollDone(true);
+    setIsEnrolling(false);
+  }
+
   return (
     <div>
       <StyledSelect value={value} onChange={onChange} options={options} placeholder="Select student…" />
@@ -485,7 +500,13 @@ function StudentPicker({ value, onChange, options, onNewCustomer }) {
         <NewStudentInlineForm
           onCreate={async (data) => {
             const id = await onNewCustomer(data);
-            if (id) { onChange(id); setShowNew(false); }
+            if (id) {
+              onChange(id);
+              setShowNew(false);
+              setNewStudentId(id);
+              setEnrollDone(false);
+              setEnrollLessonId("");
+            }
             return id;
           }}
           onCancel={() => setShowNew(false)}
@@ -499,6 +520,42 @@ function StudentPicker({ value, onChange, options, onNewCustomer }) {
           <Plus className="h-3 w-3" />
           Add new student
         </button>
+      )}
+
+      {/* Enrollment prompt shown after a new student is created */}
+      {newStudentId && !showNew && lessonOptions.length > 0 && (
+        <div className="mt-2 rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
+          <p className="text-[11px] font-semibold text-primary">Add Enrollment</p>
+          {enrollDone ? (
+            <p className="text-[11px] text-emerald-600 font-medium">Enrolled successfully.</p>
+          ) : (
+            <>
+              <StyledSelect
+                value={enrollLessonId}
+                onChange={setEnrollLessonId}
+                options={lessonOptions}
+                placeholder="Select program to enroll in…"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewStudentId(null)}
+                  className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40 transition-colors"
+                >
+                  Skip
+                </button>
+                <button
+                  type="button"
+                  onClick={handleEnroll}
+                  disabled={!enrollLessonId || isEnrolling}
+                  className="flex-1 h-8 rounded-lg bg-primary text-[11px] font-semibold text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                  {isEnrolling ? "Enrolling…" : "Add Enrollment"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
@@ -581,7 +638,7 @@ function SchedulingBlock({ form, setField, lessonOptions, lessonMap, serviceOpti
 
 // ─── Tab form components ──────────────────────────────────────────────────────
 
-function AppointmentFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions, onNewCustomer }) {
+function AppointmentFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions, onNewCustomer, onEnrollStudent }) {
   return (
     <div className="space-y-4">
       <SchedulingBlock form={form} setField={setField} lessonOptions={lessonOptions} lessonMap={lessonMap} serviceOptions={serviceOptions} serviceMap={serviceMap} />
@@ -594,7 +651,7 @@ function AppointmentFields({ form, setField, instructorOptions, customerOptions,
         </div>
         <div>
           <FieldLabel>Student</FieldLabel>
-          <StudentPicker value={form.customer_id} onChange={(v) => setField("customer_id", v)} options={customerOptions} onNewCustomer={onNewCustomer} />
+          <StudentPicker value={form.customer_id} onChange={(v) => setField("customer_id", v)} options={customerOptions} onNewCustomer={onNewCustomer} lessonOptions={lessonOptions} onEnrollStudent={onEnrollStudent} />
         </div>
       </div>
 
@@ -613,7 +670,7 @@ function AppointmentFields({ form, setField, instructorOptions, customerOptions,
   );
 }
 
-function IntroLessonFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions, onNewCustomer }) {
+function IntroLessonFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions, onNewCustomer, onEnrollStudent }) {
   return (
     <div className="space-y-4">
       <SchedulingBlock form={form} setField={setField} lessonOptions={lessonOptions} lessonMap={lessonMap} serviceOptions={serviceOptions} serviceMap={serviceMap} />
@@ -626,7 +683,7 @@ function IntroLessonFields({ form, setField, instructorOptions, customerOptions,
         </div>
         <div>
           <FieldLabel>Student</FieldLabel>
-          <StudentPicker value={form.customer_id} onChange={(v) => setField("customer_id", v)} options={customerOptions} onNewCustomer={onNewCustomer} />
+          <StudentPicker value={form.customer_id} onChange={(v) => setField("customer_id", v)} options={customerOptions} onNewCustomer={onNewCustomer} lessonOptions={lessonOptions} onEnrollStudent={onEnrollStudent} />
         </div>
       </div>
 
@@ -667,11 +724,45 @@ function GroupClassFields({ form, setField, instructorOptions, customerOptions, 
           <FieldLabel>Students</FieldLabel>
           <StudentsPicker values={form.customer_ids} onChange={(v) => setField("customer_ids", v)} options={customerOptions} onNewCustomer={onNewCustomer} />
         </div>
-        <div>
-          <FieldLabel>Package</FieldLabel>
-          <StyledSelect value={form.package_id} onChange={(v) => setField("package_id", v)} options={packageOptions} placeholder="Select package…" />
-        </div>
       </div>
+
+      {/* Sell package inline — shown once at least one student is selected */}
+      {form.customer_ids.length > 0 && (
+        <div className={[
+          "rounded-xl border px-3 py-2.5 transition-colors",
+          form.group_sell_package ? "border-emerald-500/30 bg-emerald-500/5" : "border-border bg-muted/20",
+        ].join(" ")}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`text-[12px] font-semibold ${form.group_sell_package ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
+                {form.group_sell_package ? "Selling package at booking" : "Sell package at booking"}
+              </p>
+              {!form.group_sell_package && (
+                <p className="text-[10px] text-muted-foreground">
+                  Sell to all {form.customer_ids.length} selected student{form.customer_ids.length !== 1 ? "s" : ""}
+                </p>
+              )}
+            </div>
+            <Toggle checked={form.group_sell_package} onChange={(v) => setField("group_sell_package", v)} />
+          </div>
+          {form.group_sell_package && (
+            <div className="mt-2.5">
+              <FieldLabel>Package</FieldLabel>
+              <StyledSelect
+                value={form.group_package_id}
+                onChange={(v) => setField("group_package_id", v)}
+                options={packageOptions}
+                placeholder="Select package to sell…"
+              />
+              {form.group_package_id && (
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Will be sold to {form.customer_ids.length} student{form.customer_ids.length !== 1 ? "s" : ""} on booking
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-3">
         <SectionDivider label="When" />
@@ -815,39 +906,43 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
 
   useEffect(() => {
     async function load() {
-      const [usersRes, customersRes, lessonsRes, packagesRes, servicesRes] = await Promise.all([
-        api.get("/api/teacher?limit=200&status=active"),
-        api.get("/api/customer?limit=200"),
-        api.get("/api/lesson?limit=200"),
-        api.get("/api/package?limit=200"),
-        api.get("/api/calendar-service?limit=200"),
-      ]);
+      try {
+        const [usersRes, customersRes, lessonsRes, packagesRes, servicesRes] = await Promise.all([
+          api.get("/api/teacher?limit=200&status=active"),
+          api.get("/api/customer?limit=200"),
+          api.get("/api/lesson?limit=200"),
+          api.get("/api/package?limit=200"),
+          api.get("/api/calendar-service?limit=200"),
+        ]);
 
-      if (usersRes.success && Array.isArray(usersRes.data))
-        setInstructorOptions(usersRes.data.map((t) => ({ value: String(t._id ?? t.id), label: t.name || t.email || String(t._id) })));
+        if (usersRes.success && Array.isArray(usersRes.data))
+          setInstructorOptions(usersRes.data.map((t) => ({ value: String(t._id ?? t.id), label: t.name || t.email || String(t._id) })));
 
-      if (customersRes.success && Array.isArray(customersRes.data))
-        setCustomerOptions(customersRes.data.map((c) => ({ value: String(c._id ?? c.id), label: c.name || c.email || String(c._id) })));
+        if (customersRes.success && Array.isArray(customersRes.data))
+          setCustomerOptions(customersRes.data.map((c) => ({ value: String(c._id ?? c.id), label: c.name || c.email || String(c._id) })));
 
-      if (lessonsRes.success && Array.isArray(lessonsRes.data)) {
-        const map = {};
-        lessonsRes.data.forEach((l) => { map[String(l._id)] = l; });
-        setLessonMap(map);
-        setLessonOptions(lessonsRes.data.map((l) => ({ value: String(l._id), label: l.name })));
+        if (lessonsRes.success && Array.isArray(lessonsRes.data)) {
+          const map = {};
+          lessonsRes.data.forEach((l) => { map[String(l._id)] = l; });
+          setLessonMap(map);
+          setLessonOptions(lessonsRes.data.map((l) => ({ value: String(l._id), label: l.name })));
+        }
+
+        if (servicesRes.success && Array.isArray(servicesRes.data)) {
+          const map = {};
+          servicesRes.data.forEach((s) => { map[String(s._id)] = s; });
+          setServiceMap(map);
+          setServiceOptions(servicesRes.data.map((s) => ({
+            value: String(s._id),
+            label: s.isChargeable && s.price > 0 ? `${s.serviceName} ($${Number(s.price).toFixed(2)})` : s.serviceName,
+          })));
+        }
+
+        if (packagesRes.success && Array.isArray(packagesRes.data))
+          setPackageOptions(packagesRes.data.map((p) => ({ value: String(p._id), label: p.packageName || String(p._id) })));
+      } catch {
+        setError("Failed to load form options. Please close and reopen.");
       }
-
-      if (servicesRes.success && Array.isArray(servicesRes.data)) {
-        const map = {};
-        servicesRes.data.forEach((s) => { map[String(s._id)] = s; });
-        setServiceMap(map);
-        setServiceOptions(servicesRes.data.map((s) => ({
-          value: String(s._id),
-          label: s.isChargeable && s.price > 0 ? `${s.serviceName} ($${Number(s.price).toFixed(2)})` : s.serviceName,
-        })));
-      }
-
-      if (packagesRes.success && Array.isArray(packagesRes.data))
-        setPackageOptions(packagesRes.data.map((p) => ({ value: String(p._id), label: p.packageName || String(p._id) })));
     }
     load();
   }, []);
@@ -861,6 +956,10 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
       return newId;
     }
     return null;
+  };
+
+  const handleEnrollStudent = async (customerId, lessonId) => {
+    await api.post(`/api/customer/${customerId}/assign-lessons`, { lessonIds: [lessonId] });
   };
 
   const handleSave = async () => {
@@ -893,12 +992,24 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
     };
 
     const result = await api.post("/api/calendar", payload);
-    if (result.success) { onCreated?.(); onClose(); }
-    else setError(result.error || "Failed to save. Please try again.");
+    if (result.success) {
+      // Sell package to each student if requested for group class
+      if (activeTab === "Group Class" && form.group_sell_package && form.group_package_id && form.customer_ids.length) {
+        await Promise.all(
+          form.customer_ids.map((cid) =>
+            api.post("/api/customer-package", { customerID: cid, packageID: form.group_package_id })
+          )
+        );
+      }
+      onCreated?.();
+      onClose();
+    } else {
+      setError(result.error || "Failed to save. Please try again.");
+    }
     setIsSaving(false);
   };
 
-  const sharedProps = { form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions, onNewCustomer: handleNewCustomer };
+  const sharedProps = { form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions, onNewCustomer: handleNewCustomer, onEnrollStudent: handleEnrollStudent };
 
   const tabContent = useMemo(() => {
     if (activeTab === "Appointment")   return <AppointmentFields {...sharedProps} />;

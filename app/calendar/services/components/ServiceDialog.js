@@ -1,37 +1,37 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { useState, useEffect } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import api from '@/lib/api'
-import { toast } from '@/components/ui/toast'
-import LocationSelector from '@/components/shared/LocationSelector'
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import api from "@/lib/api";
+import { toast } from "@/components/ui/toast";
+import LocationSelector from "@/components/shared/LocationSelector";
 
 const EMPTY_FORM = {
-  serviceName: '',
-  serviceCode: '',
-  locationID: '',
-  description: '',
+  serviceName: "",
+  serviceCode: "",
+  locationID: "",
+  description: "",
   isChargeable: false,
-  serviceClass: '',
-  schedulingCode: '',
+  serviceClass: "",
+  schedulingCode: "",
   isGroup: false,
   isSundry: false,
   countOnCalendar: true,
-  sortByOrder: '',
-  price: '',
+  sortByOrder: "",
+  price: "",
   documents: [],
-}
+};
 
 function RadioGroup({ label, value, onChange }) {
   return (
@@ -58,70 +58,82 @@ function RadioGroup({ label, value, onChange }) {
         </label>
       </div>
     </div>
-  )
+  );
 }
 
 export default function ServiceDialog({ open, onClose, service, onRefresh }) {
-  const isEdit = Boolean(service)
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [saving, setSaving] = useState(false)
+  const isEdit = Boolean(service);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!open) return
+    if (!open) return;
     if (service) {
       setForm({
-        serviceName: service.serviceName || '',
-        serviceCode: service.serviceCode || '',
-        locationID: service.locationID?._id || service.locationID || '',
-        description: service.description || '',
+        serviceName: service.serviceName || "",
+        serviceCode: service.serviceCode || "",
+        locationID: service.locationID?._id || service.locationID || "",
+        description: service.description || "",
         isChargeable: service.isChargeable ?? false,
-        serviceClass: service.serviceClass || '',
-        schedulingCode: service.schedulingCode || '',
+        serviceClass: service.serviceClass || "",
+        schedulingCode: service.schedulingCode || "",
         isGroup: service.isGroup ?? false,
         isSundry: service.isSundry ?? false,
         countOnCalendar: service.countOnCalendar ?? true,
-        sortByOrder: service.sortByOrder ?? '',
-        price: service.price ?? '',
-        documents: service.documents ? service.documents.map((d) => ({ name: d.name || '', url: d.url || '' })) : [],
-      })
+        sortByOrder: service.sortByOrder ?? "",
+        price: service.price ?? "",
+        documents: service.documents
+          ? service.documents.map((d) => ({
+              name: d.name || "",
+              url: d.url || "",
+            }))
+          : [],
+      });
     } else {
-      setForm(EMPTY_FORM)
+      setForm(EMPTY_FORM);
     }
-  }, [open, service])
+  }, [open, service]);
 
   function set(field, value) {
-    setForm((prev) => ({ ...prev, [field]: value }))
+    setForm((prev) => ({ ...prev, [field]: value }));
   }
 
   function addDocument() {
-    setForm((prev) => ({ ...prev, documents: [...prev.documents, { name: '', url: '' }] }))
+    setForm((prev) => ({
+      ...prev,
+      documents: [...prev.documents, { name: "", url: "" }],
+    }));
   }
 
   function updateDocument(index, field, value) {
     setForm((prev) => {
-      const docs = [...prev.documents]
-      docs[index] = { ...docs[index], [field]: value }
-      return { ...prev, documents: docs }
-    })
+      const docs = [...prev.documents];
+      docs[index] = { ...docs[index], [field]: value };
+      return { ...prev, documents: docs };
+    });
   }
 
   function removeDocument(index) {
     setForm((prev) => ({
       ...prev,
       documents: prev.documents.filter((_, i) => i !== index),
-    }))
+    }));
   }
 
   async function handleSubmit(e) {
-    e.preventDefault()
+    e.preventDefault();
     if (!form.serviceName.trim() || !form.serviceCode.trim()) {
-      toast.error('Missing fields', { description: 'Service name and code are required.' })
-      return
+      toast.error("Missing fields", {
+        description: "Service name and code are required.",
+      });
+      return;
     }
 
-    const validDocs = form.documents.filter((d) => d.name.trim() || d.url.trim())
+    const validDocs = form.documents.filter(
+      (d) => d.name.trim() || d.url.trim(),
+    );
 
-    setSaving(true)
+    setSaving(true);
     try {
       const payload = {
         serviceName: form.serviceName.trim(),
@@ -134,153 +146,119 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
         isGroup: form.isGroup,
         isSundry: form.isSundry,
         countOnCalendar: form.countOnCalendar,
-        sortByOrder: form.sortByOrder === '' ? 0 : Number(form.sortByOrder),
-        price: form.price === '' ? 0 : Number(form.price),
+        sortByOrder: form.sortByOrder === "" ? 0 : Number(form.sortByOrder),
+        price: form.price === "" ? 0 : Number(form.price),
         documents: validDocs,
-      }
+      };
 
       const result = isEdit
         ? await api.put(`/api/calendar-service/${service._id}`, payload)
-        : await api.post('/api/calendar-service', payload)
+        : await api.post("/api/calendar-service", payload);
 
       if (result.success) {
-        toast.success(isEdit ? 'Service updated' : 'Service created')
-        onRefresh()
-        onClose()
+        toast.success(isEdit ? "Service updated" : "Service created");
+        onRefresh();
+        onClose();
       } else {
-        toast.error('Failed', { description: result.error })
+        toast.error("Failed", { description: result.error });
       }
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Service' : 'Add Service'}</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Service" : "Add Service"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="py-2">
-          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-
-            {/* ── Left column ── */}
-            <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="svc-name">Service Name *</Label>
-                  <Input
-                    id="svc-name"
-                    placeholder="Enter Service Name"
-                    value={form.serviceName}
-                    onChange={(e) => set('serviceName', e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="svc-code">Service Code *</Label>
-                  <Input
-                    id="svc-code"
-                    placeholder="Enter Service Code"
-                    value={form.serviceCode}
-                    onChange={(e) => set('serviceCode', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <RadioGroup
-                label="Is Chargeable?"
-                value={form.isChargeable}
-                onChange={(v) => set('isChargeable', v)}
-              />
-
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label>Location</Label>
-                <LocationSelector
-                  value={form.locationID}
-                  onChange={(id) => set('locationID', id)}
+                <Label htmlFor="svc-name">Service Name *</Label>
+                <Input
+                  id="svc-name"
+                  placeholder="Enter Service Name"
+                  value={form.serviceName}
+                  onChange={(e) => set("serviceName", e.target.value)}
                 />
               </div>
-
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="svc-desc">Description</Label>
-                <Textarea
-                  id="svc-desc"
-                  placeholder="Optional description…"
-                  rows={4}
-                  value={form.description}
-                  onChange={(e) => set('description', e.target.value)}
-                  className="resize-none"
+                <Label htmlFor="svc-code">Service Code *</Label>
+                <Input
+                  id="svc-code"
+                  placeholder="Enter Service Code"
+                  value={form.serviceCode}
+                  onChange={(e) => set("serviceCode", e.target.value)}
                 />
               </div>
             </div>
 
-            {/* ── Right column (Options) ── */}
-            <div className="flex flex-col gap-4">
-              <h3 className="text-sm font-semibold text-foreground">Options</h3>
-
+            <div className="grid grid-cols-2 gap-4">
+              <RadioGroup
+                label="Is Chargeable?"
+                value={form.isChargeable}
+                onChange={(v) => set("isChargeable", v)}
+              />
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="svc-class">Service Class</Label>
-                <Input
-                  id="svc-class"
-                  placeholder="Select"
-                  value={form.serviceClass}
-                  onChange={(e) => set('serviceClass', e.target.value)}
+                <Label>Location</Label>
+                <LocationSelector
+                  value={form.locationID}
+                  onChange={(id) => set("locationID", id)}
                 />
               </div>
+            </div>
 
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="svc-sched">Scheduling Code</Label>
-                <Input
-                  id="svc-sched"
-                  placeholder="Enter scheduling code"
-                  value={form.schedulingCode}
-                  onChange={(e) => set('schedulingCode', e.target.value)}
-                />
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="svc-desc">Description</Label>
+              <Textarea
+                id="svc-desc"
+                placeholder="Optional description…"
+                rows={3}
+                value={form.description}
+                onChange={(e) => set("description", e.target.value)}
+                className="resize-none"
+              />
+            </div>
 
+            <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border">
               <RadioGroup
                 label="Is Group?"
                 value={form.isGroup}
-                onChange={(v) => set('isGroup', v)}
+                onChange={(v) => set("isGroup", v)}
               />
-
               <RadioGroup
                 label="Is Sundry?"
                 value={form.isSundry}
-                onChange={(v) => set('isSundry', v)}
+                onChange={(v) => set("isSundry", v)}
               />
-
               <RadioGroup
                 label="Count on Calendar?"
                 value={form.countOnCalendar}
-                onChange={(v) => set('countOnCalendar', v)}
+                onChange={(v) => set("countOnCalendar", v)}
               />
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="svc-order">Sort Order</Label>
-                  <Input
-                    id="svc-order"
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={form.sortByOrder}
-                    onChange={(e) => set('sortByOrder', e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="svc-price">Price ($)</Label>
-                  <Input
-                    id="svc-price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={form.price}
-                    onChange={(e) => set('price', e.target.value)}
-                  />
-                </div>
+            <div className="w-40">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="svc-price">Price ($)</Label>
+                <Input
+                  id="svc-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={form.price}
+                  onChange={(e) => set("price", e.target.value)}
+                />
               </div>
             </div>
           </div>
@@ -300,7 +278,9 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
             </div>
 
             {form.documents.length === 0 && (
-              <p className="text-xs text-muted-foreground py-2">No documents attached.</p>
+              <p className="text-xs text-muted-foreground py-2">
+                No documents attached.
+              </p>
             )}
 
             {form.documents.map((doc, idx) => (
@@ -309,13 +289,15 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
                   <Input
                     placeholder="Document name"
                     value={doc.name}
-                    onChange={(e) => updateDocument(idx, 'name', e.target.value)}
+                    onChange={(e) =>
+                      updateDocument(idx, "name", e.target.value)
+                    }
                     className="h-8 text-sm"
                   />
                   <Input
                     placeholder="URL or link"
                     value={doc.url}
-                    onChange={(e) => updateDocument(idx, 'url', e.target.value)}
+                    onChange={(e) => updateDocument(idx, "url", e.target.value)}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -332,15 +314,20 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
           </div>
 
           <DialogFooter className="pt-4">
-            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={saving}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create service'}
+              {saving ? "Saving…" : isEdit ? "Save changes" : "Create service"}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
