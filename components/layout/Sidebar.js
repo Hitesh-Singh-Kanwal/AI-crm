@@ -65,6 +65,7 @@ const navItems = [
       { name: 'Training', href: '/ai-automation/training' },
     ],
   },
+  { name: 'Workflow', href: '/workflow', iconSrc: '/figma/sidebar/ai-automation.svg', iconSize: 20, labelStyle: 'regular' },
   {
     name: 'Settings',
     href: '/settings/studio',
