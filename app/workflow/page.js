@@ -220,15 +220,15 @@ export default function WorkflowCreatePage() {
 
   return (
     <MainLayout title="Workflow" subtitle="Create and manage your workflows">
-      <div className="mx-auto w-full max-w-4xl space-y-4">
-        <div className="rounded-2xl border border-border bg-card p-2 shadow-sm">
+      <div className="mx-auto w-full max-w-7xl space-y-6 text-[16px]">
+        <div className="rounded-2xl border border-border bg-card p-3 shadow-sm">
           <div className="flex items-center justify-between gap-3 p-2">
             <div className="inline-flex rounded-xl border border-border bg-background p-1">
               <button
                 type="button"
                 onClick={() => setView('list')}
                 className={cn(
-                  'h-9 rounded-lg px-3 text-[13px] font-medium',
+                  'h-10 rounded-lg px-4 text-[14px] font-semibold',
                   view === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/40'
                 )}
               >
@@ -242,7 +242,7 @@ export default function WorkflowCreatePage() {
                   setError('')
                 }}
                 className={cn(
-                  'h-9 rounded-lg px-3 text-[13px] font-medium',
+                  'h-10 rounded-lg px-4 text-[14px] font-semibold',
                   view === 'create' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/40'
                 )}
               >
@@ -254,7 +254,7 @@ export default function WorkflowCreatePage() {
               <button
                 type="button"
                 onClick={loadWorkflows}
-                className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-background px-3 text-[13px] font-medium text-foreground hover:bg-muted/40"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-[14px] font-semibold text-foreground hover:bg-muted/40"
               >
                 <RefreshCw className={cn('h-4 w-4', loadingList && 'animate-spin')} />
                 Refresh
@@ -268,12 +268,12 @@ export default function WorkflowCreatePage() {
             <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-[18px] font-bold text-foreground">Workflows</h2>
-                  <p className="text-[12px] text-muted-foreground">
+                <h2 className="text-[26px] font-bold text-foreground">Workflows</h2>
+                  <p className="text-[15px] text-muted-foreground">
                     Loaded from <span className="font-mono">GET /api/workflow/</span>
                   </p>
                 </div>
-                <div className="text-[12px] text-muted-foreground">{workflows.length} total</div>
+                <div className="text-[15px] text-muted-foreground">{workflows.length} total</div>
               </div>
 
               {listError && (
@@ -292,7 +292,7 @@ export default function WorkflowCreatePage() {
                     No workflows found.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {workflows.map((wf) => (
                       <WorkflowCard key={wf?._id || wf?.id} workflow={wf} onDelete={requestDelete} />
                     ))}
@@ -305,28 +305,28 @@ export default function WorkflowCreatePage() {
           <>
             <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
               <div className="flex flex-col gap-1">
-                <h2 className="text-[20px] font-bold text-foreground">Create Workflow</h2>
-                <p className="text-[12px] text-muted-foreground">
+                <h2 className="text-[28px] font-bold text-foreground">Create Workflow</h2>
+                <p className="text-[15px] text-muted-foreground">
                   This will call <span className="font-mono">POST /api/workflow/</span>
                 </p>
               </div>
 
               <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-[14px] font-medium text-foreground">Name *</label>
+                  <label className="text-[16px] font-semibold text-foreground">Name *</label>
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="workflow1"
-                    className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                    className="h-14 w-full rounded-lg border border-border bg-background px-4 text-[16px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[14px] font-medium text-foreground">Event *</label>
+                  <label className="text-[16px] font-semibold text-foreground">Event *</label>
                   <select
                     value={event}
                     onChange={(e) => setEvent(e.target.value)}
-                    className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                    className="h-14 w-full rounded-lg border border-border bg-background px-4 text-[16px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                   >
                     <option value="" disabled>
                       Select event…
@@ -339,26 +339,26 @@ export default function WorkflowCreatePage() {
                   </select>
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-[14px] font-medium text-foreground">Description</label>
+                  <label className="text-[16px] font-semibold text-foreground">Description</label>
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="workflow created"
                     rows={3}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                    className="w-full rounded-lg border border-border bg-background px-4 py-3 text-[16px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                   />
                 </div>
               </div>
 
               <div className="mt-6 flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-[16px] font-bold text-foreground">Steps</h3>
-                  <p className="text-[12px] text-muted-foreground">Add the sequence steps you want to run.</p>
+                  <h3 className="text-[20px] font-bold text-foreground">Steps</h3>
+                  <p className="text-[14px] text-muted-foreground">Add the sequence steps you want to run.</p>
                 </div>
                 <button
                   type="button"
                   onClick={addStep}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--studio-primary)] px-4 text-[13px] font-medium text-white hover:brightness-95"
+                  className="inline-flex h-12 items-center gap-2 rounded-xl bg-[var(--studio-primary)] px-5 text-[15px] font-semibold text-white hover:brightness-95"
                 >
                   <Plus className="h-4 w-4" />
                   Add Step
@@ -370,15 +370,15 @@ export default function WorkflowCreatePage() {
                   <div key={idx} className="rounded-xl border border-border bg-background p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-[13px] font-semibold text-foreground">Step {idx + 1}</div>
-                        <div className="text-[11px] text-muted-foreground">Configure step fields</div>
+                        <div className="text-[16px] font-semibold text-foreground">Step {idx + 1}</div>
+                        <div className="text-[13px] text-muted-foreground">Configure step fields</div>
                       </div>
                       <button
                         type="button"
                         onClick={() => removeStep(idx)}
                         disabled={steps.length === 1}
                         className={cn(
-                          'inline-flex h-9 items-center justify-center rounded-lg border border-border px-3 text-[12px] font-medium text-muted-foreground hover:bg-muted/50',
+                          'inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-[14px] font-medium text-muted-foreground hover:bg-muted/50',
                           steps.length === 1 && 'opacity-50 cursor-not-allowed'
                         )}
                       >
@@ -393,7 +393,7 @@ export default function WorkflowCreatePage() {
                         <select
                           value={step.type}
                           onChange={(e) => updateStep(idx, { type: e.target.value })}
-                          className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                         >
                           {STEP_TYPES.map((t) => (
                             <option key={t.value} value={t.value}>
@@ -409,7 +409,7 @@ export default function WorkflowCreatePage() {
                           value={step.order}
                           onChange={(e) => updateStep(idx, { order: e.target.value })}
                           inputMode="numeric"
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                         />
                       </div>
 
@@ -418,7 +418,7 @@ export default function WorkflowCreatePage() {
                         <select
                           value={step.leadStage}
                           onChange={(e) => updateStep(idx, { leadStage: e.target.value })}
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                         >
                           {LEAD_STAGE_OPTIONS.map((opt) => (
                             <option key={opt} value={opt}>
@@ -434,7 +434,7 @@ export default function WorkflowCreatePage() {
                           value={step.day}
                           onChange={(e) => updateStep(idx, { day: Number(e.target.value) })}
                           type="number"
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                         />
                       </div>
 
@@ -444,7 +444,7 @@ export default function WorkflowCreatePage() {
                           value={step.description}
                           onChange={(e) => updateStep(idx, { description: e.target.value })}
                           placeholder=""
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                         />
                       </div>
                     </div>
