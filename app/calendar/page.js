@@ -7,7 +7,7 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import MainLayout from "@/components/layout/MainLayout";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Settings2 } from "lucide-react";
 import AppointmentComposerPanel from "./components/AppointmentComposerPanel";
 import EventDetailPanel from "./components/EventDetailPanel";
 import api from "@/lib/api";
@@ -144,7 +144,7 @@ function transformAppointments(appointments, colorMap) {
     );
     const teacherName = appt.teacherID?.name || "";
     const color =
-      appt.lessonID?.color || appt.color || CALENDAR_PALETTE[0];
+      appt.color || colorMap[teacherId] || appt.lessonID?.color || CALENDAR_PALETTE[0];
 
     const start = new Date(appt.startDateTime);
     const end = new Date(appt.endDateTime);
@@ -158,6 +158,26 @@ function transformAppointments(appointments, colorMap) {
           .map((c) => (typeof c === "object" ? c.name || c.email : ""))
           .filter(Boolean)
       : [];
+
+    const serviceCode = appt.calendarServiceID?.serviceCode || "";
+
+    // Find sessions remaining from the first package charge record
+    let sessionsRemaining = null;
+    let totalSessions = null;
+    if (Array.isArray(appt.charges) && appt.charges.length > 0) {
+      const pkgCharge = appt.charges.find((c) => c.method === "package" && c.customerPackageID);
+      if (pkgCharge?.customerPackageID?.services) {
+        const svc = pkgCharge.customerPackageID.services.find(
+          (s) => s.serviceCode === pkgCharge.serviceCode,
+        );
+        if (svc) {
+          sessionsRemaining = svc.sessionsRemaining ?? null;
+          totalSessions = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
+        }
+      }
+    }
+
+    const paymentCollected = appt.payment?.collected || appt.chargeMethod === "package" || appt.chargeMethod === "credits" || appt.chargeMethod === "mixed";
 
     return {
       id: String(appt._id || appt.id),
@@ -177,6 +197,10 @@ function transformAppointments(appointments, colorMap) {
         customerNames,
         eventType: appt.type,
         publicNote: appt.notes,
+        serviceCode,
+        sessionsRemaining,
+        totalSessions,
+        paymentCollected,
         // Inject effectiveStatus into raw so EventDetailPanel sees the correct status
         raw: { ...appt, effectiveStatus },
       },
@@ -190,10 +214,10 @@ function SegmentedButton({ active, children, className, onClick }) {
       type="button"
       onClick={onClick}
       className={[
-        "h-10 px-4 text-[12px] leading-none select-none bg-background border border-border",
+        "h-10 px-4 text-[12px] leading-none select-none bg-background border border-border transition-colors",
         active
           ? "font-bold text-foreground"
-          : "font-medium text-muted-foreground",
+          : "font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50",
         className,
       ]
         .filter(Boolean)
@@ -211,7 +235,7 @@ function IconCircleButton({ children, ariaLabel, onClick }) {
       type="button"
       aria-label={ariaLabel}
       onClick={onClick}
-      className="h-10 w-10 rounded-full bg-background border border-border grid place-items-center"
+      className="h-10 w-10 rounded-full bg-background border border-border grid place-items-center hover:bg-muted/50 transition-colors"
       style={{ boxShadow: COLORS.shadow }}
     >
       {children}
@@ -219,12 +243,17 @@ function IconCircleButton({ children, ariaLabel, onClick }) {
   );
 }
 
-function SmallRoundedButton({ children, onClick }) {
+function SmallRoundedButton({ children, onClick, active }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="h-10 rounded-[20px] px-4 bg-background border border-border text-[12px] font-bold text-muted-foreground"
+      className={[
+        "h-10 rounded-[20px] px-4 border text-[12px] font-bold transition-colors",
+        active
+          ? "border-[var(--studio-primary)] bg-[color-mix(in_srgb,var(--studio-primary)_12%,transparent)] text-[var(--studio-primary)]"
+          : "border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+      ].join(" ")}
       style={{ boxShadow: COLORS.shadow }}
     >
       {children}
@@ -403,7 +432,8 @@ function ListEventRow({ event, onEventClick }) {
 }
 
 function ListCalendarView({ events, focusDate, onEventClick }) {
-  // Show a 14-day window starting from focusDate
+  const [showEmpty, setShowEmpty] = useState(false);
+
   const days = useMemo(() => {
     return Array.from({ length: 14 }, (_, i) => addDays(focusDate, i));
   }, [focusDate]);
@@ -412,95 +442,97 @@ function ListCalendarView({ events, focusDate, onEventClick }) {
     return days.map((day) => ({
       day,
       events: events
-        .filter(
-          (e) =>
-            !e.allDay
-              ? isSameDate(new Date(e.start), day)
-              : isSameDate(new Date(e.start), day),
-        )
-        .sort(
-          (a, b) =>
-            new Date(a.start) - new Date(b.start) ||
-            new Date(a.end) - new Date(b.end),
-        ),
+        .filter((e) => isSameDate(new Date(e.start), day))
+        .sort((a, b) => new Date(a.start) - new Date(b.start) || new Date(a.end) - new Date(b.end)),
     }));
   }, [events, days]);
 
-  const hasAny = grouped.some((g) => g.events.length > 0);
+  const totalEvents = grouped.reduce((sum, g) => sum + g.events.length, 0);
+  const daysWithEvents = grouped.filter((g) => g.events.length > 0).length;
+  const visibleGroups = showEmpty ? grouped : grouped.filter((g) => g.events.length > 0);
 
   return (
-    <div className="h-full overflow-auto rounded-[12px] border border-border bg-background">
-      <div className="divide-y divide-border">
-        {grouped.map(({ day, events: dayEvents }) => {
-          const isToday   = isSameDate(day, new Date());
-          const isPast    = day < new Date() && !isToday;
-          return (
-            <div key={day.toISOString()} className={isPast ? "opacity-50" : ""}>
-              {/* Day header */}
-              <div
-                className={`sticky top-0 z-10 flex items-center gap-3 px-5 py-2.5 border-b border-border ${
-                  isToday
-                    ? "bg-[color-mix(in_srgb,var(--studio-primary)_10%,hsl(var(--background)))]"
-                    : "bg-muted/50"
-                }`}
-              >
+    <div className="h-full flex flex-col overflow-hidden rounded-[12px] border border-border bg-background">
+      {/* List header bar */}
+      <div className="shrink-0 flex items-center justify-between px-5 py-2.5 border-b border-border bg-muted/30">
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-semibold text-foreground">
+            {totalEvents} event{totalEvents !== 1 ? "s" : ""}
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            across {daysWithEvents} day{daysWithEvents !== 1 ? "s" : ""}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowEmpty((v) => !v)}
+          className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showEmpty ? "Hide empty days" : "Show empty days"}
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        <div className="divide-y divide-border">
+          {visibleGroups.map(({ day, events: dayEvents }) => {
+            const isToday = isSameDate(day, new Date());
+            const isPast  = day < new Date() && !isToday;
+            return (
+              <div key={day.toISOString()} className={isPast ? "opacity-55" : ""}>
                 <div
-                  className={`flex items-center justify-center h-7 w-7 rounded-full text-[12px] font-bold shrink-0 ${
+                  className={`sticky top-0 z-10 flex items-center gap-3 px-5 py-2 border-b border-border/60 ${
                     isToday
-                      ? "bg-[var(--studio-primary)] text-white"
-                      : "bg-muted text-muted-foreground"
+                      ? "bg-[color-mix(in_srgb,var(--studio-primary)_8%,hsl(var(--background)))]"
+                      : "bg-background/95 backdrop-blur-sm"
                   }`}
                 >
-                  {day.getDate()}
+                  <div
+                    className={`flex items-center justify-center h-7 w-7 rounded-full text-[12px] font-bold shrink-0 ${
+                      isToday ? "bg-[var(--studio-primary)] text-white" : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {day.getDate()}
+                  </div>
+                  <span className={`text-[12px] font-semibold ${isToday ? "text-[var(--studio-primary)]" : "text-foreground"}`}>
+                    {formatListDayLabel(day)}
+                  </span>
+                  {dayEvents.length > 0 && (
+                    <span className="ml-auto text-[10px] font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                      {dayEvents.length}
+                    </span>
+                  )}
                 </div>
-                <span
-                  className={`text-[12px] font-semibold ${
-                    isToday ? "text-[var(--studio-primary)]" : "text-muted-foreground"
-                  }`}
-                >
-                  {formatListDayLabel(day)}
-                </span>
-                <span className="ml-auto text-[10px] text-muted-foreground/60">
-                  {dayEvents.length > 0
-                    ? `${dayEvents.length} event${dayEvents.length > 1 ? "s" : ""}`
-                    : "No events"}
-                </span>
+
+                {dayEvents.length > 0 ? (
+                  <div className="flex flex-col gap-2 px-4 py-3">
+                    {dayEvents.map((event) => (
+                      <ListEventRow key={event.id} event={event} onEventClick={onEventClick} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-5 py-3 text-[11px] text-muted-foreground/40 italic">
+                    No events scheduled
+                  </div>
+                )}
               </div>
+            );
+          })}
 
-              {/* Events */}
-              {dayEvents.length > 0 ? (
-                <div className="flex flex-col gap-2 px-4 py-3">
-                  {dayEvents.map((event) => (
-                    <ListEventRow
-                      key={event.id}
-                      event={event}
-                      onEventClick={onEventClick}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="px-5 py-4 text-[11px] text-muted-foreground/50 italic">
-                  No events scheduled
-                </div>
-              )}
+          {visibleGroups.length === 0 && (
+            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-2xl">📅</div>
+              <p className="text-[13px] font-semibold text-foreground">No events in this period</p>
+              <p className="text-[11px] text-muted-foreground">Try navigating to a different date range</p>
             </div>
-          );
-        })}
-
-        {!hasAny && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-center">
-            <span className="text-4xl">📅</span>
-            <p className="text-[13px] font-semibold text-muted-foreground">No events in this period</p>
-            <p className="text-[11px] text-muted-foreground/60">Try navigating to a different date range</p>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 function renderEventContent(info) {
-  const { tutorName, status, effectiveStatus, color, customerNames, eventType } =
+  const { tutorName, status, effectiveStatus, color, customerNames, eventType, serviceCode, sessionsRemaining, totalSessions, paymentCollected } =
     info.event.extendedProps || {};
   const cancelled = effectiveStatus === "cancelled_no_charge" || effectiveStatus === "cancelled_charged";
   const completed = effectiveStatus === "completed";
@@ -550,15 +582,16 @@ function renderEventContent(info) {
   const showTime = durationMins >= 30;
   const showDetails = durationMins >= 45;
 
-  const initials = (tutorName || "")
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-  const customersLabel =
+  const firstCustomer =
     Array.isArray(customerNames) && customerNames.length > 0
-      ? customerNames.join(", ")
+      ? customerNames[0]
+      : null;
+
+  const teacherLine = [serviceCode, tutorName].filter(Boolean).join(" — ");
+
+  const sessionsLabel =
+    sessionsRemaining != null && totalSessions != null
+      ? `${sessionsRemaining}/${totalSessions}`
       : null;
 
   return (
@@ -580,46 +613,48 @@ function renderEventContent(info) {
           </svg>
         </span>
       )}
-      <div className="px-1.5 py-0.5 flex flex-col overflow-visible min-h-full">
-        <div className="flex items-center gap-1 min-w-0 shrink-0">
-          <span
-            className={`text-[10px] font-bold text-foreground leading-tight truncate ${cancelled ? "line-through" : ""}`}
-          >
-            {info.event.title}
-          </span>
-          <TypeBadge type={eventType} />
-        </div>
-        {status && status !== "scheduled" && (
-          <div className="shrink-0 mt-0.5">
-            <StatusBadge status={status} />
+      <div className="px-1.5 py-0.5 flex flex-col overflow-visible min-h-full gap-[1px]">
+        {/* Row 1: customer name */}
+        {firstCustomer && (
+          <div className={`text-[10px] font-bold text-foreground leading-tight truncate shrink-0 ${cancelled ? "line-through" : ""}`}>
+            {firstCustomer}
           </div>
         )}
+        {/* Row 2: service code — teacher name */}
+        {showTime && teacherLine && (
+          <div className="text-[9px] text-foreground/80 leading-tight truncate shrink-0 font-medium">
+            {teacherLine}
+          </div>
+        )}
+        {/* Row 3: time range */}
         {showTime && (timeRange || durationLabel) && (
           <div className="text-[9px] text-muted-foreground leading-tight truncate shrink-0">
             {timeRange}{timeRange && durationLabel ? ` (${durationLabel})` : durationLabel}
           </div>
         )}
-        {showDetails && customersLabel && (
-          <div className="text-[9px] text-foreground/70 leading-tight truncate shrink-0">
-            {customersLabel}
-          </div>
-        )}
-        {showDetails && tutorName && (
-          <div className="flex items-center gap-1 mt-auto pb-0.5 shrink-0 overflow-hidden">
+        {/* Row 4: sessions remaining + paid/unpaid */}
+        {showDetails && (sessionsLabel || true) && (
+          <div className="flex items-center gap-1.5 mt-auto pb-0.5 shrink-0">
+            {sessionsLabel && (
+              <span className="text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
+                {sessionsLabel} left
+              </span>
+            )}
             <span
-              className="h-3 w-3 rounded-full text-[7px] font-bold grid place-items-center text-white shrink-0"
-              style={{ backgroundColor: accentColor }}
+              className={`text-[8px] font-semibold rounded px-1 py-0.5 leading-none ${
+                paymentCollected
+                  ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                  : "bg-red-500/15 text-red-600 dark:text-red-400"
+              }`}
             >
-              {initials.charAt(0)}
+              {paymentCollected ? "Paid" : "Unpaid"}
             </span>
-            <span className="text-[8px] text-muted-foreground truncate">
-              {tutorName}
-            </span>
+            <TypeBadge type={eventType} />
           </div>
         )}
-        {showDetails && info.event.extendedProps?.publicNote && (
-          <div className="text-[8px] text-black dark:text-white italic leading-tight truncate shrink-0 mt-0.5 opacity-90 border-t border-black/10 dark:border-white/10 pt-0.5">
-            {info.event.extendedProps.publicNote}
+        {!showDetails && (
+          <div className="flex items-center gap-1 shrink-0">
+            <TypeBadge type={eventType} />
           </div>
         )}
       </div>
@@ -767,43 +802,58 @@ function TutorDayCalendar({
       ? ((nowMinutes - dayStartMins) / customSlotMins) * DAY_ROW_HEIGHT
       : null;
 
+  const focusDateLabel = focusDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-[12px] border border-border bg-background shadow-sm">
-      <div className="flex shrink-0 border-b border-border bg-muted/40">
-        <div className="w-[86px] shrink-0 border-r border-border" />
-        {effectiveTutors.map((tutor, idx) => (
-          <div
-            key={tutor.key}
-            className="flex-1 px-3 py-2.5 text-center"
-            style={{
-              borderRight:
-                idx < effectiveTutors.length - 1
-                  ? "1px solid hsl(var(--border))"
-                  : "none",
-            }}
-          >
-            <div className="flex flex-col items-center gap-1.5 min-w-0">
-              <span className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                {tutor.initials || "T"}
-              </span>
-              <div className="flex flex-col items-center min-w-0">
-                <span className="text-[11px] font-bold text-foreground truncate max-w-full">
-                  {tutor.name || tutor.label || "Unknown"}
+      <div className="flex shrink-0 border-b border-border bg-muted/30">
+        <div className="w-[86px] shrink-0 border-r border-border flex items-end pb-2 px-2">
+          <span className="text-[10px] font-medium text-muted-foreground leading-tight">{focusDateLabel}</span>
+        </div>
+        {effectiveTutors.map((tutor, idx) => {
+          const todayCount = (byTutorTimed[tutor.key]?.length ?? 0) + (byTutorAllDay[tutor.key]?.length ?? 0);
+          const weekCount = weekCountByTutor[tutor.key] ?? 0;
+          return (
+            <div
+              key={tutor.key}
+              className="flex-1 px-3 py-2.5 text-center"
+              style={{
+                borderRight:
+                  idx < effectiveTutors.length - 1
+                    ? "1px solid hsl(var(--border))"
+                    : "none",
+              }}
+            >
+              <div className="flex flex-col items-center gap-1 min-w-0">
+                <span
+                  className="h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                  style={{ backgroundColor: tutor.color }}
+                >
+                  {tutor.initials || "T"}
                 </span>
-                <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
-                  Today
-                  <span className="text-primary font-bold">
-                    {" "}
-                    &mdash;{" "}
-                    {(byTutorTimed[tutor.key]?.length ?? 0) +
-                      (byTutorAllDay[tutor.key]?.length ?? 0)}
-                    /{weekCountByTutor[tutor.key] ?? 0}
+                <div className="flex flex-col items-center min-w-0">
+                  <span className="text-[11px] font-semibold text-foreground truncate max-w-full leading-tight">
+                    {tutor.name || tutor.label || "Unknown"}
                   </span>
-                </span>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-px rounded-full"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, ${tutor.color} 15%, transparent)`,
+                        color: tutor.color,
+                      }}
+                    >
+                      {todayCount} today
+                    </span>
+                    {weekCount > 0 && (
+                      <span className="text-[10px] text-muted-foreground">· {weekCount}/wk</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -874,13 +924,14 @@ function TutorDayCalendar({
           {effectiveTutors.map((tutor, colIdx) => (
             <div
               key={`${tutor.key}-day-col`}
-              className="relative flex-1 bg-muted/25 cursor-pointer"
+              className="relative flex-1 group/col cursor-pointer"
               style={{
                 height: dayHeight,
                 borderRight:
                   colIdx < effectiveTutors.length - 1
                     ? "1px solid hsl(var(--border))"
                     : "none",
+                backgroundColor: `color-mix(in srgb, ${tutor.color} 3%, hsl(var(--background)))`,
               }}
               onClick={(e) => {
                 if (e.target.closest("[data-event]")) return;
@@ -896,13 +947,17 @@ function TutorDayCalendar({
                 });
               }}
             >
-              {Array.from({ length: slotsCount + 1 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="absolute left-0 right-0 border-b border-border/50"
-                  style={{ top: idx * DAY_ROW_HEIGHT, height: DAY_ROW_HEIGHT }}
-                />
-              ))}
+              {Array.from({ length: slotsCount + 1 }).map((_, idx) => {
+                const slotMins = dayStartMins + idx * customSlotMins;
+                const isHourBoundary = slotMins % 60 === 0;
+                return (
+                  <div
+                    key={idx}
+                    className={`absolute left-0 right-0 ${isHourBoundary ? "border-b border-border/60" : "border-b border-border/20"}`}
+                    style={{ top: idx * DAY_ROW_HEIGHT, height: DAY_ROW_HEIGHT }}
+                  />
+                );
+              })}
 
               {(byTutorTimed[tutor.key] || []).map((event) => {
                 const s = new Date(event.start);
@@ -913,15 +968,16 @@ function TutorDayCalendar({
 
                 const top =
                   ((startMins - dayStartMins) / customSlotMins) * DAY_ROW_HEIGHT;
-                const height = (duration / customSlotMins) * DAY_ROW_HEIGHT;
+                const height = Math.max((duration / customSlotMins) * DAY_ROW_HEIGHT, 22);
 
                 const widthPercent = 100 / (event.totalLanes || 1);
                 const leftPercent = (event.lane || 0) * widthPercent;
 
                 const accentColor =
                   event.extendedProps?.color || "var(--studio-primary)";
-                const isCancelledEvent =
-                  event.extendedProps?.effectiveStatus === "cancelled";
+                const effectiveStatus = event.extendedProps?.effectiveStatus;
+                const isCancelledEvent = effectiveStatus === "cancelled_no_charge" || effectiveStatus === "cancelled_charged";
+                const isCompletedEvent = effectiveStatus === "completed";
                 const initials = (event.extendedProps?.tutorName || "?").charAt(0).toUpperCase();
                 const dayEventType = event.extendedProps?.eventType;
 
@@ -933,67 +989,53 @@ function TutorDayCalendar({
                       e.stopPropagation();
                       onEventClick?.(event.extendedProps?.raw);
                     }}
-                    className={`absolute overflow-visible cursor-pointer transition-all hover:scale-[1.01] hover:shadow-md rounded-lg ${
-                      isCancelledEvent ? "opacity-50" : ""
-                    } ${
-                      event.extendedProps?.effectiveStatus === "completed" ? "opacity-80" : ""
-                    }`}
+                    className={`absolute cursor-pointer transition-all duration-150 rounded-lg group/event ${
+                      isCancelledEvent ? "opacity-40" : ""
+                    } ${isCompletedEvent ? "opacity-75" : ""}`}
                     style={{
                       top,
                       minHeight: height,
                       left: `calc(${leftPercent}% + 2px)`,
                       width: `calc(${widthPercent}% - 4px)`,
                       borderLeft: `3px solid ${accentColor}`,
-                      backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
+                      backgroundColor: `color-mix(in srgb, ${accentColor} 22%, hsl(var(--card)))`,
+                      boxShadow: "0 1px 3px hsl(var(--foreground)/0.06)",
                       zIndex: 10,
                     }}
+                    onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 4px 12px ${accentColor}40`; e.currentTarget.style.zIndex = "20"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 1px 3px hsl(var(--foreground)/0.06)"; e.currentTarget.style.zIndex = "10"; }}
                   >
-                    {/* Completed green check */}
-                    {event.extendedProps?.effectiveStatus === "completed" && (
+                    {isCompletedEvent && (
                       <span
-                        className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-emerald-500 flex items-center justify-center z-10"
+                        className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-emerald-500 flex items-center justify-center z-10 shadow-sm"
                         title="Completed"
                       >
-                        <svg viewBox="0 0 10 10" className="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg viewBox="0 0 10 10" className="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="1.5,5 4,7.5 8.5,2.5" />
                         </svg>
                       </span>
                     )}
-                    <div className="min-h-full flex flex-col px-2 py-1 overflow-visible">
+                    <div className="min-h-full flex flex-col px-2 py-1 overflow-hidden">
                       <div className="flex items-center gap-1 min-w-0 shrink-0">
                         <span
-                          className={`text-[11px] font-bold text-foreground leading-tight truncate ${isCancelledEvent ? "line-through" : ""}`}
+                          className={`text-[11px] font-bold text-foreground leading-tight truncate ${isCancelledEvent ? "line-through opacity-60" : ""}`}
                         >
                           {event.title}
                         </span>
                         <TypeBadge type={dayEventType} />
                       </div>
-                      {height >= 32 && (
-                        <div className="text-[9px] text-muted-foreground leading-tight truncate shrink-0">
+                      {height >= 36 && (
+                        <div className="text-[9px] text-muted-foreground leading-tight truncate shrink-0 mt-px">
                           {formatTime(event.start)} – {formatTime(event.end)}
                         </div>
                       )}
-                      {height >= 56 &&
-                        event.extendedProps?.customerNames?.length > 0 && (
-                          <div className="text-[9px] text-foreground/70 truncate leading-tight shrink-0">
-                            {event.extendedProps.customerNames.join(", ")}
-                          </div>
-                        )}
-                      {height >= 56 && event.extendedProps?.tutorName && (
-                        <div className="flex items-center gap-1 mt-auto pb-0.5 shrink-0 overflow-hidden">
-                          <span
-                            className="h-4 w-4 rounded-full text-[8px] font-bold grid place-items-center text-white shrink-0"
-                            style={{ backgroundColor: accentColor }}
-                          >
-                            {initials}
-                          </span>
-                          <span className="text-[9px] text-muted-foreground truncate">
-                            {event.extendedProps.tutorName}
-                          </span>
+                      {height >= 60 && event.extendedProps?.customerNames?.length > 0 && (
+                        <div className="text-[9px] text-foreground/70 truncate leading-tight shrink-0 mt-0.5">
+                          {event.extendedProps.customerNames.join(", ")}
                         </div>
                       )}
-                      {height >= 72 && event.extendedProps?.publicNote && (
-                        <div className="text-[9px] text-black dark:text-white italic truncate leading-tight shrink-0 mt-1 opacity-90 border-t border-black/10 dark:border-white/10 pt-1">
+                      {height >= 80 && event.extendedProps?.publicNote && (
+                        <div className="text-[8px] italic truncate leading-tight shrink-0 mt-0.5 opacity-70 border-t border-black/10 dark:border-white/10 pt-0.5">
                           {event.extendedProps.publicNote}
                         </div>
                       )}
@@ -1209,47 +1251,74 @@ function StatusFilterDropdown({ value, onChange }) {
   );
 }
 
-function ServicesDropdown() {
+function TeacherFilterDropdown({ instructors, value, onChange }) {
   const [open, setOpen] = useState(false);
+  const current = value ? instructors.find((i) => i.key === value) : null;
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+      }}
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        onBlur={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
-        }}
-        className="h-10 rounded-[20px] border border-border bg-background px-5 text-[12px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5"
+        className="h-10 rounded-[20px] border border-border bg-background px-4 text-[12px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5"
+        style={{ boxShadow: COLORS.shadow }}
       >
-        Services
+        {current && (
+          <span
+            className="h-5 w-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold text-white"
+            style={{ backgroundColor: current.color }}
+          >
+            {current.initials}
+          </span>
+        )}
+        {current ? current.name : "All Teachers"}
         <ChevronDown
           className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-50">
-          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Navigate to
-          </div>
-          <Link
-            href="/calendar/services"
-            onClick={() => setOpen(false)}
-            className="flex items-center px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-50"
+        >
+          <button
+            type="button"
+            onClick={() => { onChange(null); setOpen(false); }}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] transition-colors ${
+              !value ? "font-bold text-foreground bg-muted/60" : "text-foreground hover:bg-muted/40"
+            }`}
           >
-            Services
-          </Link>
-          <Link
-            href="/calendar/packages"
-            onClick={() => setOpen(false)}
-            className="flex items-center px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
-          >
-            Packages
-          </Link>
+            <span className="h-2 w-2 rounded-full bg-muted-foreground shrink-0" />
+            All Teachers
+          </button>
+          {instructors.map((inst) => (
+            <button
+              key={inst.key}
+              type="button"
+              onClick={() => { onChange(inst.key); setOpen(false); }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] transition-colors ${
+                value === inst.key ? "font-bold text-foreground bg-muted/60" : "text-foreground hover:bg-muted/40"
+              }`}
+            >
+              <span
+                className="h-5 w-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold text-white"
+                style={{ backgroundColor: inst.color }}
+              >
+                {inst.initials}
+              </span>
+              <span className="truncate">{inst.name}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>
   );
 }
+
 
 export default function CalendarPage() {
   const calendarRef = useRef(null);
@@ -1263,6 +1332,7 @@ export default function CalendarPage() {
   const [instructors, setInstructors] = useState([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedTeacherId, setSelectedTeacherId] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [slotSelection, setSlotSelection] = useState(null);
   const [compactHours, setCompactHours] = useState(false);
@@ -1465,25 +1535,20 @@ export default function CalendarPage() {
           className="bg-background rounded-[24px_0px_24px_24px] w-full flex flex-col"
           style={{ height: "calc(100vh - 120px)" }}
         >
-          <div className="shrink-0 px-6 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+          <div className="shrink-0 px-6 py-3 flex items-center justify-between gap-3 border-b border-border/50">
+            <div className="flex items-center gap-2">
               <SmallRoundedButton onClick={goToToday}>Today</SmallRoundedButton>
-              <SmallRoundedButton onClick={() => setCompactHours((v) => !v)}>
-                {compactHours ? "Full Hours" : "Compact"}
+              <SmallRoundedButton active={compactHours} onClick={() => setCompactHours((v) => !v)}>
+                Compact
               </SmallRoundedButton>
-              <SmallRoundedButton
-                onClick={() => setHideEmptySlots((v) => !v)}
-              >
-                {hideEmptySlots ? "Show All Slots" : "Hide Empty"}
+              <SmallRoundedButton active={hideEmptySlots} onClick={() => setHideEmptySlots((v) => !v)}>
+                Hide Empty
               </SmallRoundedButton>
-              <div className="flex items-center gap-3">
-                <IconCircleButton
-                  ariaLabel="Previous"
-                  onClick={() => shiftView(-1)}
-                >
+              <div className="flex items-center gap-2 ml-1">
+                <IconCircleButton ariaLabel="Previous" onClick={() => shiftView(-1)}>
                   <ChevronLeft className="h-4 w-4 text-muted-foreground" />
                 </IconCircleButton>
-                <div className="text-[12px] font-bold text-muted-foreground">
+                <div className="text-[13px] font-semibold text-foreground min-w-[160px] text-center">
                   {headerLabel}
                 </div>
                 <IconCircleButton ariaLabel="Next" onClick={() => shiftView(1)}>
@@ -1492,11 +1557,12 @@ export default function CalendarPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {isLoadingEvents && (
-                <span className="text-[11px] text-muted-foreground animate-pulse">
-                  Loading…
-                </span>
+                <svg className="h-4 w-4 animate-spin text-muted-foreground" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
               )}
 
               <div className="flex items-center">
@@ -1530,27 +1596,35 @@ export default function CalendarPage() {
                 </SegmentedButton>
               </div>
 
-              <Link
-                href="/calendar/lessons"
-                className="h-10 rounded-[20px] border border-border bg-background px-5 text-[12px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center"
-              >
-                Lessons
-              </Link>
-
+              {viewMode === VIEW_MODE.DAY && instructors.length > 0 && (
+                <TeacherFilterDropdown
+                  instructors={instructors}
+                  value={selectedTeacherId}
+                  onChange={setSelectedTeacherId}
+                />
+              )}
               <StatusFilterDropdown value={statusFilter} onChange={setStatusFilter} />
               <SlotSizePicker value={customSlotMins} onApply={(mins, startOff) => {
                 setCustomSlotMins(mins);
                 setSlotAlignMins(startOff);
               }} />
 
-              <ServicesDropdown />
+              <div className="w-px h-6 bg-border shrink-0" />
+
+              <Link
+                href="/settings/setup"
+                title="Calendar Setup"
+                className="h-9 w-9 rounded-full border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+              >
+                <Settings2 className="h-4 w-4" />
+              </Link>
 
               <button
                 type="button"
                 onClick={() => setIsAppointmentPanelOpen(true)}
-                className="h-10 rounded-[20px] bg-brand px-5 text-[12px] font-bold text-brand-foreground hover:bg-brand-dark transition-colors"
+                className="h-10 rounded-[20px] bg-brand px-5 text-[12px] font-bold text-brand-foreground hover:bg-brand-dark active:scale-[0.98] transition-all shrink-0"
               >
-                Create Appointment
+                + Create
               </button>
             </div>
           </div>
@@ -1566,7 +1640,7 @@ export default function CalendarPage() {
                     now={now}
                     dayTimedEvents={dayTimedEvents}
                     dayAllDayEvents={dayAllDayEvents}
-                    tutors={instructors}
+                    tutors={selectedTeacherId ? instructors.filter((i) => i.key === selectedTeacherId) : instructors}
                     allEvents={filteredEvents}
                     onEventClick={(raw) => {
                       setSelectedEvent(raw);

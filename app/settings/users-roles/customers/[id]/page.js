@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Pencil, Plus, Trash2, Pin, PinOff,
-  Package, BookOpen, StickyNote, User, ChevronDown, X, Check,
+  Package, BookOpen, StickyNote, User, ChevronDown, X,
+  CreditCard, RotateCcw, Receipt, ClipboardList,
 } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -25,6 +26,24 @@ function statusColor(status) {
     cancelled: 'bg-muted text-muted-foreground',
   }[status] ?? 'bg-muted text-muted-foreground'
 }
+
+function paymentStatusColor(ps) {
+  return {
+    paid: 'bg-emerald-500/10 text-emerald-600',
+    partial: 'bg-amber-500/10 text-amber-600',
+    unpaid: 'bg-rose-500/10 text-rose-600',
+  }[ps] ?? 'bg-muted text-muted-foreground'
+}
+
+function paymentTypeBadge(type) {
+  return {
+    package_purchase: { label: 'Package Sale', cls: 'bg-blue-500/10 text-blue-600' },
+    credit_topup: { label: 'Credit Top-up', cls: 'bg-violet-500/10 text-violet-600' },
+    refund: { label: 'Refund', cls: 'bg-rose-500/10 text-rose-600' },
+  }[type] ?? { label: type, cls: 'bg-muted text-muted-foreground' }
+}
+
+const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other']
 
 function SessionBar({ used, total }) {
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0
@@ -54,11 +73,168 @@ function FormField({ label, required, children }) {
   )
 }
 
+// ─── RecordPaymentDialog ─────────────────────────────────────────────────────
+
+function RecordPaymentDialog({ open, onClose, customerID, customerPackageID, onSuccess }) {
+  const [amount, setAmount] = useState('')
+  const [method, setMethod] = useState('cash')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const toast = useToast()
+
+  function reset() { setAmount(''); setMethod('cash'); setNotes('') }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    const num = parseFloat(amount)
+    if (isNaN(num) || num <= 0) return
+    setSaving(true)
+    const res = await api.post('/api/payment', {
+      customerID,
+      customerPackageID,
+      type: 'package_purchase',
+      amount: num,
+      method,
+      notes: notes.trim() || undefined,
+    })
+    if (res.success) {
+      toast.success('Payment recorded.')
+      reset()
+      onSuccess()
+      onClose()
+    } else {
+      toast.error(res.error || 'Failed to record payment.')
+    }
+    setSaving(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose() } }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>Record Payment</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <FormField label="Amount" required>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+              <input
+                type="number" min="0.01" step="0.01" value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="h-9 w-full rounded-lg border border-border bg-background pl-7 pr-3 text-[13px] outline-none focus:border-primary"
+              />
+            </div>
+          </FormField>
+          <FormField label="Method" required>
+            <div className="relative">
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
+              >
+                {PAYMENT_METHODS.map((m) => <option key={m} value={m} className="capitalize">{m}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            </div>
+          </FormField>
+          <FormField label="Notes (optional)">
+            <input
+              type="text" value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Cash on arrival"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
+          </FormField>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={() => { reset(); onClose() }}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={saving || !amount}>{saving ? 'Saving…' : 'Record'}</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── IssueRefundDialog ───────────────────────────────────────────────────────
+
+function IssueRefundDialog({ open, onClose, payment, onSuccess }) {
+  const [amount, setAmount] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const toast = useToast()
+
+  function reset() { setAmount(''); setNotes('') }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    const num = parseFloat(amount)
+    if (isNaN(num) || num <= 0) return
+    setSaving(true)
+    const res = await api.post('/api/payment/refund', {
+      paymentID: payment._id,
+      amount: num,
+      notes: notes.trim() || undefined,
+    })
+    if (res.success) {
+      toast.success('Refund issued.')
+      reset()
+      onSuccess()
+      onClose()
+    } else {
+      toast.error(res.error || 'Failed to issue refund.')
+    }
+    setSaving(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose() } }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>Issue Refund</DialogTitle></DialogHeader>
+        {payment && (
+          <p className="text-[12px] text-muted-foreground -mt-1">
+            Original payment: <span className="text-foreground font-medium">${Number(payment.amount).toFixed(2)}</span> via {payment.method}
+          </p>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <FormField label="Refund amount" required>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+              <input
+                type="number" min="0.01" step="0.01"
+                max={payment?.amount}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="h-9 w-full rounded-lg border border-border bg-background pl-7 pr-3 text-[13px] outline-none focus:border-primary"
+              />
+            </div>
+          </FormField>
+          <FormField label="Reason (optional)">
+            <input
+              type="text" value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Class cancelled"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
+          </FormField>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={() => { reset(); onClose() }}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={saving || !amount} className="bg-rose-600 hover:bg-rose-700 text-white">
+              {saving ? 'Refunding…' : 'Issue Refund'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Tabs ────────────────────────────────────────────────────────────────────
 
 const TABS = [
   { id: 'profile', label: 'Profile', Icon: User },
+  { id: 'enrollments', label: 'Enrollments', Icon: ClipboardList },
   { id: 'packages', label: 'Packages', Icon: Package },
+  { id: 'payments', label: 'Payment History', Icon: Receipt },
   { id: 'lessons', label: 'Lessons', Icon: BookOpen },
   { id: 'notes', label: 'Notes', Icon: StickyNote },
 ]
@@ -256,49 +432,243 @@ function ProfileTab({ customer, locations, onUpdated }) {
   )
 }
 
+// ─── PayInstallmentDialog ────────────────────────────────────────────────────
+
+function PayInstallmentDialog({ open, onClose, plan, installmentIndex, onSuccess }) {
+  const [method, setMethod] = useState('cash')
+  const [saving, setSaving] = useState(false)
+  const toast = useToast()
+
+  const installment = plan?.installments?.[installmentIndex]
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSaving(true)
+    const res = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
+      installmentIndex,
+      method,
+    })
+    if (res.success) {
+      toast.success('Installment payment recorded.')
+      onSuccess()
+      onClose()
+    } else {
+      toast.error(res.error || 'Failed to record payment.')
+    }
+    setSaving(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>Pay Installment</DialogTitle></DialogHeader>
+        {installment && (
+          <p className="text-[12px] text-muted-foreground -mt-1">
+            Payment {installmentIndex + 1} of {plan.numberOfInstallments} ·{' '}
+            <span className="text-foreground font-medium">${Number(installment.amount).toFixed(2)}</span>
+            {' '}due {new Date(installment.dueDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </p>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <FormField label="Payment Method" required>
+            <div className="relative">
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
+              >
+                {PAYMENT_METHODS.map((m) => <option key={m} value={m} className="capitalize">{m}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            </div>
+          </FormField>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              {saving ? 'Recording…' : `Pay $${Number(installment?.amount ?? 0).toFixed(2)}`}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Packages Tab ─────────────────────────────────────────────────────────────
+
+const BLANK_ADD_FORM = {
+  enrollmentID: '',
+  packageID: '',
+  purchaseDate: '',
+  services: [],
+  billingType: 'one_time',
+  billing: { method: 'cash', numberOfInstallments: 3, frequency: 'monthly', startDate: '' },
+}
 
 function PackagesTab({ customerID }) {
   const [customerPkgs, setCustomerPkgs] = useState([])
+  const [detailsMap, setDetailsMap] = useState({})
+  const [plansMap, setPlansMap] = useState({})   // cpId -> PaymentPlan doc
   const [allPkgs, setAllPkgs] = useState([])
+  const [enrollments, setEnrollments] = useState([])
   const [loading, setLoading] = useState(true)
-  const [sellOpen, setSellOpen] = useState(false)
+
+  // Add package multi-step
+  const [addOpen, setAddOpen] = useState(false)
+  const [addStep, setAddStep] = useState(1)
+  const [addForm, setAddForm] = useState(BLANK_ADD_FORM)
+  const [selectedPkg, setSelectedPkg] = useState(null)
+  const [adding, setAdding] = useState(false)
+
+  // Cancel / pay / pay-installment
   const [cancelTarget, setCancelTarget] = useState(null)
   const [cancelling, setCancelling] = useState(false)
-  const [form, setForm] = useState({ packageID: '', purchaseDate: '', totalPaid: '' })
-  const [selling, setSelling] = useState(false)
+  const [recordPaymentTarget, setRecordPaymentTarget] = useState(null)
+  const [payInstallTarget, setPayInstallTarget] = useState(null) // { plan, index }
   const toast = useToast()
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [pkgRes, allRes] = await Promise.all([
+    const [pkgRes, allRes, enrRes] = await Promise.all([
       api.get(`/api/customer-package/customer/${customerID}`),
       api.get('/api/package?limit=200&isActive=true'),
+      api.get(`/api/enrollment?customerID=${customerID}&status=active`),
     ])
-    if (pkgRes.success) setCustomerPkgs(pkgRes.data || [])
     if (allRes.success) setAllPkgs(allRes.data || [])
+    if (enrRes.success) setEnrollments(enrRes.data || [])
+    if (pkgRes.success) {
+      const list = pkgRes.data || []
+      setCustomerPkgs(list)
+      if (list.length > 0) {
+        const detailResults = await Promise.all(list.map((cp) => api.get(`/api/customer-package/${cp._id}/details`)))
+        const detMap = {}
+        list.forEach((cp, i) => { if (detailResults[i].success) detMap[cp._id] = detailResults[i].data })
+        setDetailsMap(detMap)
+
+        // Fetch payment plans for all payment_plan packages in one call
+        const hasPlanPkgs = list.some((cp) => cp.billingType === 'payment_plan')
+        if (hasPlanPkgs) {
+          const plansRes = await api.get(`/api/payment-plan/customer/${customerID}`)
+          if (plansRes.success) {
+            const pm = {}
+            ;(plansRes.data || []).forEach((plan) => {
+              const cpId = String(plan.customerPackageID?._id ?? plan.customerPackageID)
+              pm[cpId] = plan
+            })
+            setPlansMap(pm)
+          }
+        }
+      }
+    }
     setLoading(false)
   }, [customerID])
 
   useEffect(() => { load() }, [load])
 
-  async function handleSell(e) {
-    e.preventDefault()
-    if (!form.packageID) return
-    setSelling(true)
-    const payload = { customerID, packageID: form.packageID }
-    if (form.purchaseDate) payload.purchaseDate = form.purchaseDate
-    if (form.totalPaid !== '') payload.totalPaid = Number(form.totalPaid)
-    const res = await api.post('/api/customer-package', payload)
+  function openAdd() { setAddForm(BLANK_ADD_FORM); setSelectedPkg(null); setAddStep(1); setAddOpen(true) }
+  function closeAdd() { setAddOpen(false) }
+
+  function onPkgChange(pkgId) {
+    const pkg = allPkgs.find((p) => String(p._id) === pkgId)
+    setSelectedPkg(pkg || null)
+    setAddForm((f) => ({
+      ...f,
+      packageID: pkgId,
+      services: (pkg?.services || []).map((s) => ({
+        serviceCode: s.serviceCode || '',
+        serviceName: s.serviceName || '',
+        color: s.color || '',
+        numberOfSessions: s.numberOfSessions || 0,
+        pricePerSession: s.pricePerSession || 0,
+        discountType: s.discountType || 'none',
+        discountAmount: s.discountAmount || 0,
+        finalAmount: s.finalAmount || 0,
+      })),
+    }))
+  }
+
+  function updateSvc(i, field, val) {
+    setAddForm((f) => {
+      const svcs = f.services.map((s, idx) => {
+        if (idx !== i) return s
+        const updated = { ...s, [field]: val }
+        const price = Number(updated.pricePerSession) || 0
+        const sessions = Number(updated.numberOfSessions) || 0
+        let fa = price * sessions
+        if (updated.discountType === 'percentage') fa -= fa * ((Number(updated.discountAmount) || 0) / 100)
+        if (updated.discountType === 'fixed') fa -= Number(updated.discountAmount) || 0
+        updated.finalAmount = Math.max(0, parseFloat(fa.toFixed(2)))
+        return updated
+      })
+      return { ...f, services: svcs }
+    })
+  }
+
+  function setBilling(field, val) {
+    setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }))
+  }
+
+  const totalAmount = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0)
+
+  function getInstallments() {
+    const { numberOfInstallments, frequency, startDate } = addForm.billing
+    if (!startDate || !numberOfInstallments) return []
+    const n = Number(numberOfInstallments)
+    if (!n || n < 1) return []
+    const amt = parseFloat((totalAmount / n).toFixed(2))
+    const result = []
+    let d = new Date(startDate)
+    for (let i = 0; i < n; i++) {
+      result.push({ date: d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }), amount: amt })
+      if (frequency === 'weekly') d = new Date(d.getTime() + 7 * 86400000)
+      else if (frequency === 'biweekly') d = new Date(d.getTime() + 14 * 86400000)
+      else { d = new Date(d); d.setMonth(d.getMonth() + 1) }
+    }
+    return result
+  }
+
+  async function handleAdd() {
+    if (!addForm.enrollmentID) {
+      toast.error('Please select an enrollment.')
+      return
+    }
+    if (addForm.billingType === 'payment_plan') {
+      const { numberOfInstallments, frequency, startDate } = addForm.billing
+      if (!numberOfInstallments || !frequency || !startDate) {
+        toast.error('Please fill all payment plan fields.')
+        return
+      }
+    }
+    setAdding(true)
+    const payload = {
+      customerID,
+      packageID: addForm.packageID,
+      enrollmentID: addForm.enrollmentID,
+      services: addForm.services.map((s) => ({
+        ...s,
+        numberOfSessions: Number(s.numberOfSessions),
+        pricePerSession: Number(s.pricePerSession),
+        discountAmount: Number(s.discountAmount),
+        finalAmount: Number(s.finalAmount),
+      })),
+      billingType: addForm.billingType,
+      billing:
+        addForm.billingType === 'one_time'
+          ? { method: addForm.billing.method }
+          : addForm.billingType === 'payment_plan'
+          ? { numberOfInstallments: Number(addForm.billing.numberOfInstallments), frequency: addForm.billing.frequency, startDate: addForm.billing.startDate }
+          : {},
+    }
+    if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate
+    const res = await api.post('/api/customer-package/add', payload)
     if (res.success) {
-      toast.success('Package sold to customer.')
-      setSellOpen(false)
-      setForm({ packageID: '', purchaseDate: '', totalPaid: '' })
+      toast.success('Package added to customer.')
+      closeAdd()
       load()
     } else {
-      toast.error(res.error || 'Failed to sell package.')
+      toast.error(res.error || 'Failed to add package.')
     }
-    setSelling(false)
+    setAdding(false)
   }
 
   async function handleCancel() {
@@ -312,116 +682,245 @@ function PackagesTab({ customerID }) {
 
   if (loading) return <div className="flex items-center justify-center py-16"><LoadingSpinner /></div>
 
+  const installments = getInstallments()
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-[13px] text-muted-foreground">{customerPkgs.length} package{customerPkgs.length !== 1 ? 's' : ''}</p>
-        <Button size="sm" className="h-8 text-[12px]" onClick={() => setSellOpen(true)}>
-          <Plus className="h-3.5 w-3.5 mr-1.5" /> Sell Package
+        <Button size="sm" className="h-8 text-[12px]" onClick={openAdd}>
+          <Plus className="h-3.5 w-3.5 mr-1.5" /> Add Package
         </Button>
       </div>
 
       {customerPkgs.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          No packages yet. Click "Sell Package" to assign one.
+          No packages yet. Click "Add Package" to assign one.
         </div>
       ) : (
         <div className="space-y-3">
-          {customerPkgs.map((cp) => (
-            <div key={cp._id} className="rounded-xl border border-border bg-card p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  {cp.packageID?.color && (
-                    <div className="h-9 w-9 rounded-lg shrink-0 border border-black/10" style={{ backgroundColor: cp.packageID.color }} />
-                  )}
-                  <div>
-                    <p className="text-[13px] font-semibold text-foreground">{cp.packageID?.packageName ?? 'Package'}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Purchased {formatDate(cp.purchaseDate)}
-                      {cp.expiryDate ? ` · Expires ${formatDate(cp.expiryDate)}` : ' · No expiry'}
-                      {cp.totalPaid != null ? ` · $${Number(cp.totalPaid).toFixed(2)} paid` : ''}
-                    </p>
+          {customerPkgs.map((cp) => {
+            const det = detailsMap[cp._id]
+            const billing = det?.billing ?? {}
+            const services = det?.services ?? cp.services ?? []
+            const totalPaid = billing.totalPaid ?? cp.totalPaid ?? 0
+            const collected = billing.amountCollected ?? cp.amountCollected ?? 0
+            const outstanding = billing.outstanding ?? Math.max(0, totalPaid - collected)
+            const refunded = billing.totalRefunded ?? 0
+            return (
+              <div key={cp._id} className="rounded-xl border border-border bg-card p-5">
+                {/* Header row */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    {cp.packageID?.color && (
+                      <div className="h-9 w-9 rounded-lg shrink-0 border border-black/10" style={{ backgroundColor: cp.packageID.color }} />
+                    )}
+                    <div>
+                      <p className="text-[13px] font-semibold text-foreground">{cp.packageID?.packageName ?? 'Package'}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Purchased {formatDate(cp.purchaseDate)}
+                        {cp.expiryDate ? ` · Expires ${formatDate(cp.expiryDate)}` : ' · No expiry'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">
+                    {cp.billingType && cp.billingType !== 'one_time' && (
+                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-violet-500/10 text-violet-600 capitalize">
+                        {cp.billingType.replace('_', ' ')}
+                      </span>
+                    )}
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${paymentStatusColor(cp.paymentStatus)}`}>
+                      {cp.paymentStatus ?? 'unpaid'}
+                    </span>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(cp.status)}`}>
+                      {cp.status}
+                    </span>
+                    {cp.status === 'active' && cp.paymentStatus !== 'paid' && cp.billingType !== 'payment_plan' && (
+                      <Button
+                        size="sm"
+                        className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={() => setRecordPaymentTarget(cp)}
+                      >
+                        <CreditCard className="h-3 w-3 mr-1" /> Pay
+                      </Button>
+                    )}
+                    {cp.status === 'active' && (
+                      <Button
+                        variant="ghost" size="sm"
+                        className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
+                        onClick={() => setCancelTarget(cp)}
+                      >
+                        <X className="h-3 w-3 mr-1" /> Cancel
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(cp.status)}`}>
-                    {cp.status}
-                  </span>
-                  {cp.status === 'active' && (
-                    <Button
-                      variant="ghost" size="sm"
-                      className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
-                      onClick={() => setCancelTarget(cp)}
-                    >
-                      <X className="h-3 w-3 mr-1" /> Cancel
-                    </Button>
-                  )}
-                </div>
-              </div>
 
-              {cp.services?.length > 0 && (
-                <div className="mt-4 space-y-2.5 border-t border-border pt-4">
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Sessions</p>
-                  {cp.services.map((svc, i) => (
-                    <div key={i}>
-                      <div className="flex items-center justify-between">
-                        <p className="text-[12px] text-foreground">{svc.serviceName}</p>
-                        <span className="text-[11px] text-muted-foreground">{svc.sessionsUsed} used</span>
-                      </div>
-                      <SessionBar used={svc.sessionsUsed} total={svc.sessionsTotal} />
+                {/* Billing summary — 4 columns */}
+                <div className="mt-4 grid grid-cols-4 gap-3 rounded-lg bg-muted/40 p-3">
+                  {[
+                    { label: 'Total Price', value: `$${Number(totalPaid).toFixed(2)}` },
+                    { label: 'Collected', value: `$${Number(collected).toFixed(2)}`, cls: 'text-emerald-600' },
+                    { label: 'Outstanding', value: `$${Number(outstanding).toFixed(2)}`, cls: outstanding > 0 ? 'text-rose-600' : 'text-muted-foreground' },
+                    { label: 'Refunded', value: `$${Number(refunded).toFixed(2)}`, cls: refunded > 0 ? 'text-amber-600' : 'text-muted-foreground' },
+                  ].map(({ label, value, cls }) => (
+                    <div key={label} className="text-center">
+                      <p className="text-[10px] text-muted-foreground mb-0.5">{label}</p>
+                      <p className={`text-[13px] font-semibold ${cls ?? 'text-foreground'}`}>{value}</p>
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          ))}
+
+                {/* Services with full session breakdown */}
+                {services.length > 0 && (
+                  <div className="mt-4 border-t border-border pt-4">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2.5">Services</p>
+                    <div className="space-y-2.5">
+                      {services.map((svc, i) => {
+                        const pkgSvc = cp.packageID?.services?.find((s) => s.serviceCode === svc.serviceCode)
+                        const sessTotal = svc.sessionsTotal ?? 0
+                        const sessUsed = svc.sessionsUsed ?? 0
+                        const sessSched = svc.sessionsScheduled ?? 0
+                        const sessRemaining = svc.sessionsRemaining ?? Math.max(0, sessTotal - sessUsed)
+                        return (
+                          <div key={i} className="rounded-lg border border-border/60 bg-background p-3">
+                            <div className="flex items-center gap-2 mb-2.5">
+                              {pkgSvc?.color && (
+                                <span className="h-3 w-3 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: pkgSvc.color }} />
+                              )}
+                              <p className="text-[12px] font-medium text-foreground flex-1">{svc.serviceName}</p>
+                              {svc.pricePerSession > 0 && (
+                                <span className="text-[11px] text-muted-foreground">
+                                  ${Number(svc.pricePerSession).toFixed(2)}/session
+                                  {svc.discountType && svc.discountType !== 'none' && (
+                                    <span className="ml-1 text-amber-600">
+                                      · {svc.discountType === 'percentage' ? `${svc.discountAmount}% off` : `-$${svc.discountAmount}`}
+                                    </span>
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                            {/* Session counts — 4 boxes */}
+                            <div className="grid grid-cols-4 gap-1.5 mb-2">
+                              {[
+                                { label: 'Total', value: sessTotal },
+                                { label: 'Used', value: sessUsed, cls: sessUsed > 0 ? 'text-blue-600' : '' },
+                                { label: 'Scheduled', value: sessSched, cls: sessSched > 0 ? 'text-violet-600' : '' },
+                                { label: 'Remaining', value: sessRemaining, cls: sessRemaining > 0 ? 'text-emerald-600' : 'text-muted-foreground' },
+                              ].map(({ label, value, cls }) => (
+                                <div key={label} className="text-center bg-muted/40 rounded-md py-1.5">
+                                  <p className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</p>
+                                  <p className={`text-[14px] font-bold ${cls ?? 'text-foreground'}`}>{value}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <SessionBar used={sessUsed} total={sessTotal} />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment plan installment schedule */}
+                {cp.billingType === 'payment_plan' && (() => {
+                  const plan = plansMap[String(cp._id)]
+                  if (!plan) return null
+                  const paidCount = plan.installments.filter((i) => i.status === 'paid').length
+                  return (
+                    <div className="mt-4 border-t border-border pt-4">
+                      <div className="flex items-center justify-between mb-2.5">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                          Payment Schedule
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            plan.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600' :
+                            plan.status === 'cancelled' ? 'bg-muted text-muted-foreground' :
+                            'bg-violet-500/10 text-violet-600'
+                          }`}>
+                            {plan.status}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {paidCount} / {plan.numberOfInstallments} paid
+                          </span>
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-border overflow-hidden">
+                        {plan.installments.map((inst, idx) => (
+                          <div
+                            key={idx}
+                            className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? 'border-t border-border' : ''} ${
+                              inst.status === 'paid' ? 'bg-emerald-500/5' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                                inst.status === 'paid'
+                                  ? 'bg-emerald-600 text-white'
+                                  : inst.status === 'failed'
+                                  ? 'bg-rose-600 text-white'
+                                  : 'bg-muted text-muted-foreground'
+                              }`}>
+                                {inst.status === 'paid' ? '✓' : idx + 1}
+                              </div>
+                              <div>
+                                <p className="text-[12px] text-foreground font-medium">
+                                  Payment {idx + 1}
+                                  {inst.status === 'paid' && <span className="ml-1.5 text-[11px] font-normal text-emerald-600">Paid</span>}
+                                  {inst.status === 'failed' && <span className="ml-1.5 text-[11px] font-normal text-rose-600">Failed</span>}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  Due {new Date(inst.dueDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-[13px] font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</p>
+                              {inst.status === 'pending' && plan.status === 'active' && cp.status === 'active' && (
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  onClick={() => setPayInstallTarget({ plan, index: idx })}
+                                >
+                                  Pay
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {plan.nextPaymentDate && plan.status === 'active' && (
+                        <p className="text-[11px] text-muted-foreground mt-1.5">
+                          Next payment due: {new Date(plan.nextPaymentDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {/* Sell Package modal */}
-      <Dialog open={sellOpen} onOpenChange={(v) => { if (!v) setSellOpen(false) }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Sell Package</DialogTitle></DialogHeader>
-          <form onSubmit={handleSell} className="space-y-4 mt-2">
-            <FormField label="Package" required>
-              <div className="relative">
-                <select
-                  value={form.packageID}
-                  onChange={(e) => setForm({ ...form, packageID: e.target.value })}
-                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
-                >
-                  <option value="">Select package…</option>
-                  {allPkgs.map((p) => (
-                    <option key={p._id} value={p._id}>{p.packageName}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              </div>
-            </FormField>
-            <FormField label="Purchase date (optional)">
-              <input
-                type="date" value={form.purchaseDate}
-                onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })}
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-              />
-            </FormField>
-            <FormField label="Amount paid (leave blank for package default)">
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
-                <input
-                  type="number" min="0" step="0.01" value={form.totalPaid}
-                  onChange={(e) => setForm({ ...form, totalPaid: e.target.value })}
-                  className="h-9 w-full rounded-lg border border-border bg-background pl-7 pr-3 text-[13px] outline-none focus:border-primary"
-                />
-              </div>
-            </FormField>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" variant="outline" size="sm" onClick={() => setSellOpen(false)}>Cancel</Button>
-              <Button type="submit" size="sm" disabled={selling || !form.packageID}>{selling ? 'Saving…' : 'Sell'}</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Record Payment dialog */}
+      <RecordPaymentDialog
+        open={Boolean(recordPaymentTarget)}
+        onClose={() => setRecordPaymentTarget(null)}
+        customerID={customerID}
+        customerPackageID={recordPaymentTarget?._id}
+        onSuccess={load}
+      />
+
+      {/* Pay installment dialog */}
+      <PayInstallmentDialog
+        open={Boolean(payInstallTarget)}
+        onClose={() => setPayInstallTarget(null)}
+        plan={payInstallTarget?.plan}
+        installmentIndex={payInstallTarget?.index}
+        onSuccess={load}
+      />
 
       {/* Cancel confirm */}
       <Dialog open={Boolean(cancelTarget)} onOpenChange={(v) => { if (!v) setCancelTarget(null) }}>
@@ -438,6 +937,1163 @@ function PackagesTab({ customerID }) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Add Package — 3-step dialog */}
+      <Dialog open={addOpen} onOpenChange={(v) => { if (!v) closeAdd() }}>
+        <DialogContent className={addStep === 2 ? 'max-w-3xl' : 'max-w-lg'}>
+          <DialogHeader>
+            <DialogTitle>Add Package</DialogTitle>
+            {/* Step progress bar */}
+            <div className="flex gap-1 mt-2">
+              {[1, 2, 3].map((s) => (
+                <div key={s} className={`h-1 flex-1 rounded-full transition-colors ${s <= addStep ? 'bg-primary' : 'bg-muted'}`} />
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {addStep === 1 ? 'Step 1 of 3 — Choose package' : addStep === 2 ? 'Step 2 of 3 — Configure services & pricing' : 'Step 3 of 3 — Set billing'}
+            </p>
+          </DialogHeader>
+
+          {/* ── Step 1: Choose package ── */}
+          {addStep === 1 && (
+            <div className="space-y-4 mt-2">
+              <FormField label="Enrollment" required>
+                <div className="relative">
+                  <select
+                    value={addForm.enrollmentID}
+                    onChange={(e) => setAddForm((f) => ({ ...f, enrollmentID: e.target.value }))}
+                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                  >
+                    <option value="">Select enrollment…</option>
+                    {enrollments.filter((e) => !e.packageID).map((e) => {
+                      const ordinal = ['1st','2nd','3rd'][e.enrollmentNumber - 1] ?? `${e.enrollmentNumber}th`
+                      return (
+                        <option key={e._id} value={e._id}>
+                          {ordinal} Enrollment{e.label ? ` — ${e.label}` : ''}
+                        </option>
+                      )
+                    })}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                </div>
+                {enrollments.filter((e) => !e.packageID).length === 0 && (
+                  <p className="text-[11px] text-amber-600 mt-1">No active enrollments without a package. Create an enrollment first in the Enrollments tab.</p>
+                )}
+              </FormField>
+              <FormField label="Package" required>
+                <div className="relative">
+                  <select
+                    value={addForm.packageID}
+                    onChange={(e) => onPkgChange(e.target.value)}
+                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                  >
+                    <option value="">Select package…</option>
+                    {allPkgs.map((p) => <option key={p._id} value={p._id}>{p.packageName}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </FormField>
+              {selectedPkg && (
+                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
+                  <p className="text-[12px] font-medium text-foreground">{selectedPkg.packageName}</p>
+                  {selectedPkg.description && <p className="text-[11px] text-muted-foreground">{selectedPkg.description}</p>}
+                  <p className="text-[11px] text-muted-foreground">
+                    {selectedPkg.services?.length ?? 0} service{selectedPkg.services?.length !== 1 ? 's' : ''}
+                    {' · '}
+                    {selectedPkg.totalDays > 0 ? `${selectedPkg.totalDays} days validity` : 'No expiry'}
+                  </p>
+                </div>
+              )}
+              <FormField label="Purchase date (optional)">
+                <input
+                  type="date" value={addForm.purchaseDate}
+                  onChange={(e) => setAddForm((f) => ({ ...f, purchaseDate: e.target.value }))}
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                />
+              </FormField>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button type="button" variant="outline" size="sm" onClick={closeAdd}>Cancel</Button>
+                <Button type="button" size="sm" disabled={!addForm.packageID || !addForm.enrollmentID} onClick={() => setAddStep(2)}>Next</Button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 2: Configure services ── */}
+          {addStep === 2 && (
+            <div className="space-y-4 mt-2">
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="bg-muted/40 border-b border-border">
+                      {['Service', 'Color', 'Sessions', 'Price / Session', 'Discount', 'Disc. Amount', 'Final'].map((h) => (
+                        <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {addForm.services.map((svc, i) => (
+                      <tr key={i} className={i > 0 ? 'border-t border-border' : ''}>
+                        <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">{svc.serviceName}</td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="color" value={svc.color || '#6366f1'}
+                            onChange={(e) => updateSvc(i, 'color', e.target.value)}
+                            className="h-7 w-9 rounded border border-border cursor-pointer p-0.5 bg-background"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number" min="0" value={svc.numberOfSessions}
+                            onChange={(e) => updateSvc(i, 'numberOfSessions', e.target.value)}
+                            className="h-7 w-16 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                            <input
+                              type="number" min="0" step="0.01" value={svc.pricePerSession}
+                              onChange={(e) => updateSvc(i, 'pricePerSession', e.target.value)}
+                              className="h-7 w-20 rounded border border-border bg-background pl-5 pr-2 text-[12px] outline-none focus:border-primary"
+                            />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={svc.discountType}
+                            onChange={(e) => updateSvc(i, 'discountType', e.target.value)}
+                            className="h-7 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
+                          >
+                            <option value="none">None</option>
+                            <option value="percentage">%</option>
+                            <option value="fixed">Fixed</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number" min="0" step="0.01" value={svc.discountAmount}
+                            disabled={svc.discountType === 'none'}
+                            onChange={(e) => updateSvc(i, 'discountAmount', e.target.value)}
+                            className="h-7 w-20 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary disabled:opacity-40"
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-foreground whitespace-nowrap">${Number(svc.finalAmount).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-border bg-muted/30">
+                      <td colSpan={6} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Total</td>
+                      <td className="px-3 py-2 text-[13px] font-bold text-foreground">${totalAmount.toFixed(2)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div className="flex justify-between gap-2 pt-1">
+                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(1)}>Back</Button>
+                <Button type="button" size="sm" disabled={addForm.services.length === 0} onClick={() => setAddStep(3)}>Next</Button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 3: Billing ── */}
+          {addStep === 3 && (
+            <div className="space-y-4 mt-2">
+              {/* Billing type selector */}
+              <div>
+                <p className="text-[12px] font-medium text-muted-foreground mb-2">Billing Type</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'one_time', label: 'One-time', desc: 'Full payment now' },
+                    { value: 'payment_plan', label: 'Payment Plan', desc: 'Autopay installments' },
+                    { value: 'flexible', label: 'Flexible', desc: 'Pay as you go' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setAddForm((f) => ({ ...f, billingType: opt.value }))}
+                      className={`rounded-lg border-2 p-3 text-left transition-colors ${
+                        addForm.billingType === opt.value
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-border/80 bg-background'
+                      }`}
+                    >
+                      <p className="text-[12px] font-semibold text-foreground">{opt.label}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* One-time */}
+              {addForm.billingType === 'one_time' && (
+                <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[12px] text-muted-foreground">Billing Date</p>
+                    <p className="text-[12px] font-medium text-foreground">
+                      {addForm.purchaseDate
+                        ? new Date(addForm.purchaseDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+                        : new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-border pt-3">
+                    <p className="text-[12px] text-muted-foreground">Payable Balance</p>
+                    <p className="text-[15px] font-bold text-foreground">${totalAmount.toFixed(2)}</p>
+                  </div>
+                  <FormField label="Payment Method" required>
+                    <div className="relative">
+                      <select
+                        value={addForm.billing.method}
+                        onChange={(e) => setBilling('method', e.target.value)}
+                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
+                      >
+                        {PAYMENT_METHODS.map((m) => <option key={m} value={m} className="capitalize">{m}</option>)}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </FormField>
+                </div>
+              )}
+
+              {/* Payment plan */}
+              {addForm.billingType === 'payment_plan' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <FormField label="Installments" required>
+                      <input
+                        type="number" min="2" max="52" value={addForm.billing.numberOfInstallments}
+                        onChange={(e) => setBilling('numberOfInstallments', e.target.value)}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                      />
+                    </FormField>
+                    <FormField label="Frequency" required>
+                      <div className="relative">
+                        <select
+                          value={addForm.billing.frequency}
+                          onChange={(e) => setBilling('frequency', e.target.value)}
+                          className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                        >
+                          <option value="weekly">Weekly</option>
+                          <option value="biweekly">Fortnightly</option>
+                          <option value="monthly">Monthly</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      </div>
+                    </FormField>
+                    <FormField label="Start Date" required>
+                      <input
+                        type="date" value={addForm.billing.startDate}
+                        onChange={(e) => setBilling('startDate', e.target.value)}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                      />
+                    </FormField>
+                  </div>
+                  {installments.length > 0 && (
+                    <div className="rounded-lg border border-border bg-muted/20 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Schedule Preview</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          ${(totalAmount / Number(addForm.billing.numberOfInstallments)).toFixed(2)} / payment
+                        </p>
+                      </div>
+                      <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                        {installments.map((inst, i) => (
+                          <div key={i} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
+                            <span className="text-[11px] text-muted-foreground">Payment {i + 1} · {inst.date}</span>
+                            <span className="text-[11px] font-medium text-foreground">${inst.amount.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
+                        <p className="text-[11px] font-medium text-muted-foreground">Payable Balance</p>
+                        <p className="text-[13px] font-bold text-foreground">${totalAmount.toFixed(2)}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Flexible */}
+              {addForm.billingType === 'flexible' && (
+                <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
+                  <p className="text-[12px] text-muted-foreground">
+                    No schedule set. Payments can be recorded manually at any time.
+                  </p>
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <p className="text-[12px] text-muted-foreground">Payable Balance</p>
+                    <p className="text-[15px] font-bold text-foreground">${totalAmount.toFixed(2)}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-between gap-2 pt-1">
+                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(2)}>Back</Button>
+                <Button type="button" size="sm" disabled={adding} onClick={handleAdd}>
+                  {adding ? 'Adding…' : 'Add Package'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ─── Enrollments Tab ─────────────────────────────────────────────────────────
+
+const BLANK_ENR_FORM = {
+  packageID: '',
+  purchaseDate: '',
+  services: [],
+  billingType: 'one_time',
+  billing: { method: 'cash', numberOfInstallments: 3, frequency: 'monthly', startDate: '' },
+}
+
+function EnrollmentsTab({ customerID }) {
+  const [enrollments, setEnrollments] = useState([])
+  const [detailsMap, setDetailsMap] = useState({})
+  const [plansMap, setPlansMap] = useState({})
+  const [allPkgs, setAllPkgs] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createLabel, setCreateLabel] = useState('')
+  const [createTeacherID, setCreateTeacherID] = useState('')
+  const [teachers, setTeachers] = useState([])
+  const [creating, setCreating] = useState(false)
+
+  const [addTargetEnrollment, setAddTargetEnrollment] = useState(null)
+  const [addStep, setAddStep] = useState(1)
+  const [addForm, setAddForm] = useState(BLANK_ENR_FORM)
+  const [selectedPkg, setSelectedPkg] = useState(null)
+  const [adding, setAdding] = useState(false)
+
+  const [cancelTarget, setCancelTarget] = useState(null)
+  const [cancelling, setCancelling] = useState(false)
+  const [recordPaymentTarget, setRecordPaymentTarget] = useState(null)
+  const [payInstallTarget, setPayInstallTarget] = useState(null)
+
+  const toast = useToast()
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const [enrRes, allRes, teachersRes] = await Promise.all([
+      api.get(`/api/enrollment?customerID=${customerID}`),
+      api.get('/api/package?limit=200&isActive=true'),
+      api.get('/api/teacher?limit=200&status=active'),
+    ])
+    if (allRes.success) setAllPkgs(allRes.data || [])
+    if (teachersRes.success) setTeachers(teachersRes.data || [])
+    if (enrRes.success) {
+      const list = enrRes.data || []
+      setEnrollments(list)
+      const withPkg = list.filter((e) => e.packageID)
+      if (withPkg.length > 0) {
+        const cpIds = withPkg.map((e) => typeof e.packageID === 'object' ? String(e.packageID._id) : String(e.packageID))
+        const detResults = await Promise.all(cpIds.map((id) => api.get(`/api/customer-package/${id}/details`)))
+        const detMap = {}
+        cpIds.forEach((id, i) => { if (detResults[i].success) detMap[id] = detResults[i].data })
+        setDetailsMap(detMap)
+        const hasPlan = Object.values(detMap).some((d) => d.customerPackage?.billingType === 'payment_plan')
+        if (hasPlan) {
+          const plansRes = await api.get(`/api/payment-plan/customer/${customerID}`)
+          if (plansRes.success) {
+            const pm = {}
+            ;(plansRes.data || []).forEach((plan) => {
+              const cpId = String(plan.customerPackageID?._id ?? plan.customerPackageID)
+              pm[cpId] = plan
+            })
+            setPlansMap(pm)
+          }
+        }
+      }
+    }
+    setLoading(false)
+  }, [customerID])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleCreate(e) {
+    e.preventDefault()
+    setCreating(true)
+    const res = await api.post('/api/enrollment', {
+      customerID,
+      label: createLabel.trim() || undefined,
+      teacherID: createTeacherID || undefined,
+    })
+    if (res.success) {
+      toast.success('Enrollment created.')
+      setCreateOpen(false)
+      setCreateLabel('')
+      setCreateTeacherID('')
+      load()
+    } else {
+      toast.error(res.error || 'Failed to create enrollment.')
+    }
+    setCreating(false)
+  }
+
+  function openAddPackage(enrollment) {
+    setAddTargetEnrollment(enrollment)
+    setAddForm(BLANK_ENR_FORM)
+    setSelectedPkg(null)
+    setAddStep(1)
+  }
+
+  function onEnrPkgChange(pkgId) {
+    const pkg = allPkgs.find((p) => String(p._id) === pkgId)
+    setSelectedPkg(pkg || null)
+    setAddForm((f) => ({
+      ...f,
+      packageID: pkgId,
+      services: (pkg?.services || []).map((s) => ({
+        serviceCode: s.serviceCode || '',
+        serviceName: s.serviceName || '',
+        color: s.color || '',
+        numberOfSessions: s.numberOfSessions || 0,
+        pricePerSession: s.pricePerSession || 0,
+        discountType: s.discountType || 'none',
+        discountAmount: s.discountAmount || 0,
+        finalAmount: s.finalAmount || 0,
+      })),
+    }))
+  }
+
+  function updateEnrSvc(i, field, val) {
+    setAddForm((f) => {
+      const svcs = f.services.map((s, idx) => {
+        if (idx !== i) return s
+        const updated = { ...s, [field]: val }
+        const price = Number(updated.pricePerSession) || 0
+        const sessions = Number(updated.numberOfSessions) || 0
+        let fa = price * sessions
+        if (updated.discountType === 'percentage') fa -= fa * ((Number(updated.discountAmount) || 0) / 100)
+        if (updated.discountType === 'fixed') fa -= Number(updated.discountAmount) || 0
+        updated.finalAmount = Math.max(0, parseFloat(fa.toFixed(2)))
+        return updated
+      })
+      return { ...f, services: svcs }
+    })
+  }
+
+  function setEnrBilling(field, val) {
+    setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }))
+  }
+
+  const enrTotalAmount = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0)
+
+  function getEnrInstallments() {
+    const { numberOfInstallments, frequency, startDate } = addForm.billing
+    if (!startDate || !numberOfInstallments) return []
+    const n = Number(numberOfInstallments)
+    if (!n || n < 1) return []
+    const amt = parseFloat((enrTotalAmount / n).toFixed(2))
+    const result = []
+    let d = new Date(startDate)
+    for (let i = 0; i < n; i++) {
+      result.push({ date: d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }), amount: amt })
+      if (frequency === 'weekly') d = new Date(d.getTime() + 7 * 86400000)
+      else if (frequency === 'biweekly') d = new Date(d.getTime() + 14 * 86400000)
+      else { d = new Date(d); d.setMonth(d.getMonth() + 1) }
+    }
+    return result
+  }
+
+  async function handleEnrAdd() {
+    if (addForm.billingType === 'payment_plan') {
+      const { numberOfInstallments, frequency, startDate } = addForm.billing
+      if (!numberOfInstallments || !frequency || !startDate) {
+        toast.error('Please fill all payment plan fields.')
+        return
+      }
+    }
+    setAdding(true)
+    const payload = {
+      customerID,
+      packageID: addForm.packageID,
+      enrollmentID: String(addTargetEnrollment._id),
+      services: addForm.services.map((s) => ({
+        ...s,
+        numberOfSessions: Number(s.numberOfSessions),
+        pricePerSession: Number(s.pricePerSession),
+        discountAmount: Number(s.discountAmount),
+        finalAmount: Number(s.finalAmount),
+      })),
+      billingType: addForm.billingType,
+      billing:
+        addForm.billingType === 'one_time'
+          ? { method: addForm.billing.method }
+          : addForm.billingType === 'payment_plan'
+          ? { numberOfInstallments: Number(addForm.billing.numberOfInstallments), frequency: addForm.billing.frequency, startDate: addForm.billing.startDate }
+          : {},
+    }
+    if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate
+    const res = await api.post('/api/customer-package/add', payload)
+    if (res.success) {
+      toast.success('Package added.')
+      setAddTargetEnrollment(null)
+      load()
+    } else {
+      toast.error(res.error || 'Failed to add package.')
+    }
+    setAdding(false)
+  }
+
+  async function handleEnrCancel() {
+    if (!cancelTarget) return
+    setCancelling(true)
+    const res = await api.patch(`/api/customer-package/${cancelTarget._id}/cancel`)
+    if (res.success) { toast.success('Package cancelled.'); setCancelTarget(null); load() }
+    else toast.error(res.error || 'Failed.')
+    setCancelling(false)
+  }
+
+  if (loading) return <div className="flex items-center justify-center py-16"><LoadingSpinner /></div>
+
+  const enrInstallments = getEnrInstallments()
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-muted-foreground">{enrollments.length} enrollment{enrollments.length !== 1 ? 's' : ''}</p>
+        <Button size="sm" className="h-8 text-[12px]" onClick={() => setCreateOpen(true)}>
+          <Plus className="h-3.5 w-3.5 mr-1.5" /> New Enrollment
+        </Button>
+      </div>
+
+      {enrollments.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
+          No enrollments yet. Click "New Enrollment" to create one.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {enrollments.map((enr) => {
+            const cpId = enr.packageID ? (typeof enr.packageID === 'object' ? String(enr.packageID._id) : String(enr.packageID)) : null
+            const det = cpId ? detailsMap[cpId] : null
+            const cp = det?.customerPackage ?? (typeof enr.packageID === 'object' ? enr.packageID : null)
+            const billing = det?.billing ?? {}
+            const services = det?.services ?? cp?.services ?? []
+            const totalPaid = billing.totalPaid ?? cp?.totalPaid ?? 0
+            const collected = billing.amountCollected ?? cp?.amountCollected ?? 0
+            const outstanding = billing.outstanding ?? Math.max(0, totalPaid - collected)
+            const refunded = billing.totalRefunded ?? 0
+            const ordinal = ['1st','2nd','3rd'][enr.enrollmentNumber - 1] ?? `${enr.enrollmentNumber}th`
+
+            return (
+              <div key={enr._id} className="rounded-xl border border-border bg-card overflow-hidden">
+                {/* Enrollment header bar */}
+                <div className="flex items-center justify-between px-5 py-3.5 bg-muted/30 border-b border-border">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      {ordinal} Enrollment
+                    </span>
+                    {enr.label && (
+                      <span className="text-[12px] font-medium text-foreground">· {enr.label}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {enr.teacherID?.name && (
+                      <span className="text-[11px] text-muted-foreground">{enr.teacherID.name}</span>
+                    )}
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(enr.status)}`}>
+                      {enr.status}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">{formatDate(enr.createdAt)}</span>
+                  </div>
+                </div>
+
+                {/* No package yet */}
+                {!cp ? (
+                  <div className="flex items-center justify-between px-5 py-8">
+                    <p className="text-[13px] text-muted-foreground">No package assigned yet.</p>
+                    {enr.status === 'active' && (
+                      <Button size="sm" className="h-8 text-[12px]" onClick={() => openAddPackage(enr)}>
+                        <Plus className="h-3.5 w-3.5 mr-1.5" /> Add Package
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-5">
+                    {/* Package header */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        {cp.packageID?.color && (
+                          <div className="h-9 w-9 rounded-lg shrink-0 border border-black/10" style={{ backgroundColor: cp.packageID.color }} />
+                        )}
+                        <div>
+                          <p className="text-[13px] font-semibold text-foreground">{cp.packageID?.packageName ?? 'Package'}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Purchased {formatDate(cp.purchaseDate)}
+                            {cp.expiryDate ? ` · Expires ${formatDate(cp.expiryDate)}` : ' · No expiry'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">
+                        {cp.billingType && cp.billingType !== 'one_time' && (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-violet-500/10 text-violet-600 capitalize">
+                            {cp.billingType.replace('_', ' ')}
+                          </span>
+                        )}
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${paymentStatusColor(cp.paymentStatus)}`}>
+                          {cp.paymentStatus ?? 'unpaid'}
+                        </span>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(cp.status)}`}>
+                          {cp.status}
+                        </span>
+                        {cp.status === 'active' && cp.paymentStatus !== 'paid' && cp.billingType !== 'payment_plan' && (
+                          <Button
+                            size="sm"
+                            className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                            onClick={() => setRecordPaymentTarget(cp)}
+                          >
+                            <CreditCard className="h-3 w-3 mr-1" /> Pay
+                          </Button>
+                        )}
+                        {cp.status === 'active' && (
+                          <Button
+                            variant="ghost" size="sm"
+                            className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
+                            onClick={() => setCancelTarget(cp)}
+                          >
+                            <X className="h-3 w-3 mr-1" /> Cancel
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Billing summary */}
+                    <div className="mt-4 grid grid-cols-4 gap-3 rounded-lg bg-muted/40 p-3">
+                      {[
+                        { label: 'Total Price', value: `$${Number(totalPaid).toFixed(2)}` },
+                        { label: 'Collected', value: `$${Number(collected).toFixed(2)}`, cls: 'text-emerald-600' },
+                        { label: 'Outstanding', value: `$${Number(outstanding).toFixed(2)}`, cls: outstanding > 0 ? 'text-rose-600' : 'text-muted-foreground' },
+                        { label: 'Refunded', value: `$${Number(refunded).toFixed(2)}`, cls: refunded > 0 ? 'text-amber-600' : 'text-muted-foreground' },
+                      ].map(({ label, value, cls }) => (
+                        <div key={label} className="text-center">
+                          <p className="text-[10px] text-muted-foreground mb-0.5">{label}</p>
+                          <p className={`text-[13px] font-semibold ${cls ?? 'text-foreground'}`}>{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Services */}
+                    {services.length > 0 && (
+                      <div className="mt-4 border-t border-border pt-4">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2.5">Services</p>
+                        <div className="space-y-2.5">
+                          {services.map((svc, i) => {
+                            const pkgSvc = cp.packageID?.services?.find((s) => s.serviceCode === svc.serviceCode)
+                            const sessTotal = svc.sessionsTotal ?? 0
+                            const sessUsed = svc.sessionsUsed ?? 0
+                            const sessSched = svc.sessionsScheduled ?? 0
+                            const sessRemaining = svc.sessionsRemaining ?? Math.max(0, sessTotal - sessUsed)
+                            return (
+                              <div key={i} className="rounded-lg border border-border/60 bg-background p-3">
+                                <div className="flex items-center gap-2 mb-2.5">
+                                  {pkgSvc?.color && (
+                                    <span className="h-3 w-3 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: pkgSvc.color }} />
+                                  )}
+                                  <p className="text-[12px] font-medium text-foreground flex-1">{svc.serviceName}</p>
+                                  {svc.pricePerSession > 0 && (
+                                    <span className="text-[11px] text-muted-foreground">
+                                      ${Number(svc.pricePerSession).toFixed(2)}/session
+                                      {svc.discountType && svc.discountType !== 'none' && (
+                                        <span className="ml-1 text-amber-600">
+                                          · {svc.discountType === 'percentage' ? `${svc.discountAmount}% off` : `-$${svc.discountAmount}`}
+                                        </span>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="grid grid-cols-4 gap-1.5 mb-2">
+                                  {[
+                                    { label: 'Total', value: sessTotal },
+                                    { label: 'Used', value: sessUsed, cls: sessUsed > 0 ? 'text-blue-600' : '' },
+                                    { label: 'Scheduled', value: sessSched, cls: sessSched > 0 ? 'text-violet-600' : '' },
+                                    { label: 'Remaining', value: sessRemaining, cls: sessRemaining > 0 ? 'text-emerald-600' : 'text-muted-foreground' },
+                                  ].map(({ label, value, cls }) => (
+                                    <div key={label} className="text-center bg-muted/40 rounded-md py-1.5">
+                                      <p className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</p>
+                                      <p className={`text-[14px] font-bold ${cls ?? 'text-foreground'}`}>{value}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                                <SessionBar used={sessUsed} total={sessTotal} />
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Payment plan installments */}
+                    {cp.billingType === 'payment_plan' && (() => {
+                      const plan = plansMap[String(cp._id)]
+                      if (!plan) return null
+                      const paidCount = plan.installments.filter((i) => i.status === 'paid').length
+                      return (
+                        <div className="mt-4 border-t border-border pt-4">
+                          <div className="flex items-center justify-between mb-2.5">
+                            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Payment Schedule</p>
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                plan.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600' :
+                                plan.status === 'cancelled' ? 'bg-muted text-muted-foreground' :
+                                'bg-violet-500/10 text-violet-600'
+                              }`}>{plan.status}</span>
+                              <span className="text-[11px] text-muted-foreground">{paidCount} / {plan.numberOfInstallments} paid</span>
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-border overflow-hidden">
+                            {plan.installments.map((inst, idx) => (
+                              <div key={idx} className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? 'border-t border-border' : ''} ${inst.status === 'paid' ? 'bg-emerald-500/5' : ''}`}>
+                                <div className="flex items-center gap-2.5">
+                                  <div className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                                    inst.status === 'paid' ? 'bg-emerald-600 text-white' :
+                                    inst.status === 'failed' ? 'bg-rose-600 text-white' :
+                                    'bg-muted text-muted-foreground'
+                                  }`}>{inst.status === 'paid' ? '✓' : idx + 1}</div>
+                                  <div>
+                                    <p className="text-[12px] text-foreground font-medium">
+                                      Payment {idx + 1}
+                                      {inst.status === 'paid' && <span className="ml-1.5 text-[11px] font-normal text-emerald-600">Paid</span>}
+                                      {inst.status === 'failed' && <span className="ml-1.5 text-[11px] font-normal text-rose-600">Failed</span>}
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground">
+                                      Due {new Date(inst.dueDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-[13px] font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</p>
+                                  {inst.status === 'pending' && plan.status === 'active' && cp.status === 'active' && (
+                                    <Button
+                                      size="sm"
+                                      className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                      onClick={() => setPayInstallTarget({ plan, index: idx })}
+                                    >
+                                      Pay
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          {plan.nextPaymentDate && plan.status === 'active' && (
+                            <p className="text-[11px] text-muted-foreground mt-1.5">
+                              Next payment due: {new Date(plan.nextPaymentDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Record Payment dialog */}
+      <RecordPaymentDialog
+        open={Boolean(recordPaymentTarget)}
+        onClose={() => setRecordPaymentTarget(null)}
+        customerID={customerID}
+        customerPackageID={recordPaymentTarget?._id}
+        onSuccess={load}
+      />
+
+      {/* Pay installment dialog */}
+      <PayInstallmentDialog
+        open={Boolean(payInstallTarget)}
+        onClose={() => setPayInstallTarget(null)}
+        plan={payInstallTarget?.plan}
+        installmentIndex={payInstallTarget?.index}
+        onSuccess={load}
+      />
+
+      {/* Cancel confirm */}
+      <Dialog open={Boolean(cancelTarget)} onOpenChange={(v) => { if (!v) setCancelTarget(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Cancel Package</DialogTitle></DialogHeader>
+          <p className="text-[13px] text-muted-foreground mt-1">
+            Cancel <span className="font-semibold text-foreground">{cancelTarget?.packageID?.packageName}</span>? Sessions will no longer be used for new bookings.
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={() => setCancelTarget(null)}>Keep</Button>
+            <Button variant="destructive" size="sm" disabled={cancelling} onClick={handleEnrCancel}>
+              {cancelling ? 'Cancelling…' : 'Cancel Package'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Enrollment dialog */}
+      <Dialog open={createOpen} onOpenChange={(v) => { if (!v) { setCreateOpen(false); setCreateLabel(''); setCreateTeacherID('') } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>New Enrollment</DialogTitle></DialogHeader>
+          <form onSubmit={handleCreate} className="space-y-4 mt-2">
+            <FormField label="Teacher" required>
+              <div className="relative">
+                <select
+                  value={createTeacherID}
+                  onChange={(e) => setCreateTeacherID(e.target.value)}
+                  required
+                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                >
+                  <option value="">Select teacher…</option>
+                  {teachers.map((t) => (
+                    <option key={t._id} value={t._id}>{t.name || t.email}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              </div>
+            </FormField>
+            <FormField label="Label (optional)">
+              <input
+                type="text"
+                placeholder="e.g. Term 1 2026, Trial…"
+                value={createLabel}
+                onChange={(e) => setCreateLabel(e.target.value)}
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+              />
+            </FormField>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => { setCreateOpen(false); setCreateLabel(''); setCreateTeacherID('') }}>Cancel</Button>
+              <Button type="submit" size="sm" disabled={creating}>{creating ? 'Creating…' : 'Create'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Package dialog (3 steps, for a specific enrollment) */}
+      <Dialog open={Boolean(addTargetEnrollment)} onOpenChange={(v) => { if (!v) setAddTargetEnrollment(null) }}>
+        <DialogContent className={addStep === 2 ? 'max-w-3xl' : 'max-w-lg'}>
+          <DialogHeader>
+            <DialogTitle>Add Package</DialogTitle>
+            <div className="flex gap-1 mt-2">
+              {[1, 2, 3].map((s) => (
+                <div key={s} className={`h-1 flex-1 rounded-full transition-colors ${s <= addStep ? 'bg-primary' : 'bg-muted'}`} />
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {addStep === 1 ? 'Step 1 of 3 — Choose package' : addStep === 2 ? 'Step 2 of 3 — Configure services & pricing' : 'Step 3 of 3 — Set billing'}
+            </p>
+          </DialogHeader>
+
+          {addStep === 1 && (
+            <div className="space-y-4 mt-2">
+              <FormField label="Package" required>
+                <div className="relative">
+                  <select
+                    value={addForm.packageID}
+                    onChange={(e) => onEnrPkgChange(e.target.value)}
+                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                  >
+                    <option value="">Select package…</option>
+                    {allPkgs.map((p) => <option key={p._id} value={p._id}>{p.packageName}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </FormField>
+              {selectedPkg && (
+                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
+                  <p className="text-[12px] font-medium text-foreground">{selectedPkg.packageName}</p>
+                  {selectedPkg.description && <p className="text-[11px] text-muted-foreground">{selectedPkg.description}</p>}
+                  <p className="text-[11px] text-muted-foreground">
+                    {selectedPkg.services?.length ?? 0} service{selectedPkg.services?.length !== 1 ? 's' : ''}
+                    {' · '}{selectedPkg.totalDays > 0 ? `${selectedPkg.totalDays} days validity` : 'No expiry'}
+                  </p>
+                </div>
+              )}
+              <FormField label="Purchase date (optional)">
+                <input
+                  type="date" value={addForm.purchaseDate}
+                  onChange={(e) => setAddForm((f) => ({ ...f, purchaseDate: e.target.value }))}
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                />
+              </FormField>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button type="button" variant="outline" size="sm" onClick={() => setAddTargetEnrollment(null)}>Cancel</Button>
+                <Button type="button" size="sm" disabled={!addForm.packageID} onClick={() => setAddStep(2)}>Next</Button>
+              </div>
+            </div>
+          )}
+
+          {addStep === 2 && (
+            <div className="space-y-4 mt-2">
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="bg-muted/40 border-b border-border">
+                      {['Service', 'Color', 'Sessions', 'Price / Session', 'Discount', 'Disc. Amount', 'Final'].map((h) => (
+                        <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {addForm.services.map((svc, i) => (
+                      <tr key={i} className={i > 0 ? 'border-t border-border' : ''}>
+                        <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">{svc.serviceName}</td>
+                        <td className="px-3 py-2">
+                          <input type="color" value={svc.color || '#6366f1'} onChange={(e) => updateEnrSvc(i, 'color', e.target.value)} className="h-7 w-9 rounded border border-border cursor-pointer p-0.5 bg-background" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input type="number" min="0" value={svc.numberOfSessions} onChange={(e) => updateEnrSvc(i, 'numberOfSessions', e.target.value)} className="h-7 w-16 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                            <input type="number" min="0" step="0.01" value={svc.pricePerSession} onChange={(e) => updateEnrSvc(i, 'pricePerSession', e.target.value)} className="h-7 w-20 rounded border border-border bg-background pl-5 pr-2 text-[12px] outline-none focus:border-primary" />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <select value={svc.discountType} onChange={(e) => updateEnrSvc(i, 'discountType', e.target.value)} className="h-7 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary">
+                            <option value="none">None</option>
+                            <option value="percentage">%</option>
+                            <option value="fixed">Fixed</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <input type="number" min="0" step="0.01" value={svc.discountAmount} disabled={svc.discountType === 'none'} onChange={(e) => updateEnrSvc(i, 'discountAmount', e.target.value)} className="h-7 w-20 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary disabled:opacity-40" />
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-foreground whitespace-nowrap">${Number(svc.finalAmount).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-border bg-muted/30">
+                      <td colSpan={6} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Total</td>
+                      <td className="px-3 py-2 text-[13px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div className="flex justify-between gap-2 pt-1">
+                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(1)}>Back</Button>
+                <Button type="button" size="sm" disabled={addForm.services.length === 0} onClick={() => setAddStep(3)}>Next</Button>
+              </div>
+            </div>
+          )}
+
+          {addStep === 3 && (
+            <div className="space-y-4 mt-2">
+              <div>
+                <p className="text-[12px] font-medium text-muted-foreground mb-2">Billing Type</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'one_time', label: 'One-time', desc: 'Full payment now' },
+                    { value: 'payment_plan', label: 'Payment Plan', desc: 'Autopay installments' },
+                    { value: 'flexible', label: 'Flexible', desc: 'Pay as you go' },
+                  ].map((opt) => (
+                    <button key={opt.value} type="button" onClick={() => setAddForm((f) => ({ ...f, billingType: opt.value }))}
+                      className={`rounded-lg border-2 p-3 text-left transition-colors ${addForm.billingType === opt.value ? 'border-primary bg-primary/5' : 'border-border hover:border-border/80 bg-background'}`}>
+                      <p className="text-[12px] font-semibold text-foreground">{opt.label}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {addForm.billingType === 'one_time' && (
+                <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+                  <div className="flex items-center justify-between border-t border-border pt-3">
+                    <p className="text-[12px] text-muted-foreground">Payable Balance</p>
+                    <p className="text-[15px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</p>
+                  </div>
+                  <FormField label="Payment Method" required>
+                    <div className="relative">
+                      <select value={addForm.billing.method} onChange={(e) => setEnrBilling('method', e.target.value)} className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize">
+                        {PAYMENT_METHODS.map((m) => <option key={m} value={m} className="capitalize">{m}</option>)}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </FormField>
+                </div>
+              )}
+
+              {addForm.billingType === 'payment_plan' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <FormField label="Installments" required>
+                      <input type="number" min="2" max="52" value={addForm.billing.numberOfInstallments} onChange={(e) => setEnrBilling('numberOfInstallments', e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+                    </FormField>
+                    <FormField label="Frequency" required>
+                      <div className="relative">
+                        <select value={addForm.billing.frequency} onChange={(e) => setEnrBilling('frequency', e.target.value)} className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary">
+                          <option value="weekly">Weekly</option>
+                          <option value="biweekly">Fortnightly</option>
+                          <option value="monthly">Monthly</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      </div>
+                    </FormField>
+                    <FormField label="Start Date" required>
+                      <input type="date" value={addForm.billing.startDate} onChange={(e) => setEnrBilling('startDate', e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+                    </FormField>
+                  </div>
+                  {enrInstallments.length > 0 && (
+                    <div className="rounded-lg border border-border bg-muted/20 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Schedule Preview</p>
+                        <p className="text-[11px] text-muted-foreground">${(enrTotalAmount / Number(addForm.billing.numberOfInstallments)).toFixed(2)} / payment</p>
+                      </div>
+                      <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                        {enrInstallments.map((inst, i) => (
+                          <div key={i} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
+                            <span className="text-[11px] text-muted-foreground">Payment {i + 1} · {inst.date}</span>
+                            <span className="text-[11px] font-medium text-foreground">${inst.amount.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
+                        <p className="text-[11px] font-medium text-muted-foreground">Payable Balance</p>
+                        <p className="text-[13px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {addForm.billingType === 'flexible' && (
+                <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
+                  <p className="text-[12px] text-muted-foreground">No schedule set. Payments can be recorded manually at any time.</p>
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <p className="text-[12px] text-muted-foreground">Payable Balance</p>
+                    <p className="text-[15px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-between gap-2 pt-1">
+                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(2)}>Back</Button>
+                <Button type="button" size="sm" disabled={adding} onClick={handleEnrAdd}>
+                  {adding ? 'Adding…' : 'Add Package'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ─── Payment History Tab ─────────────────────────────────────────────────────
+
+function PaymentsTab({ customerID }) {
+  const [payments, setPayments] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [refundTarget, setRefundTarget] = useState(null)
+  const LIMIT = 20
+
+  const load = useCallback(async (p = 1) => {
+    setLoading(true)
+    const res = await api.get(`/api/payment/customer/${customerID}?page=${p}&limit=${LIMIT}`)
+    if (res.success) {
+      setPayments(res.data || [])
+      setTotal(res.meta?.total ?? (res.data?.length ?? 0))
+    }
+    setLoading(false)
+  }, [customerID])
+
+  useEffect(() => { load(page) }, [load, page])
+
+  const totalPages = Math.max(1, Math.ceil(total / LIMIT))
+
+  if (loading) return <div className="flex items-center justify-center py-16"><LoadingSpinner /></div>
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-muted-foreground">{total} transaction{total !== 1 ? 's' : ''}</p>
+      </div>
+
+      {payments.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
+          No payment records yet.
+        </div>
+      ) : (
+        <>
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  {['Date', 'Type', 'Amount', 'Method', 'Package', 'Processed By', 'Status', ''].map((h) => (
+                    <th key={h} className="px-4 py-2.5 text-left text-[11px] font-medium text-muted-foreground">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p, i) => {
+                  const badge = paymentTypeBadge(p.type)
+                  return (
+                    <tr key={p._id} className={`${i > 0 ? 'border-t border-border' : ''} hover:bg-muted/20`}>
+                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{formatDate(p.createdAt)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.cls}`}>
+                          {badge.label}
+                        </span>
+                      </td>
+                      <td className={`px-4 py-3 font-semibold ${p.type === 'refund' ? 'text-rose-600' : 'text-foreground'}`}>
+                        {p.type === 'refund' ? '-' : ''}${Number(p.amount).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 capitalize text-muted-foreground">{p.method}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {p.customerPackageID?.packageID?.packageName ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {p.processedBy?.name ?? '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          p.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600' :
+                          p.status === 'pending' ? 'bg-amber-500/10 text-amber-600' :
+                          'bg-rose-500/10 text-rose-600'
+                        }`}>
+                          {p.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {p.type !== 'refund' && p.status === 'completed' && (
+                          <Button
+                            variant="ghost" size="sm"
+                            className="h-7 px-2 text-[11px] text-muted-foreground hover:text-rose-600"
+                            onClick={() => setRefundTarget(p)}
+                          >
+                            <RotateCcw className="h-3 w-3 mr-1" /> Refund
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <p className="text-[12px] text-muted-foreground">Page {page} of {totalPages}</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="h-7 text-[12px]" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Prev</Button>
+                <Button variant="outline" size="sm" className="h-7 text-[12px]" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      <IssueRefundDialog
+        open={Boolean(refundTarget)}
+        onClose={() => setRefundTarget(null)}
+        payment={refundTarget}
+        onSuccess={() => load(page)}
+      />
     </div>
   )
 }
@@ -758,7 +2414,9 @@ export default function CustomerDetailPage() {
         {/* Tab content */}
         <div>
           {tab === 'profile' && <ProfileTab customer={customer} locations={locations} onUpdated={load} />}
+          {tab === 'enrollments' && <EnrollmentsTab customerID={customer._id} />}
           {tab === 'packages' && <PackagesTab customerID={customer._id} />}
+          {tab === 'payments' && <PaymentsTab customerID={customer._id} />}
           {tab === 'lessons' && <LessonsTab customer={customer} onUpdated={load} />}
           {tab === 'notes' && <NotesTab customer={customer} onUpdated={load} />}
         </div>

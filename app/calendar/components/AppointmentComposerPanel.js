@@ -21,38 +21,28 @@ function addMinutes(timeStr, minutesToAdd) {
   return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
 }
 
-function formatTime(timeStr) {
-  if (!timeStr) return "";
-  const [h, m] = timeStr.split(":").map(Number);
-  const period = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+function ordinalLabel(n) {
+  return (["1st","2nd","3rd"][n - 1] ?? `${n}th`);
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { key: "Appointment",   label: "Appointment",  icon: User },
-  { key: "Intro Lesson",  label: "Intro",        icon: User },
-  { key: "Group Class",   label: "Group Class",  icon: Users },
-  { key: "To Do",         label: "To Do",        icon: CalendarDays },
-  { key: "Record Only",   label: "Record",       icon: Clock },
+  { key: "Appointment", label: "Appointment", icon: User },
+  { key: "Group Class", label: "Group Class", icon: Users },
+  { key: "To Do",       label: "To Do",       icon: CalendarDays },
 ];
 
 const TAB_TYPE_MAP = {
-  Appointment:    "private",
-  "Intro Lesson": "trial",
-  "Group Class":  "lesson",
-  "To Do":        "event",
-  "Record Only":  "record",
+  Appointment:  "private",
+  "Group Class":"lesson",
+  "To Do":      "event",
 };
 
 const TAB_SAVE_LABEL = {
-  Appointment:    "Book Appointment",
-  "Intro Lesson": "Book Intro Lesson",
-  "Group Class":  "Add to Class",
-  "To Do":        "Save To Do",
-  "Record Only":  "Record",
+  Appointment:  "Book Appointment",
+  "Group Class":"Add to Class",
+  "To Do":      "Save To Do",
 };
 
 const PAYMENT_METHODS = [
@@ -70,34 +60,35 @@ const FREQUENCY_OPTIONS = [
 ];
 
 const EMPTY_FORM = {
-  lesson_id:           "",
-  service_id:          "",
-  instructor_id:       "",
-  customer_id:         "",
-  customer_ids:        [],
-  date:                "",
-  start_time:          "",
-  end_time:            "",
-  public_note:         "",
-  internal_note:       "",
-  title:               "",
-  package_id:          "",
-  recurrence_enabled:  false,
-  recurrence_frequency:"weekly",
-  recurrence_end_date: "",
-  event_color:         "",
-  payment_collected:   false,
-  payment_amount:      "",
-  payment_method:      "",
-  group_sell_package:  false,
-  group_package_id:    "",
+  lesson_id:            "",
+  service_id:           "",
+  instructor_id:        "",
+  customer_id:          "",
+  customer_ids:         [],
+  enrollment_id:        "",
+  date:                 "",
+  start_time:           "",
+  end_time:             "",
+  selected_time_slots:  [],
+  public_note:          "",
+  internal_note:        "",
+  title:                "",
+  recurrence_enabled:   false,
+  recurrence_frequency: "weekly",
+  recurrence_end_date:  "",
+  event_color:          "",
+  payment_collected:    false,
+  payment_amount:       "",
+  payment_method:       "",
+  group_sell_package:   false,
+  group_package_id:     "",
 };
 
-// ─── Primitive UI components ──────────────────────────────────────────────────
+// ─── Primitive UI ─────────────────────────────────────────────────────────────
 
 function FieldLabel({ children }) {
   return (
-    <label className="block mb-1 text-[11px] font-semibold text-muted-foreground">
+    <label className="block mb-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
       {children}
     </label>
   );
@@ -106,9 +97,7 @@ function FieldLabel({ children }) {
 function SectionDivider({ label }) {
   return (
     <div className="flex items-center gap-2 pt-1 pb-0.5">
-      <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50 shrink-0">
-        {label}
-      </span>
+      <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50 shrink-0">{label}</span>
       <div className="flex-1 h-px bg-border/60" />
     </div>
   );
@@ -117,8 +106,7 @@ function SectionDivider({ label }) {
 function StyledInput({ value, onChange, placeholder, type = "text" }) {
   return (
     <input
-      type={type}
-      value={value}
+      type={type} value={value}
       onChange={(e) => onChange?.(e.target.value)}
       placeholder={placeholder}
       className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/50"
@@ -126,19 +114,16 @@ function StyledInput({ value, onChange, placeholder, type = "text" }) {
   );
 }
 
-function StyledSelect({ value, onChange, options = [], placeholder }) {
+function StyledSelect({ value, onChange, options = [], placeholder, disabled }) {
   return (
     <div className="relative">
       <select
-        value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-primary transition-colors"
+        value={value} onChange={(e) => onChange?.(e.target.value)} disabled={disabled}
+        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <option value="">{placeholder}</option>
         {options.map((opt, i) => (
-          <option key={opt.value != null ? opt.value : i} value={opt.value}>
-            {opt.label}
-          </option>
+          <option key={opt.value != null ? opt.value : i} value={opt.value}>{opt.label}</option>
         ))}
       </select>
       <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -148,11 +133,7 @@ function StyledSelect({ value, onChange, options = [], placeholder }) {
 
 function StyledTextArea({ value, onChange, placeholder, rows = 2 }) {
   return (
-    <textarea
-      rows={rows}
-      value={value}
-      onChange={(e) => onChange?.(e.target.value)}
-      placeholder={placeholder}
+    <textarea rows={rows} value={value} onChange={(e) => onChange?.(e.target.value)} placeholder={placeholder}
       className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/50"
     />
   );
@@ -160,20 +141,9 @@ function StyledTextArea({ value, onChange, placeholder, rows = 2 }) {
 
 function Toggle({ checked, onChange }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange?.(!checked)}
-      className={[
-        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
-        checked ? "bg-brand" : "bg-muted",
-      ].join(" ")}
-    >
-      <span className={[
-        "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200",
-        checked ? "translate-x-4" : "translate-x-0",
-      ].join(" ")} />
+    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange?.(!checked)}
+      className={["relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200", checked ? "bg-brand" : "bg-muted"].join(" ")}>
+      <span className={["pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200", checked ? "translate-x-4" : "translate-x-0"].join(" ")} />
     </button>
   );
 }
@@ -184,248 +154,26 @@ function MultiSelect({ values = [], onChange, options = [], placeholder }) {
   const selected = new Set(values);
   const available = options.filter((o) => !selected.has(o.value));
   const selectedOptions = options.filter((o) => selected.has(o.value));
-
   return (
     <div className="rounded-lg border border-border bg-background focus-within:border-primary transition-colors">
       {selectedOptions.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-2.5 pt-2">
           {selectedOptions.map((opt) => (
-            <span
-              key={opt.value}
-              className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
-            >
+            <span key={opt.value} className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
               {opt.label}
-              <button
-                type="button"
-                onClick={() => onChange?.(values.filter((v) => v !== opt.value))}
-                className="ml-0.5 leading-none hover:text-brand/70"
-              >
-                ×
-              </button>
+              <button type="button" onClick={() => onChange?.(values.filter((v) => v !== opt.value))} className="ml-0.5 leading-none hover:text-brand/70">×</button>
             </span>
           ))}
         </div>
       )}
       <div className="relative">
-        <select
-          value=""
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v && !selected.has(v)) onChange?.([...values, v]);
-          }}
-          className="h-9 w-full appearance-none bg-transparent px-3 pr-8 text-[12px] text-foreground outline-none"
-        >
+        <select value="" onChange={(e) => { const v = e.target.value; if (v && !selected.has(v)) onChange?.([...values, v]); }}
+          className="h-9 w-full appearance-none bg-transparent px-3 pr-8 text-[12px] text-foreground outline-none">
           <option value="">{available.length === 0 ? "All selected" : placeholder}</option>
-          {available.map((opt, i) => (
-            <option key={opt.value != null ? opt.value : i} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
+          {available.map((opt, i) => <option key={opt.value != null ? opt.value : i} value={opt.value}>{opt.label}</option>)}
         </select>
         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
       </div>
-    </div>
-  );
-}
-
-// ─── Service summary card ─────────────────────────────────────────────────────
-
-function ServiceCard({ service }) {
-  if (!service?.isChargeable || !(service.price > 0)) return null;
-  return (
-    <div className="mt-1.5 flex items-center justify-between rounded-lg bg-emerald-500/8 border border-emerald-500/20 px-3 py-2">
-      <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 truncate">
-        {service.serviceName}
-      </span>
-      <span className="shrink-0 ml-2 text-[12px] font-bold text-emerald-600 dark:text-emerald-400">
-        ${Number(service.price).toFixed(2)}<span className="text-[10px] font-normal text-emerald-500"> / session</span>
-      </span>
-    </div>
-  );
-}
-
-// ─── DateTime row ─────────────────────────────────────────────────────────────
-
-function DateTimeRow({ form, setField }) {
-  return (
-    <div className="grid grid-cols-[1fr_1fr] gap-2">
-      <div>
-        <FieldLabel>Date</FieldLabel>
-        <input
-          type="date"
-          value={form.date}
-          onChange={(e) => setField("date", e.target.value)}
-          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary transition-colors"
-        />
-      </div>
-      <div>
-        <FieldLabel>Time</FieldLabel>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1">
-          <input
-            type="time"
-            value={form.start_time}
-            onChange={(e) => setField("start_time", e.target.value)}
-            className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary transition-colors"
-          />
-          <span className="text-[10px] text-muted-foreground">–</span>
-          <input
-            type="time"
-            value={form.end_time}
-            onChange={(e) => setField("end_time", e.target.value)}
-            className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary transition-colors"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Recurrence block ─────────────────────────────────────────────────────────
-
-function RecurrenceBlock({ form, setField }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
-          <RefreshCw className="h-3 w-3" />
-          Repeat
-        </div>
-        <Toggle
-          checked={form.recurrence_enabled}
-          onChange={(v) => setField("recurrence_enabled", v)}
-        />
-      </div>
-      {form.recurrence_enabled && (
-        <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-3">
-          <div>
-            <FieldLabel>Frequency</FieldLabel>
-            <StyledSelect
-              value={form.recurrence_frequency}
-              onChange={(v) => setField("recurrence_frequency", v)}
-              options={FREQUENCY_OPTIONS}
-              placeholder="Select"
-            />
-          </div>
-          <div>
-            <FieldLabel>Until</FieldLabel>
-            <input
-              type="date"
-              value={form.recurrence_end_date}
-              onChange={(e) => setField("recurrence_end_date", e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary transition-colors"
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Notes block ─────────────────────────────────────────────────────────────
-
-function NotesBlock({ form, setField }) {
-  const [expanded, setExpanded] = useState(false);
-  const hasContent = form.public_note || form.internal_note;
-
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <span>Notes{hasContent ? " ·" : ""}</span>
-        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
-      </button>
-      {(expanded || hasContent) && (
-        <div className="mt-2 space-y-2">
-          <div>
-            <FieldLabel>Public Note</FieldLabel>
-            <StyledTextArea
-              value={form.public_note}
-              onChange={(v) => setField("public_note", v)}
-              placeholder="Visible to the student…"
-            />
-          </div>
-          <div>
-            <FieldLabel>Internal Note</FieldLabel>
-            <StyledTextArea
-              value={form.internal_note}
-              onChange={(v) => setField("internal_note", v)}
-              placeholder="Staff only…"
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Payment block ────────────────────────────────────────────────────────────
-
-function PaymentBlock({ form, setField, serviceMap }) {
-  const svc = form.service_id ? serviceMap[form.service_id] : null;
-  const suggested = svc?.isChargeable && svc?.price > 0 ? Number(svc.price).toFixed(2) : "";
-
-  return (
-    <div className={[
-      "rounded-xl border px-3 py-2.5 transition-colors",
-      form.payment_collected
-        ? "border-emerald-500/30 bg-emerald-500/5"
-        : "border-border bg-muted/20",
-    ].join(" ")}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className={`text-[12px] font-semibold ${form.payment_collected ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
-            {form.payment_collected ? "Payment recorded" : "Record payment"}
-          </p>
-          {!form.payment_collected && (
-            <p className="text-[10px] text-muted-foreground">Toggle to capture payment at booking</p>
-          )}
-        </div>
-        <Toggle
-          checked={form.payment_collected}
-          onChange={(v) => {
-            setField("payment_collected", v);
-            if (v && suggested && !form.payment_amount) setField("payment_amount", suggested);
-          }}
-        />
-      </div>
-      {form.payment_collected && (
-        <div className="mt-2.5 grid grid-cols-2 gap-2">
-          <div>
-            <FieldLabel>Amount ($)</FieldLabel>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">$</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.payment_amount}
-                onChange={(e) => setField("payment_amount", e.target.value)}
-                placeholder={suggested || "0.00"}
-                className="h-9 w-full rounded-lg border border-border bg-background pl-6 pr-3 text-[12px] text-foreground outline-none focus:border-emerald-500 transition-colors"
-              />
-            </div>
-          </div>
-          <div>
-            <FieldLabel>Method</FieldLabel>
-            <div className="relative">
-              <select
-                value={form.payment_method}
-                onChange={(e) => setField("payment_method", e.target.value)}
-                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-emerald-500 transition-colors"
-              >
-                <option value="">Select…</option>
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -441,8 +189,7 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
 
   async function handleCreate() {
     if (!name.trim() || !email.trim()) { setError("Name and email are required."); return; }
-    setIsCreating(true);
-    setError(null);
+    setIsCreating(true); setError(null);
     const result = await onCreate({ name: name.trim(), email: email.trim(), phoneNumber: phone.trim() || undefined });
     if (!result) setError("Failed to create student.");
     setIsCreating(false);
@@ -456,19 +203,8 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
       <StyledInput placeholder="Phone (optional)" value={phone} onChange={setPhone} type="tel" />
       {error && <p className="text-[11px] text-destructive">{error}</p>}
       <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleCreate}
-          disabled={isCreating}
-          className="flex-1 h-8 rounded-lg bg-brand text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60 transition-colors"
-        >
+        <button type="button" onClick={onCancel} className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40 transition-colors">Cancel</button>
+        <button type="button" onClick={handleCreate} disabled={isCreating} className="flex-1 h-8 rounded-lg bg-brand text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60 transition-colors">
           {isCreating ? "Creating…" : "Create & Select"}
         </button>
       </div>
@@ -476,84 +212,233 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
   );
 }
 
-// ─── Student picker (single) ──────────────────────────────────────────────────
+// ─── Enrollment → Package → Service selector ──────────────────────────────────
 
-function StudentPicker({ value, onChange, options, onNewCustomer, lessonOptions = [], onEnrollStudent }) {
-  const [showNew, setShowNew] = useState(false);
-  const [newStudentId, setNewStudentId] = useState(null);
-  const [enrollLessonId, setEnrollLessonId] = useState("");
-  const [isEnrolling, setIsEnrolling] = useState(false);
-  const [enrollDone, setEnrollDone] = useState(false);
+function EnrollmentServiceSelector({ customerId, enrollments, selectedEnrollmentId, onEnrollmentSelect, onServiceSelect, selectedServiceId, allServices }) {
+  if (!customerId) return null;
 
-  async function handleEnroll() {
-    if (!enrollLessonId || !newStudentId) return;
-    setIsEnrolling(true);
-    await onEnrollStudent?.(newStudentId, enrollLessonId);
-    setEnrollDone(true);
-    setIsEnrolling(false);
+  const activeEnrollments = enrollments.filter((e) => e.status === "active" && e.packageID);
+
+  if (enrollments.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+        <p className="text-[11px] text-muted-foreground">No enrollments found. Create one in the customer's Enrollments tab.</p>
+      </div>
+    );
   }
 
-  return (
-    <div>
-      <StyledSelect value={value} onChange={onChange} options={options} placeholder="Select student…" />
-      {showNew ? (
-        <NewStudentInlineForm
-          onCreate={async (data) => {
-            const id = await onNewCustomer(data);
-            if (id) {
-              onChange(id);
-              setShowNew(false);
-              setNewStudentId(id);
-              setEnrollDone(false);
-              setEnrollLessonId("");
-            }
-            return id;
-          }}
-          onCancel={() => setShowNew(false)}
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={() => setShowNew(true)}
-          className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand hover:underline"
-        >
-          <Plus className="h-3 w-3" />
-          Add new student
-        </button>
-      )}
+  if (activeEnrollments.length === 0) {
+    return (
+      <div className="rounded-xl border border-amber-200/60 bg-amber-50/50 dark:bg-amber-900/10 p-3 text-center">
+        <p className="text-[11px] text-amber-600">No active enrollments with a package. Add a package to an enrollment first.</p>
+      </div>
+    );
+  }
 
-      {/* Enrollment prompt shown after a new student is created */}
-      {newStudentId && !showNew && lessonOptions.length > 0 && (
-        <div className="mt-2 rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
-          <p className="text-[11px] font-semibold text-primary">Add Enrollment</p>
-          {enrollDone ? (
-            <p className="text-[11px] text-emerald-600 font-medium">Enrolled successfully.</p>
+  const selectedEnrollment = activeEnrollments.find((e) => String(e._id) === selectedEnrollmentId);
+  const cp = selectedEnrollment?.packageID; // populated CustomerPackage
+  const enrollmentServices = cp?.services?.filter((s) => s.sessionsRemaining > 0) ?? [];
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <FieldLabel>Enrollment</FieldLabel>
+        <StyledSelect
+          value={selectedEnrollmentId}
+          onChange={(v) => { onEnrollmentSelect(v); }}
+          options={activeEnrollments.map((e) => ({
+            value: String(e._id),
+            label: `${ordinalLabel(e.enrollmentNumber)} Enrollment${e.label ? ` — ${e.label}` : ""}`,
+          }))}
+          placeholder="Select enrollment…"
+        />
+      </div>
+
+      {selectedEnrollment && cp && (
+        <>
+          {/* Package summary pill */}
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5">
+            {cp.packageID?.color && (
+              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: cp.packageID.color }} />
+            )}
+            <span className="text-[11px] text-foreground font-medium truncate flex-1">
+              {cp.packageID?.packageName || "Package"}
+            </span>
+            <span className={[
+              "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium shrink-0",
+              cp.paymentStatus === "paid"    ? "bg-emerald-500/10 text-emerald-600" :
+              cp.paymentStatus === "partial" ? "bg-amber-500/10 text-amber-600" :
+                                               "bg-rose-500/10 text-rose-600",
+            ].join(" ")}>
+              {cp.paymentStatus || "unpaid"}
+            </span>
+          </div>
+
+          {/* Services */}
+          {enrollmentServices.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground px-0.5">No sessions remaining in this package.</p>
           ) : (
-            <>
-              <StyledSelect
-                value={enrollLessonId}
-                onChange={setEnrollLessonId}
-                options={lessonOptions}
-                placeholder="Select program to enroll in…"
-              />
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setNewStudentId(null)}
-                  className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40 transition-colors"
-                >
-                  Skip
-                </button>
-                <button
-                  type="button"
-                  onClick={handleEnroll}
-                  disabled={!enrollLessonId || isEnrolling}
-                  className="flex-1 h-8 rounded-lg bg-primary text-[11px] font-semibold text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                >
-                  {isEnrolling ? "Enrolling…" : "Add Enrollment"}
-                </button>
+            <div className="space-y-1">
+              <FieldLabel>Service</FieldLabel>
+              <div className="space-y-1.5">
+                {enrollmentServices.map((svc, idx) => {
+                  const serviceInfo = allServices.find((s) => s.serviceCode === svc.serviceCode);
+                  const pkgSvc = cp.packageID?.services?.find((s) => s.serviceCode === svc.serviceCode);
+                  const serviceColor = pkgSvc?.color || serviceInfo?.color || svc.color;
+                  const isSelected = selectedServiceId === String(serviceInfo?._id);
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => serviceInfo && onServiceSelect(String(serviceInfo._id), serviceColor)}
+                      className={[
+                        "flex items-center justify-between rounded-lg px-2.5 py-2 cursor-pointer border transition-colors",
+                        isSelected ? "border-brand bg-brand/10" : "border-border bg-background hover:bg-muted/40",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {serviceColor && <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: serviceColor }} />}
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium truncate">
+                            {serviceInfo?.serviceName || svc.serviceName || svc.serviceCode}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {svc.sessionsRemaining} / {svc.sessionsTotal} sessions left
+                          </p>
+                        </div>
+                      </div>
+                      {serviceInfo?.price > 0 && (
+                        <span className="text-[11px] font-semibold text-foreground ml-2 shrink-0">
+                          ${serviceInfo.price.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            </>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── WHO section ──────────────────────────────────────────────────────────────
+
+function WhoSection({ form, setField, instructorOptions, customerOptions, onNewCustomer, enrollments, allServices }) {
+  const [showNew, setShowNew] = useState(false);
+
+  return (
+    <div className="space-y-3">
+      <SectionDivider label="Who" />
+
+      <div>
+        <FieldLabel>Instructor</FieldLabel>
+        <StyledSelect
+          value={form.instructor_id}
+          onChange={(v) => setField("instructor_id", v)}
+          options={instructorOptions}
+          placeholder="Select instructor…"
+        />
+      </div>
+
+      <div>
+        <FieldLabel>Student</FieldLabel>
+        <StyledSelect
+          value={form.customer_id}
+          onChange={(v) => {
+            setField("customer_id", v);
+            setField("enrollment_id", "");
+            setField("service_id", "");
+            setField("event_color", "");
+          }}
+          options={customerOptions}
+          placeholder="Select student…"
+        />
+        {showNew ? (
+          <NewStudentInlineForm
+            onCreate={async (data) => {
+              const id = await onNewCustomer(data);
+              if (id) { setField("customer_id", id); setShowNew(false); }
+              return id;
+            }}
+            onCancel={() => setShowNew(false)}
+          />
+        ) : (
+          <button type="button" onClick={() => setShowNew(true)} className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand hover:underline">
+            <Plus className="h-3 w-3" /> Add new student
+          </button>
+        )}
+      </div>
+
+      {form.customer_id && (
+        <EnrollmentServiceSelector
+          customerId={form.customer_id}
+          enrollments={enrollments[form.customer_id] || []}
+          selectedEnrollmentId={form.enrollment_id}
+          onEnrollmentSelect={(v) => {
+            setField("enrollment_id", v);
+            setField("service_id", "");
+          }}
+          onServiceSelect={(serviceId, color) => {
+            setField("service_id", serviceId);
+            if (color) setField("event_color", color);
+          }}
+          selectedServiceId={form.service_id}
+          allServices={allServices}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── WHO section (group — multi-student) ──────────────────────────────────────
+
+function GroupWhoSection({ form, setField, instructorOptions, customerOptions, packageOptions, onNewCustomer }) {
+  const [showNew, setShowNew] = useState(false);
+  return (
+    <div className="space-y-3">
+      <SectionDivider label="Who" />
+      <div>
+        <FieldLabel>Instructor</FieldLabel>
+        <StyledSelect value={form.instructor_id} onChange={(v) => setField("instructor_id", v)} options={instructorOptions} placeholder="Select instructor…" />
+      </div>
+      <div>
+        <FieldLabel>Students</FieldLabel>
+        <MultiSelect values={form.customer_ids} onChange={(v) => setField("customer_ids", v)} options={customerOptions} placeholder="Select students…" />
+        {showNew ? (
+          <NewStudentInlineForm
+            onCreate={async (data) => {
+              const id = await onNewCustomer(data);
+              if (id) { setField("customer_ids", [...form.customer_ids, id]); setShowNew(false); }
+              return id;
+            }}
+            onCancel={() => setShowNew(false)}
+          />
+        ) : (
+          <button type="button" onClick={() => setShowNew(true)} className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand hover:underline">
+            <Plus className="h-3 w-3" /> Add new student
+          </button>
+        )}
+      </div>
+      {form.customer_ids.length > 0 && (
+        <div className={["rounded-xl border px-3 py-2.5 transition-colors", form.group_sell_package ? "border-emerald-500/30 bg-emerald-500/5" : "border-border bg-muted/20"].join(" ")}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`text-[12px] font-semibold ${form.group_sell_package ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
+                {form.group_sell_package ? "Selling package at booking" : "Sell package at booking"}
+              </p>
+              {!form.group_sell_package && (
+                <p className="text-[10px] text-muted-foreground">Sell to all {form.customer_ids.length} selected student{form.customer_ids.length !== 1 ? "s" : ""}</p>
+              )}
+            </div>
+            <Toggle checked={form.group_sell_package} onChange={(v) => setField("group_sell_package", v)} />
+          </div>
+          {form.group_sell_package && (
+            <div className="mt-2.5">
+              <FieldLabel>Package to Sell</FieldLabel>
+              <StyledSelect value={form.group_package_id} onChange={(v) => setField("group_package_id", v)} options={packageOptions} placeholder="Select package to sell…" />
+            </div>
           )}
         </div>
       )}
@@ -561,75 +446,320 @@ function StudentPicker({ value, onChange, options, onNewCustomer, lessonOptions 
   );
 }
 
-// ─── Students picker (multi) ──────────────────────────────────────────────────
+// ─── Scheduling block (for Group Class) ───────────────────────────────────────
 
-function StudentsPicker({ values, onChange, options, onNewCustomer }) {
-  const [showNew, setShowNew] = useState(false);
+function SchedulingBlock({ form, setField, schedulingCodeOptions }) {
   return (
-    <div>
-      <MultiSelect values={values} onChange={onChange} options={options} placeholder="Select students…" />
-      {showNew ? (
-        <NewStudentInlineForm
-          onCreate={async (data) => {
-            const id = await onNewCustomer(data);
-            if (id) { onChange([...values, id]); setShowNew(false); }
-            return id;
-          }}
-          onCancel={() => setShowNew(false)}
-        />
+    <div className="space-y-3">
+      <SectionDivider label="Details" />
+      <div>
+        <FieldLabel>Service</FieldLabel>
+        <StyledSelect value={form.service_id} onChange={(v) => setField("service_id", v)} options={schedulingCodeOptions} placeholder="Select service…" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Group Class details block ─────────────────────────────────────────────────
+
+function GroupDetailsBlock({ form, setField, lessonOptions, lessonMap, allServices, schedulingCodeOptions }) {
+  function handleLessonChange(id) {
+    const lesson = lessonMap[id];
+    setField("lesson_id", id);
+    if (lesson?.calendarServiceID) {
+      const svcId = typeof lesson.calendarServiceID === "object"
+        ? String(lesson.calendarServiceID._id)
+        : String(lesson.calendarServiceID);
+      setField("service_id", svcId);
+    }
+    if (lesson?.name)  setField("title", lesson.name);
+    if (lesson?.color) setField("event_color", lesson.color);
+    if (lesson?.duration && form.start_time) setField("end_time", addMinutes(form.start_time, lesson.duration));
+  }
+
+  const selectedLesson = form.lesson_id ? lessonMap[form.lesson_id] : null;
+
+  return (
+    <div className="space-y-3">
+      <SectionDivider label="Class" />
+      <div>
+        <FieldLabel>Program</FieldLabel>
+        <StyledSelect value={form.lesson_id} onChange={handleLessonChange} options={lessonOptions} placeholder="Select class / program…" />
+        {selectedLesson && (
+          <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5">
+            {selectedLesson.color && <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: selectedLesson.color }} />}
+            <span className="text-[11px] text-foreground font-medium truncate">{selectedLesson.name}</span>
+            {selectedLesson.duration && <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{selectedLesson.duration} min</span>}
+          </div>
+        )}
+      </div>
+      <div>
+        <FieldLabel>Billing Service</FieldLabel>
+        <StyledSelect value={form.service_id} onChange={(v) => setField("service_id", v)} options={schedulingCodeOptions} placeholder="Select service…" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Teacher availability picker ──────────────────────────────────────────────
+
+function formatTime12h(time24) {
+  const [h, m] = time24.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+function AvailabilityPicker({ instructorId, date, duration, selectedSlots, onToggleSlot }) {
+  const [busySlots, setBusySlots] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!instructorId || !date) { setBusySlots([]); return; }
+    setLoading(true);
+    api.get(`/api/calendar?teacherID=${instructorId}&date=${date}&limit=200`)
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          setBusySlots(
+            res.data
+              .map((ev) => ({
+                start: ev.startDateTime ? new Date(ev.startDateTime) : null,
+                end:   ev.endDateTime   ? new Date(ev.endDateTime)   : null,
+              }))
+              .filter((s) => s.start && s.end)
+          );
+        } else {
+          setBusySlots([]);
+        }
+      })
+      .catch(() => setBusySlots([]))
+      .finally(() => setLoading(false));
+  }, [instructorId, date]);
+
+  const { availableSlots, bookedCount } = useMemo(() => {
+    const dur = Math.max(15, Number(duration) || 60);
+    const DAY_START = 7 * 60;
+    const DAY_END   = 21 * 60;
+    const busy = busySlots.map((s) => ({
+      start: s.start.getHours() * 60 + s.start.getMinutes(),
+      end:   s.end.getHours()   * 60 + s.end.getMinutes(),
+    }));
+    const slots = [];
+    for (let t = DAY_START; t + dur <= DAY_END; t += 30) {
+      const slotEnd = t + dur;
+      if (busy.some((b) => t < b.end && slotEnd > b.start)) continue;
+      const hh = String(Math.floor(t / 60)).padStart(2, "0");
+      const mm = String(t % 60).padStart(2, "0");
+      const eh = String(Math.floor(slotEnd / 60)).padStart(2, "0");
+      const em = String(slotEnd % 60).padStart(2, "0");
+      slots.push({ start: `${hh}:${mm}`, end: `${eh}:${em}` });
+    }
+    return { availableSlots: slots, bookedCount: busySlots.length };
+  }, [busySlots, duration]);
+
+  if (!instructorId || !date) return null;
+
+  return (
+    <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+          Availability · {duration ? `${duration} min` : "60 min"}
+          {selectedSlots?.length > 1 && (
+            <span className="ml-1.5 text-brand">({selectedSlots.length} selected)</span>
+          )}
+        </span>
+        {!loading && (
+          <span className="text-[10px] text-muted-foreground">{availableSlots.length} free · {bookedCount} booked</span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 py-1">
+          <svg className="h-3.5 w-3.5 animate-spin text-muted-foreground" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          <span className="text-[11px] text-muted-foreground">Checking teacher's schedule…</span>
+        </div>
+      ) : availableSlots.length === 0 ? (
+        <p className="text-[11px] text-destructive font-medium py-0.5">No available slots on this date.</p>
       ) : (
-        <button
-          type="button"
-          onClick={() => setShowNew(true)}
-          className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand hover:underline"
-        >
-          <Plus className="h-3 w-3" />
-          Add new student
-        </button>
+        <div className="flex flex-wrap gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+          {availableSlots.map((slot) => {
+            const isSelected = selectedSlots?.some((s) => s.start === slot.start);
+            return (
+              <button
+                key={slot.start} type="button" onClick={() => onToggleSlot(slot)}
+                className={[
+                  "px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors shrink-0",
+                  isSelected
+                    ? "border-brand bg-brand text-brand-foreground"
+                    : "border-border bg-background text-foreground hover:bg-muted/50 hover:border-brand/40",
+                ].join(" ")}
+              >
+                {formatTime12h(slot.start)}
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
-// ─── Scheduling + Service block (shared across tabs) ─────────────────────────
+// ─── DateTime row ─────────────────────────────────────────────────────────────
 
-function SchedulingBlock({ form, setField, lessonOptions, lessonMap, serviceOptions, serviceMap, showService = true }) {
-  const selectedService = form.service_id ? serviceMap[form.service_id] : null;
+function DateTimeRow({ form, setField, lessonDuration }) {
+  return (
+    <div className="grid grid-cols-[1fr_1fr] gap-2">
+      <div>
+        <FieldLabel>Date</FieldLabel>
+        <input type="date" value={form.date} onChange={(e) => setField("date", e.target.value)}
+          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary transition-colors" />
+      </div>
+      <div>
+        <FieldLabel>Time</FieldLabel>
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1">
+          <input type="time" value={form.start_time}
+            onChange={(e) => {
+              const newStart = e.target.value;
+              setField("start_time", newStart);
+              if (newStart && lessonDuration) setField("end_time", addMinutes(newStart, lessonDuration));
+            }}
+            className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary transition-colors"
+          />
+          <span className="text-[10px] text-muted-foreground">–</span>
+          <input type="time" value={form.end_time} onChange={(e) => setField("end_time", e.target.value)}
+            className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary transition-colors" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  function handleLessonChange(id) {
-    setField("lesson_id", id);
-    const lesson = lessonMap[id];
-    if (lesson?.name) setField("title", lesson.name);
-    if (lesson?.color) setField("event_color", lesson.color);
-    if (lesson?.duration && form.start_time) setField("end_time", addMinutes(form.start_time, lesson.duration));
+// ─── Recurrence block ─────────────────────────────────────────────────────────
+
+function RecurrenceBlock({ form, setField }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+          <RefreshCw className="h-3 w-3" /> Repeat
+        </div>
+        <Toggle checked={form.recurrence_enabled} onChange={(v) => setField("recurrence_enabled", v)} />
+      </div>
+      {form.recurrence_enabled && (
+        <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-3">
+          <div>
+            <FieldLabel>Frequency</FieldLabel>
+            <StyledSelect value={form.recurrence_frequency} onChange={(v) => setField("recurrence_frequency", v)} options={FREQUENCY_OPTIONS} placeholder="Select" />
+          </div>
+          <div>
+            <FieldLabel>Until</FieldLabel>
+            <input type="date" value={form.recurrence_end_date} onChange={(e) => setField("recurrence_end_date", e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary transition-colors" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── When section ─────────────────────────────────────────────────────────────
+
+function WhenSection({ form, setField, withRecurrence = false, lessonDuration }) {
+  function handleToggleSlot(slot) {
+    const current = form.selected_time_slots || [];
+    const exists = current.some((s) => s.start === slot.start);
+    const next = exists ? current.filter((s) => s.start !== slot.start) : [...current, slot];
+    setField("selected_time_slots", next);
+    if (next.length > 0) {
+      setField("start_time", next[0].start);
+      setField("end_time", next[0].end);
+    }
   }
 
   return (
     <div className="space-y-3">
-      <SectionDivider label="Scheduling" />
-      <div>
-        <FieldLabel>Scheduling Code</FieldLabel>
-        <StyledSelect
-          value={form.lesson_id}
-          onChange={handleLessonChange}
-          options={lessonOptions}
-          placeholder="Select scheduling code…"
-        />
-      </div>
-      {showService && (
+      <SectionDivider label="When" />
+      <DateTimeRow form={form} setField={setField} lessonDuration={lessonDuration} />
+      {withRecurrence && <RecurrenceBlock form={form} setField={setField} />}
+      <AvailabilityPicker
+        instructorId={form.instructor_id}
+        date={form.date}
+        duration={lessonDuration}
+        selectedSlots={form.selected_time_slots}
+        onToggleSlot={handleToggleSlot}
+      />
+    </div>
+  );
+}
+
+// ─── Notes block ─────────────────────────────────────────────────────────────
+
+function NotesBlock({ form, setField }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasContent = form.public_note || form.internal_note;
+  return (
+    <div>
+      <button type="button" onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
+        <span>Notes{hasContent ? " ·" : ""}</span>
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+      </button>
+      {(expanded || hasContent) && (
+        <div className="mt-2 space-y-2">
+          <div>
+            <FieldLabel>Public Note</FieldLabel>
+            <StyledTextArea value={form.public_note} onChange={(v) => setField("public_note", v)} placeholder="Visible to the student…" />
+          </div>
+          <div>
+            <FieldLabel>Internal Note</FieldLabel>
+            <StyledTextArea value={form.internal_note} onChange={(v) => setField("internal_note", v)} placeholder="Staff only…" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Payment block ────────────────────────────────────────────────────────────
+
+function PaymentBlock({ form, setField, suggestedAmount }) {
+  return (
+    <div className={["rounded-xl border px-3 py-2.5 transition-colors", form.payment_collected ? "border-emerald-500/30 bg-emerald-500/5" : "border-border bg-muted/20"].join(" ")}>
+      <div className="flex items-center justify-between">
         <div>
-          <FieldLabel>Service</FieldLabel>
-          <StyledSelect
-            value={form.service_id}
-            onChange={(v) => {
-              setField("service_id", v);
-              const svc = serviceMap[v];
-              if (svc?.color) setField("event_color", svc.color);
-            }}
-            options={serviceOptions}
-            placeholder="Select service…"
-          />
-          <ServiceCard service={selectedService} />
+          <p className={`text-[12px] font-semibold ${form.payment_collected ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
+            {form.payment_collected ? "Payment recorded" : "Record payment"}
+          </p>
+          {!form.payment_collected && <p className="text-[10px] text-muted-foreground">Toggle to capture payment at booking</p>}
+        </div>
+        <Toggle checked={form.payment_collected} onChange={(v) => setField("payment_collected", v)} />
+      </div>
+      {form.payment_collected && (
+        <div className="mt-2.5 grid grid-cols-2 gap-2">
+          <div>
+            <FieldLabel>Amount ($)</FieldLabel>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">$</span>
+              <input type="number" min="0" step="0.01" value={form.payment_amount}
+                onChange={(e) => setField("payment_amount", e.target.value)}
+                placeholder={suggestedAmount ? String(suggestedAmount) : "0.00"}
+                className="h-9 w-full rounded-lg border border-border bg-background pl-6 pr-3 text-[12px] text-foreground outline-none focus:border-emerald-500 transition-colors" />
+            </div>
+          </div>
+          <div>
+            <FieldLabel>Method</FieldLabel>
+            <div className="relative">
+              <select value={form.payment_method} onChange={(e) => setField("payment_method", e.target.value)}
+                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-emerald-500 transition-colors">
+                <option value="">Select…</option>
+                {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -638,138 +768,45 @@ function SchedulingBlock({ form, setField, lessonOptions, lessonMap, serviceOpti
 
 // ─── Tab form components ──────────────────────────────────────────────────────
 
-function AppointmentFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions, onNewCustomer, onEnrollStudent }) {
+function AppointmentFields({ form, setField, instructorOptions, customerOptions, lessonDuration, suggestedAmount, onNewCustomer, enrollments, allServices }) {
   return (
     <div className="space-y-4">
-      <SchedulingBlock form={form} setField={setField} lessonOptions={lessonOptions} lessonMap={lessonMap} serviceOptions={serviceOptions} serviceMap={serviceMap} />
-
-      <div className="space-y-3">
-        <SectionDivider label="Who" />
-        <div>
-          <FieldLabel>Instructor</FieldLabel>
-          <StyledSelect value={form.instructor_id} onChange={(v) => setField("instructor_id", v)} options={instructorOptions} placeholder="Select instructor…" />
-        </div>
-        <div>
-          <FieldLabel>Student</FieldLabel>
-          <StudentPicker value={form.customer_id} onChange={(v) => setField("customer_id", v)} options={customerOptions} onNewCustomer={onNewCustomer} lessonOptions={lessonOptions} onEnrollStudent={onEnrollStudent} />
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <SectionDivider label="When" />
-        <DateTimeRow form={form} setField={setField} />
-        <RecurrenceBlock form={form} setField={setField} />
-      </div>
-
+      <WhoSection
+        form={form} setField={setField}
+        instructorOptions={instructorOptions}
+        customerOptions={customerOptions}
+        onNewCustomer={onNewCustomer}
+        enrollments={enrollments}
+        allServices={allServices}
+      />
+      <WhenSection form={form} setField={setField} withRecurrence lessonDuration={lessonDuration} />
       <div className="space-y-3">
         <SectionDivider label="Notes & Payment" />
         <NotesBlock form={form} setField={setField} />
-        <PaymentBlock form={form} setField={setField} serviceMap={serviceMap} />
+        <PaymentBlock form={form} setField={setField} suggestedAmount={suggestedAmount} />
       </div>
     </div>
   );
 }
 
-function IntroLessonFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions, onNewCustomer, onEnrollStudent }) {
+function GroupClassFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, allServices, schedulingCodeOptions, lessonDuration, packageOptions, onNewCustomer }) {
   return (
     <div className="space-y-4">
-      <SchedulingBlock form={form} setField={setField} lessonOptions={lessonOptions} lessonMap={lessonMap} serviceOptions={serviceOptions} serviceMap={serviceMap} />
-
-      <div className="space-y-3">
-        <SectionDivider label="Who" />
-        <div>
-          <FieldLabel>Instructor</FieldLabel>
-          <StyledSelect value={form.instructor_id} onChange={(v) => setField("instructor_id", v)} options={instructorOptions} placeholder="Select instructor…" />
-        </div>
-        <div>
-          <FieldLabel>Student</FieldLabel>
-          <StudentPicker value={form.customer_id} onChange={(v) => setField("customer_id", v)} options={customerOptions} onNewCustomer={onNewCustomer} lessonOptions={lessonOptions} onEnrollStudent={onEnrollStudent} />
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <SectionDivider label="When" />
-        <DateTimeRow form={form} setField={setField} />
-      </div>
-
-      <div className="space-y-3">
-        <SectionDivider label="After Intro" />
-        <div>
-          <FieldLabel>Sell Package at Booking</FieldLabel>
-          <StyledSelect value={form.package_id} onChange={(v) => setField("package_id", v)} options={packageOptions} placeholder="No package (skip)" />
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <SectionDivider label="Notes & Payment" />
-        <NotesBlock form={form} setField={setField} />
-        <PaymentBlock form={form} setField={setField} serviceMap={serviceMap} />
-      </div>
-    </div>
-  );
-}
-
-function GroupClassFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions, onNewCustomer }) {
-  return (
-    <div className="space-y-4">
-      <SchedulingBlock form={form} setField={setField} lessonOptions={lessonOptions} lessonMap={lessonMap} serviceOptions={serviceOptions} serviceMap={serviceMap} />
-
-      <div className="space-y-3">
-        <SectionDivider label="Who" />
-        <div>
-          <FieldLabel>Instructor</FieldLabel>
-          <StyledSelect value={form.instructor_id} onChange={(v) => setField("instructor_id", v)} options={instructorOptions} placeholder="Select instructor…" />
-        </div>
-        <div>
-          <FieldLabel>Students</FieldLabel>
-          <StudentsPicker values={form.customer_ids} onChange={(v) => setField("customer_ids", v)} options={customerOptions} onNewCustomer={onNewCustomer} />
-        </div>
-      </div>
-
-      {/* Sell package inline — shown once at least one student is selected */}
-      {form.customer_ids.length > 0 && (
-        <div className={[
-          "rounded-xl border px-3 py-2.5 transition-colors",
-          form.group_sell_package ? "border-emerald-500/30 bg-emerald-500/5" : "border-border bg-muted/20",
-        ].join(" ")}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className={`text-[12px] font-semibold ${form.group_sell_package ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
-                {form.group_sell_package ? "Selling package at booking" : "Sell package at booking"}
-              </p>
-              {!form.group_sell_package && (
-                <p className="text-[10px] text-muted-foreground">
-                  Sell to all {form.customer_ids.length} selected student{form.customer_ids.length !== 1 ? "s" : ""}
-                </p>
-              )}
-            </div>
-            <Toggle checked={form.group_sell_package} onChange={(v) => setField("group_sell_package", v)} />
-          </div>
-          {form.group_sell_package && (
-            <div className="mt-2.5">
-              <FieldLabel>Package</FieldLabel>
-              <StyledSelect
-                value={form.group_package_id}
-                onChange={(v) => setField("group_package_id", v)}
-                options={packageOptions}
-                placeholder="Select package to sell…"
-              />
-              {form.group_package_id && (
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  Will be sold to {form.customer_ids.length} student{form.customer_ids.length !== 1 ? "s" : ""} on booking
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="space-y-3">
-        <SectionDivider label="When" />
-        <DateTimeRow form={form} setField={setField} />
-        <RecurrenceBlock form={form} setField={setField} />
-      </div>
-
+      <GroupWhoSection
+        form={form} setField={setField}
+        instructorOptions={instructorOptions}
+        customerOptions={customerOptions}
+        packageOptions={packageOptions}
+        onNewCustomer={onNewCustomer}
+      />
+      <GroupDetailsBlock
+        form={form} setField={setField}
+        lessonOptions={lessonOptions}
+        lessonMap={lessonMap}
+        allServices={allServices}
+        schedulingCodeOptions={schedulingCodeOptions}
+      />
+      <WhenSection form={form} setField={setField} withRecurrence lessonDuration={lessonDuration} />
       <div className="space-y-3">
         <SectionDivider label="Notes" />
         <NotesBlock form={form} setField={setField} />
@@ -778,15 +815,14 @@ function GroupClassFields({ form, setField, instructorOptions, customerOptions, 
   );
 }
 
-function ToDoFields({ form, setField, instructorOptions, lessonOptions, lessonMap }) {
+function ToDoFields({ form, setField, instructorOptions, lessonOptions, lessonMap, lessonDuration }) {
   function handleLessonChange(id) {
     setField("lesson_id", id);
     const lesson = lessonMap[id];
-    if (lesson?.name) setField("title", lesson.name);
+    if (lesson?.name)  setField("title", lesson.name);
     if (lesson?.color) setField("event_color", lesson.color);
     if (lesson?.duration && form.start_time) setField("end_time", addMinutes(form.start_time, lesson.duration));
   }
-
   return (
     <div className="space-y-4">
       <div className="space-y-3">
@@ -804,76 +840,10 @@ function ToDoFields({ form, setField, instructorOptions, lessonOptions, lessonMa
           <StyledSelect value={form.instructor_id} onChange={(v) => setField("instructor_id", v)} options={instructorOptions} placeholder="Select instructor…" />
         </div>
       </div>
-
-      <div className="space-y-3">
-        <SectionDivider label="When" />
-        <DateTimeRow form={form} setField={setField} />
-        <RecurrenceBlock form={form} setField={setField} />
-      </div>
-
+      <WhenSection form={form} setField={setField} withRecurrence lessonDuration={lessonDuration} />
       <div className="space-y-3">
         <SectionDivider label="Notes" />
         <NotesBlock form={form} setField={setField} />
-      </div>
-    </div>
-  );
-}
-
-function RecordOnlyFields({ form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions }) {
-  function handleLessonChange(id) {
-    setField("lesson_id", id);
-    const lesson = lessonMap[id];
-    if (lesson?.name) setField("title", lesson.name);
-    if (lesson?.color) setField("event_color", lesson.color);
-    if (lesson?.duration && form.start_time) setField("end_time", addMinutes(form.start_time, lesson.duration));
-  }
-
-  const selectedService = form.service_id ? serviceMap[form.service_id] : null;
-
-  return (
-    <div className="space-y-4">
-      <div className="space-y-3">
-        <SectionDivider label="Details" />
-        <div>
-          <FieldLabel>Scheduling Code</FieldLabel>
-          <StyledSelect value={form.lesson_id} onChange={handleLessonChange} options={lessonOptions} placeholder="Select scheduling code…" />
-        </div>
-        <div>
-          <FieldLabel>Service</FieldLabel>
-          <StyledSelect value={form.service_id} onChange={(v) => setField("service_id", v)} options={serviceOptions} placeholder="Select service…" />
-          <ServiceCard service={selectedService} />
-        </div>
-        <div>
-          <FieldLabel>Package</FieldLabel>
-          <StyledSelect value={form.package_id} onChange={(v) => setField("package_id", v)} options={packageOptions} placeholder="Select package…" />
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <SectionDivider label="Who" />
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <FieldLabel>Instructor</FieldLabel>
-            <StyledSelect value={form.instructor_id} onChange={(v) => setField("instructor_id", v)} options={instructorOptions} placeholder="Instructor…" />
-          </div>
-          <div>
-            <FieldLabel>Student</FieldLabel>
-            <StyledSelect value={form.customer_id} onChange={(v) => setField("customer_id", v)} options={customerOptions} placeholder="Student…" />
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <SectionDivider label="When" />
-        <DateTimeRow form={form} setField={setField} />
-      </div>
-
-      <div className="space-y-3">
-        <SectionDivider label="Notes" />
-        <div>
-          <FieldLabel>Internal Note</FieldLabel>
-          <StyledTextArea value={form.internal_note} onChange={(v) => setField("internal_note", v)} placeholder="Staff only…" />
-        </div>
       </div>
     </div>
   );
@@ -885,24 +855,35 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
   const [activeTab, setActiveTab] = useState("Appointment");
   const [form, setForm] = useState(() => ({
     ...EMPTY_FORM,
-    date: initialDate || "",
+    date:       initialDate || "",
     start_time: initialTime || "",
-    end_time: initialTime
+    end_time:   initialTime
       ? initialDuration ? addMinutes(initialTime, initialDuration) : bumpHour(initialTime)
       : "",
   }));
 
   const [instructorOptions, setInstructorOptions] = useState([]);
-  const [customerOptions, setCustomerOptions] = useState([]);
-  const [lessonOptions, setLessonOptions] = useState([]);
-  const [lessonMap, setLessonMap] = useState({});
-  const [serviceOptions, setServiceOptions] = useState([]);
-  const [serviceMap, setServiceMap] = useState({});
-  const [packageOptions, setPackageOptions] = useState([]);
+  const [customerOptions,   setCustomerOptions]   = useState([]);
+  const [lessonOptions,     setLessonOptions]     = useState([]);
+  const [lessonMap,         setLessonMap]         = useState({});
+  const [lessonByName,      setLessonByName]      = useState({});
+  const [allServices,       setAllServices]       = useState([]);
+  const [packageOptions,    setPackageOptions]    = useState([]);
+  const [enrollments,       setEnrollments]       = useState({}); // customerId → enrollment[]
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState(null);
+  const [error,    setError]    = useState(null);
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const handleTabChange = (key) => {
+    setActiveTab(key);
+    setForm((prev) => ({
+      ...prev,
+      customer_id: "", customer_ids: [], instructor_id: "",
+      service_id: "", lesson_id: "", enrollment_id: "", event_color: "",
+    }));
+    setError(null);
+  };
 
   useEffect(() => {
     async function load() {
@@ -923,29 +904,65 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
 
         if (lessonsRes.success && Array.isArray(lessonsRes.data)) {
           const map = {};
-          lessonsRes.data.forEach((l) => { map[String(l._id)] = l; });
+          const byName = {};
+          lessonsRes.data.forEach((l) => {
+            map[String(l._id)] = l;
+            if (l.name) byName[l.name.toLowerCase()] = l;
+          });
           setLessonMap(map);
+          setLessonByName(byName);
           setLessonOptions(lessonsRes.data.map((l) => ({ value: String(l._id), label: l.name })));
         }
 
         if (servicesRes.success && Array.isArray(servicesRes.data)) {
-          const map = {};
-          servicesRes.data.forEach((s) => { map[String(s._id)] = s; });
-          setServiceMap(map);
-          setServiceOptions(servicesRes.data.map((s) => ({
-            value: String(s._id),
-            label: s.isChargeable && s.price > 0 ? `${s.serviceName} ($${Number(s.price).toFixed(2)})` : s.serviceName,
-          })));
+          setAllServices(servicesRes.data);
         }
 
-        if (packagesRes.success && Array.isArray(packagesRes.data))
+        if (packagesRes.success && Array.isArray(packagesRes.data)) {
           setPackageOptions(packagesRes.data.map((p) => ({ value: String(p._id), label: p.packageName || String(p._id) })));
+        }
       } catch {
         setError("Failed to load form options. Please close and reopen.");
       }
     }
     load();
   }, []);
+
+  // Load enrollments when customer is selected (Appointment tab)
+  useEffect(() => {
+    if (!form.customer_id) return;
+    api.get(`/api/enrollment?customerID=${form.customer_id}`)
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          setEnrollments((prev) => ({ ...prev, [form.customer_id]: res.data }));
+        }
+      })
+      .catch(() => {});
+  }, [form.customer_id]);
+
+  const schedulingCodeOptions = useMemo(
+    () => allServices.map((s) => ({ value: String(s._id), label: s.serviceCode || s.serviceName })),
+    [allServices],
+  );
+
+  const suggestedAmount = useMemo(() => {
+    if (!form.service_id) return null;
+    const svc = allServices.find((s) => String(s._id) === form.service_id);
+    return svc?.price > 0 ? svc.price : null;
+  }, [form.service_id, allServices]);
+
+  const lessonDuration = useMemo(() => {
+    if (form.lesson_id) {
+      const lesson = lessonMap[form.lesson_id];
+      if (lesson?.duration) return Number(lesson.duration);
+    }
+    if (form.service_id) {
+      const svc = allServices.find((s) => String(s._id) === form.service_id);
+      const lesson = svc?.serviceName ? lessonByName[svc.serviceName.toLowerCase()] : null;
+      if (lesson?.duration) return Number(lesson.duration);
+    }
+    return initialDuration || 60;
+  }, [form.lesson_id, form.service_id, allServices, lessonByName, lessonMap, initialDuration]);
 
   const handleNewCustomer = async ({ name, email, phoneNumber }) => {
     const result = await api.post("/api/customer", { name, email, phoneNumber });
@@ -958,31 +975,31 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
     return null;
   };
 
-  const handleEnrollStudent = async (customerId, lessonId) => {
-    await api.post(`/api/customer/${customerId}/assign-lessons`, { lessonIds: [lessonId] });
-  };
-
   const handleSave = async () => {
     setError(null);
     setIsSaving(true);
 
-    const startDateTime = form.date && form.start_time ? new Date(`${form.date}T${form.start_time}`).toISOString() : undefined;
-    const endDateTime   = form.date && form.end_time   ? new Date(`${form.date}T${form.end_time}`).toISOString()   : undefined;
+    // Derive Package template ID from selected enrollment's CustomerPackage
+    let packageTemplateId;
+    if (form.enrollment_id && form.customer_id) {
+      const customerEnrollments = enrollments[form.customer_id] || [];
+      const selectedEnr = customerEnrollments.find((e) => String(e._id) === form.enrollment_id);
+      const cp = selectedEnr?.packageID;
+      packageTemplateId = cp?.packageID?._id || cp?.packageID || undefined;
+    }
 
-    const payload = {
-      title: form.title || TABS.find((t) => t.key === activeTab)?.label || "Appointment",
-      type:  TAB_TYPE_MAP[activeTab],
-      teacherID:   form.instructor_id || undefined,
-      customerIDs: activeTab === "Group Class"
+    const basePayload = {
+      title:        form.title || TABS.find((t) => t.key === activeTab)?.label || "Appointment",
+      type:         TAB_TYPE_MAP[activeTab],
+      teacherID:    form.instructor_id || undefined,
+      customerIDs:  activeTab === "Group Class"
         ? (form.customer_ids.length ? form.customer_ids : undefined)
         : (form.customer_id ? [form.customer_id] : undefined),
-      lessonID:         form.lesson_id    || undefined,
-      calendarServiceID:form.service_id   || undefined,
-      packageID:        form.package_id   || undefined,
-      startDateTime,
-      endDateTime,
-      color: form.event_color || undefined,
-      notes: [form.public_note, form.internal_note].filter(Boolean).join("\n") || undefined,
+      lessonID:          form.lesson_id   || undefined,
+      calendarServiceID: form.service_id  || undefined,
+      packageID:         packageTemplateId || undefined,
+      color:             form.event_color || undefined,
+      notes:             [form.public_note, form.internal_note].filter(Boolean).join("\n") || undefined,
       recurrence: form.recurrence_enabled && form.recurrence_frequency && form.recurrence_end_date
         ? { enabled: true, frequency: form.recurrence_frequency, endDate: form.recurrence_end_date }
         : { enabled: false },
@@ -991,9 +1008,26 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
         : undefined,
     };
 
-    const result = await api.post("/api/calendar", payload);
-    if (result.success) {
-      // Sell package to each student if requested for group class
+    const slots = form.selected_time_slots?.length > 0
+      ? form.selected_time_slots
+      : (form.start_time ? [{ start: form.start_time, end: form.end_time }] : []);
+
+    if (slots.length === 0) {
+      setError("Please select a time slot or enter a start time.");
+      setIsSaving(false);
+      return;
+    }
+
+    const payloads = slots.map((slot) => ({
+      ...basePayload,
+      startDateTime: form.date && slot.start ? new Date(`${form.date}T${slot.start}`).toISOString() : undefined,
+      endDateTime:   form.date && slot.end   ? new Date(`${form.date}T${slot.end}`).toISOString()   : undefined,
+    }));
+
+    const results = await Promise.all(payloads.map((p) => api.post("/api/calendar", p)));
+    const firstFailure = results.find((r) => !r.success);
+
+    if (!firstFailure) {
       if (activeTab === "Group Class" && form.group_sell_package && form.group_package_id && form.customer_ids.length) {
         await Promise.all(
           form.customer_ids.map((cid) =>
@@ -1004,22 +1038,35 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
       onCreated?.();
       onClose();
     } else {
-      setError(result.error || "Failed to save. Please try again.");
+      setError(firstFailure.error || "Failed to save. Please try again.");
     }
     setIsSaving(false);
   };
 
-  const sharedProps = { form, setField, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions, onNewCustomer: handleNewCustomer, onEnrollStudent: handleEnrollStudent };
+  const sharedProps = {
+    form, setField,
+    instructorOptions, customerOptions, lessonOptions, lessonMap, allServices,
+    schedulingCodeOptions,
+    lessonDuration, suggestedAmount,
+    packageOptions,
+    enrollments,
+    onNewCustomer: handleNewCustomer,
+  };
 
   const tabContent = useMemo(() => {
-    if (activeTab === "Appointment")   return <AppointmentFields {...sharedProps} />;
-    if (activeTab === "Intro Lesson")  return <IntroLessonFields {...sharedProps} />;
-    if (activeTab === "Group Class")   return <GroupClassFields {...sharedProps} />;
-    if (activeTab === "To Do")         return <ToDoFields {...sharedProps} />;
-    return <RecordOnlyFields {...sharedProps} />;
-  }, [activeTab, form, instructorOptions, customerOptions, lessonOptions, lessonMap, serviceOptions, serviceMap, packageOptions]);
+    if (activeTab === "Appointment") return <AppointmentFields {...sharedProps} />;
+    if (activeTab === "Group Class") return <GroupClassFields {...sharedProps} />;
+    if (activeTab === "To Do")       return <ToDoFields form={form} setField={setField} instructorOptions={instructorOptions} lessonOptions={lessonOptions} lessonMap={lessonMap} lessonDuration={lessonDuration} />;
+    return null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, form, instructorOptions, customerOptions, lessonOptions, schedulingCodeOptions, lessonMap, lessonDuration, packageOptions, allServices, enrollments]);
 
-  const saveLabel = isSaving ? "Saving…" : TAB_SAVE_LABEL[activeTab] || "Save";
+  const slotCount = form.selected_time_slots?.length ?? 0;
+  const saveLabel = isSaving
+    ? (slotCount > 1 ? `Creating ${slotCount} events…` : "Saving…")
+    : slotCount > 1
+      ? `Book ${slotCount} Appointments`
+      : TAB_SAVE_LABEL[activeTab] || "Save";
 
   return (
     <aside className="h-full w-[460px] shrink-0 flex flex-col rounded-xl border border-border bg-card shadow-xl overflow-hidden">
@@ -1027,27 +1074,17 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
       <div className="shrink-0 border-b border-border bg-muted/30">
         <div className="flex items-center justify-between px-4 pt-3 pb-0">
           <p className="text-[13px] font-bold text-foreground">New Booking</p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted transition-colors"
-            aria-label="Close"
-          >
+          <button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted transition-colors" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
-        {/* Tabs */}
         <div className="flex overflow-x-auto scrollbar-hide px-2 pb-0 gap-0.5 mt-1">
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
-              key={key}
-              type="button"
-              onClick={() => setActiveTab(key)}
+              key={key} type="button" onClick={() => handleTabChange(key)}
               className={[
                 "flex items-center gap-1.5 shrink-0 px-3 py-2 text-[11px] font-semibold rounded-t-lg border-b-2 transition-colors whitespace-nowrap",
-                activeTab === key
-                  ? "text-brand border-brand bg-background"
-                  : "text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40",
+                activeTab === key ? "text-brand border-brand bg-background" : "text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40",
               ].join(" ")}
             >
               <Icon className="h-3 w-3 shrink-0" />
@@ -1071,19 +1108,11 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
 
       {/* Footer */}
       <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-3 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className="h-9 px-4 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40 transition-colors"
-        >
+        <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40 transition-colors">
           Cancel
         </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isSaving}
-          className="flex-1 h-9 rounded-lg bg-brand text-[12px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-        >
+        <button type="button" onClick={handleSave} disabled={isSaving}
+          className="flex-1 h-9 rounded-lg bg-brand text-[12px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
           {saveLabel}
         </button>
       </div>

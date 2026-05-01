@@ -32,9 +32,6 @@ const navItems = [
     labelStyle: 'regular',
     children: [
       { name: 'Calendar', href: '/calendar' },
-      { name: 'Lessons', href: '/calendar/lessons' },
-      { name: 'Services', href: '/calendar/services' },
-      { name: 'Packages', href: '/calendar/packages' },
     ],
   },
   {
@@ -74,6 +71,7 @@ const navItems = [
     children: [
       { name: 'Studio', href: '/settings/studio' },
       { name: 'Users & Roles', href: '/settings/users-roles' },
+      { name: 'Setup', href: '/settings/setup' },
       { name: 'Integrations', href: '/settings/integrations' },
       { name: 'Billing', href: '/settings/billing' },
       { name: 'Activity Log', href: '/settings/activity-log' },

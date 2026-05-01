@@ -5,12 +5,11 @@ import { ArrowLeft, Pin, Plus, Trash2 } from "lucide-react";
 import api from "@/lib/api";
 
 const TABS = [
-  { key: "enrollments",  label: "Enrollments" },
   { key: "appointments", label: "Appointments" },
-  { key: "packages",     label: "Packages" },
-  { key: "payments",     label: "Payments" },
-  { key: "notes",        label: "Notes" },
-  { key: "messages",     label: "Messages" },
+  { key: "packages", label: "Packages" },
+  { key: "payments", label: "Payments" },
+  { key: "notes", label: "Notes" },
+  { key: "messages", label: "Messages" },
 ];
 
 function statusColor(status) {
@@ -21,7 +20,7 @@ function statusColor(status) {
 }
 
 export default function MiniStudentPanel({ customerId, customerName, onBack }) {
-  const [activeTab, setActiveTab] = useState("enrollments");
+  const [activeTab, setActiveTab] = useState("appointments");
   const [customer, setCustomer] = useState(null);
   const [loadingCustomer, setLoadingCustomer] = useState(true);
 
@@ -37,7 +36,12 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
   const [loadingPkgs, setLoadingPkgs] = useState(false);
   const [catalogPackages, setCatalogPackages] = useState([]);
   const [showSellForm, setShowSellForm] = useState(false);
-  const [sellForm, setSellForm] = useState({ packageID: "", purchaseDate: "", totalPaid: "", notes: "" });
+  const [sellForm, setSellForm] = useState({
+    packageID: "",
+    purchaseDate: "",
+    notes: "",
+  });
+  const [sellServices, setSellServices] = useState([]);
   const [isSelling, setIsSelling] = useState(false);
   const [sellError, setSellError] = useState(null);
 
@@ -54,6 +58,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
   const [msgError, setMsgError] = useState(null);
   const [smsHistory, setSmsHistory] = useState([]);
   const [loadingSmsHistory, setLoadingSmsHistory] = useState(false);
+  const [leadId, setLeadId] = useState(null);
 
   useEffect(() => {
     async function load() {
@@ -70,7 +75,8 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
     async function load() {
       setLoadingAppts(true);
       const result = await api.get(`/api/calendar/customer/${customerId}`);
-      if (result.success && Array.isArray(result.data)) setAppointments(result.data);
+      if (result.success && Array.isArray(result.data))
+        setAppointments(result.data);
       setLoadingAppts(false);
     }
     load();
@@ -79,7 +85,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
   async function handleAddNote() {
     if (!newNoteText.trim()) return;
     setIsSavingNote(true);
-    const result = await api.post(`/api/customer/${customerId}/notes`, { text: newNoteText.trim() });
+    const result = await api.post(`/api/customer/${customerId}/notes`, {
+      text: newNoteText.trim(),
+    });
     if (result.success) {
       setCustomer((prev) => ({ ...prev, notes: result.data }));
       setNewNoteText("");
@@ -88,13 +96,19 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
   }
 
   async function handleTogglePin(noteId) {
-    const result = await api.patch(`/api/customer/${customerId}/notes/${noteId}`);
-    if (result.success) setCustomer((prev) => ({ ...prev, notes: result.data }));
+    const result = await api.patch(
+      `/api/customer/${customerId}/notes/${noteId}`,
+    );
+    if (result.success)
+      setCustomer((prev) => ({ ...prev, notes: result.data }));
   }
 
   async function handleDeleteNote(noteId) {
-    const result = await api.delete(`/api/customer/${customerId}/notes/${noteId}`);
-    if (result.success) setCustomer((prev) => ({ ...prev, notes: result.data }));
+    const result = await api.delete(
+      `/api/customer/${customerId}/notes/${noteId}`,
+    );
+    if (result.success)
+      setCustomer((prev) => ({ ...prev, notes: result.data }));
   }
 
   useEffect(() => {
@@ -105,28 +119,77 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
         api.get(`/api/customer-package/customer/${customerId}`),
         api.get("/api/package?limit=200&isActive=true"),
       ]);
-      if (pkgsResult.success && Array.isArray(pkgsResult.data)) setCustomerPackages(pkgsResult.data);
-      if (catalogResult.success && Array.isArray(catalogResult.data)) setCatalogPackages(catalogResult.data);
+      if (pkgsResult.success && Array.isArray(pkgsResult.data))
+        setCustomerPackages(pkgsResult.data);
+      if (catalogResult.success && Array.isArray(catalogResult.data))
+        setCatalogPackages(catalogResult.data);
       setLoadingPkgs(false);
     }
     load();
   }, [activeTab, customerId]);
 
+  function handlePkgSelect(pkgId) {
+    const pkg = catalogPackages.find((p) => p._id === pkgId);
+    setSellForm((f) => ({ ...f, packageID: pkgId }));
+    setSellServices(
+      (pkg?.services || []).map((s) => ({
+        serviceCode: s.serviceCode || "",
+        serviceName: s.serviceName || "",
+        numberOfSessions: s.numberOfSessions || 0,
+        pricePerSession: s.pricePerSession || 0,
+        discountType: s.discountType || "none",
+        discountAmount: s.discountAmount || 0,
+        finalAmount: s.finalAmount || 0,
+      })),
+    );
+  }
+
+  function updateSellSvc(i, field, val) {
+    setSellServices((prev) =>
+      prev.map((s, idx) => {
+        if (idx !== i) return s;
+        const updated = { ...s, [field]: val };
+        const price = Number(updated.pricePerSession) || 0;
+        const sessions = Number(updated.numberOfSessions) || 0;
+        let fa = price * sessions;
+        if (updated.discountType === "percentage")
+          fa -= fa * ((Number(updated.discountAmount) || 0) / 100);
+        if (updated.discountType === "fixed")
+          fa -= Number(updated.discountAmount) || 0;
+        updated.finalAmount = Math.max(0, parseFloat(fa.toFixed(2)));
+        return updated;
+      }),
+    );
+  }
+
   async function handleSellPackage() {
-    if (!sellForm.packageID) { setSellError("Please select a package."); return; }
+    if (!sellForm.packageID) {
+      setSellError("Please select a package.");
+      return;
+    }
     setIsSelling(true);
     setSellError(null);
-    const result = await api.post("/api/customer-package", {
+    const result = await api.post("/api/customer-package/add", {
       customerID: customerId,
       packageID: sellForm.packageID,
       purchaseDate: sellForm.purchaseDate || undefined,
-      totalPaid: sellForm.totalPaid !== "" ? Number(sellForm.totalPaid) : undefined,
+      services: sellServices.map((s) => ({
+        ...s,
+        numberOfSessions: Number(s.numberOfSessions),
+        pricePerSession: Number(s.pricePerSession),
+        discountAmount: Number(s.discountAmount),
+        finalAmount: Number(s.finalAmount),
+      })),
+      billingType: "one_time",
+      billing: { method: "cash" },
       notes: sellForm.notes || undefined,
     });
+
     if (result.success) {
-      setCustomerPackages((prev) => [result.data, ...prev]);
+      setCustomerPackages((prev) => [result.data.customerPackage, ...prev]); // note: .customerPackage now
       setShowSellForm(false);
-      setSellForm({ packageID: "", purchaseDate: "", totalPaid: "", notes: "" });
+      setSellForm({ packageID: "", purchaseDate: "", notes: "" });
+      setSellServices([]);
     } else {
       setSellError(result.error || "Failed to sell package.");
     }
@@ -139,7 +202,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
       setLoadingPayments(true);
       const result = await api.get(`/api/calendar/customer/${customerId}`);
       if (result.success && Array.isArray(result.data)) {
-        const sorted = [...result.data].sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime));
+        const sorted = [...result.data].sort(
+          (a, b) => new Date(b.startDateTime) - new Date(a.startDateTime),
+        );
         setCollectedPayments(sorted.filter((e) => e.payment?.collected));
         setServiceCharges(sorted.filter((e) => e.chargeApplied));
       }
@@ -152,59 +217,109 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
     if (activeTab !== "messages") return;
     async function load() {
       setLoadingSmsHistory(true);
-      const result = await api.get(`/api/smsHistory?leadID=${customerId}&limit=100`);
-      if (result.success && Array.isArray(result.data)) {
-        const sorted = [...result.data].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-        setSmsHistory(sorted);
+      try {
+        // First, find the lead by email or phone number
+        const leadResult = await api.get(
+          `/api/lead/find-by-contact?email=${encodeURIComponent(customer?.email || "")}&phoneNumber=${encodeURIComponent(customer?.phoneNumber || "")}`,
+        );
+        if (leadResult.success && leadResult.data) {
+          setLeadId(leadResult.data._id);
+          // Then fetch SMS history using the lead ID
+          const smsResult = await api.get(
+            `/api/smsHistory?leadID=${leadResult.data._id}&limit=100`,
+          );
+          if (smsResult.success && Array.isArray(smsResult.data)) {
+            const sorted = [...smsResult.data].sort(
+              (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+            );
+            setSmsHistory(sorted);
+          }
+        } else {
+          setSmsHistory([]);
+        }
+      } catch (error) {
+        console.error("Failed to load SMS history:", error);
+        setSmsHistory([]);
       }
       setLoadingSmsHistory(false);
     }
     load();
-  }, [activeTab, customerId]);
+  }, [activeTab, customerId, customer]);
 
   async function handleSendMessage() {
     setMsgError(null);
     setMsgSuccess(null);
     if (!customer) return;
     if (msgMode === "sms") {
-      if (!smsText.trim()) { setMsgError("Message is required."); return; }
-      if (!customer.phoneNumber) { setMsgError("This student has no phone number on file."); return; }
+      if (!smsText.trim()) {
+        setMsgError("Message is required.");
+        return;
+      }
+      if (!customer.phoneNumber) {
+        setMsgError("This student has no phone number on file.");
+        return;
+      }
       setIsSendingMsg(true);
       const result = await api.post("/api/sms/send-one", {
-        lead: { phoneNumber: customer.phoneNumber, email: customer.email, name: customer.name },
+        lead: {
+          _id: leadId,
+          phoneNumber: customer.phoneNumber,
+          email: customer.email,
+          name: customer.name,
+        },
         message: smsText.trim(),
         scheduleNow: true,
       });
       if (result.success) {
-        const optimistic = { _id: Date.now(), from: "you", to: customer.phoneNumber, message: smsText.trim(), status: "queued", createdAt: new Date().toISOString() };
+        const optimistic = {
+          _id: Date.now(),
+          from: "you",
+          to: customer.phoneNumber,
+          message: smsText.trim(),
+          status: "queued",
+          createdAt: new Date().toISOString(),
+        };
         setSmsHistory((prev) => [...prev, optimistic]);
         setSmsText("");
       } else {
         setMsgError(result.error || "Failed to send SMS.");
       }
     } else {
-      if (!emailSubject.trim() || !emailBody.trim()) { setMsgError("Subject and body are required."); return; }
-      if (!customer.email) { setMsgError("This student has no email on file."); return; }
+      if (!emailSubject.trim() || !emailBody.trim()) {
+        setMsgError("Subject and body are required.");
+        return;
+      }
+      if (!customer.email) {
+        setMsgError("This student has no email on file.");
+        return;
+      }
       setIsSendingMsg(true);
       const result = await api.post("/api/email/send-one", {
-        lead: { email: customer.email, name: customer.name },
+        lead: { _id: leadId, email: customer.email, name: customer.name },
         subject: emailSubject.trim(),
         body: emailBody.trim(),
         scheduleNow: true,
       });
-      if (result.success) { setMsgSuccess("Email sent."); setEmailSubject(""); setEmailBody(""); }
-      else setMsgError(result.error || "Failed to send email.");
+      if (result.success) {
+        setMsgSuccess("Email sent.");
+        setEmailSubject("");
+        setEmailBody("");
+      } else setMsgError(result.error || "Failed to send email.");
     }
     setIsSendingMsg(false);
   }
 
   const now = new Date();
-  const privateAppts = appointments.filter((a) => a.type === "private" || a.type === "trial");
+  const privateAppts = appointments.filter(
+    (a) => a.type === "private" || a.type === "trial",
+  );
   const groupAppts = appointments.filter((a) => a.type === "lesson");
   const visiblePrivate = showPast
     ? privateAppts
     : privateAppts.filter((a) => new Date(a.startDateTime) >= now);
-  const visibleAppts = showGroups ? [...visiblePrivate, ...groupAppts] : visiblePrivate;
+  const visibleAppts = showGroups
+    ? [...visiblePrivate, ...groupAppts]
+    : visiblePrivate;
 
   const sortedNotes = [...(customer?.notes || [])].sort((a, b) => {
     if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
@@ -224,7 +339,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-foreground">{customerName}</p>
+          <p className="truncate text-[13px] font-semibold text-foreground">
+            {customerName}
+          </p>
           <p className="text-[10px] text-muted-foreground">Student Account</p>
         </div>
         {customer && (
@@ -256,32 +373,15 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4">
         {loadingCustomer ? (
-          <p className="text-center pt-10 text-[12px] text-muted-foreground animate-pulse">Loading…</p>
+          <p className="text-center pt-10 text-[12px] text-muted-foreground animate-pulse">
+            Loading…
+          </p>
         ) : !customer ? (
-          <p className="text-center pt-10 text-[12px] text-destructive">Failed to load student.</p>
+          <p className="text-center pt-10 text-[12px] text-destructive">
+            Failed to load student.
+          </p>
         ) : (
           <>
-            {/* ── ENROLLMENTS ── */}
-            {activeTab === "enrollments" && (
-              <div className="space-y-2">
-                {!customer.classAssigned?.length ? (
-                  <p className="text-[12px] text-muted-foreground">No active enrollments.</p>
-                ) : (
-                  customer.classAssigned.map((lesson) => (
-                    <div
-                      key={lesson._id}
-                      className="rounded-lg border border-border bg-muted/30 px-3 py-2.5"
-                    >
-                      <p className="text-[12px] font-semibold text-foreground">{lesson.name}</p>
-                      {lesson.duration && (
-                        <p className="text-[11px] text-muted-foreground">{lesson.duration} min</p>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-
             {/* ── APPOINTMENTS ── */}
             {activeTab === "appointments" && (
               <div className="space-y-3">
@@ -311,33 +411,57 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                 </div>
 
                 {loadingAppts ? (
-                  <p className="text-[12px] text-muted-foreground animate-pulse">Loading…</p>
+                  <p className="text-[12px] text-muted-foreground animate-pulse">
+                    Loading…
+                  </p>
                 ) : !visibleAppts.length ? (
-                  <p className="text-[12px] text-muted-foreground">No appointments found.</p>
+                  <p className="text-[12px] text-muted-foreground">
+                    No appointments found.
+                  </p>
                 ) : (
                   visibleAppts
-                    .sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime))
+                    .sort(
+                      (a, b) =>
+                        new Date(b.startDateTime) - new Date(a.startDateTime),
+                    )
                     .map((appt) => (
                       <div
                         key={appt._id}
                         className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-0.5"
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-[12px] font-semibold text-foreground truncate">{appt.title}</p>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${statusColor(appt.status)}`}>
+                          <p className="text-[12px] font-semibold text-foreground truncate">
+                            {appt.title}
+                          </p>
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${statusColor(appt.status)}`}
+                          >
                             {appt.status}
                           </span>
                         </div>
                         <p className="text-[11px] text-muted-foreground">
-                          {new Date(appt.startDateTime).toLocaleDateString("en-US", {
-                            weekday: "short", month: "short", day: "numeric",
-                          })}{" · "}
-                          {new Date(appt.startDateTime).toLocaleTimeString("en-US", {
-                            hour: "numeric", minute: "2-digit", hour12: true,
-                          })}
+                          {new Date(appt.startDateTime).toLocaleDateString(
+                            "en-US",
+                            {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                            },
+                          )}
+                          {" · "}
+                          {new Date(appt.startDateTime).toLocaleTimeString(
+                            "en-US",
+                            {
+                              hour: "numeric",
+                              minute: "2-digit",
+                              hour12: true,
+                            },
+                          )}
                         </p>
                         {appt.teacherID?.name && (
-                          <p className="text-[10px] text-muted-foreground">{appt.teacherID.name}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {appt.teacherID.name}
+                          </p>
                         )}
                       </div>
                     ))
@@ -350,7 +474,10 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
               <div className="space-y-3">
                 <button
                   type="button"
-                  onClick={() => { setShowSellForm((v) => !v); setSellError(null); }}
+                  onClick={() => {
+                    setShowSellForm((v) => !v);
+                    setSellError(null);
+                  }}
                   className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark"
                 >
                   <Plus className="h-3 w-3" />
@@ -359,30 +486,114 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
 
                 {showSellForm && (
                   <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-                    <p className="text-[11px] font-semibold text-foreground">Sell a Package</p>
+                    <p className="text-[11px] font-semibold text-foreground">
+                      Sell a Package
+                    </p>
                     <div className="relative">
                       <select
                         value={sellForm.packageID}
-                        onChange={(e) => setSellForm((f) => ({ ...f, packageID: e.target.value }))}
+                        onChange={(e) => handlePkgSelect(e.target.value)}
                         className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-primary"
                       >
                         <option value="">Select package…</option>
                         {catalogPackages.map((p) => (
-                          <option key={p._id} value={p._id}>{p.packageName}</option>
+                          <option key={p._id} value={p._id}>
+                            {p.packageName}
+                          </option>
                         ))}
                       </select>
                     </div>
+                    {sellServices.length > 0 && (
+                      <div className="rounded-lg border border-border bg-background overflow-hidden">
+                        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-0 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted/40 px-2 py-1.5">
+                          <span>Service</span>
+                          <span className="w-14 text-center">Sessions</span>
+                          <span className="w-16 text-center">Price</span>
+                          <span className="w-16 text-right">Total</span>
+                        </div>
+                        {sellServices.map((svc, i) => (
+                          <div
+                            key={i}
+                            className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-0 px-2 py-2 border-t border-border first:border-0"
+                          >
+                            <p className="text-[11px] font-medium text-foreground truncate pr-2">
+                              {svc.serviceName}
+                            </p>
+                            <input
+                              type="number"
+                              min="0"
+                              value={svc.numberOfSessions}
+                              onChange={(e) =>
+                                updateSellSvc(
+                                  i,
+                                  "numberOfSessions",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-14 h-7 text-center rounded border border-border bg-muted/20 text-[11px] outline-none focus:border-primary"
+                            />
+                            <div className="relative w-16 ml-1">
+                              <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+                                $
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={svc.pricePerSession}
+                                onChange={(e) =>
+                                  updateSellSvc(
+                                    i,
+                                    "pricePerSession",
+                                    e.target.value,
+                                  )
+                                }
+                                className="w-full h-7 pl-4 pr-1 rounded border border-border bg-muted/20 text-[11px] outline-none focus:border-primary"
+                              />
+                            </div>
+                            <p className="w-16 text-right text-[11px] font-semibold text-foreground">
+                              ${Number(svc.finalAmount).toFixed(2)}
+                            </p>
+                          </div>
+                        ))}
+                        <div className="flex justify-between px-2 py-1.5 border-t border-border bg-muted/20">
+                          <span className="text-[10px] font-semibold text-muted-foreground uppercase">
+                            Total
+                          </span>
+                          <span className="text-[12px] font-bold text-foreground">
+                            $
+                            {sellServices
+                              .reduce(
+                                (sum, s) => sum + (Number(s.finalAmount) || 0),
+                                0,
+                              )
+                              .toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     <input
                       type="date"
                       value={sellForm.purchaseDate}
-                      onChange={(e) => setSellForm((f) => ({ ...f, purchaseDate: e.target.value }))}
+                      onChange={(e) =>
+                        setSellForm((f) => ({
+                          ...f,
+                          purchaseDate: e.target.value,
+                        }))
+                      }
                       className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
                       placeholder="Purchase date (optional)"
                     />
                     <input
                       type="number"
                       value={sellForm.totalPaid}
-                      onChange={(e) => setSellForm((f) => ({ ...f, totalPaid: e.target.value }))}
+                      onChange={(e) =>
+                        setSellForm((f) => ({
+                          ...f,
+                          totalPaid: e.target.value,
+                        }))
+                      }
                       className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
                       placeholder="Amount paid (optional)"
                       min="0"
@@ -391,15 +602,24 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                     <textarea
                       rows={2}
                       value={sellForm.notes}
-                      onChange={(e) => setSellForm((f) => ({ ...f, notes: e.target.value }))}
+                      onChange={(e) =>
+                        setSellForm((f) => ({ ...f, notes: e.target.value }))
+                      }
                       placeholder="Notes (optional)"
                       className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] text-foreground outline-none focus:border-primary"
                     />
-                    {sellError && <p className="text-[11px] text-destructive">{sellError}</p>}
+                    {sellError && (
+                      <p className="text-[11px] text-destructive">
+                        {sellError}
+                      </p>
+                    )}
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => { setShowSellForm(false); setSellError(null); }}
+                        onClick={() => {
+                          setShowSellForm(false);
+                          setSellError(null);
+                        }}
                         className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40"
                       >
                         Cancel
@@ -417,47 +637,79 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                 )}
 
                 {loadingPkgs ? (
-                  <p className="text-[12px] text-muted-foreground animate-pulse">Loading…</p>
+                  <p className="text-[12px] text-muted-foreground animate-pulse">
+                    Loading…
+                  </p>
                 ) : !customerPackages.length ? (
-                  <p className="text-[12px] text-muted-foreground">No packages purchased yet.</p>
+                  <p className="text-[12px] text-muted-foreground">
+                    No packages purchased yet.
+                  </p>
                 ) : (
                   customerPackages.map((cp) => {
                     const statusColor =
-                      cp.status === "active" ? "bg-green-500/10 text-green-500" :
-                      cp.status === "exhausted" ? "bg-orange-500/10 text-orange-500" :
-                      cp.status === "expired" ? "bg-red-500/10 text-red-400" :
-                      "bg-muted text-muted-foreground";
+                      cp.status === "active"
+                        ? "bg-green-500/10 text-green-500"
+                        : cp.status === "exhausted"
+                          ? "bg-orange-500/10 text-orange-500"
+                          : cp.status === "expired"
+                            ? "bg-red-500/10 text-red-400"
+                            : "bg-muted text-muted-foreground";
                     return (
-                      <div key={cp._id} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-2">
+                      <div
+                        key={cp._id}
+                        className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-2"
+                      >
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-[12px] font-semibold text-foreground">
                             {cp.packageID?.packageName || "Package"}
                           </p>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${statusColor}`}>
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${statusColor}`}
+                          >
                             {cp.status}
                           </span>
                         </div>
                         {cp.expiryDate && (
                           <p className="text-[10px] text-muted-foreground">
-                            Expires {new Date(cp.expiryDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            Expires{" "}
+                            {new Date(cp.expiryDate).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              },
+                            )}
                           </p>
                         )}
                         {cp.services?.length > 0 && (
                           <div className="space-y-1">
                             {cp.services.map((svc, i) => (
-                              <div key={i} className="flex items-center justify-between">
-                                <span className="text-[11px] text-foreground truncate">{svc.serviceName}</span>
+                              <div
+                                key={i}
+                                className="flex items-center justify-between"
+                              >
+                                <span className="text-[11px] text-foreground truncate">
+                                  {svc.serviceName}
+                                </span>
                                 <span className="text-[11px] font-semibold text-foreground shrink-0 ml-2">
                                   {svc.sessionsRemaining}/{svc.sessionsTotal}
-                                  <span className="text-[10px] font-normal text-muted-foreground ml-0.5">left</span>
+                                  <span className="text-[10px] font-normal text-muted-foreground ml-0.5">
+                                    left
+                                  </span>
                                 </span>
                               </div>
                             ))}
                           </div>
                         )}
                         <p className="text-[10px] text-muted-foreground">
-                          Purchased {new Date(cp.purchaseDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                          {cp.totalPaid != null && ` · $${Number(cp.totalPaid).toFixed(2)}`}
+                          Purchased{" "}
+                          {new Date(cp.purchaseDate).toLocaleDateString(
+                            "en-US",
+                            { month: "short", day: "numeric", year: "numeric" },
+                          )}
+                          {cp.totalPaid != null &&
+                            ` · $${Number(cp.totalPaid).toFixed(2)}`}
                         </p>
                       </div>
                     );
@@ -473,14 +725,22 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                 <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-medium">
                   <button
                     type="button"
-                    onClick={() => { setMsgMode("sms"); setMsgError(null); setMsgSuccess(null); }}
+                    onClick={() => {
+                      setMsgMode("sms");
+                      setMsgError(null);
+                      setMsgSuccess(null);
+                    }}
                     className={`flex-1 py-2 transition-colors ${msgMode === "sms" ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
                   >
                     SMS
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setMsgMode("email"); setMsgError(null); setMsgSuccess(null); }}
+                    onClick={() => {
+                      setMsgMode("email");
+                      setMsgError(null);
+                      setMsgSuccess(null);
+                    }}
                     className={`flex-1 py-2 transition-colors ${msgMode === "email" ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
                   >
                     Email
@@ -492,19 +752,37 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                     {/* Conversation thread */}
                     <div className="h-48 overflow-y-auto flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2">
                       {loadingSmsHistory ? (
-                        <p className="text-[10px] text-muted-foreground text-center pt-4">Loading…</p>
+                        <p className="text-[10px] text-muted-foreground text-center pt-4">
+                          Loading…
+                        </p>
                       ) : smsHistory.length === 0 ? (
-                        <p className="text-[10px] text-muted-foreground text-center pt-4">No messages yet.</p>
+                        <p className="text-[10px] text-muted-foreground text-center pt-4">
+                          No messages yet.
+                        </p>
                       ) : (
                         smsHistory.map((msg) => {
                           const isInbound = msg.status === "received";
                           return (
-                            <div key={msg._id} className={`flex flex-col ${isInbound ? "items-start" : "items-end"}`}>
-                              <div className={`max-w-[85%] px-2.5 py-1.5 rounded-xl text-[11px] leading-snug ${isInbound ? "bg-card border border-border text-foreground" : "bg-brand text-brand-foreground"}`}>
+                            <div
+                              key={msg._id}
+                              className={`flex flex-col ${isInbound ? "items-start" : "items-end"}`}
+                            >
+                              <div
+                                className={`max-w-[85%] px-2.5 py-1.5 rounded-xl text-[11px] leading-snug ${isInbound ? "bg-card border border-border text-foreground" : "bg-brand text-brand-foreground"}`}
+                              >
                                 {msg.message}
                               </div>
                               <span className="text-[9px] text-muted-foreground mt-0.5 px-1">
-                                {isInbound ? (msg.leadID?.name || "Customer") : "You"} · {new Date(msg.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                                {isInbound
+                                  ? msg.leadID?.name ||
+                                    customer?.name ||
+                                    "Customer"
+                                  : "You"}{" "}
+                                ·{" "}
+                                {new Date(msg.createdAt).toLocaleTimeString(
+                                  "en-US",
+                                  { hour: "numeric", minute: "2-digit" },
+                                )}
                               </span>
                             </div>
                           );
@@ -513,7 +791,12 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                     </div>
                     {/* Composer */}
                     <p className="text-[10px] text-muted-foreground">
-                      To: {customer?.phoneNumber || <span className="text-destructive">No phone number</span>}
+                      To:{" "}
+                      {customer?.phoneNumber || (
+                        <span className="text-destructive">
+                          No phone number
+                        </span>
+                      )}
                     </p>
                     <textarea
                       rows={3}
@@ -522,12 +805,17 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                       placeholder="Type your message…"
                       className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] text-foreground outline-none focus:border-primary"
                     />
-                    <p className="text-[10px] text-muted-foreground text-right">{smsText.length} chars</p>
+                    <p className="text-[10px] text-muted-foreground text-right">
+                      {smsText.length} chars
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     <p className="text-[10px] text-muted-foreground">
-                      To: {customer?.email || <span className="text-destructive">No email</span>}
+                      To:{" "}
+                      {customer?.email || (
+                        <span className="text-destructive">No email</span>
+                      )}
                     </p>
                     <input
                       type="text"
@@ -546,8 +834,12 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                   </div>
                 )}
 
-                {msgError && <p className="text-[11px] text-destructive">{msgError}</p>}
-                {msgSuccess && <p className="text-[11px] text-emerald-500">{msgSuccess}</p>}
+                {msgError && (
+                  <p className="text-[11px] text-destructive">{msgError}</p>
+                )}
+                {msgSuccess && (
+                  <p className="text-[11px] text-emerald-500">{msgSuccess}</p>
+                )}
 
                 <button
                   type="button"
@@ -555,7 +847,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                   disabled={isSendingMsg}
                   className="w-full h-9 rounded-lg bg-brand text-[12px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60"
                 >
-                  {isSendingMsg ? "Sending…" : `Send ${msgMode === "sms" ? "SMS" : "Email"}`}
+                  {isSendingMsg
+                    ? "Sending…"
+                    : `Send ${msgMode === "sms" ? "SMS" : "Email"}`}
                 </button>
               </div>
             )}
@@ -566,25 +860,44 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                 {/* Summary row */}
                 <div className="grid grid-cols-3 gap-2">
                   <div className="rounded-lg border border-border bg-muted/30 px-2 py-2">
-                    <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">Auto Charged</p>
+                    <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">
+                      Auto Charged
+                    </p>
                     <p className="text-[15px] font-bold text-violet-500">
-                      ${serviceCharges.reduce((sum, e) => sum + (e.calendarServiceID?.price ?? 0), 0).toFixed(2)}
+                      $
+                      {serviceCharges
+                        .reduce(
+                          (sum, e) => sum + (e.calendarServiceID?.price ?? 0),
+                          0,
+                        )
+                        .toFixed(2)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border bg-muted/30 px-2 py-2">
-                    <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">Collected</p>
+                    <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">
+                      Collected
+                    </p>
                     <p className="text-[15px] font-bold text-emerald-500">
-                      ${collectedPayments.reduce((sum, e) => sum + (e.payment?.amount ?? 0), 0).toFixed(2)}
+                      $
+                      {collectedPayments
+                        .reduce((sum, e) => sum + (e.payment?.amount ?? 0), 0)
+                        .toFixed(2)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border bg-muted/30 px-2 py-2">
-                    <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">Credits</p>
-                    <p className="text-[15px] font-bold text-foreground">${customer.credits ?? 0}</p>
+                    <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">
+                      Credits
+                    </p>
+                    <p className="text-[15px] font-bold text-foreground">
+                      ${customer.credits ?? 0}
+                    </p>
                   </div>
                 </div>
 
                 {loadingPayments ? (
-                  <p className="text-[12px] text-muted-foreground animate-pulse">Loading…</p>
+                  <p className="text-[12px] text-muted-foreground animate-pulse">
+                    Loading…
+                  </p>
                 ) : (
                   <>
                     {/* Service charges section */}
@@ -595,33 +908,71 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                         </p>
                         {serviceCharges.map((evt) => {
                           const METHOD_LABEL = {
-                            package: { text: "Package", cls: "bg-violet-500/10 text-violet-600" },
-                            credits: { text: "Credits", cls: "bg-blue-500/10 text-blue-600" },
-                            mixed:   { text: "Mixed",   cls: "bg-orange-500/10 text-orange-600" },
+                            package: {
+                              text: "Package",
+                              cls: "bg-violet-500/10 text-violet-600",
+                            },
+                            credits: {
+                              text: "Credits",
+                              cls: "bg-blue-500/10 text-blue-600",
+                            },
+                            mixed: {
+                              text: "Mixed",
+                              cls: "bg-orange-500/10 text-orange-600",
+                            },
                           };
-                          const m = METHOD_LABEL[evt.chargeMethod] ?? { text: "Charged", cls: "bg-muted text-muted-foreground" };
+                          const m = METHOD_LABEL[evt.chargeMethod] ?? {
+                            text: "Charged",
+                            cls: "bg-muted text-muted-foreground",
+                          };
                           return (
-                            <div key={evt._id} className="rounded-lg border border-border bg-muted/30 px-3 py-2 space-y-0.5">
+                            <div
+                              key={evt._id}
+                              className="rounded-lg border border-border bg-muted/30 px-3 py-2 space-y-0.5"
+                            >
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-[12px] font-semibold text-foreground truncate">{evt.title}</p>
+                                <p className="text-[12px] font-semibold text-foreground truncate">
+                                  {evt.title}
+                                </p>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   {evt.calendarServiceID?.price > 0 && (
                                     <span className="text-[12px] font-bold text-violet-500">
-                                      ${Number(evt.calendarServiceID.price).toFixed(2)}
+                                      $
+                                      {Number(
+                                        evt.calendarServiceID.price,
+                                      ).toFixed(2)}
                                     </span>
                                   )}
-                                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${m.cls}`}>
+                                  <span
+                                    className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${m.cls}`}
+                                  >
                                     {m.text}
                                   </span>
                                 </div>
                               </div>
                               <p className="text-[10px] text-muted-foreground">
-                                {new Date(evt.startDateTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                                {new Date(evt.startDateTime).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    weekday: "short",
+                                    month: "short",
+                                    day: "numeric",
+                                  },
+                                )}
                                 {" · "}
-                                {new Date(evt.startDateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                {new Date(evt.startDateTime).toLocaleTimeString(
+                                  "en-US",
+                                  {
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                    hour12: true,
+                                  },
+                                )}
                               </p>
                               {evt.calendarServiceID?.serviceName && (
-                                <p className="text-[10px] text-muted-foreground">{evt.calendarServiceID.serviceName}</p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {evt.calendarServiceID.serviceName}
+                                </p>
                               )}
                             </div>
                           );
@@ -636,26 +987,52 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                           Collected payments (cash / card)
                         </p>
                         {collectedPayments.map((evt) => {
-                          const METHOD_LABELS = { cash: "Cash", card: "Card", online: "Online", cheque: "Cheque", other: "Other" };
+                          const METHOD_LABELS = {
+                            cash: "Cash",
+                            card: "Card",
+                            online: "Online",
+                            cheque: "Cheque",
+                            other: "Other",
+                          };
                           return (
-                            <div key={evt._id} className="rounded-lg border border-border bg-muted/30 px-3 py-2 space-y-0.5">
+                            <div
+                              key={evt._id}
+                              className="rounded-lg border border-border bg-muted/30 px-3 py-2 space-y-0.5"
+                            >
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-[12px] font-semibold text-foreground truncate">{evt.title}</p>
+                                <p className="text-[12px] font-semibold text-foreground truncate">
+                                  {evt.title}
+                                </p>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   <span className="text-[12px] font-bold text-emerald-500">
                                     ${(evt.payment?.amount ?? 0).toFixed(2)}
                                   </span>
                                   {evt.payment?.method && (
                                     <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
-                                      {METHOD_LABELS[evt.payment.method] ?? evt.payment.method}
+                                      {METHOD_LABELS[evt.payment.method] ??
+                                        evt.payment.method}
                                     </span>
                                   )}
                                 </div>
                               </div>
                               <p className="text-[10px] text-muted-foreground">
-                                {new Date(evt.startDateTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                                {new Date(evt.startDateTime).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    weekday: "short",
+                                    month: "short",
+                                    day: "numeric",
+                                  },
+                                )}
                                 {" · "}
-                                {new Date(evt.startDateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                {new Date(evt.startDateTime).toLocaleTimeString(
+                                  "en-US",
+                                  {
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                    hour12: true,
+                                  },
+                                )}
                               </p>
                             </div>
                           );
@@ -663,9 +1040,12 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                       </div>
                     )}
 
-                    {serviceCharges.length === 0 && collectedPayments.length === 0 && (
-                      <p className="text-[12px] text-muted-foreground">No payments recorded yet.</p>
-                    )}
+                    {serviceCharges.length === 0 &&
+                      collectedPayments.length === 0 && (
+                        <p className="text-[12px] text-muted-foreground">
+                          No payments recorded yet.
+                        </p>
+                      )}
                   </>
                 )}
               </div>
@@ -694,7 +1074,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                 </div>
 
                 {!sortedNotes.length ? (
-                  <p className="text-[12px] text-muted-foreground">No notes yet.</p>
+                  <p className="text-[12px] text-muted-foreground">
+                    No notes yet.
+                  </p>
                 ) : (
                   sortedNotes.map((note) => (
                     <div
@@ -705,12 +1087,19 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
                           : "border-border bg-muted/30"
                       }`}
                     >
-                      <p className="text-[12px] text-foreground whitespace-pre-wrap">{note.text}</p>
+                      <p className="text-[12px] text-foreground whitespace-pre-wrap">
+                        {note.text}
+                      </p>
                       <div className="flex items-center justify-between">
                         <p className="text-[10px] text-muted-foreground">
-                          {new Date(note.createdAt).toLocaleDateString("en-US", {
-                            month: "short", day: "numeric", year: "numeric",
-                          })}
+                          {new Date(note.createdAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            },
+                          )}
                         </p>
                         <div className="flex items-center gap-1">
                           <button
