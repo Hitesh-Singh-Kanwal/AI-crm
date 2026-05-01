@@ -75,7 +75,7 @@ function FormField({ label, required, children }) {
 
 // ─── RecordPaymentDialog ─────────────────────────────────────────────────────
 
-function RecordPaymentDialog({ open, onClose, customerID, customerPackageID, onSuccess }) {
+function RecordPaymentDialog({ open, onClose, customerID, enrollmentID, outstanding, onSuccess }) {
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('cash')
   const [notes, setNotes] = useState('')
@@ -84,21 +84,24 @@ function RecordPaymentDialog({ open, onClose, customerID, customerPackageID, onS
 
   function reset() { setAmount(''); setMethod('cash'); setNotes('') }
 
+  const num = parseFloat(amount)
+  const isPartial = outstanding != null && !isNaN(num) && num > 0 && num < outstanding
+  const isFull = outstanding != null && !isNaN(num) && num >= outstanding
+
   async function handleSubmit(e) {
     e.preventDefault()
-    const num = parseFloat(amount)
     if (isNaN(num) || num <= 0) return
     setSaving(true)
     const res = await api.post('/api/payment', {
       customerID,
-      customerPackageID,
+      enrollmentID,
       type: 'package_purchase',
       amount: num,
       method,
       notes: notes.trim() || undefined,
     })
     if (res.success) {
-      toast.success('Payment recorded.')
+      toast.success(isPartial ? 'Partial payment recorded.' : 'Payment recorded.')
       reset()
       onSuccess()
       onClose()
@@ -113,6 +116,12 @@ function RecordPaymentDialog({ open, onClose, customerID, customerPackageID, onS
       <DialogContent className="max-w-sm">
         <DialogHeader><DialogTitle>Record Payment</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          {outstanding != null && (
+            <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
+              <span className="text-[12px] text-muted-foreground">Outstanding</span>
+              <span className="text-[13px] font-semibold text-rose-500">${Number(outstanding).toFixed(2)}</span>
+            </div>
+          )}
           <FormField label="Amount" required>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
@@ -123,6 +132,12 @@ function RecordPaymentDialog({ open, onClose, customerID, customerPackageID, onS
                 className="h-9 w-full rounded-lg border border-border bg-background pl-7 pr-3 text-[13px] outline-none focus:border-primary"
               />
             </div>
+            {isPartial && (
+              <p className="text-[11px] text-amber-500 mt-1">Partial payment — ${(outstanding - num).toFixed(2)} will remain outstanding</p>
+            )}
+            {isFull && (
+              <p className="text-[11px] text-emerald-500 mt-1">Full payment — package will be marked as paid</p>
+            )}
           </FormField>
           <FormField label="Method" required>
             <div className="relative">
@@ -146,7 +161,9 @@ function RecordPaymentDialog({ open, onClose, customerID, customerPackageID, onS
           </FormField>
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={() => { reset(); onClose() }}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={saving || !amount}>{saving ? 'Saving…' : 'Record'}</Button>
+            <Button type="submit" size="sm" disabled={saving || !amount || isNaN(num) || num <= 0}>
+              {saving ? 'Saving…' : isPartial ? 'Record Partial' : 'Record Payment'}
+            </Button>
           </div>
         </form>
       </DialogContent>
@@ -232,8 +249,8 @@ function IssueRefundDialog({ open, onClose, payment, onSuccess }) {
 
 const TABS = [
   { id: 'profile', label: 'Profile', Icon: User },
-  { id: 'enrollments', label: 'Enrollments', Icon: ClipboardList },
-  { id: 'packages', label: 'Packages', Icon: Package },
+  { id: 'active-enrollments', label: 'Active Enrollments', Icon: ClipboardList },
+  { id: 'completed-enrollments', label: 'Completed Enrollments', Icon: ClipboardList },
   { id: 'payments', label: 'Payment History', Icon: Receipt },
   { id: 'lessons', label: 'Lessons', Icon: BookOpen },
   { id: 'notes', label: 'Notes', Icon: StickyNote },
@@ -257,6 +274,15 @@ function ProfileTab({ customer, locations, onUpdated }) {
       email: customer.email || '',
       phoneNumber: customer.phoneNumber || '',
       locationID: String(customer.locationID?._id ?? customer.locationID ?? ''),
+      dateOfBirth: customer.dateOfBirth ? String(customer.dateOfBirth).slice(0, 10) : '',
+      gender: customer.gender || '',
+      address: {
+        street: customer.address?.street || '',
+        city: customer.address?.city || '',
+        state: customer.address?.state || '',
+        zipCode: customer.address?.zipCode || '',
+        country: customer.address?.country || 'USA',
+      },
     })
     setEditing(true)
   }
@@ -265,11 +291,22 @@ function ProfileTab({ customer, locations, onUpdated }) {
     e.preventDefault()
     if (!form.name.trim() || !form.email.trim()) return
     setSaving(true)
+    const addr = {
+      street: form.address.street.trim(),
+      city: form.address.city.trim(),
+      state: form.address.state.trim(),
+      zipCode: form.address.zipCode.trim(),
+      country: form.address.country.trim() || 'USA',
+    }
+    const hasAddress = addr.street || addr.city || addr.state || addr.zipCode
     const res = await api.put(`/api/customer/${customer._id}`, {
       name: form.name.trim(),
       email: form.email.trim(),
       phoneNumber: form.phoneNumber.trim() || undefined,
       locationID: form.locationID || undefined,
+      dateOfBirth: form.dateOfBirth || undefined,
+      gender: form.gender || undefined,
+      address: hasAddress ? addr : undefined,
     })
     if (res.success) { toast.success('Profile saved.'); onUpdated(); setEditing(false) }
     else toast.error(res.error || 'Save failed.')
@@ -303,7 +340,23 @@ function ProfileTab({ customer, locations, onUpdated }) {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="space-y-6">
+      {/* Quick stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: 'Credits Balance', value: `$${(customer.credits ?? 0).toFixed(2)}`, accent: 'text-emerald-500' },
+          { label: 'Classes Assigned', value: customer.classAssigned?.length ?? 0 },
+          { label: 'Notes', value: customer.notes?.length ?? 0 },
+          { label: 'Member Since', value: formatDate(customer.createdAt) },
+        ].map(({ label, value, accent }) => (
+          <div key={label} className="rounded-xl border border-border bg-card px-4 py-3">
+            <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
+            <p className={`text-[15px] font-semibold ${accent ?? 'text-foreground'}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Info card */}
       <div className="lg:col-span-2 rounded-xl border border-border bg-card p-6 space-y-5">
         <div className="flex items-center justify-between">
@@ -355,25 +408,144 @@ function ProfileTab({ customer, locations, onUpdated }) {
                 </div>
               </FormField>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Date of Birth">
+                <input
+                  type="date" value={form.dateOfBirth}
+                  onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                />
+              </FormField>
+              <FormField label="Gender">
+                <div className="relative">
+                  <select
+                    value={form.gender}
+                    onChange={(e) => setForm({ ...form, gender: e.target.value })}
+                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                  >
+                    <option value="">Select…</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                    <option value="prefer_not_to_say">Prefer not to say</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </FormField>
+            </div>
+            <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+              <p className="text-[12px] font-semibold text-muted-foreground">Address</p>
+              <FormField label="Street">
+                <input
+                  type="text" value={form.address.street}
+                  onChange={(e) => setForm({ ...form, address: { ...form.address, street: e.target.value } })}
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                />
+              </FormField>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="City">
+                  <input
+                    type="text" value={form.address.city}
+                    onChange={(e) => setForm({ ...form, address: { ...form.address, city: e.target.value } })}
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </FormField>
+                <FormField label="State">
+                  <input
+                    type="text" value={form.address.state}
+                    onChange={(e) => setForm({ ...form, address: { ...form.address, state: e.target.value } })}
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </FormField>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Zip Code">
+                  <input
+                    type="text" value={form.address.zipCode}
+                    onChange={(e) => setForm({ ...form, address: { ...form.address, zipCode: e.target.value } })}
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </FormField>
+                <FormField label="Country">
+                  <input
+                    type="text" value={form.address.country}
+                    onChange={(e) => setForm({ ...form, address: { ...form.address, country: e.target.value } })}
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </FormField>
+              </div>
+            </div>
             <div className="flex gap-2 pt-1">
               <Button type="submit" size="sm" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
               <Button type="button" variant="outline" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
             </div>
           </form>
         ) : (
-          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-            {[
-              { label: 'Name', value: customer.name },
-              { label: 'Email', value: customer.email },
-              { label: 'Phone', value: customer.phoneNumber || '—' },
-              { label: 'Location', value: locationName(customer.locationID?._id ?? customer.locationID) },
-              { label: 'Joined', value: formatDate(customer.createdAt) },
-            ].map(({ label, value }) => (
-              <div key={label}>
-                <p className="text-[11px] text-muted-foreground mb-0.5">{label}</p>
-                <p className="text-[13px] text-foreground">{value}</p>
+          <div className="space-y-5">
+            {/* Contact */}
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Contact</p>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                {[
+                  { label: 'Name', value: customer.name },
+                  { label: 'Email', value: customer.email },
+                  { label: 'Phone', value: customer.phoneNumber || '—' },
+                  { label: 'Location', value: locationName(customer.locationID?._id ?? customer.locationID) },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-[11px] text-muted-foreground mb-0.5">{label}</p>
+                    <p className="text-[13px] text-foreground break-all">{value}</p>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+
+            <div className="border-t border-border" />
+
+            {/* Personal */}
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Personal</p>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-0.5">Date of Birth</p>
+                  <p className="text-[13px] text-foreground">{customer.dateOfBirth ? formatDate(customer.dateOfBirth) : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-0.5">Gender</p>
+                  <p className="text-[13px] text-foreground">
+                    {customer.gender ? customer.gender.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '—'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-border" />
+
+            {/* Address */}
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Address</p>
+              {(() => {
+                const a = customer.address
+                const hasAny = a && [a.street, a.city, a.state, a.zipCode, a.country].some(Boolean)
+                if (!hasAny) return <p className="text-[13px] text-muted-foreground">—</p>
+                return (
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                    {[
+                      { label: 'Street', value: a.street },
+                      { label: 'City', value: a.city },
+                      { label: 'State', value: a.state },
+                      { label: 'Zip Code', value: a.zipCode },
+                      { label: 'Country', value: a.country },
+                    ].map(({ label, value }) => (
+                      <div key={label}>
+                        <p className="text-[11px] text-muted-foreground mb-0.5">{label}</p>
+                        <p className="text-[13px] text-foreground">{value || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
           </div>
         )}
       </div>
@@ -393,6 +565,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
           </Button>
         </div>
       </div>
+      </div>{/* end inner grid */}
 
       {/* Adjust credits dialog */}
       <Dialog open={adjustOpen} onOpenChange={(v) => { if (!v) setAdjustOpen(false) }}>
@@ -540,20 +713,19 @@ function PackagesTab({ customerID }) {
       const list = pkgRes.data || []
       setCustomerPkgs(list)
       if (list.length > 0) {
-        const detailResults = await Promise.all(list.map((cp) => api.get(`/api/customer-package/${cp._id}/details`)))
+        const detailResults = await Promise.all(list.map((enr) => api.get(`/api/customer-package/${enr._id}/details`)))
         const detMap = {}
-        list.forEach((cp, i) => { if (detailResults[i].success) detMap[cp._id] = detailResults[i].data })
+        list.forEach((enr, i) => { if (detailResults[i].success) detMap[String(enr._id)] = detailResults[i].data })
         setDetailsMap(detMap)
 
-        // Fetch payment plans for all payment_plan packages in one call
-        const hasPlanPkgs = list.some((cp) => cp.billingType === 'payment_plan')
+        const hasPlanPkgs = list.some((enr) => enr.package?.billingType === 'payment_plan')
         if (hasPlanPkgs) {
           const plansRes = await api.get(`/api/payment-plan/customer/${customerID}`)
           if (plansRes.success) {
             const pm = {}
             ;(plansRes.data || []).forEach((plan) => {
-              const cpId = String(plan.customerPackageID?._id ?? plan.customerPackageID)
-              pm[cpId] = plan
+              const enrId = String(plan.enrollmentID?._id ?? plan.enrollmentID)
+              pm[enrId] = plan
             })
             setPlansMap(pm)
           }
@@ -699,56 +871,57 @@ function PackagesTab({ customerID }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {customerPkgs.map((cp) => {
-            const det = detailsMap[cp._id]
+          {customerPkgs.map((enr) => {
+            const pkg = enr.package ?? {}
+            const det = detailsMap[String(enr._id)]
             const billing = det?.billing ?? {}
-            const services = det?.services ?? cp.services ?? []
-            const totalPaid = billing.totalPaid ?? cp.totalPaid ?? 0
-            const collected = billing.amountCollected ?? cp.amountCollected ?? 0
+            const services = det?.services ?? pkg.services ?? []
+            const totalPaid = billing.totalPaid ?? pkg.totalPaid ?? 0
+            const collected = billing.amountCollected ?? pkg.amountCollected ?? 0
             const outstanding = billing.outstanding ?? Math.max(0, totalPaid - collected)
             const refunded = billing.totalRefunded ?? 0
             return (
-              <div key={cp._id} className="rounded-xl border border-border bg-card p-5">
+              <div key={enr._id} className="rounded-xl border border-border bg-card p-5">
                 {/* Header row */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    {cp.packageID?.color && (
-                      <div className="h-9 w-9 rounded-lg shrink-0 border border-black/10" style={{ backgroundColor: cp.packageID.color }} />
+                    {pkg.packageRef?.color && (
+                      <div className="h-9 w-9 rounded-lg shrink-0 border border-black/10" style={{ backgroundColor: pkg.packageRef.color }} />
                     )}
                     <div>
-                      <p className="text-[13px] font-semibold text-foreground">{cp.packageID?.packageName ?? 'Package'}</p>
+                      <p className="text-[13px] font-semibold text-foreground">{pkg.packageName ?? pkg.packageRef?.packageName ?? 'Package'}</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Purchased {formatDate(cp.purchaseDate)}
-                        {cp.expiryDate ? ` · Expires ${formatDate(cp.expiryDate)}` : ' · No expiry'}
+                        Purchased {formatDate(pkg.purchaseDate)}
+                        {pkg.expiryDate ? ` · Expires ${formatDate(pkg.expiryDate)}` : ' · No expiry'}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">
-                    {cp.billingType && cp.billingType !== 'one_time' && (
+                    {pkg.billingType && pkg.billingType !== 'one_time' && (
                       <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-violet-500/10 text-violet-600 capitalize">
-                        {cp.billingType.replace('_', ' ')}
+                        {pkg.billingType.replace('_', ' ')}
                       </span>
                     )}
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${paymentStatusColor(cp.paymentStatus)}`}>
-                      {cp.paymentStatus ?? 'unpaid'}
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${paymentStatusColor(pkg.paymentStatus)}`}>
+                      {pkg.paymentStatus ?? 'unpaid'}
                     </span>
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(cp.status)}`}>
-                      {cp.status}
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(pkg.status)}`}>
+                      {pkg.status}
                     </span>
-                    {cp.status === 'active' && cp.paymentStatus !== 'paid' && cp.billingType !== 'payment_plan' && (
+                    {pkg.status === 'active' && pkg.paymentStatus !== 'paid' && pkg.billingType !== 'payment_plan' && (
                       <Button
                         size="sm"
                         className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={() => setRecordPaymentTarget(cp)}
+                        onClick={() => setRecordPaymentTarget({ _id: enr._id, outstanding })}
                       >
                         <CreditCard className="h-3 w-3 mr-1" /> Pay
                       </Button>
                     )}
-                    {cp.status === 'active' && (
+                    {pkg.status === 'active' && (
                       <Button
                         variant="ghost" size="sm"
                         className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
-                        onClick={() => setCancelTarget(cp)}
+                        onClick={() => setCancelTarget({ _id: enr._id, packageName: pkg.packageName })}
                       >
                         <X className="h-3 w-3 mr-1" /> Cancel
                       </Button>
@@ -777,7 +950,6 @@ function PackagesTab({ customerID }) {
                     <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2.5">Services</p>
                     <div className="space-y-2.5">
                       {services.map((svc, i) => {
-                        const pkgSvc = cp.packageID?.services?.find((s) => s.serviceCode === svc.serviceCode)
                         const sessTotal = svc.sessionsTotal ?? 0
                         const sessUsed = svc.sessionsUsed ?? 0
                         const sessSched = svc.sessionsScheduled ?? 0
@@ -785,8 +957,8 @@ function PackagesTab({ customerID }) {
                         return (
                           <div key={i} className="rounded-lg border border-border/60 bg-background p-3">
                             <div className="flex items-center gap-2 mb-2.5">
-                              {pkgSvc?.color && (
-                                <span className="h-3 w-3 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: pkgSvc.color }} />
+                              {svc.color && (
+                                <span className="h-3 w-3 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: svc.color }} />
                               )}
                               <p className="text-[12px] font-medium text-foreground flex-1">{svc.serviceName}</p>
                               {svc.pricePerSession > 0 && (
@@ -823,8 +995,8 @@ function PackagesTab({ customerID }) {
                 )}
 
                 {/* Payment plan installment schedule */}
-                {cp.billingType === 'payment_plan' && (() => {
-                  const plan = plansMap[String(cp._id)]
+                {pkg.billingType === 'payment_plan' && (() => {
+                  const plan = plansMap[String(enr._id)]
                   if (!plan) return null
                   const paidCount = plan.installments.filter((i) => i.status === 'paid').length
                   return (
@@ -877,7 +1049,7 @@ function PackagesTab({ customerID }) {
                             </div>
                             <div className="flex items-center gap-2">
                               <p className="text-[13px] font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</p>
-                              {inst.status === 'pending' && plan.status === 'active' && cp.status === 'active' && (
+                              {inst.status === 'pending' && plan.status === 'active' && pkg.status === 'active' && (
                                 <Button
                                   size="sm"
                                   className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -909,7 +1081,8 @@ function PackagesTab({ customerID }) {
         open={Boolean(recordPaymentTarget)}
         onClose={() => setRecordPaymentTarget(null)}
         customerID={customerID}
-        customerPackageID={recordPaymentTarget?._id}
+        enrollmentID={recordPaymentTarget?._id}
+        outstanding={recordPaymentTarget?.outstanding}
         onSuccess={load}
       />
 
@@ -927,7 +1100,7 @@ function PackagesTab({ customerID }) {
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Cancel Package</DialogTitle></DialogHeader>
           <p className="text-[13px] text-muted-foreground mt-1">
-            Cancel <span className="font-semibold text-foreground">{cancelTarget?.packageID?.packageName}</span>? Sessions will no longer be used for new bookings.
+            Cancel <span className="font-semibold text-foreground">{cancelTarget?.packageName}</span>? Sessions will no longer be used for new bookings.
           </p>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" size="sm" onClick={() => setCancelTarget(null)}>Keep</Button>
@@ -965,7 +1138,7 @@ function PackagesTab({ customerID }) {
                     className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
                   >
                     <option value="">Select enrollment…</option>
-                    {enrollments.filter((e) => !e.packageID).map((e) => {
+                    {enrollments.filter((e) => !e.package).map((e) => {
                       const ordinal = ['1st','2nd','3rd'][e.enrollmentNumber - 1] ?? `${e.enrollmentNumber}th`
                       return (
                         <option key={e._id} value={e._id}>
@@ -976,7 +1149,7 @@ function PackagesTab({ customerID }) {
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 </div>
-                {enrollments.filter((e) => !e.packageID).length === 0 && (
+                {enrollments.filter((e) => !e.package).length === 0 && (
                   <p className="text-[11px] text-amber-600 mt-1">No active enrollments without a package. Create an enrollment first in the Enrollments tab.</p>
                 )}
               </FormField>
@@ -1250,7 +1423,7 @@ const BLANK_ENR_FORM = {
   billing: { method: 'cash', numberOfInstallments: 3, frequency: 'monthly', startDate: '' },
 }
 
-function EnrollmentsTab({ customerID }) {
+function EnrollmentsTab({ customerID, statusFilter }) {
   const [enrollments, setEnrollments] = useState([])
   const [detailsMap, setDetailsMap] = useState({})
   const [plansMap, setPlansMap] = useState({})
@@ -1288,21 +1461,20 @@ function EnrollmentsTab({ customerID }) {
     if (enrRes.success) {
       const list = enrRes.data || []
       setEnrollments(list)
-      const withPkg = list.filter((e) => e.packageID)
+      const withPkg = list.filter((e) => e.package)
       if (withPkg.length > 0) {
-        const cpIds = withPkg.map((e) => typeof e.packageID === 'object' ? String(e.packageID._id) : String(e.packageID))
-        const detResults = await Promise.all(cpIds.map((id) => api.get(`/api/customer-package/${id}/details`)))
+        const detResults = await Promise.all(withPkg.map((e) => api.get(`/api/customer-package/${e._id}/details`)))
         const detMap = {}
-        cpIds.forEach((id, i) => { if (detResults[i].success) detMap[id] = detResults[i].data })
+        withPkg.forEach((e, i) => { if (detResults[i].success) detMap[String(e._id)] = detResults[i].data })
         setDetailsMap(detMap)
-        const hasPlan = Object.values(detMap).some((d) => d.customerPackage?.billingType === 'payment_plan')
+        const hasPlan = withPkg.some((e) => e.package?.billingType === 'payment_plan')
         if (hasPlan) {
           const plansRes = await api.get(`/api/payment-plan/customer/${customerID}`)
           if (plansRes.success) {
             const pm = {}
             ;(plansRes.data || []).forEach((plan) => {
-              const cpId = String(plan.customerPackageID?._id ?? plan.customerPackageID)
-              pm[cpId] = plan
+              const enrId = String(plan.enrollmentID?._id ?? plan.enrollmentID)
+              pm[enrId] = plan
             })
             setPlansMap(pm)
           }
@@ -1443,7 +1615,7 @@ function EnrollmentsTab({ customerID }) {
   async function handleEnrCancel() {
     if (!cancelTarget) return
     setCancelling(true)
-    const res = await api.patch(`/api/customer-package/${cancelTarget._id}/cancel`)
+    const res = await api.patch(`/api/customer-package/${cancelTarget.enrollmentId}/cancel`)
     if (res.success) { toast.success('Package cancelled.'); setCancelTarget(null); load() }
     else toast.error(res.error || 'Failed.')
     setCancelling(false)
@@ -1453,25 +1625,36 @@ function EnrollmentsTab({ customerID }) {
 
   const enrInstallments = getEnrInstallments()
 
+  const filteredEnrollments = statusFilter
+    ? enrollments.filter((e) => {
+        if (statusFilter === 'active') return e.status === 'active'
+        if (statusFilter === 'completed') return e.status !== 'active'
+        return true
+      })
+    : enrollments
+
+  const isActiveTab = statusFilter === 'active'
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">{enrollments.length} enrollment{enrollments.length !== 1 ? 's' : ''}</p>
-        <Button size="sm" className="h-8 text-[12px]" onClick={() => setCreateOpen(true)}>
-          <Plus className="h-3.5 w-3.5 mr-1.5" /> New Enrollment
-        </Button>
+        <p className="text-[13px] text-muted-foreground">{filteredEnrollments.length} enrollment{filteredEnrollments.length !== 1 ? 's' : ''}</p>
+        {isActiveTab && (
+          <Button size="sm" className="h-8 text-[12px]" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" /> New Enrollment
+          </Button>
+        )}
       </div>
 
-      {enrollments.length === 0 ? (
+      {filteredEnrollments.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          No enrollments yet. Click "New Enrollment" to create one.
+          {isActiveTab ? 'No active enrollments. Click "New Enrollment" to create one.' : 'No completed enrollments yet.'}
         </div>
       ) : (
         <div className="space-y-4">
-          {enrollments.map((enr) => {
-            const cpId = enr.packageID ? (typeof enr.packageID === 'object' ? String(enr.packageID._id) : String(enr.packageID)) : null
-            const det = cpId ? detailsMap[cpId] : null
-            const cp = det?.customerPackage ?? (typeof enr.packageID === 'object' ? enr.packageID : null)
+          {filteredEnrollments.map((enr) => {
+            const det = enr.package ? detailsMap[String(enr._id)] : null
+            const cp = enr.package ?? null
             const billing = det?.billing ?? {}
             const services = det?.services ?? cp?.services ?? []
             const totalPaid = billing.totalPaid ?? cp?.totalPaid ?? 0
@@ -1518,11 +1701,11 @@ function EnrollmentsTab({ customerID }) {
                     {/* Package header */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        {cp.packageID?.color && (
-                          <div className="h-9 w-9 rounded-lg shrink-0 border border-black/10" style={{ backgroundColor: cp.packageID.color }} />
+                        {cp.packageRef?.color && (
+                          <div className="h-9 w-9 rounded-lg shrink-0 border border-black/10" style={{ backgroundColor: cp.packageRef.color }} />
                         )}
                         <div>
-                          <p className="text-[13px] font-semibold text-foreground">{cp.packageID?.packageName ?? 'Package'}</p>
+                          <p className="text-[13px] font-semibold text-foreground">{cp.packageName ?? cp.packageRef?.packageName ?? 'Package'}</p>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
                             Purchased {formatDate(cp.purchaseDate)}
                             {cp.expiryDate ? ` · Expires ${formatDate(cp.expiryDate)}` : ' · No expiry'}
@@ -1545,7 +1728,7 @@ function EnrollmentsTab({ customerID }) {
                           <Button
                             size="sm"
                             className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                            onClick={() => setRecordPaymentTarget(cp)}
+                            onClick={() => setRecordPaymentTarget({ enrollmentId: enr._id, outstanding })}
                           >
                             <CreditCard className="h-3 w-3 mr-1" /> Pay
                           </Button>
@@ -1554,7 +1737,7 @@ function EnrollmentsTab({ customerID }) {
                           <Button
                             variant="ghost" size="sm"
                             className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
-                            onClick={() => setCancelTarget(cp)}
+                            onClick={() => setCancelTarget({ enrollmentId: enr._id, packageName: cp.packageName })}
                           >
                             <X className="h-3 w-3 mr-1" /> Cancel
                           </Button>
@@ -1578,58 +1761,75 @@ function EnrollmentsTab({ customerID }) {
                     </div>
 
                     {/* Services */}
-                    {services.length > 0 && (
-                      <div className="mt-4 border-t border-border pt-4">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2.5">Services</p>
-                        <div className="space-y-2.5">
-                          {services.map((svc, i) => {
-                            const pkgSvc = cp.packageID?.services?.find((s) => s.serviceCode === svc.serviceCode)
-                            const sessTotal = svc.sessionsTotal ?? 0
-                            const sessUsed = svc.sessionsUsed ?? 0
-                            const sessSched = svc.sessionsScheduled ?? 0
-                            const sessRemaining = svc.sessionsRemaining ?? Math.max(0, sessTotal - sessUsed)
-                            return (
-                              <div key={i} className="rounded-lg border border-border/60 bg-background p-3">
-                                <div className="flex items-center gap-2 mb-2.5">
-                                  {pkgSvc?.color && (
-                                    <span className="h-3 w-3 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: pkgSvc.color }} />
-                                  )}
-                                  <p className="text-[12px] font-medium text-foreground flex-1">{svc.serviceName}</p>
+                    {services.length > 0 && (() => {
+                      let totalEnrolled = 0, totalUsed = 0, totalSched = 0, totalRemaining = 0, totalCredit = 0
+                      const rows = services.map((svc, i) => {
+                        const sessTotal = svc.sessionsTotal ?? 0
+                        const sessUsed = svc.sessionsUsed ?? 0
+                        const sessSched = svc.sessionsScheduled ?? 0
+                        const sessRemaining = svc.sessionsRemaining ?? Math.max(0, sessTotal - sessUsed - sessSched)
+                        const svcCredit = sessRemaining * (Number(svc.pricePerSession) || 0)
+                        totalEnrolled += sessTotal; totalUsed += sessUsed; totalSched += sessSched
+                        totalRemaining += sessRemaining; totalCredit += svcCredit
+                        return { svc, i, sessTotal, sessUsed, sessSched, sessRemaining, svcCredit }
+                      })
+                      return (
+                        <div className="mt-4 border-t border-border pt-4">
+                          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-3">Services</p>
+                          <div className="rounded-lg border border-border overflow-hidden">
+                            {/* Column headers */}
+                            <div className="grid bg-muted/40 border-b border-border px-3 py-2" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 100px' }}>
+                              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Service</span>
+                              {['Enrolled', 'Used', 'Scheduled', 'Remaining', 'Credit Value'].map((h) => (
+                                <span key={h} className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right">{h}</span>
+                              ))}
+                            </div>
+                            {/* Service rows */}
+                            {rows.map(({ svc, i, sessTotal, sessUsed, sessSched, sessRemaining, svcCredit }) => (
+                              <div key={i} className={`grid items-center px-3 py-3 ${i > 0 ? 'border-t border-border' : ''}`} style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 100px' }}>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    {svc.color && <span className="h-2.5 w-2.5 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: svc.color }} />}
+                                    <span className="text-[12px] font-medium text-foreground">{svc.serviceName}</span>
+                                  </div>
                                   {svc.pricePerSession > 0 && (
-                                    <span className="text-[11px] text-muted-foreground">
+                                    <p className="text-[11px] text-muted-foreground mt-0.5 pl-[18px]">
                                       ${Number(svc.pricePerSession).toFixed(2)}/session
                                       {svc.discountType && svc.discountType !== 'none' && (
-                                        <span className="ml-1 text-amber-600">
-                                          · {svc.discountType === 'percentage' ? `${svc.discountAmount}% off` : `-$${svc.discountAmount}`}
-                                        </span>
+                                        <span className="ml-1 text-amber-600">· {svc.discountType === 'percentage' ? `${svc.discountAmount}% off` : `-$${svc.discountAmount}`}</span>
                                       )}
-                                    </span>
+                                    </p>
                                   )}
+                                  <div className="mt-1.5 pl-[18px]">
+                                    <SessionBar used={sessUsed} total={sessTotal} />
+                                  </div>
                                 </div>
-                                <div className="grid grid-cols-4 gap-1.5 mb-2">
-                                  {[
-                                    { label: 'Total', value: sessTotal },
-                                    { label: 'Used', value: sessUsed, cls: sessUsed > 0 ? 'text-blue-600' : '' },
-                                    { label: 'Scheduled', value: sessSched, cls: sessSched > 0 ? 'text-violet-600' : '' },
-                                    { label: 'Remaining', value: sessRemaining, cls: sessRemaining > 0 ? 'text-emerald-600' : 'text-muted-foreground' },
-                                  ].map(({ label, value, cls }) => (
-                                    <div key={label} className="text-center bg-muted/40 rounded-md py-1.5">
-                                      <p className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</p>
-                                      <p className={`text-[14px] font-bold ${cls ?? 'text-foreground'}`}>{value}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                                <SessionBar used={sessUsed} total={sessTotal} />
+                                <span className="text-[13px] font-semibold text-foreground text-right">{sessTotal}</span>
+                                <span className={`text-[13px] font-semibold text-right ${sessUsed > 0 ? 'text-blue-600' : 'text-muted-foreground'}`}>{sessUsed}</span>
+                                <span className={`text-[13px] font-semibold text-right ${sessSched > 0 ? 'text-violet-600' : 'text-muted-foreground'}`}>{sessSched}</span>
+                                <span className={`text-[13px] font-semibold text-right ${sessRemaining > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{sessRemaining}</span>
+                                <span className={`text-[13px] font-semibold text-right ${svcCredit > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>${svcCredit.toFixed(2)}</span>
                               </div>
-                            )
-                          })}
+                            ))}
+                            {/* Totals row */}
+                            {rows.length > 1 && (
+                              <div className="grid items-center px-3 py-2.5 border-t-2 border-border bg-muted/30" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 100px' }}>
+                                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total</span>
+                                <span className="text-[13px] font-bold text-foreground text-right">{totalEnrolled}</span>
+                                <span className={`text-[13px] font-bold text-right ${totalUsed > 0 ? 'text-blue-600' : 'text-muted-foreground'}`}>{totalUsed}</span>
+                                <span className={`text-[13px] font-bold text-right ${totalSched > 0 ? 'text-violet-600' : 'text-muted-foreground'}`}>{totalSched}</span>
+                                <span className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{totalRemaining}</span>
+                                <span className={`text-[13px] font-bold text-right ${totalCredit > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>${totalCredit.toFixed(2)}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
 
                     {/* Payment plan installments */}
                     {cp.billingType === 'payment_plan' && (() => {
-                      const plan = plansMap[String(cp._id)]
+                      const plan = plansMap[String(enr._id)]
                       if (!plan) return null
                       const paidCount = plan.installments.filter((i) => i.status === 'paid').length
                       return (
@@ -1701,7 +1901,8 @@ function EnrollmentsTab({ customerID }) {
         open={Boolean(recordPaymentTarget)}
         onClose={() => setRecordPaymentTarget(null)}
         customerID={customerID}
-        customerPackageID={recordPaymentTarget?._id}
+        enrollmentID={recordPaymentTarget?.enrollmentId}
+        outstanding={recordPaymentTarget?.outstanding}
         onSuccess={load}
       />
 
@@ -1719,7 +1920,7 @@ function EnrollmentsTab({ customerID }) {
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Cancel Package</DialogTitle></DialogHeader>
           <p className="text-[13px] text-muted-foreground mt-1">
-            Cancel <span className="font-semibold text-foreground">{cancelTarget?.packageID?.packageName}</span>? Sessions will no longer be used for new bookings.
+            Cancel <span className="font-semibold text-foreground">{cancelTarget?.packageName}</span>? Sessions will no longer be used for new bookings.
           </p>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" size="sm" onClick={() => setCancelTarget(null)}>Keep</Button>
@@ -2414,8 +2615,8 @@ export default function CustomerDetailPage() {
         {/* Tab content */}
         <div>
           {tab === 'profile' && <ProfileTab customer={customer} locations={locations} onUpdated={load} />}
-          {tab === 'enrollments' && <EnrollmentsTab customerID={customer._id} />}
-          {tab === 'packages' && <PackagesTab customerID={customer._id} />}
+          {tab === 'active-enrollments' && <EnrollmentsTab customerID={customer._id} statusFilter="active" />}
+          {tab === 'completed-enrollments' && <EnrollmentsTab customerID={customer._id} statusFilter="completed" />}
           {tab === 'payments' && <PaymentsTab customerID={customer._id} />}
           {tab === 'lessons' && <LessonsTab customer={customer} onUpdated={load} />}
           {tab === 'notes' && <NotesTab customer={customer} onUpdated={load} />}

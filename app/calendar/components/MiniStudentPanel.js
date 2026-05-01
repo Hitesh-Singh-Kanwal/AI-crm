@@ -6,7 +6,7 @@ import api from "@/lib/api";
 
 const TABS = [
   { key: "appointments", label: "Appointments" },
-  { key: "packages", label: "Packages" },
+  { key: "enrollments", label: "Enrollments" },
   { key: "payments", label: "Payments" },
   { key: "notes", label: "Notes" },
   { key: "messages", label: "Messages" },
@@ -19,7 +19,7 @@ function statusColor(status) {
   return "bg-blue-500/10 text-blue-400";
 }
 
-export default function MiniStudentPanel({ customerId, customerName, onBack }) {
+export default function MiniStudentPanel({ customerId, customerName, onBack, inline = false }) {
   const [activeTab, setActiveTab] = useState("appointments");
   const [customer, setCustomer] = useState(null);
   const [loadingCustomer, setLoadingCustomer] = useState(true);
@@ -32,18 +32,19 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
   const [newNoteText, setNewNoteText] = useState("");
   const [isSavingNote, setIsSavingNote] = useState(false);
 
-  const [customerPackages, setCustomerPackages] = useState([]);
-  const [loadingPkgs, setLoadingPkgs] = useState(false);
   const [catalogPackages, setCatalogPackages] = useState([]);
-  const [showSellForm, setShowSellForm] = useState(false);
-  const [sellForm, setSellForm] = useState({
-    packageID: "",
-    purchaseDate: "",
-    notes: "",
-  });
+  const [sellTargetEnrollmentId, setSellTargetEnrollmentId] = useState(null);
+  const [sellForm, setSellForm] = useState({ packageID: "", purchaseDate: "", notes: "" });
   const [sellServices, setSellServices] = useState([]);
   const [isSelling, setIsSelling] = useState(false);
   const [sellError, setSellError] = useState(null);
+
+  const [enrollments, setEnrollments] = useState([]);
+  const [loadingEnrollments, setLoadingEnrollments] = useState(false);
+  const [showEnrollForm, setShowEnrollForm] = useState(false);
+  const [enrollForm, setEnrollForm] = useState({ label: "", notes: "" });
+  const [isCreatingEnroll, setIsCreatingEnroll] = useState(false);
+  const [enrollError, setEnrollError] = useState(null);
 
   const [collectedPayments, setCollectedPayments] = useState([]);
   const [serviceCharges, setServiceCharges] = useState([]);
@@ -111,22 +112,39 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
       setCustomer((prev) => ({ ...prev, notes: result.data }));
   }
 
+
   useEffect(() => {
-    if (activeTab !== "packages") return;
+    if (activeTab !== "enrollments") return;
     async function load() {
-      setLoadingPkgs(true);
-      const [pkgsResult, catalogResult] = await Promise.all([
-        api.get(`/api/customer-package/customer/${customerId}`),
+      setLoadingEnrollments(true);
+      const [enrResult, catalogResult] = await Promise.all([
+        api.get(`/api/enrollment?customerID=${customerId}&limit=50`),
         api.get("/api/package?limit=200&isActive=true"),
       ]);
-      if (pkgsResult.success && Array.isArray(pkgsResult.data))
-        setCustomerPackages(pkgsResult.data);
-      if (catalogResult.success && Array.isArray(catalogResult.data))
-        setCatalogPackages(catalogResult.data);
-      setLoadingPkgs(false);
+      if (enrResult.success && Array.isArray(enrResult.data)) setEnrollments(enrResult.data);
+      if (catalogResult.success && Array.isArray(catalogResult.data)) setCatalogPackages(catalogResult.data);
+      setLoadingEnrollments(false);
     }
     load();
   }, [activeTab, customerId]);
+
+  async function handleCreateEnrollment() {
+    setIsCreatingEnroll(true);
+    setEnrollError(null);
+    const result = await api.post("/api/enrollment", {
+      customerID: customerId,
+      label: enrollForm.label.trim() || undefined,
+      notes: enrollForm.notes.trim() || undefined,
+    });
+    if (result.success) {
+      setEnrollments((prev) => [result.data, ...prev]);
+      setShowEnrollForm(false);
+      setEnrollForm({ label: "", notes: "" });
+    } else {
+      setEnrollError(result.error || "Failed to create enrollment.");
+    }
+    setIsCreatingEnroll(false);
+  }
 
   function handlePkgSelect(pkgId) {
     const pkg = catalogPackages.find((p) => p._id === pkgId);
@@ -163,7 +181,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
   }
 
   async function handleSellPackage() {
-    if (!sellForm.packageID) {
+    if (!sellForm.packageID || !sellTargetEnrollmentId) {
       setSellError("Please select a package.");
       return;
     }
@@ -171,6 +189,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
     setSellError(null);
     const result = await api.post("/api/customer-package/add", {
       customerID: customerId,
+      enrollmentID: sellTargetEnrollmentId,
       packageID: sellForm.packageID,
       purchaseDate: sellForm.purchaseDate || undefined,
       services: sellServices.map((s) => ({
@@ -186,8 +205,13 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
     });
 
     if (result.success) {
-      setCustomerPackages((prev) => [result.data.customerPackage, ...prev]); // note: .customerPackage now
-      setShowSellForm(false);
+      const updatedEnrollment = result.data.enrollment ?? result.data;
+      setEnrollments((prev) =>
+        prev.map((e) =>
+          String(e._id) === String(sellTargetEnrollmentId) ? { ...e, package: updatedEnrollment.package } : e,
+        ),
+      );
+      setSellTargetEnrollmentId(null);
       setSellForm({ packageID: "", purchaseDate: "", notes: "" });
       setSellServices([]);
     } else {
@@ -326,52 +350,28 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
     return new Date(b.createdAt) - new Date(a.createdAt);
   });
 
-  return (
-    <aside className="h-full w-[380px] shrink-0 rounded-xl border border-border bg-card shadow-lg flex flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3 shrink-0">
+  const tabs = (
+    <div className="flex border-b border-border shrink-0">
+      {TABS.map((tab) => (
         <button
+          key={tab.key}
           type="button"
-          onClick={onBack}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted"
-          aria-label="Back to event"
+          onClick={() => setActiveTab(tab.key)}
+          className={[
+            "flex-1 py-2.5 text-[10px] font-medium border-b-2 transition-colors",
+            activeTab === tab.key
+              ? "text-foreground border-primary"
+              : "text-muted-foreground border-transparent hover:text-foreground",
+          ].join(" ")}
         >
-          <ArrowLeft className="h-4 w-4" />
+          {tab.label}
         </button>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-foreground">
-            {customerName}
-          </p>
-          <p className="text-[10px] text-muted-foreground">Student Account</p>
-        </div>
-        {customer && (
-          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-            ${customer.credits ?? 0} credits
-          </span>
-        )}
-      </div>
+      ))}
+    </div>
+  );
 
-      {/* Tabs */}
-      <div className="flex border-b border-border shrink-0">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={[
-              "flex-1 py-2.5 text-[10px] font-medium border-b-2 transition-colors",
-              activeTab === tab.key
-                ? "text-foreground border-primary"
-                : "text-muted-foreground border-transparent hover:text-foreground",
-            ].join(" ")}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto p-4">
+  const body = (
+    <div className="flex-1 overflow-y-auto p-4">
         {loadingCustomer ? (
           <p className="text-center pt-10 text-[12px] text-muted-foreground animate-pulse">
             Loading…
@@ -469,247 +469,286 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
               </div>
             )}
 
-            {/* ── PACKAGES ── */}
-            {activeTab === "packages" && (
+            {/* ── ENROLLMENTS ── */}
+            {activeTab === "enrollments" && (
               <div className="space-y-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowSellForm((v) => !v);
-                    setSellError(null);
-                  }}
+                  onClick={() => { setShowEnrollForm((v) => !v); setEnrollError(null); }}
                   className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark"
                 >
                   <Plus className="h-3 w-3" />
-                  Sell Package
+                  New Enrollment
                 </button>
 
-                {showSellForm && (
+                {showEnrollForm && (
                   <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-                    <p className="text-[11px] font-semibold text-foreground">
-                      Sell a Package
-                    </p>
-                    <div className="relative">
-                      <select
-                        value={sellForm.packageID}
-                        onChange={(e) => handlePkgSelect(e.target.value)}
-                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-primary"
-                      >
-                        <option value="">Select package…</option>
-                        {catalogPackages.map((p) => (
-                          <option key={p._id} value={p._id}>
-                            {p.packageName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {sellServices.length > 0 && (
-                      <div className="rounded-lg border border-border bg-background overflow-hidden">
-                        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-0 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted/40 px-2 py-1.5">
-                          <span>Service</span>
-                          <span className="w-14 text-center">Sessions</span>
-                          <span className="w-16 text-center">Price</span>
-                          <span className="w-16 text-right">Total</span>
-                        </div>
-                        {sellServices.map((svc, i) => (
-                          <div
-                            key={i}
-                            className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-0 px-2 py-2 border-t border-border first:border-0"
-                          >
-                            <p className="text-[11px] font-medium text-foreground truncate pr-2">
-                              {svc.serviceName}
-                            </p>
-                            <input
-                              type="number"
-                              min="0"
-                              value={svc.numberOfSessions}
-                              onChange={(e) =>
-                                updateSellSvc(
-                                  i,
-                                  "numberOfSessions",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-14 h-7 text-center rounded border border-border bg-muted/20 text-[11px] outline-none focus:border-primary"
-                            />
-                            <div className="relative w-16 ml-1">
-                              <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
-                                $
-                              </span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={svc.pricePerSession}
-                                onChange={(e) =>
-                                  updateSellSvc(
-                                    i,
-                                    "pricePerSession",
-                                    e.target.value,
-                                  )
-                                }
-                                className="w-full h-7 pl-4 pr-1 rounded border border-border bg-muted/20 text-[11px] outline-none focus:border-primary"
-                              />
-                            </div>
-                            <p className="w-16 text-right text-[11px] font-semibold text-foreground">
-                              ${Number(svc.finalAmount).toFixed(2)}
-                            </p>
-                          </div>
-                        ))}
-                        <div className="flex justify-between px-2 py-1.5 border-t border-border bg-muted/20">
-                          <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-                            Total
-                          </span>
-                          <span className="text-[12px] font-bold text-foreground">
-                            $
-                            {sellServices
-                              .reduce(
-                                (sum, s) => sum + (Number(s.finalAmount) || 0),
-                                0,
-                              )
-                              .toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
+                    <p className="text-[11px] font-semibold text-foreground">New Enrollment</p>
                     <input
-                      type="date"
-                      value={sellForm.purchaseDate}
-                      onChange={(e) =>
-                        setSellForm((f) => ({
-                          ...f,
-                          purchaseDate: e.target.value,
-                        }))
-                      }
+                      type="text"
+                      value={enrollForm.label}
+                      onChange={(e) => setEnrollForm((f) => ({ ...f, label: e.target.value }))}
+                      placeholder="Label (optional, e.g. Term 1)"
                       className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
-                      placeholder="Purchase date (optional)"
-                    />
-                    <input
-                      type="number"
-                      value={sellForm.totalPaid}
-                      onChange={(e) =>
-                        setSellForm((f) => ({
-                          ...f,
-                          totalPaid: e.target.value,
-                        }))
-                      }
-                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
-                      placeholder="Amount paid (optional)"
-                      min="0"
-                      step="0.01"
                     />
                     <textarea
                       rows={2}
-                      value={sellForm.notes}
-                      onChange={(e) =>
-                        setSellForm((f) => ({ ...f, notes: e.target.value }))
-                      }
+                      value={enrollForm.notes}
+                      onChange={(e) => setEnrollForm((f) => ({ ...f, notes: e.target.value }))}
                       placeholder="Notes (optional)"
                       className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] text-foreground outline-none focus:border-primary"
                     />
-                    {sellError && (
-                      <p className="text-[11px] text-destructive">
-                        {sellError}
-                      </p>
-                    )}
+                    {enrollError && <p className="text-[11px] text-destructive">{enrollError}</p>}
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => {
-                          setShowSellForm(false);
-                          setSellError(null);
-                        }}
+                        onClick={() => { setShowEnrollForm(false); setEnrollError(null); }}
                         className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40"
                       >
                         Cancel
                       </button>
                       <button
                         type="button"
-                        onClick={handleSellPackage}
-                        disabled={isSelling}
+                        onClick={handleCreateEnrollment}
+                        disabled={isCreatingEnroll}
                         className="flex-1 h-8 rounded-lg bg-brand text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60"
                       >
-                        {isSelling ? "Selling…" : "Confirm Sale"}
+                        {isCreatingEnroll ? "Creating…" : "Create"}
                       </button>
                     </div>
                   </div>
                 )}
 
-                {loadingPkgs ? (
-                  <p className="text-[12px] text-muted-foreground animate-pulse">
-                    Loading…
-                  </p>
-                ) : !customerPackages.length ? (
-                  <p className="text-[12px] text-muted-foreground">
-                    No packages purchased yet.
-                  </p>
+                {loadingEnrollments ? (
+                  <p className="text-[12px] text-muted-foreground animate-pulse">Loading…</p>
+                ) : !enrollments.length ? (
+                  <p className="text-[12px] text-muted-foreground">No enrollments yet.</p>
                 ) : (
-                  customerPackages.map((cp) => {
-                    const statusColor =
-                      cp.status === "active"
-                        ? "bg-green-500/10 text-green-500"
-                        : cp.status === "exhausted"
-                          ? "bg-orange-500/10 text-orange-500"
-                          : cp.status === "expired"
-                            ? "bg-red-500/10 text-red-400"
-                            : "bg-muted text-muted-foreground";
+                  enrollments.map((enr) => {
+                    const enrStatusCls =
+                      enr.status === "active" ? "bg-green-500/10 text-green-500" :
+                      enr.status === "completed" ? "bg-blue-500/10 text-blue-400" :
+                      "bg-muted text-muted-foreground";
+                    const cp = enr.package ?? null; // embedded package (or null)
+                    const pkgStatusCls =
+                      cp?.status === "active" ? "bg-green-500/10 text-green-500" :
+                      cp?.status === "exhausted" ? "bg-orange-500/10 text-orange-500" :
+                      cp?.status === "expired" ? "bg-red-500/10 text-red-400" :
+                      "bg-muted text-muted-foreground";
+                    const isSellOpen = sellTargetEnrollmentId === String(enr._id);
+
                     return (
-                      <div
-                        key={cp._id}
-                        className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-2"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-[12px] font-semibold text-foreground">
-                            {cp.packageID?.packageName || "Package"}
+                      <div key={enr._id} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-2">
+                        {/* Enrollment header */}
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[12px] font-semibold text-foreground truncate">
+                            {enr.label || `Enrollment #${enr.enrollmentNumber}`}
                           </p>
-                          <span
-                            className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${statusColor}`}
-                          >
-                            {cp.status}
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${enrStatusCls}`}>
+                            {enr.status}
                           </span>
                         </div>
-                        {cp.expiryDate && (
-                          <p className="text-[10px] text-muted-foreground">
-                            Expires{" "}
-                            {new Date(cp.expiryDate).toLocaleDateString(
-                              "en-US",
-                              {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              },
-                            )}
-                          </p>
+                        {enr.teacherID?.name && (
+                          <p className="text-[10px] text-muted-foreground">Teacher: {enr.teacherID.name}</p>
                         )}
-                        {cp.services?.length > 0 && (
-                          <div className="space-y-1">
-                            {cp.services.map((svc, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center justify-between"
-                              >
-                                <span className="text-[11px] text-foreground truncate">
-                                  {svc.serviceName}
-                                </span>
-                                <span className="text-[11px] font-semibold text-foreground shrink-0 ml-2">
-                                  {svc.sessionsRemaining}/{svc.sessionsTotal}
-                                  <span className="text-[10px] font-normal text-muted-foreground ml-0.5">
-                                    left
-                                  </span>
-                                </span>
+                        {enr.notes && (
+                          <p className="text-[10px] text-muted-foreground italic">{enr.notes}</p>
+                        )}
+
+                        {/* Package section */}
+                        {cp ? (
+                          <div className="rounded-md border border-border bg-background px-3 py-2.5 space-y-2.5">
+                            {/* Package header */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-[12px] font-semibold text-foreground truncate">
+                                  {cp.packageName || cp.packageRef?.packageName || "Package"}
+                                </p>
+                                {cp.purchaseDate && (
+                                  <p className="text-[10px] text-muted-foreground">
+                                    Purchased {new Date(cp.purchaseDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                  </p>
+                                )}
                               </div>
-                            ))}
+                              <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${pkgStatusCls}`}>
+                                {cp.status}
+                              </span>
+                            </div>
+
+                            {/* Expiry + payment */}
+                            <div className="grid grid-cols-2 gap-2">
+                              {cp.expiryDate && (
+                                <div className="rounded bg-muted/40 px-2 py-1.5">
+                                  <p className="text-[9px] text-muted-foreground mb-0.5">Expires</p>
+                                  <p className="text-[10px] font-semibold text-foreground">
+                                    {new Date(cp.expiryDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                  </p>
+                                </div>
+                              )}
+                              {cp.totalPaid != null && (
+                                <div className="rounded bg-muted/40 px-2 py-1.5">
+                                  <p className="text-[9px] text-muted-foreground mb-0.5">Total Paid</p>
+                                  <p className="text-[10px] font-semibold text-foreground">
+                                    ${Number(cp.totalPaid).toFixed(2)}
+                                    {cp.paymentStatus && (
+                                      <span className={`ml-1.5 text-[9px] font-bold uppercase ${
+                                        cp.paymentStatus === "paid" ? "text-green-500" :
+                                        cp.paymentStatus === "partial" ? "text-amber-500" :
+                                        "text-red-400"
+                                      }`}>{cp.paymentStatus}</span>
+                                    )}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Services */}
+                            {cp.services?.length > 0 && (
+                              <div className="space-y-2 border-t border-border pt-2">
+                                <p className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">Services</p>
+                                {cp.services.map((svc, i) => {
+                                  const pct = svc.sessionsTotal > 0
+                                    ? Math.round(((svc.sessionsTotal - svc.sessionsRemaining) / svc.sessionsTotal) * 100)
+                                    : 0;
+                                  return (
+                                    <div key={i} className="space-y-1.5">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <p className="text-[11px] font-semibold text-foreground truncate">{svc.serviceName}</p>
+                                          {svc.serviceCode && (
+                                            <p className="text-[9px] text-muted-foreground">{svc.serviceCode}</p>
+                                          )}
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                          <p className="text-[11px] font-bold text-foreground">
+                                            {svc.sessionsRemaining}
+                                            <span className="text-muted-foreground font-normal">/{svc.sessionsTotal}</span>
+                                          </p>
+                                          <p className="text-[9px] text-muted-foreground">sessions left</p>
+                                        </div>
+                                      </div>
+                                      {/* Progress bar */}
+                                      <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full transition-all ${svc.sessionsRemaining === 0 ? "bg-red-400" : "bg-primary"}`}
+                                          style={{ width: `${100 - pct}%` }}
+                                        />
+                                      </div>
+                                      <div className="flex items-center justify-between text-[9px] text-muted-foreground">
+                                        <span>{svc.sessionsUsed} used</span>
+                                        <span>
+                                          ${Number(svc.pricePerSession).toFixed(2)}/session
+                                          {svc.discountType !== "none" && svc.discountAmount > 0 && (
+                                            <span className="ml-1 text-emerald-500">
+                                              -{svc.discountType === "percentage" ? `${svc.discountAmount}%` : `$${svc.discountAmount}`}
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {cp.notes && (
+                              <p className="text-[10px] text-muted-foreground italic border-t border-border pt-2">{cp.notes}</p>
+                            )}
                           </div>
-                        )}
+                        ) : enr.status === "active" ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSellTargetEnrollmentId(isSellOpen ? null : String(enr._id));
+                                setSellForm({ packageID: "", purchaseDate: "", notes: "" });
+                                setSellServices([]);
+                                setSellError(null);
+                              }}
+                              className="flex items-center gap-1 text-[10px] font-semibold text-primary hover:underline"
+                            >
+                              <Plus className="h-3 w-3" /> Add Package
+                            </button>
+
+                            {isSellOpen && (
+                              <div className="rounded-md border border-border bg-background p-2.5 space-y-2">
+                                <select
+                                  value={sellForm.packageID}
+                                  onChange={(e) => handlePkgSelect(e.target.value)}
+                                  className="h-9 w-full appearance-none rounded-lg border border-border bg-muted/20 px-3 text-[11px] text-foreground outline-none focus:border-primary"
+                                >
+                                  <option value="">Select package…</option>
+                                  {catalogPackages.map((p) => (
+                                    <option key={p._id} value={p._id}>{p.packageName}</option>
+                                  ))}
+                                </select>
+
+                                {sellServices.length > 0 && (
+                                  <div className="rounded-lg border border-border bg-muted/10 overflow-hidden">
+                                    <div className="grid grid-cols-[1fr_auto_auto_auto] text-[9px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted/40 px-2 py-1.5">
+                                      <span>Service</span>
+                                      <span className="w-12 text-center">Sess.</span>
+                                      <span className="w-14 text-center">Price</span>
+                                      <span className="w-14 text-right">Total</span>
+                                    </div>
+                                    {sellServices.map((svc, i) => (
+                                      <div key={i} className="grid grid-cols-[1fr_auto_auto_auto] items-center px-2 py-1.5 border-t border-border">
+                                        <p className="text-[10px] font-medium text-foreground truncate pr-1">{svc.serviceName}</p>
+                                        <input
+                                          type="number" min="0" value={svc.numberOfSessions}
+                                          onChange={(e) => updateSellSvc(i, "numberOfSessions", e.target.value)}
+                                          className="w-12 h-6 text-center rounded border border-border bg-muted/20 text-[10px] outline-none focus:border-primary"
+                                        />
+                                        <div className="relative w-14 ml-1">
+                                          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">$</span>
+                                          <input
+                                            type="number" min="0" step="0.01" value={svc.pricePerSession}
+                                            onChange={(e) => updateSellSvc(i, "pricePerSession", e.target.value)}
+                                            className="w-full h-6 pl-3.5 pr-1 rounded border border-border bg-muted/20 text-[10px] outline-none focus:border-primary"
+                                          />
+                                        </div>
+                                        <p className="w-14 text-right text-[10px] font-semibold text-foreground">${Number(svc.finalAmount).toFixed(2)}</p>
+                                      </div>
+                                    ))}
+                                    <div className="flex justify-between px-2 py-1 border-t border-border bg-muted/20">
+                                      <span className="text-[9px] font-semibold text-muted-foreground uppercase">Total</span>
+                                      <span className="text-[11px] font-bold text-foreground">
+                                        ${sellServices.reduce((s, x) => s + (Number(x.finalAmount) || 0), 0).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <input
+                                  type="date" value={sellForm.purchaseDate}
+                                  onChange={(e) => setSellForm((f) => ({ ...f, purchaseDate: e.target.value }))}
+                                  className="h-8 w-full rounded-lg border border-border bg-muted/20 px-3 text-[11px] text-foreground outline-none focus:border-primary"
+                                />
+                                {sellError && <p className="text-[10px] text-destructive">{sellError}</p>}
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => { setSellTargetEnrollmentId(null); setSellError(null); }}
+                                    className="flex-1 h-7 rounded-lg border border-border bg-background text-[10px] font-semibold text-foreground hover:bg-muted/40"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleSellPackage}
+                                    disabled={isSelling}
+                                    className="flex-1 h-7 rounded-lg bg-brand text-[10px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60"
+                                  >
+                                    {isSelling ? "Adding…" : "Confirm"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : null}
+
                         <p className="text-[10px] text-muted-foreground">
-                          Purchased{" "}
-                          {new Date(cp.purchaseDate).toLocaleDateString(
-                            "en-US",
-                            { month: "short", day: "numeric", year: "numeric" },
-                          )}
-                          {cp.totalPaid != null &&
-                            ` · $${Number(cp.totalPaid).toFixed(2)}`}
+                          {new Date(enr.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                         </p>
                       </div>
                     );
@@ -1131,6 +1170,49 @@ export default function MiniStudentPanel({ customerId, customerName, onBack }) {
           </>
         )}
       </div>
+  );
+
+  if (inline) {
+    return (
+      <div className="flex flex-col h-full">
+        {customer && (
+          <div className="flex items-center justify-between pb-3 px-1">
+            <p className="text-[11px] text-muted-foreground">Student Account</p>
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+              ${customer.credits ?? 0} credits
+            </span>
+          </div>
+        )}
+        {tabs}
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <aside className="h-full w-[380px] shrink-0 rounded-xl border border-border bg-card shadow-lg flex flex-col">
+      {/* Header */}
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3 shrink-0">
+        <button
+          type="button"
+          onClick={onBack}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted"
+          aria-label="Back to event"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold text-foreground">{customerName}</p>
+          <p className="text-[10px] text-muted-foreground">Student Account</p>
+        </div>
+        {customer && (
+          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+            ${customer.credits ?? 0} credits
+          </span>
+        )}
+      </div>
+      {tabs}
+      {body}
     </aside>
   );
 }

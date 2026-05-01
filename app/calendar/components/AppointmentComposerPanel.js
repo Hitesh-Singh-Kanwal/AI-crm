@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronDown, Clock, Plus, RefreshCw, User, Users, X } from "lucide-react";
+import { CalendarDays, ChevronDown, Clock, Plus, RefreshCw, User, Users } from "lucide-react";
 import api from "@/lib/api";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -236,7 +237,7 @@ function EnrollmentServiceSelector({ customerId, enrollments, selectedEnrollment
   }
 
   const selectedEnrollment = activeEnrollments.find((e) => String(e._id) === selectedEnrollmentId);
-  const cp = selectedEnrollment?.packageID; // populated CustomerPackage
+  const cp = selectedEnrollment?.package ?? null; // embedded package
   const enrollmentServices = cp?.services?.filter((s) => s.sessionsRemaining > 0) ?? [];
 
   return (
@@ -258,11 +259,11 @@ function EnrollmentServiceSelector({ customerId, enrollments, selectedEnrollment
         <>
           {/* Package summary pill */}
           <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5">
-            {cp.packageID?.color && (
-              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: cp.packageID.color }} />
+            {cp.packageRef?.color && (
+              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: cp.packageRef.color }} />
             )}
             <span className="text-[11px] text-foreground font-medium truncate flex-1">
-              {cp.packageID?.packageName || "Package"}
+              {cp.packageName || cp.packageRef?.packageName || "Package"}
             </span>
             <span className={[
               "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium shrink-0",
@@ -283,8 +284,7 @@ function EnrollmentServiceSelector({ customerId, enrollments, selectedEnrollment
               <div className="space-y-1.5">
                 {enrollmentServices.map((svc, idx) => {
                   const serviceInfo = allServices.find((s) => s.serviceCode === svc.serviceCode);
-                  const pkgSvc = cp.packageID?.services?.find((s) => s.serviceCode === svc.serviceCode);
-                  const serviceColor = pkgSvc?.color || serviceInfo?.color || svc.color;
+                  const serviceColor = svc.color || serviceInfo?.color;
                   const isSelected = selectedServiceId === String(serviceInfo?._id);
                   return (
                     <div
@@ -851,7 +851,7 @@ function ToDoFields({ form, setField, instructorOptions, lessonOptions, lessonMa
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export default function AppointmentComposerPanel({ onClose, onCreated, initialDate, initialTime, initialDuration }) {
+export default function AppointmentComposerPanel({ open, onClose, onCreated, initialDate, initialTime, initialDuration }) {
   const [activeTab, setActiveTab] = useState("Appointment");
   const [form, setForm] = useState(() => ({
     ...EMPTY_FORM,
@@ -1069,53 +1069,52 @@ export default function AppointmentComposerPanel({ onClose, onCreated, initialDa
       : TAB_SAVE_LABEL[activeTab] || "Save";
 
   return (
-    <aside className="h-full w-[460px] shrink-0 flex flex-col rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-      {/* Header */}
-      <div className="shrink-0 border-b border-border bg-muted/30">
-        <div className="flex items-center justify-between px-4 pt-3 pb-0">
-          <p className="text-[13px] font-bold text-foreground">New Booking</p>
-          <button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted transition-colors" aria-label="Close">
-            <X className="h-4 w-4" />
+    <Sheet open={open} onClose={onClose}>
+      <SheetContent onClose={onClose} className="flex flex-col overflow-hidden p-0">
+        {/* Header */}
+        <div className="shrink-0 border-b border-border bg-muted/30">
+          <div className="flex items-center justify-between px-5 pt-4 pb-0">
+            <p className="text-[14px] font-bold text-foreground">New Booking</p>
+          </div>
+          <div className="flex overflow-x-auto scrollbar-hide px-4 pb-0 gap-0.5 mt-2">
+            {TABS.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key} type="button" onClick={() => handleTabChange(key)}
+                className={[
+                  "flex items-center gap-1.5 shrink-0 px-3 py-2 text-[11px] font-semibold rounded-t-lg border-b-2 transition-colors whitespace-nowrap",
+                  activeTab === key ? "text-brand border-brand bg-background" : "text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40",
+                ].join(" ")}
+              >
+                <Icon className="h-3 w-3 shrink-0" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {tabContent}
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="shrink-0 mx-5 mb-2 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-[12px] text-destructive">
+            {error}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="shrink-0 border-t border-border bg-muted/20 px-5 py-3 flex items-center gap-3">
+          <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={handleSave} disabled={isSaving}
+            className="flex-1 h-9 rounded-lg bg-brand text-[12px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+            {saveLabel}
           </button>
         </div>
-        <div className="flex overflow-x-auto scrollbar-hide px-2 pb-0 gap-0.5 mt-1">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key} type="button" onClick={() => handleTabChange(key)}
-              className={[
-                "flex items-center gap-1.5 shrink-0 px-3 py-2 text-[11px] font-semibold rounded-t-lg border-b-2 transition-colors whitespace-nowrap",
-                activeTab === key ? "text-brand border-brand bg-background" : "text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40",
-              ].join(" ")}
-            >
-              <Icon className="h-3 w-3 shrink-0" />
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        {tabContent}
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="shrink-0 mx-4 mb-2 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-[12px] text-destructive">
-          {error}
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-3 flex items-center gap-3">
-        <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40 transition-colors">
-          Cancel
-        </button>
-        <button type="button" onClick={handleSave} disabled={isSaving}
-          className="flex-1 h-9 rounded-lg bg-brand text-[12px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
-          {saveLabel}
-        </button>
-      </div>
-    </aside>
+      </SheetContent>
+    </Sheet>
   );
 }

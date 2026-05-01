@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, Pencil, Trash2, X } from "lucide-react";
+import { ChevronDown, ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import api from "@/lib/api";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MiniStudentPanel from "./MiniStudentPanel";
 
 const STATUS_OPTIONS = [
@@ -149,6 +150,7 @@ function toTimeInputValue(iso) {
 
 export default function EventDetailPanel({
   event,
+  open,
   onClose,
   onUpdated,
   onDeleted,
@@ -309,50 +311,50 @@ export default function EventDetailPanel({
     setIsDeleting(false);
   };
 
-  if (selectedStudentId) {
-    return (
-      <MiniStudentPanel
-        customerId={selectedStudentId}
-        customerName={selectedStudentName}
-        onBack={() => { setSelectedStudentId(null); setSelectedStudentName(""); }}
-      />
-    );
-  }
-
   return (
-    <aside className="h-full w-[380px] shrink-0 rounded-xl border border-border bg-card shadow-lg flex flex-col">
+    <Sheet open={open} onClose={onClose}>
+      <SheetContent onClose={onClose} className="flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="truncate text-[13px] font-semibold text-foreground">
-            {event.title}
-          </span>
-          <StatusBadge status={event.effectiveStatus || event.status} />
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {!isEditing && (
-            <button
-              type="button"
-              onClick={() => setIsEditing(true)}
-              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Edit event"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          )}
+      <div className="flex items-center justify-between border-b border-border px-5 py-4 shrink-0">
+        {selectedStudentId ? (
           <button
             type="button"
-            onClick={onClose}
-            className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted"
-            aria-label="Close"
+            onClick={() => { setSelectedStudentId(null); setSelectedStudentName(""); }}
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground"
           >
-            <X className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4 text-muted-foreground" />
+            {selectedStudentName}
           </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="truncate text-[14px] font-semibold text-foreground">
+              {event.title}
+            </span>
+            <StatusBadge status={event.effectiveStatus || event.status} />
+          </div>
+        )}
+        {!selectedStudentId && !isEditing && (
+          <button
+            type="button"
+            onClick={() => setIsEditing(true)}
+            className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Edit event"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {selectedStudentId ? (
+          <MiniStudentPanel
+            customerId={selectedStudentId}
+            customerName={selectedStudentName}
+            onBack={() => { setSelectedStudentId(null); setSelectedStudentName(""); }}
+            inline
+          />
+        ) : (<>
         {isEditing ? (
           <>
             <Field label="Title">
@@ -658,10 +660,11 @@ export default function EventDetailPanel({
             {error}
           </div>
         )}
+        </>)}
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-border p-4 space-y-2">
+      {/* Footer — hidden when viewing mini student panel */}
+      {!selectedStudentId && <div className="border-t border-border p-5 space-y-2 shrink-0">
         {isEditing ? (
           <div className="space-y-2">
             {isRecurring && (
@@ -809,7 +812,8 @@ export default function EventDetailPanel({
             )}
           </>
         )}
-      </div>
-    </aside>
+      </div>}
+      </SheetContent>
+    </Sheet>
   );
 }

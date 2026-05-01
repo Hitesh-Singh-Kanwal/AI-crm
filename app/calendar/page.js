@@ -1730,32 +1730,30 @@ export default function CalendarPage() {
                 )}
               </div>
 
-              {isAppointmentPanelOpen && (
-                <AppointmentComposerPanel
-                  onClose={() => {
-                    setIsAppointmentPanelOpen(false);
-                    setSlotSelection(null);
-                  }}
-                  onCreated={fetchCalendarEvents}
-                  initialDate={slotSelection?.date}
-                  initialTime={slotSelection?.time}
-                  initialDuration={customSlotMins}
-                />
-              )}
-              {selectedEvent && !isAppointmentPanelOpen && (
-                <EventDetailPanel
-                  event={selectedEvent}
-                  onClose={() => setSelectedEvent(null)}
-                  onUpdated={() => {
-                    fetchCalendarEvents();
-                    setSelectedEvent(null);
-                  }}
-                  onDeleted={() => {
-                    fetchCalendarEvents();
-                    setSelectedEvent(null);
-                  }}
-                />
-              )}
+              <AppointmentComposerPanel
+                open={isAppointmentPanelOpen}
+                onClose={() => {
+                  setIsAppointmentPanelOpen(false);
+                  setSlotSelection(null);
+                }}
+                onCreated={fetchCalendarEvents}
+                initialDate={slotSelection?.date}
+                initialTime={slotSelection?.time}
+                initialDuration={customSlotMins}
+              />
+              <EventDetailPanel
+                open={Boolean(selectedEvent) && !isAppointmentPanelOpen}
+                event={selectedEvent ?? {}}
+                onClose={() => setSelectedEvent(null)}
+                onUpdated={() => {
+                  fetchCalendarEvents();
+                  setSelectedEvent(null);
+                }}
+                onDeleted={() => {
+                  fetchCalendarEvents();
+                  setSelectedEvent(null);
+                }}
+              />
             </div>
           </div>
         </div>
