@@ -221,7 +221,10 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
   const searchParams = useSearchParams()
   const router = useRouter()
 
-  const isInbox = pathname === '/inbox' || pathname === '/inbox/all-messages'
+  const isInbox =
+    pathname === '/inbox' ||
+    pathname === '/inbox/all-messages' ||
+    pathname === '/inbox/talk-to-assistant'
   const isForms = pathname?.startsWith('/marketing/form-builder')
   const isSms = pathname?.startsWith('/marketing/sms-builder')
   const isEmails = pathname?.startsWith('/marketing/email-builder')

@@ -21,6 +21,7 @@ const navItems = [
       { name: 'All Messages', href: '/inbox/all-messages' },
       { name: 'Human Queue', href: '/inbox/human-queue' },
       { name: 'Calls', href: '/inbox/calls' },
+      { name: 'Talk to Assistant', href: '/inbox/talk-to-assistant' },
     ],
   },
   { name: 'Leads', href: '/leads', iconSrc: '/figma/sidebar/leads.svg', iconSize: 20, labelStyle: 'regular' },
@@ -62,6 +63,7 @@ const navItems = [
       { name: 'Training', href: '/ai-automation/training' },
     ],
   },
+  { name: 'Workflow', href: '/workflow', iconSrc: '/figma/sidebar/ai-automation.svg', iconSize: 20, labelStyle: 'regular' },
   {
     name: 'Settings',
     href: '/settings/studio',

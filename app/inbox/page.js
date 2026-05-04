@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import ContactList from '@/app/inbox/components/ContactList'
 import ConversationView from '@/app/inbox/components/ConversationView'
@@ -115,7 +115,9 @@ function normalizeContactType(type) {
 }
 
 function InboxPageContent() {
+  const pathname = usePathname()
   const searchParams = useSearchParams()
+  const isTalkToAssistant = pathname === '/inbox/talk-to-assistant'
   const { setInboxTeachersCount } = useInboxHeader()
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [showDetails, setShowDetails] = useState(true)
@@ -335,9 +337,50 @@ function InboxPageContent() {
       return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     })
 
-    // Send via existing scheduler endpoints
+    // Send via Talk to Assistant endpoint or existing scheduler endpoints
     try {
-      if (effectiveChannel === 'SMS') {
+      if (isTalkToAssistant) {
+        const assistantResult = await api.post('/api/sms/incoming_sms', {
+          From: '+919935638678',
+          To: '+18777302307',
+          Body: content.trim(),
+          MessageSid: `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        })
+        const assistantReply =
+          assistantResult?.data?.Response ||
+          assistantResult?.data?.data?.Response ||
+          assistantResult?.Response
+        if (assistantReply && String(assistantReply).trim()) {
+          const replyTimestamp = new Date().toISOString()
+          const inboundMessage = {
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            sender: 'Assistant',
+            direction: 'inbound',
+            content: String(assistantReply).trim(),
+            timestamp: replyTimestamp,
+            channel: 'SMS',
+          }
+
+          setThreadMessages((prev) => ({
+            ...prev,
+            [convId]: [...(prev[convId] || []), inboundMessage],
+          }))
+
+          setConversations((prev) => {
+            const updated = prev.map((c) =>
+              c.id === convId
+                ? {
+                    ...c,
+                    lastMessage: inboundMessage.content,
+                    timestamp: replyTimestamp,
+                    channel: 'SMS',
+                  }
+                : c
+            )
+            return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+          })
+        }
+      } else if (effectiveChannel === 'SMS') {
         await api.post('/api/sms/send-one', {
           lead: { _id: fallbackContact.id, phoneNumber: fallbackContact.phoneNumber || fallbackContact.name },
           message: content.trim(),
