@@ -1726,23 +1726,23 @@ function EnrollmentsTab({ customerID, statusFilter }) {
             return (
               <div key={enr._id} className="rounded-xl border border-border bg-card overflow-hidden">
                 {/* Enrollment header bar */}
-                <div className="flex items-center justify-between px-5 py-3.5 bg-muted/30 border-b border-border">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                <div className="flex items-center justify-between px-5 py-4 bg-muted/40 border-b border-border">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] font-bold text-foreground uppercase tracking-wider">
                       {ordinal} Enrollment
                     </span>
                     {enr.label && (
-                      <span className="text-[12px] font-medium text-foreground">· {enr.label}</span>
+                      <span className="text-[12px] font-medium text-muted-foreground">· {enr.label}</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     {enr.teacherID?.name && (
-                      <span className="text-[11px] text-muted-foreground">{enr.teacherID.name}</span>
+                      <span className="text-[12px] font-medium text-foreground">{enr.teacherID.name}</span>
                     )}
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(enr.status)}`}>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusColor(enr.status)}`}>
                       {enr.status}
                     </span>
-                    <span className="text-[11px] text-muted-foreground">{formatDate(enr.createdAt)}</span>
+                    <span className="text-[12px] text-muted-foreground">{formatDate(enr.createdAt)}</span>
                   </div>
                 </div>
 
@@ -1765,8 +1765,8 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                           <div className="h-9 w-9 rounded-lg shrink-0 border border-black/10" style={{ backgroundColor: cp.packageRef.color }} />
                         )}
                         <div>
-                          <p className="text-[13px] font-semibold text-foreground">{cp.packageName ?? cp.packageRef?.packageName ?? 'Package'}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                          <p className="text-[15px] font-bold text-foreground">{cp.packageName ?? cp.packageRef?.packageName ?? 'Package'}</p>
+                          <p className="text-[12px] text-muted-foreground mt-1">
                             Purchased {formatDate(cp.purchaseDate)}
                             {cp.expiryDate ? ` · Expires ${formatDate(cp.expiryDate)}` : ' · No expiry'}
                           </p>
@@ -1806,16 +1806,16 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                     </div>
 
                     {/* Billing summary */}
-                    <div className="mt-4 grid grid-cols-4 gap-3 rounded-lg bg-muted/40 p-3">
+                    <div className="mt-4 grid grid-cols-4 divide-x divide-border rounded-lg border border-border bg-muted/30 overflow-hidden">
                       {[
                         { label: 'Total Price', value: `$${Number(totalPaid).toFixed(2)}` },
                         { label: 'Collected', value: `$${Number(collected).toFixed(2)}`, cls: 'text-emerald-600' },
-                        { label: 'Outstanding', value: `$${Number(outstanding).toFixed(2)}`, cls: outstanding > 0 ? 'text-rose-600' : 'text-muted-foreground' },
-                        { label: 'Refunded', value: `$${Number(refunded).toFixed(2)}`, cls: refunded > 0 ? 'text-amber-600' : 'text-muted-foreground' },
+                        { label: 'Outstanding', value: `$${Number(outstanding).toFixed(2)}`, cls: outstanding > 0 ? 'text-rose-500' : 'text-muted-foreground' },
+                        { label: 'Refunded', value: `$${Number(refunded).toFixed(2)}`, cls: refunded > 0 ? 'text-amber-500' : 'text-muted-foreground' },
                       ].map(({ label, value, cls }) => (
-                        <div key={label} className="text-center">
-                          <p className="text-[10px] text-muted-foreground mb-0.5">{label}</p>
-                          <p className={`text-[13px] font-semibold ${cls ?? 'text-foreground'}`}>{value}</p>
+                        <div key={label} className="text-center py-3 px-2">
+                          <p className="text-[11px] font-medium text-muted-foreground mb-1 uppercase tracking-wide">{label}</p>
+                          <p className={`text-[15px] font-bold ${cls ?? 'text-foreground'}`}>{value}</p>
                         </div>
                       ))}
                     </div>
@@ -1835,14 +1835,14 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                         return { svc, i, sessTotal, sessUsed, sessSched, sessRemaining, svcCredit, svcTotal }
                       })
                       return (
-                        <div className="mt-4 border-t border-border pt-4">
-                          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-3">Services</p>
+                        <div className="mt-5 border-t border-border pt-5">
+                          <p className="text-[12px] font-bold text-foreground uppercase tracking-widest mb-3">Services</p>
                           <div className="rounded-lg border border-border overflow-hidden">
                             {/* Column headers */}
-                            <div className="grid bg-muted/40 border-b border-border px-3 py-2" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}>
-                              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Service</span>
+                            <div className="grid sticky top-0 z-10 bg-muted/50 border-b-2 border-border px-3 py-2.5" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}>
+                              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Service</span>
                               {['Price/Sess', 'Total', 'Enrolled', 'Used', 'Scheduled', 'Remaining', 'Credit Value'].map((h) => (
-                                <span key={h} className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right">{h}</span>
+                                <span key={h} className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">{h}</span>
                               ))}
                             </div>
                             {/* Service rows */}
@@ -1879,61 +1879,62 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                                     <span className={`text-[13px] font-semibold text-right ${svcCredit > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>${svcCredit.toFixed(2)}</span>
                                   </div>
                                   {isExpanded && (
-                                    <div className="border-t border-border/50 bg-muted/10 px-3 py-3 pl-10">
-                                      <div className="grid grid-cols-3 gap-4">
-                                        <div>
-                                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Pricing</p>
-                                          <div className="space-y-1">
-                                            <div className="flex justify-between text-[12px]">
-                                              <span className="text-muted-foreground">Price / session</span>
-                                              <span className="font-medium text-foreground">${Number(svc.pricePerSession || 0).toFixed(2)}</span>
+                                    <div className="border-t border-border/50 bg-muted/10 px-4 py-4 pl-10">
+                                      <div className="grid grid-cols-3 gap-0 divide-x divide-border rounded-lg border border-border overflow-hidden">
+                                        {/* Pricing */}
+                                        <div className="px-4 py-3">
+                                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">Pricing</p>
+                                          <div className="space-y-2">
+                                            <div className="flex justify-between items-center gap-4">
+                                              <span className="text-[12px] text-muted-foreground">Price / session</span>
+                                              <span className="text-[12px] font-semibold text-foreground">${Number(svc.pricePerSession || 0).toFixed(2)}</span>
                                             </div>
-                                            <div className="flex justify-between text-[12px]">
-                                              <span className="text-muted-foreground">Sessions × {sessTotal}</span>
-                                              <span className="font-semibold text-foreground">${svcTotal.toFixed(2)}</span>
+                                            <div className="flex justify-between items-center gap-4">
+                                              <span className="text-[12px] text-muted-foreground">Sessions × {sessTotal}</span>
+                                              <span className="text-[12px] font-semibold text-foreground">${svcTotal.toFixed(2)}</span>
                                             </div>
                                             {cp.discountType && cp.discountType !== 'none' && Number(cp.discountApplied) > 0 && (
-                                              <>
-                                                <div className="flex justify-between text-[12px]">
-                                                  <span className="text-muted-foreground">
-                                                    Discount ({cp.discountType === 'percentage' ? `${cp.discountAmount}%` : `$${Number(cp.discountAmount).toFixed(2)} off`})
-                                                  </span>
-                                                  <span className="font-medium text-amber-600">-${Number(cp.discountApplied).toFixed(2)}</span>
-                                                </div>
-                                              </>
+                                              <div className="flex justify-between items-center gap-4 pt-1 border-t border-border/50">
+                                                <span className="text-[12px] text-muted-foreground">
+                                                  Discount ({cp.discountType === 'percentage' ? `${cp.discountAmount}%` : `$${Number(cp.discountAmount).toFixed(2)} off`})
+                                                </span>
+                                                <span className="text-[12px] font-semibold text-amber-500">-${Number(cp.discountApplied).toFixed(2)}</span>
+                                              </div>
                                             )}
                                           </div>
                                         </div>
-                                        <div>
-                                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Sessions</p>
-                                          <div className="space-y-1">
+                                        {/* Sessions */}
+                                        <div className="px-4 py-3">
+                                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">Sessions</p>
+                                          <div className="space-y-2">
                                             {[
-                                              { label: 'Enrolled', value: sessTotal },
-                                              { label: 'Used', value: sessUsed, cls: 'text-blue-600' },
-                                              { label: 'Scheduled', value: sessSched, cls: 'text-violet-600' },
-                                              { label: 'Remaining', value: sessRemaining, cls: 'text-emerald-600' },
+                                              { label: 'Enrolled', value: sessTotal, cls: 'text-foreground' },
+                                              { label: 'Used', value: sessUsed, cls: 'text-blue-500' },
+                                              { label: 'Scheduled', value: sessSched, cls: 'text-violet-500' },
+                                              { label: 'Remaining', value: sessRemaining, cls: 'text-emerald-500' },
                                             ].map(({ label, value, cls }) => (
-                                              <div key={label} className="flex justify-between text-[12px]">
-                                                <span className="text-muted-foreground">{label}</span>
-                                                <span className={`font-medium ${cls ?? 'text-foreground'}`}>{value}</span>
+                                              <div key={label} className="flex justify-between items-center gap-4">
+                                                <span className="text-[12px] text-muted-foreground">{label}</span>
+                                                <span className={`text-[12px] font-semibold ${cls}`}>{value}</span>
                                               </div>
                                             ))}
                                           </div>
                                         </div>
-                                        <div>
-                                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Value</p>
-                                          <div className="space-y-1">
-                                            <div className="flex justify-between text-[12px]">
-                                              <span className="text-muted-foreground">Used ({sessUsed} sess)</span>
-                                              <span className="font-medium text-blue-600">${(sessUsed * (svc.pricePerSession || 0)).toFixed(2)}</span>
+                                        {/* Value */}
+                                        <div className="px-4 py-3">
+                                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">Value</p>
+                                          <div className="space-y-2">
+                                            <div className="flex justify-between items-center gap-4">
+                                              <span className="text-[12px] text-muted-foreground">Used ({sessUsed} sess)</span>
+                                              <span className="text-[12px] font-semibold text-blue-500">${(sessUsed * (svc.pricePerSession || 0)).toFixed(2)}</span>
                                             </div>
-                                            <div className="flex justify-between text-[12px]">
-                                              <span className="text-muted-foreground">Scheduled ({sessSched} sess)</span>
-                                              <span className="font-medium text-violet-600">${(sessSched * (svc.pricePerSession || 0)).toFixed(2)}</span>
+                                            <div className="flex justify-between items-center gap-4">
+                                              <span className="text-[12px] text-muted-foreground">Scheduled ({sessSched} sess)</span>
+                                              <span className="text-[12px] font-semibold text-violet-500">${(sessSched * (svc.pricePerSession || 0)).toFixed(2)}</span>
                                             </div>
-                                            <div className="flex justify-between text-[12px]">
-                                              <span className="text-muted-foreground">Remaining ({sessRemaining} sess)</span>
-                                              <span className="font-semibold text-emerald-600">${svcCredit.toFixed(2)}</span>
+                                            <div className="flex justify-between items-center gap-4">
+                                              <span className="text-[12px] text-muted-foreground">Remaining ({sessRemaining} sess)</span>
+                                              <span className="text-[12px] font-semibold text-emerald-500">${svcCredit.toFixed(2)}</span>
                                             </div>
                                           </div>
                                         </div>
@@ -1945,8 +1946,16 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                             })}
                             {/* Totals row */}
                             {rows.length > 1 && (
-                              <div className="grid items-center px-3 py-2.5 border-t-2 border-border bg-muted/30" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}>
-                                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total</span>
+                              <>
+                              <div className="grid px-3 py-2 border-t-2 border-border bg-muted/60" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}>
+                                <span />
+                                <span />
+                                {['Total After Discount', 'Enrolled', 'Used', 'Scheduled', 'Remaining', 'Total'].map((h) => (
+                                  <span key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-right">{h}</span>
+                                ))}
+                              </div>
+                              <div className="grid items-center px-3 py-3 border-t border-border bg-muted/40" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}>
+                                <span className="text-[12px] font-bold text-foreground uppercase tracking-wider">Total</span>
                                 <span />
                                 <div className="text-right">
                                   {cp.discountApplied > 0 ? (
@@ -1964,6 +1973,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                                 <span className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{totalRemaining}</span>
                                 <span className={`text-[13px] font-bold text-right ${totalCredit > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>${totalCredit.toFixed(2)}</span>
                               </div>
+                              </>
                             )}
                           </div>
                         </div>
@@ -1976,9 +1986,9 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                       if (!plan) return null
                       const paidCount = plan.installments.filter((i) => i.status === 'paid').length
                       return (
-                        <div className="mt-4 border-t border-border pt-4">
-                          <div className="flex items-center justify-between mb-2.5">
-                            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Payment Schedule</p>
+                        <div className="mt-5 border-t border-border pt-5">
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-[12px] font-bold text-foreground uppercase tracking-widest">Payment Schedule</p>
                             <div className="flex items-center gap-2">
                               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                 plan.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600' :

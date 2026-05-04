@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { Search, Plus, MoreHorizontal, FileText } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
@@ -524,7 +524,7 @@ function PackagesTab() {
   )
 }
 
-export default function SetupPage() {
+function SetupContent() {
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get('tab')
@@ -532,42 +532,50 @@ export default function SetupPage() {
   })
 
   return (
-    <MainLayout title="Setup" subtitle="Manage your studio's services, lessons, and packages">
-      <div className="max-w-[1204px] mx-auto min-h-full flex flex-col gap-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-semibold text-foreground tracking-tight">Setup</h1>
-          </div>
-          <p className="text-sm font-normal text-muted-foreground">
-            Configure your studio's services, lessons, and packages.
-          </p>
+    <div className="max-w-[1204px] mx-auto min-h-full flex flex-col gap-6">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <h1 className="text-2xl font-semibold text-foreground tracking-tight">Setup</h1>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2 rounded-full bg-muted p-1 w-fit">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={[
-                  'px-5 py-1.5 rounded-full text-sm font-medium transition-all',
-                  isActive
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground',
-                ].join(' ')}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
-
-        {activeTab === 'services' && <ServicesTab />}
-        {activeTab === 'lessons' && <LessonsTab />}
-        {activeTab === 'packages' && <PackagesTab />}
+        <p className="text-sm font-normal text-muted-foreground">
+          Configure your studio's services, lessons, and packages.
+        </p>
       </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-full bg-muted p-1 w-fit">
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={[
+                'px-5 py-1.5 rounded-full text-sm font-medium transition-all',
+                isActive
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              ].join(' ')}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {activeTab === 'services' && <ServicesTab />}
+      {activeTab === 'lessons' && <LessonsTab />}
+      {activeTab === 'packages' && <PackagesTab />}
+    </div>
+  )
+}
+
+export default function SetupPage() {
+  return (
+    <MainLayout title="Setup" subtitle="Manage your studio's services, lessons, and packages">
+      <Suspense>
+        <SetupContent />
+      </Suspense>
     </MainLayout>
   )
 }
