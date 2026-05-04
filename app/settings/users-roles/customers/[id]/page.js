@@ -674,6 +674,8 @@ const BLANK_ADD_FORM = {
   packageID: '',
   purchaseDate: '',
   services: [],
+  discountType: 'none',
+  discountAmount: 0,
   billingType: 'one_time',
   billing: { method: 'cash', numberOfInstallments: 3, frequency: 'monthly', startDate: '' },
 }
@@ -746,15 +748,15 @@ function PackagesTab({ customerID }) {
     setAddForm((f) => ({
       ...f,
       packageID: pkgId,
+      discountType: pkg?.discountType || 'none',
+      discountAmount: pkg?.discountAmount || 0,
       services: (pkg?.services || []).map((s) => ({
         serviceCode: s.serviceCode || '',
         serviceName: s.serviceName || '',
         color: s.color || '',
         numberOfSessions: s.numberOfSessions || 0,
         pricePerSession: s.pricePerSession || 0,
-        discountType: s.discountType || 'none',
-        discountAmount: s.discountAmount || 0,
-        finalAmount: s.finalAmount || 0,
+        finalAmount: (s.numberOfSessions || 0) * (s.pricePerSession || 0),
       })),
     }))
   }
@@ -766,10 +768,7 @@ function PackagesTab({ customerID }) {
         const updated = { ...s, [field]: val }
         const price = Number(updated.pricePerSession) || 0
         const sessions = Number(updated.numberOfSessions) || 0
-        let fa = price * sessions
-        if (updated.discountType === 'percentage') fa -= fa * ((Number(updated.discountAmount) || 0) / 100)
-        if (updated.discountType === 'fixed') fa -= Number(updated.discountAmount) || 0
-        updated.finalAmount = Math.max(0, parseFloat(fa.toFixed(2)))
+        updated.finalAmount = parseFloat((price * sessions).toFixed(2))
         return updated
       })
       return { ...f, services: svcs }
@@ -780,18 +779,26 @@ function PackagesTab({ customerID }) {
     setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }))
   }
 
-  const totalAmount = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0)
+  const rawTotal = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0)
+  const pkgDiscountApplied = (() => {
+    if (addForm.discountType === 'percentage') return Math.min(rawTotal, rawTotal * (Number(addForm.discountAmount) || 0) / 100)
+    if (addForm.discountType === 'fixed') return Math.min(rawTotal, Number(addForm.discountAmount) || 0)
+    return 0
+  })()
+  const totalAmount = Math.max(0, rawTotal - pkgDiscountApplied)
 
   function getInstallments() {
     const { numberOfInstallments, frequency, startDate } = addForm.billing
     if (!startDate || !numberOfInstallments) return []
     const n = Number(numberOfInstallments)
     if (!n || n < 1) return []
-    const amt = parseFloat((totalAmount / n).toFixed(2))
+    const baseAmt = parseFloat((rawTotal / n).toFixed(2))
     const result = []
     let d = new Date(startDate)
     for (let i = 0; i < n; i++) {
-      result.push({ date: d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }), amount: amt })
+      const isLast = i === n - 1
+      const amount = isLast ? Math.max(0, parseFloat((baseAmt - pkgDiscountApplied).toFixed(2))) : baseAmt
+      result.push({ date: d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }), amount, isLast })
       if (frequency === 'weekly') d = new Date(d.getTime() + 7 * 86400000)
       else if (frequency === 'biweekly') d = new Date(d.getTime() + 14 * 86400000)
       else { d = new Date(d); d.setMonth(d.getMonth() + 1) }
@@ -816,11 +823,14 @@ function PackagesTab({ customerID }) {
       customerID,
       packageID: addForm.packageID,
       enrollmentID: addForm.enrollmentID,
+      discountType: addForm.discountType,
+      discountAmount: Number(addForm.discountAmount),
       services: addForm.services.map((s) => ({
-        ...s,
+        serviceCode: s.serviceCode,
+        serviceName: s.serviceName,
+        color: s.color,
         numberOfSessions: Number(s.numberOfSessions),
         pricePerSession: Number(s.pricePerSession),
-        discountAmount: Number(s.discountAmount),
         finalAmount: Number(s.finalAmount),
       })),
       billingType: addForm.billingType,
@@ -954,6 +964,7 @@ function PackagesTab({ customerID }) {
                         const sessUsed = svc.sessionsUsed ?? 0
                         const sessSched = svc.sessionsScheduled ?? 0
                         const sessRemaining = svc.sessionsRemaining ?? Math.max(0, sessTotal - sessUsed)
+                        const svcTotal = sessTotal * (Number(svc.pricePerSession) || 0)
                         return (
                           <div key={i} className="rounded-lg border border-border/60 bg-background p-3">
                             <div className="flex items-center gap-2 mb-2.5">
@@ -964,12 +975,10 @@ function PackagesTab({ customerID }) {
                               {svc.pricePerSession > 0 && (
                                 <span className="text-[11px] text-muted-foreground">
                                   ${Number(svc.pricePerSession).toFixed(2)}/session
-                                  {svc.discountType && svc.discountType !== 'none' && (
-                                    <span className="ml-1 text-amber-600">
-                                      · {svc.discountType === 'percentage' ? `${svc.discountAmount}% off` : `-$${svc.discountAmount}`}
-                                    </span>
-                                  )}
                                 </span>
+                              )}
+                              {svcTotal > 0 && (
+                                <span className="text-[12px] font-semibold text-foreground">${svcTotal.toFixed(2)}</span>
                               )}
                             </div>
                             {/* Session counts — 4 boxes */}
@@ -1019,7 +1028,10 @@ function PackagesTab({ customerID }) {
                         </div>
                       </div>
                       <div className="rounded-lg border border-border overflow-hidden">
-                        {plan.installments.map((inst, idx) => (
+                        {plan.installments.map((inst, idx) => {
+                          const isLast = idx === plan.installments.length - 1
+                          const hasDiscount = isLast && plan.installmentAmount > inst.amount
+                          return (
                           <div
                             key={idx}
                             className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? 'border-t border-border' : ''} ${
@@ -1048,7 +1060,13 @@ function PackagesTab({ customerID }) {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              {hasDiscount && (
+                                <span className="text-[11px] text-muted-foreground line-through">${Number(plan.installmentAmount).toFixed(2)}</span>
+                              )}
                               <p className="text-[13px] font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</p>
+                              {hasDiscount && (
+                                <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">discount</span>
+                              )}
                               {inst.status === 'pending' && plan.status === 'active' && pkg.status === 'active' && (
                                 <Button
                                   size="sm"
@@ -1060,7 +1078,7 @@ function PackagesTab({ customerID }) {
                               )}
                             </div>
                           </div>
-                        ))}
+                        )})}
                       </div>
                       {plan.nextPaymentDate && plan.status === 'active' && (
                         <p className="text-[11px] text-muted-foreground mt-1.5">
@@ -1198,7 +1216,7 @@ function PackagesTab({ customerID }) {
                 <table className="w-full text-[12px]">
                   <thead>
                     <tr className="bg-muted/40 border-b border-border">
-                      {['Service', 'Color', 'Sessions', 'Price / Session', 'Discount', 'Disc. Amount', 'Final'].map((h) => (
+                      {['Service', 'Color', 'Sessions', 'Price / Session', 'Subtotal'].map((h) => (
                         <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -1231,37 +1249,54 @@ function PackagesTab({ customerID }) {
                             />
                           </div>
                         </td>
-                        <td className="px-3 py-2">
-                          <select
-                            value={svc.discountType}
-                            onChange={(e) => updateSvc(i, 'discountType', e.target.value)}
-                            className="h-7 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
-                          >
-                            <option value="none">None</option>
-                            <option value="percentage">%</option>
-                            <option value="fixed">Fixed</option>
-                          </select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number" min="0" step="0.01" value={svc.discountAmount}
-                            disabled={svc.discountType === 'none'}
-                            onChange={(e) => updateSvc(i, 'discountAmount', e.target.value)}
-                            className="h-7 w-20 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary disabled:opacity-40"
-                          />
-                        </td>
                         <td className="px-3 py-2 font-semibold text-foreground whitespace-nowrap">${Number(svc.finalAmount).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 border-border bg-muted/30">
-                      <td colSpan={6} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Total</td>
-                      <td className="px-3 py-2 text-[13px] font-bold text-foreground">${totalAmount.toFixed(2)}</td>
+                    <tr className="border-t border-border bg-muted/30">
+                      <td colSpan={4} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Subtotal</td>
+                      <td className="px-3 py-2 text-[12px] font-semibold text-foreground">${rawTotal.toFixed(2)}</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
+
+              {/* Package-level discount */}
+              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Package Discount</p>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={addForm.discountType}
+                    onChange={(e) => setAddForm((f) => ({ ...f, discountType: e.target.value, discountAmount: 0 }))}
+                    className="h-8 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
+                  >
+                    <option value="none">No discount</option>
+                    <option value="percentage">Percentage (%)</option>
+                    <option value="fixed">Fixed ($)</option>
+                  </select>
+                  {addForm.discountType !== 'none' && (
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+                        {addForm.discountType === 'percentage' ? '%' : '$'}
+                      </span>
+                      <input
+                        type="number" min="0" step="0.01" value={addForm.discountAmount}
+                        onChange={(e) => setAddForm((f) => ({ ...f, discountAmount: e.target.value }))}
+                        className="h-8 w-24 rounded border border-border bg-background pl-6 pr-2 text-[12px] outline-none focus:border-primary"
+                      />
+                    </div>
+                  )}
+                  {pkgDiscountApplied > 0 && (
+                    <span className="text-[12px] text-amber-600 font-medium ml-auto">-${pkgDiscountApplied.toFixed(2)}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between border-t border-border pt-2">
+                  <p className="text-[12px] font-medium text-muted-foreground">Total</p>
+                  <p className="text-[14px] font-bold text-foreground">${totalAmount.toFixed(2)}</p>
+                </div>
+              </div>
+
               <div className="flex justify-between gap-2 pt-1">
                 <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(1)}>Back</Button>
                 <Button type="button" size="sm" disabled={addForm.services.length === 0} onClick={() => setAddStep(3)}>Next</Button>
@@ -1365,14 +1400,19 @@ function PackagesTab({ customerID }) {
                     <div className="rounded-lg border border-border bg-muted/20 p-3">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Schedule Preview</p>
-                        <p className="text-[11px] text-muted-foreground">
-                          ${(totalAmount / Number(addForm.billing.numberOfInstallments)).toFixed(2)} / payment
-                        </p>
+                        {pkgDiscountApplied > 0 && (
+                          <span className="text-[11px] text-amber-600">Discount applied to last payment</span>
+                        )}
                       </div>
                       <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
                         {installments.map((inst, i) => (
                           <div key={i} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
-                            <span className="text-[11px] text-muted-foreground">Payment {i + 1} · {inst.date}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              Payment {i + 1} · {inst.date}
+                              {inst.isLast && pkgDiscountApplied > 0 && (
+                                <span className="ml-1 text-amber-600">(-${pkgDiscountApplied.toFixed(2)} discount)</span>
+                              )}
+                            </span>
                             <span className="text-[11px] font-medium text-foreground">${inst.amount.toFixed(2)}</span>
                           </div>
                         ))}
@@ -1419,6 +1459,8 @@ const BLANK_ENR_FORM = {
   packageID: '',
   purchaseDate: '',
   services: [],
+  discountType: 'none',
+  discountAmount: 0,
   billingType: 'one_time',
   billing: { method: 'cash', numberOfInstallments: 3, frequency: 'monthly', startDate: '' },
 }
@@ -1446,6 +1488,16 @@ function EnrollmentsTab({ customerID, statusFilter }) {
   const [cancelling, setCancelling] = useState(false)
   const [recordPaymentTarget, setRecordPaymentTarget] = useState(null)
   const [payInstallTarget, setPayInstallTarget] = useState(null)
+  const [expandedServices, setExpandedServices] = useState(new Set())
+
+  function toggleService(key) {
+    setExpandedServices((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   const toast = useToast()
 
@@ -1519,15 +1571,15 @@ function EnrollmentsTab({ customerID, statusFilter }) {
     setAddForm((f) => ({
       ...f,
       packageID: pkgId,
+      discountType: pkg?.discountType || 'none',
+      discountAmount: pkg?.discountAmount || 0,
       services: (pkg?.services || []).map((s) => ({
         serviceCode: s.serviceCode || '',
         serviceName: s.serviceName || '',
         color: s.color || '',
         numberOfSessions: s.numberOfSessions || 0,
         pricePerSession: s.pricePerSession || 0,
-        discountType: s.discountType || 'none',
-        discountAmount: s.discountAmount || 0,
-        finalAmount: s.finalAmount || 0,
+        finalAmount: (s.numberOfSessions || 0) * (s.pricePerSession || 0),
       })),
     }))
   }
@@ -1539,10 +1591,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
         const updated = { ...s, [field]: val }
         const price = Number(updated.pricePerSession) || 0
         const sessions = Number(updated.numberOfSessions) || 0
-        let fa = price * sessions
-        if (updated.discountType === 'percentage') fa -= fa * ((Number(updated.discountAmount) || 0) / 100)
-        if (updated.discountType === 'fixed') fa -= Number(updated.discountAmount) || 0
-        updated.finalAmount = Math.max(0, parseFloat(fa.toFixed(2)))
+        updated.finalAmount = parseFloat((price * sessions).toFixed(2))
         return updated
       })
       return { ...f, services: svcs }
@@ -1553,18 +1602,26 @@ function EnrollmentsTab({ customerID, statusFilter }) {
     setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }))
   }
 
-  const enrTotalAmount = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0)
+  const enrRawTotal = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0)
+  const enrDiscountApplied = (() => {
+    if (addForm.discountType === 'percentage') return Math.min(enrRawTotal, enrRawTotal * (Number(addForm.discountAmount) || 0) / 100)
+    if (addForm.discountType === 'fixed') return Math.min(enrRawTotal, Number(addForm.discountAmount) || 0)
+    return 0
+  })()
+  const enrTotalAmount = Math.max(0, enrRawTotal - enrDiscountApplied)
 
   function getEnrInstallments() {
     const { numberOfInstallments, frequency, startDate } = addForm.billing
     if (!startDate || !numberOfInstallments) return []
     const n = Number(numberOfInstallments)
     if (!n || n < 1) return []
-    const amt = parseFloat((enrTotalAmount / n).toFixed(2))
+    const baseAmt = parseFloat((enrRawTotal / n).toFixed(2))
     const result = []
     let d = new Date(startDate)
     for (let i = 0; i < n; i++) {
-      result.push({ date: d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }), amount: amt })
+      const isLast = i === n - 1
+      const amount = isLast ? Math.max(0, parseFloat((baseAmt - enrDiscountApplied).toFixed(2))) : baseAmt
+      result.push({ date: d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }), amount, isLast })
       if (frequency === 'weekly') d = new Date(d.getTime() + 7 * 86400000)
       else if (frequency === 'biweekly') d = new Date(d.getTime() + 14 * 86400000)
       else { d = new Date(d); d.setMonth(d.getMonth() + 1) }
@@ -1585,11 +1642,14 @@ function EnrollmentsTab({ customerID, statusFilter }) {
       customerID,
       packageID: addForm.packageID,
       enrollmentID: String(addTargetEnrollment._id),
+      discountType: addForm.discountType,
+      discountAmount: Number(addForm.discountAmount),
       services: addForm.services.map((s) => ({
-        ...s,
+        serviceCode: s.serviceCode,
+        serviceName: s.serviceName,
+        color: s.color,
         numberOfSessions: Number(s.numberOfSessions),
         pricePerSession: Number(s.pricePerSession),
-        discountAmount: Number(s.discountAmount),
         finalAmount: Number(s.finalAmount),
       })),
       billingType: addForm.billingType,
@@ -1762,59 +1822,142 @@ function EnrollmentsTab({ customerID, statusFilter }) {
 
                     {/* Services */}
                     {services.length > 0 && (() => {
-                      let totalEnrolled = 0, totalUsed = 0, totalSched = 0, totalRemaining = 0, totalCredit = 0
+                      let totalEnrolled = 0, totalUsed = 0, totalSched = 0, totalRemaining = 0, totalCredit = 0, totalServicePrice = 0
                       const rows = services.map((svc, i) => {
                         const sessTotal = svc.sessionsTotal ?? 0
                         const sessUsed = svc.sessionsUsed ?? 0
                         const sessSched = svc.sessionsScheduled ?? 0
                         const sessRemaining = svc.sessionsRemaining ?? Math.max(0, sessTotal - sessUsed - sessSched)
                         const svcCredit = sessRemaining * (Number(svc.pricePerSession) || 0)
+                        const svcTotal = sessTotal * (Number(svc.pricePerSession) || 0)
                         totalEnrolled += sessTotal; totalUsed += sessUsed; totalSched += sessSched
-                        totalRemaining += sessRemaining; totalCredit += svcCredit
-                        return { svc, i, sessTotal, sessUsed, sessSched, sessRemaining, svcCredit }
+                        totalRemaining += sessRemaining; totalCredit += svcCredit; totalServicePrice += svcTotal
+                        return { svc, i, sessTotal, sessUsed, sessSched, sessRemaining, svcCredit, svcTotal }
                       })
                       return (
                         <div className="mt-4 border-t border-border pt-4">
                           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-3">Services</p>
                           <div className="rounded-lg border border-border overflow-hidden">
                             {/* Column headers */}
-                            <div className="grid bg-muted/40 border-b border-border px-3 py-2" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 100px' }}>
+                            <div className="grid bg-muted/40 border-b border-border px-3 py-2" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}>
                               <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Service</span>
-                              {['Enrolled', 'Used', 'Scheduled', 'Remaining', 'Credit Value'].map((h) => (
+                              {['Price/Sess', 'Total', 'Enrolled', 'Used', 'Scheduled', 'Remaining', 'Credit Value'].map((h) => (
                                 <span key={h} className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right">{h}</span>
                               ))}
                             </div>
                             {/* Service rows */}
-                            {rows.map(({ svc, i, sessTotal, sessUsed, sessSched, sessRemaining, svcCredit }) => (
-                              <div key={i} className={`grid items-center px-3 py-3 ${i > 0 ? 'border-t border-border' : ''}`} style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 100px' }}>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    {svc.color && <span className="h-2.5 w-2.5 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: svc.color }} />}
-                                    <span className="text-[12px] font-medium text-foreground">{svc.serviceName}</span>
+                            {rows.map(({ svc, i, sessTotal, sessUsed, sessSched, sessRemaining, svcCredit, svcTotal }) => {
+                              const expandKey = `${enr._id}-${i}`
+                              const isExpanded = expandedServices.has(expandKey)
+                              return (
+                                <div key={i} className={i > 0 ? 'border-t border-border' : ''}>
+                                  <div
+                                    className="grid items-center px-3 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
+                                    style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}
+                                    onClick={() => toggleService(expandKey)}
+                                  >
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <ChevronDown className={`h-3 w-3 text-muted-foreground shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                        {svc.color && <span className="h-2.5 w-2.5 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: svc.color }} />}
+                                        <span className="text-[12px] font-medium text-foreground">{svc.serviceName}</span>
+                                      </div>
+                                      <div className="mt-1.5 pl-[28px]">
+                                        <SessionBar used={sessUsed} total={sessTotal} />
+                                      </div>
+                                    </div>
+                                    <span className="text-[12px] text-muted-foreground text-right">
+                                      {svc.pricePerSession > 0 ? `$${Number(svc.pricePerSession).toFixed(2)}` : '—'}
+                                    </span>
+                                    <span className="text-[13px] font-semibold text-foreground text-right">
+                                      {svcTotal > 0 ? `$${svcTotal.toFixed(2)}` : '—'}
+                                    </span>
+                                    <span className="text-[13px] font-semibold text-foreground text-right">{sessTotal}</span>
+                                    <span className={`text-[13px] font-semibold text-right ${sessUsed > 0 ? 'text-blue-600' : 'text-muted-foreground'}`}>{sessUsed}</span>
+                                    <span className={`text-[13px] font-semibold text-right ${sessSched > 0 ? 'text-violet-600' : 'text-muted-foreground'}`}>{sessSched}</span>
+                                    <span className={`text-[13px] font-semibold text-right ${sessRemaining > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{sessRemaining}</span>
+                                    <span className={`text-[13px] font-semibold text-right ${svcCredit > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>${svcCredit.toFixed(2)}</span>
                                   </div>
-                                  {svc.pricePerSession > 0 && (
-                                    <p className="text-[11px] text-muted-foreground mt-0.5 pl-[18px]">
-                                      ${Number(svc.pricePerSession).toFixed(2)}/session
-                                      {svc.discountType && svc.discountType !== 'none' && (
-                                        <span className="ml-1 text-amber-600">· {svc.discountType === 'percentage' ? `${svc.discountAmount}% off` : `-$${svc.discountAmount}`}</span>
-                                      )}
-                                    </p>
+                                  {isExpanded && (
+                                    <div className="border-t border-border/50 bg-muted/10 px-3 py-3 pl-10">
+                                      <div className="grid grid-cols-3 gap-4">
+                                        <div>
+                                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Pricing</p>
+                                          <div className="space-y-1">
+                                            <div className="flex justify-between text-[12px]">
+                                              <span className="text-muted-foreground">Price / session</span>
+                                              <span className="font-medium text-foreground">${Number(svc.pricePerSession || 0).toFixed(2)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-[12px]">
+                                              <span className="text-muted-foreground">Sessions × {sessTotal}</span>
+                                              <span className="font-semibold text-foreground">${svcTotal.toFixed(2)}</span>
+                                            </div>
+                                            {cp.discountType && cp.discountType !== 'none' && Number(cp.discountApplied) > 0 && (
+                                              <>
+                                                <div className="flex justify-between text-[12px]">
+                                                  <span className="text-muted-foreground">
+                                                    Discount ({cp.discountType === 'percentage' ? `${cp.discountAmount}%` : `$${Number(cp.discountAmount).toFixed(2)} off`})
+                                                  </span>
+                                                  <span className="font-medium text-amber-600">-${Number(cp.discountApplied).toFixed(2)}</span>
+                                                </div>
+                                              </>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Sessions</p>
+                                          <div className="space-y-1">
+                                            {[
+                                              { label: 'Enrolled', value: sessTotal },
+                                              { label: 'Used', value: sessUsed, cls: 'text-blue-600' },
+                                              { label: 'Scheduled', value: sessSched, cls: 'text-violet-600' },
+                                              { label: 'Remaining', value: sessRemaining, cls: 'text-emerald-600' },
+                                            ].map(({ label, value, cls }) => (
+                                              <div key={label} className="flex justify-between text-[12px]">
+                                                <span className="text-muted-foreground">{label}</span>
+                                                <span className={`font-medium ${cls ?? 'text-foreground'}`}>{value}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Value</p>
+                                          <div className="space-y-1">
+                                            <div className="flex justify-between text-[12px]">
+                                              <span className="text-muted-foreground">Used ({sessUsed} sess)</span>
+                                              <span className="font-medium text-blue-600">${(sessUsed * (svc.pricePerSession || 0)).toFixed(2)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-[12px]">
+                                              <span className="text-muted-foreground">Scheduled ({sessSched} sess)</span>
+                                              <span className="font-medium text-violet-600">${(sessSched * (svc.pricePerSession || 0)).toFixed(2)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-[12px]">
+                                              <span className="text-muted-foreground">Remaining ({sessRemaining} sess)</span>
+                                              <span className="font-semibold text-emerald-600">${svcCredit.toFixed(2)}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
                                   )}
-                                  <div className="mt-1.5 pl-[18px]">
-                                    <SessionBar used={sessUsed} total={sessTotal} />
-                                  </div>
                                 </div>
-                                <span className="text-[13px] font-semibold text-foreground text-right">{sessTotal}</span>
-                                <span className={`text-[13px] font-semibold text-right ${sessUsed > 0 ? 'text-blue-600' : 'text-muted-foreground'}`}>{sessUsed}</span>
-                                <span className={`text-[13px] font-semibold text-right ${sessSched > 0 ? 'text-violet-600' : 'text-muted-foreground'}`}>{sessSched}</span>
-                                <span className={`text-[13px] font-semibold text-right ${sessRemaining > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{sessRemaining}</span>
-                                <span className={`text-[13px] font-semibold text-right ${svcCredit > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>${svcCredit.toFixed(2)}</span>
-                              </div>
-                            ))}
+                              )
+                            })}
                             {/* Totals row */}
                             {rows.length > 1 && (
-                              <div className="grid items-center px-3 py-2.5 border-t-2 border-border bg-muted/30" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 100px' }}>
+                              <div className="grid items-center px-3 py-2.5 border-t-2 border-border bg-muted/30" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}>
                                 <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total</span>
+                                <span />
+                                <div className="text-right">
+                                  {cp.discountApplied > 0 ? (
+                                    <>
+                                      <span className="text-[11px] text-muted-foreground line-through block">${totalServicePrice.toFixed(2)}</span>
+                                      <span className="text-[13px] font-bold text-emerald-600">${(totalServicePrice - Number(cp.discountApplied)).toFixed(2)}</span>
+                                    </>
+                                  ) : (
+                                    <span className="text-[13px] font-bold text-foreground">${totalServicePrice.toFixed(2)}</span>
+                                  )}
+                                </div>
                                 <span className="text-[13px] font-bold text-foreground text-right">{totalEnrolled}</span>
                                 <span className={`text-[13px] font-bold text-right ${totalUsed > 0 ? 'text-blue-600' : 'text-muted-foreground'}`}>{totalUsed}</span>
                                 <span className={`text-[13px] font-bold text-right ${totalSched > 0 ? 'text-violet-600' : 'text-muted-foreground'}`}>{totalSched}</span>
@@ -1846,7 +1989,10 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                             </div>
                           </div>
                           <div className="rounded-lg border border-border overflow-hidden">
-                            {plan.installments.map((inst, idx) => (
+                            {plan.installments.map((inst, idx) => {
+                              const isLast = idx === plan.installments.length - 1
+                              const hasDiscount = isLast && plan.installmentAmount > inst.amount
+                              return (
                               <div key={idx} className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? 'border-t border-border' : ''} ${inst.status === 'paid' ? 'bg-emerald-500/5' : ''}`}>
                                 <div className="flex items-center gap-2.5">
                                   <div className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
@@ -1866,7 +2012,13 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                  {hasDiscount && (
+                                    <span className="text-[11px] text-muted-foreground line-through">${Number(plan.installmentAmount).toFixed(2)}</span>
+                                  )}
                                   <p className="text-[13px] font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</p>
+                                  {hasDiscount && (
+                                    <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">discount</span>
+                                  )}
                                   {inst.status === 'pending' && plan.status === 'active' && cp.status === 'active' && (
                                     <Button
                                       size="sm"
@@ -1878,7 +2030,8 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                                   )}
                                 </div>
                               </div>
-                            ))}
+                            )})}
+
                           </div>
                           {plan.nextPaymentDate && plan.status === 'active' && (
                             <p className="text-[11px] text-muted-foreground mt-1.5">
@@ -2029,7 +2182,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                 <table className="w-full text-[12px]">
                   <thead>
                     <tr className="bg-muted/40 border-b border-border">
-                      {['Service', 'Color', 'Sessions', 'Price / Session', 'Discount', 'Disc. Amount', 'Final'].map((h) => (
+                      {['Service', 'Color', 'Sessions', 'Price / Session', 'Subtotal'].map((h) => (
                         <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -2050,28 +2203,54 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                             <input type="number" min="0" step="0.01" value={svc.pricePerSession} onChange={(e) => updateEnrSvc(i, 'pricePerSession', e.target.value)} className="h-7 w-20 rounded border border-border bg-background pl-5 pr-2 text-[12px] outline-none focus:border-primary" />
                           </div>
                         </td>
-                        <td className="px-3 py-2">
-                          <select value={svc.discountType} onChange={(e) => updateEnrSvc(i, 'discountType', e.target.value)} className="h-7 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary">
-                            <option value="none">None</option>
-                            <option value="percentage">%</option>
-                            <option value="fixed">Fixed</option>
-                          </select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <input type="number" min="0" step="0.01" value={svc.discountAmount} disabled={svc.discountType === 'none'} onChange={(e) => updateEnrSvc(i, 'discountAmount', e.target.value)} className="h-7 w-20 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary disabled:opacity-40" />
-                        </td>
                         <td className="px-3 py-2 font-semibold text-foreground whitespace-nowrap">${Number(svc.finalAmount).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 border-border bg-muted/30">
-                      <td colSpan={6} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Total</td>
-                      <td className="px-3 py-2 text-[13px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</td>
+                    <tr className="border-t border-border bg-muted/30">
+                      <td colSpan={4} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Subtotal</td>
+                      <td className="px-3 py-2 text-[12px] font-semibold text-foreground">${enrRawTotal.toFixed(2)}</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
+
+              {/* Package-level discount */}
+              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Package Discount</p>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={addForm.discountType}
+                    onChange={(e) => setAddForm((f) => ({ ...f, discountType: e.target.value, discountAmount: 0 }))}
+                    className="h-8 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
+                  >
+                    <option value="none">No discount</option>
+                    <option value="percentage">Percentage (%)</option>
+                    <option value="fixed">Fixed ($)</option>
+                  </select>
+                  {addForm.discountType !== 'none' && (
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+                        {addForm.discountType === 'percentage' ? '%' : '$'}
+                      </span>
+                      <input
+                        type="number" min="0" step="0.01" value={addForm.discountAmount}
+                        onChange={(e) => setAddForm((f) => ({ ...f, discountAmount: e.target.value }))}
+                        className="h-8 w-24 rounded border border-border bg-background pl-6 pr-2 text-[12px] outline-none focus:border-primary"
+                      />
+                    </div>
+                  )}
+                  {enrDiscountApplied > 0 && (
+                    <span className="text-[12px] text-amber-600 font-medium ml-auto">-${enrDiscountApplied.toFixed(2)}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between border-t border-border pt-2">
+                  <p className="text-[12px] font-medium text-muted-foreground">Total</p>
+                  <p className="text-[14px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</p>
+                </div>
+              </div>
+
               <div className="flex justify-between gap-2 pt-1">
                 <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(1)}>Back</Button>
                 <Button type="button" size="sm" disabled={addForm.services.length === 0} onClick={() => setAddStep(3)}>Next</Button>
@@ -2139,12 +2318,19 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                     <div className="rounded-lg border border-border bg-muted/20 p-3">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Schedule Preview</p>
-                        <p className="text-[11px] text-muted-foreground">${(enrTotalAmount / Number(addForm.billing.numberOfInstallments)).toFixed(2)} / payment</p>
+                        {enrDiscountApplied > 0 && (
+                          <span className="text-[11px] text-amber-600">Discount applied to last payment</span>
+                        )}
                       </div>
                       <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
                         {enrInstallments.map((inst, i) => (
                           <div key={i} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
-                            <span className="text-[11px] text-muted-foreground">Payment {i + 1} · {inst.date}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              Payment {i + 1} · {inst.date}
+                              {inst.isLast && enrDiscountApplied > 0 && (
+                                <span className="ml-1 text-amber-600">(-${enrDiscountApplied.toFixed(2)} discount)</span>
+                              )}
+                            </span>
                             <span className="text-[11px] font-medium text-foreground">${inst.amount.toFixed(2)}</span>
                           </div>
                         ))}

@@ -531,6 +531,158 @@ function ListCalendarView({ events, focusDate, onEventClick }) {
   );
 }
 
+// ─── Event Tooltip ────────────────────────────────────────────────────────────
+
+let _tooltipEl = null;
+
+function getTooltipEl() {
+  if (!_tooltipEl) {
+    _tooltipEl = document.createElement("div");
+    _tooltipEl.id = "cal-event-tooltip";
+    _tooltipEl.style.cssText = `
+      position: fixed;
+      z-index: 9999;
+      pointer-events: none;
+      background: hsl(var(--popover));
+      border: 1px solid hsl(var(--border));
+      border-radius: 10px;
+      padding: 10px 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      min-width: 240px;
+      max-width: 300px;
+      font-size: 11px;
+      color: hsl(var(--foreground));
+      display: none;
+      line-height: 1.5;
+    `;
+    document.body.appendChild(_tooltipEl);
+  }
+  return _tooltipEl;
+}
+
+function showEventTooltip(e, props) {
+  const tip = getTooltipEl();
+  const raw = props.raw || {};
+
+  // ── Customer ──────────────────────────────────────────────────────────────
+  const customerObjs = Array.isArray(raw.customerIDs)
+    ? raw.customerIDs.filter((c) => typeof c === "object")
+    : [];
+  const customerNames = customerObjs.map((c) => c.name || c.email).filter(Boolean);
+  const customerEmails = customerObjs.map((c) => c.email).filter(Boolean);
+
+  // ── Teacher ───────────────────────────────────────────────────────────────
+  const teacher = raw.teacherID?.name || props.tutorName || "";
+
+  // ── Service ───────────────────────────────────────────────────────────────
+  const svc = raw.calendarServiceID || {};
+  const serviceName = svc.serviceName || props.serviceCode || "";
+  const serviceCode = svc.serviceCode || props.serviceCode || "";
+  const servicePrice = svc.price > 0 ? `$${svc.price.toFixed(2)}/session` : null;
+
+  // ── Package & sessions ────────────────────────────────────────────────────
+  const pkgCharge = Array.isArray(raw.charges)
+    ? raw.charges.find((c) => c.method === "package")
+    : null;
+
+  // Try to resolve package name from charge's customerPackageID or enrollmentID
+  let packageName = null;
+  let packageExpiry = null;
+  let sessionsRemaining = props.sessionsRemaining ?? null;
+  let totalSessions = props.totalSessions ?? null;
+
+  if (pkgCharge) {
+    const cpkg = pkgCharge.customerPackageID;
+    if (cpkg) {
+      const svcEntry = Array.isArray(cpkg.services)
+        ? cpkg.services.find((s) => s.serviceCode === serviceCode)
+        : null;
+      if (svcEntry) {
+        sessionsRemaining = svcEntry.sessionsRemaining ?? sessionsRemaining;
+        totalSessions = (svcEntry.sessionsUsed ?? 0) + (svcEntry.sessionsRemaining ?? 0) || totalSessions;
+      }
+      packageName = cpkg.packageName || "Package";
+      if (cpkg.expiryDate) packageExpiry = new Date(cpkg.expiryDate).toLocaleDateString("en-AU");
+    }
+  }
+
+  // ── Status & payment ──────────────────────────────────────────────────────
+  const status = props.effectiveStatus || raw.status || "scheduled";
+  const statusColors = {
+    scheduled: "#3b82f6", completed: "#22c55e",
+    cancelled_no_charge: "#6b7280", cancelled_charged: "#ef4444",
+    no_show_no_charge: "#f97316", no_show_charged: "#f97316",
+  };
+  const statusColor = statusColors[status] || "#6b7280";
+  const statusLabel = status.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+
+  const chargeMethod = raw.chargeMethod;
+  const paymentLabel = chargeMethod === "package"
+    ? "Charged from package"
+    : chargeMethod === "credits"
+    ? "Charged from credits"
+    : raw.payment?.collected
+    ? `Collected (${raw.payment.method || ""})`
+    : null;
+
+  const isPaid = chargeMethod === "package" || chargeMethod === "credits" || chargeMethod === "mixed" || raw.payment?.collected;
+  const paymentStatus = isPaid ? "Paid" : "Unpaid";
+  const paymentStatusColor = isPaid ? "#22c55e" : "#ef4444";
+
+  const divider = `<div style="border-top:1px solid hsl(var(--border));margin:6px 0"></div>`;
+
+  const section = (label, value) =>
+    value ? `<div style="display:flex;justify-content:space-between;gap:12px;margin:2px 0">
+      <span style="color:hsl(var(--muted-foreground));white-space:nowrap">${label}</span>
+      <span style="font-weight:600;text-align:right">${value}</span>
+    </div>` : "";
+
+  const html = `
+    <div style="font-weight:700;font-size:12px;margin-bottom:2px">${customerNames.join(", ") || "Unknown"}</div>
+    ${customerEmails.length ? `<div style="color:hsl(var(--muted-foreground));font-size:10px;margin-bottom:6px">${customerEmails.join(", ")}</div>` : ""}
+    ${divider}
+    ${section("Instructor", teacher)}
+    ${section("Service", serviceName + (serviceCode && serviceCode !== serviceName ? ` <span style="opacity:.6">(${serviceCode})</span>` : ""))}
+    ${section("Price", servicePrice)}
+    ${divider}
+    ${packageName ? section("Package", packageName) : ""}
+    ${packageExpiry ? section("Expires", packageExpiry) : ""}
+    ${sessionsRemaining != null ? section("Sessions left", `<span style="color:${sessionsRemaining <= 1 ? "#ef4444" : "#22c55e"}">${sessionsRemaining}${totalSessions != null ? " / " + totalSessions : ""}</span>`) : ""}
+    ${divider}
+    <div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+      <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${statusColor};flex-shrink:0"></span>
+      <span style="font-weight:600">${statusLabel}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+      <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${paymentStatusColor};flex-shrink:0"></span>
+      <span style="font-weight:600;color:${paymentStatusColor}">${paymentStatus}</span>
+      ${paymentLabel ? `<span style="color:hsl(var(--muted-foreground));font-size:10px">· ${paymentLabel}</span>` : ""}
+    </div>
+  `;
+
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  positionTooltip(e);
+}
+
+function positionTooltip(e) {
+  const tip = getTooltipEl();
+  const pad = 12;
+  const tw = tip.offsetWidth || 220;
+  const th = tip.offsetHeight || 120;
+  let x = e.clientX + pad;
+  let y = e.clientY + pad;
+  if (x + tw > window.innerWidth - pad) x = e.clientX - tw - pad;
+  if (y + th > window.innerHeight - pad) y = e.clientY - th - pad;
+  tip.style.left = `${x}px`;
+  tip.style.top = `${y}px`;
+}
+
+function hideEventTooltip() {
+  const tip = getTooltipEl();
+  tip.style.display = "none";
+}
+
 function renderEventContent(info) {
   const { tutorName, status, effectiveStatus, color, customerNames, eventType, serviceCode, sessionsRemaining, totalSessions, paymentCollected } =
     info.event.extendedProps || {};
@@ -1072,17 +1224,6 @@ function TutorDayCalendar({
 
 function SlotSizePicker({ value, onApply }) {
   const [open, setOpen] = useState(false);
-  const [startTime, setStartTime] = useState("09:00");
-  const [minutes, setMinutes] = useState(value);
-
-  function handleApply() {
-    const m = parseInt(minutes, 10);
-    if (m > 0 && m <= 240) {
-      const [, startMins] = startTime.split(":").map(Number);
-      onApply(m, startMins);
-      setOpen(false);
-    }
-  }
 
   const isActive = value !== 30;
 
@@ -1111,67 +1252,32 @@ function SlotSizePicker({ value, onApply }) {
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-border bg-popover shadow-lg p-3 z-50 space-y-4"
+          className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-popover shadow-lg p-3 z-50 space-y-2"
         >
-          <p className="text-[11px] font-semibold text-foreground">Custom Slot Size</p>
-          
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block mb-1 text-[10px] font-medium text-muted-foreground">Alignment (Start)</label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block mb-1 text-[10px] font-medium text-muted-foreground">Minutes</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="240"
-                  value={minutes}
-                  onChange={(e) => setMinutes(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {[30, 45, 50, 60, 90].map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMinutes(m)}
-                  className={`px-2 py-1 rounded text-[10px] font-medium border transition-colors ${
-                    Number(minutes) === m
-                      ? "bg-primary border-primary text-white"
-                      : "bg-muted/50 border-border text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  {m}m
-                </button>
-              ))}
-            </div>
+          <p className="text-[11px] font-semibold text-foreground">Slot Size</p>
+          <div className="flex flex-wrap gap-1.5">
+            {[30, 45, 50, 60, 90].map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => { onApply(m, 0); setOpen(false); }}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                  value === m
+                    ? "bg-primary border-primary text-white"
+                    : "bg-muted/50 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {m}m
+              </button>
+            ))}
           </div>
-
-          <div className="grid grid-cols-2 gap-2 pt-1">
+          <div className="pt-1">
             <button
               type="button"
               onClick={() => { onApply(30, 0); setOpen(false); }}
-              className="h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-muted-foreground hover:bg-muted/40"
+              className="w-full h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-muted-foreground hover:bg-muted/40"
             >
               Reset (30m)
-            </button>
-            <button
-              type="button"
-              onClick={handleApply}
-              disabled={!minutes || minutes <= 0 || minutes > 240}
-              className="h-8 rounded-lg bg-brand text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Apply
             </button>
           </div>
         </div>
@@ -1719,6 +1825,20 @@ export default function CalendarPage() {
                         }
                       }}
                       eventContent={renderEventContent}
+                      eventDidMount={(info) => {
+                        const el = info.el;
+                        const harness = el.closest(".fc-timegrid-event-harness") || el.parentElement;
+                        const props = info.event.extendedProps || {};
+                        el.addEventListener("mouseenter", (e) => {
+                          harness.style.zIndex = "100";
+                          showEventTooltip(e, props);
+                        });
+                        el.addEventListener("mousemove", (e) => positionTooltip(e));
+                        el.addEventListener("mouseleave", () => {
+                          harness.style.zIndex = "";
+                          hideEventTooltip();
+                        });
+                      }}
                       views={{
                         dayGridMonth: { dayMaxEventRows: 3 },
                         timeGridWeek: {

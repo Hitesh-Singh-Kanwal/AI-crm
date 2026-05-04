@@ -928,7 +928,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                       Credits
                     </p>
                     <p className="text-[15px] font-bold text-foreground">
-                      ${customer.credits ?? 0}
+                      ${Number(customer.credits ?? 0).toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -1179,7 +1179,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
           <div className="flex items-center justify-between pb-3 px-1">
             <p className="text-[11px] text-muted-foreground">Student Account</p>
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-              ${customer.credits ?? 0} credits
+              ${Number(customer.credits ?? 0).toFixed(2)} credits
             </span>
           </div>
         )}
@@ -1207,7 +1207,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
         </div>
         {customer && (
           <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-            ${customer.credits ?? 0} credits
+            ${Number(customer.credits ?? 0).toFixed(2)} credits
           </span>
         )}
       </div>

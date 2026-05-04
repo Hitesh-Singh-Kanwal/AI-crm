@@ -610,7 +610,7 @@ export default function EventDetailPanel({
                           </span>
                         </div>
                         <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                          ${c.credits ?? 0}
+                          ${Number(c.credits ?? 0).toFixed(2)}
                         </span>
                       </div>
                       {c.email && (
