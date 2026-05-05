@@ -1472,7 +1472,6 @@ function EnrollmentsTab({ customerID, statusFilter }) {
   const [allPkgs, setAllPkgs] = useState([])
   const [loading, setLoading] = useState(true)
 
-  const [createOpen, setCreateOpen] = useState(false)
   const [createLabel, setCreateLabel] = useState('')
   const [createTeacherID, setCreateTeacherID] = useState('')
   const [teachers, setTeachers] = useState([])
@@ -1538,24 +1537,13 @@ function EnrollmentsTab({ customerID, statusFilter }) {
 
   useEffect(() => { load() }, [load])
 
-  async function handleCreate(e) {
-    e.preventDefault()
-    setCreating(true)
-    const res = await api.post('/api/enrollment', {
-      customerID,
-      label: createLabel.trim() || undefined,
-      teacherID: createTeacherID || undefined,
-    })
-    if (res.success) {
-      toast.success('Enrollment created.')
-      setCreateOpen(false)
-      setCreateLabel('')
-      setCreateTeacherID('')
-      load()
-    } else {
-      toast.error(res.error || 'Failed to create enrollment.')
-    }
-    setCreating(false)
+  function openCreateAndAddFlow() {
+    setCreateLabel('')
+    setCreateTeacherID('')
+    setAddForm(BLANK_ENR_FORM)
+    setSelectedPkg(null)
+    setAddStep(1)
+    setAddTargetEnrollment({ isNew: true })
   }
 
   function openAddPackage(enrollment) {
@@ -1630,6 +1618,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
   }
 
   async function handleEnrAdd() {
+    const isCreateAndAddFlow = Boolean(addTargetEnrollment?.isNew)
     if (addForm.billingType === 'payment_plan') {
       const { numberOfInstallments, frequency, startDate } = addForm.billing
       if (!numberOfInstallments || !frequency || !startDate) {
@@ -1637,11 +1626,39 @@ function EnrollmentsTab({ customerID, statusFilter }) {
         return
       }
     }
+    if (isCreateAndAddFlow && !createTeacherID) {
+      toast.error('Please select a teacher.')
+      return
+    }
     setAdding(true)
+    let targetEnrollmentID = addTargetEnrollment?._id ? String(addTargetEnrollment._id) : ''
+    if (isCreateAndAddFlow) {
+      setCreating(true)
+      const enrRes = await api.post('/api/enrollment', {
+        customerID,
+        label: createLabel.trim() || undefined,
+        teacherID: createTeacherID || undefined,
+      })
+      setCreating(false)
+      if (!enrRes.success) {
+        toast.error(enrRes.error || 'Failed to create enrollment.')
+        setAdding(false)
+        return
+      }
+      const createdPayload = enrRes?.data && typeof enrRes.data === 'object' ? (enrRes.data.enrollment ?? enrRes.data) : null
+      const createdEnrollmentId = createdPayload?._id ?? enrRes?.data?._id ?? createdPayload?.enrollmentID ?? null
+      if (!createdEnrollmentId) {
+        toast.error('Enrollment created but no enrollment ID returned.')
+        setAdding(false)
+        return
+      }
+      targetEnrollmentID = String(createdEnrollmentId)
+    }
+
     const payload = {
       customerID,
       packageID: addForm.packageID,
-      enrollmentID: String(addTargetEnrollment._id),
+      enrollmentID: targetEnrollmentID,
       discountType: addForm.discountType,
       discountAmount: Number(addForm.discountAmount),
       services: addForm.services.map((s) => ({
@@ -1663,8 +1680,10 @@ function EnrollmentsTab({ customerID, statusFilter }) {
     if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate
     const res = await api.post('/api/customer-package/add', payload)
     if (res.success) {
-      toast.success('Package added.')
+      toast.success(isCreateAndAddFlow ? 'Enrollment and package created.' : 'Package added.')
       setAddTargetEnrollment(null)
+      setCreateLabel('')
+      setCreateTeacherID('')
       load()
     } else {
       toast.error(res.error || 'Failed to add package.')
@@ -1684,6 +1703,11 @@ function EnrollmentsTab({ customerID, statusFilter }) {
   if (loading) return <div className="flex items-center justify-center py-16"><LoadingSpinner /></div>
 
   const enrInstallments = getEnrInstallments()
+  const isCreateAndAddFlow = Boolean(addTargetEnrollment?.isNew)
+  const packageStep = 1
+  const servicesStep = isCreateAndAddFlow ? 2 : 2
+  const billingStep = isCreateAndAddFlow ? 3 : 3
+  const totalSteps = isCreateAndAddFlow ? 3 : 3
 
   const filteredEnrollments = statusFilter
     ? enrollments.filter((e) => {
@@ -1700,7 +1724,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
       <div className="flex items-center justify-between">
         <p className="text-[13px] text-muted-foreground">{filteredEnrollments.length} enrollment{filteredEnrollments.length !== 1 ? 's' : ''}</p>
         {isActiveTab && (
-          <Button size="sm" className="h-8 text-[12px]" onClick={() => setCreateOpen(true)}>
+          <Button size="sm" className="h-8 text-[12px]" onClick={openCreateAndAddFlow}>
             <Plus className="h-3.5 w-3.5 mr-1.5" /> New Enrollment
           </Button>
         )}
@@ -2094,61 +2118,55 @@ function EnrollmentsTab({ customerID, statusFilter }) {
         </DialogContent>
       </Dialog>
 
-      {/* Create Enrollment dialog */}
-      <Dialog open={createOpen} onOpenChange={(v) => { if (!v) { setCreateOpen(false); setCreateLabel(''); setCreateTeacherID('') } }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>New Enrollment</DialogTitle></DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4 mt-2">
-            <FormField label="Teacher" required>
-              <div className="relative">
-                <select
-                  value={createTeacherID}
-                  onChange={(e) => setCreateTeacherID(e.target.value)}
-                  required
-                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
-                >
-                  <option value="">Select teacher…</option>
-                  {teachers.map((t) => (
-                    <option key={t._id} value={t._id}>{t.name || t.email}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              </div>
-            </FormField>
-            <FormField label="Label (optional)">
-              <input
-                type="text"
-                placeholder="e.g. Term 1 2026, Trial…"
-                value={createLabel}
-                onChange={(e) => setCreateLabel(e.target.value)}
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-              />
-            </FormField>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => { setCreateOpen(false); setCreateLabel(''); setCreateTeacherID('') }}>Cancel</Button>
-              <Button type="submit" size="sm" disabled={creating}>{creating ? 'Creating…' : 'Create'}</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* Add Package dialog (3 steps, for a specific enrollment) */}
-      <Dialog open={Boolean(addTargetEnrollment)} onOpenChange={(v) => { if (!v) setAddTargetEnrollment(null) }}>
-        <DialogContent className={addStep === 2 ? 'max-w-3xl' : 'max-w-lg'}>
+      <Dialog open={Boolean(addTargetEnrollment)} onOpenChange={(v) => { if (!v) { setAddTargetEnrollment(null); setCreateLabel(''); setCreateTeacherID('') } }}>
+        <DialogContent className={addStep === servicesStep ? 'max-w-3xl' : 'max-w-lg'}>
           <DialogHeader>
-            <DialogTitle>Add Package</DialogTitle>
+            <DialogTitle>{isCreateAndAddFlow ? 'New Enrollment & Package' : 'Add Package'}</DialogTitle>
             <div className="flex gap-1 mt-2">
-              {[1, 2, 3].map((s) => (
+              {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
                 <div key={s} className={`h-1 flex-1 rounded-full transition-colors ${s <= addStep ? 'bg-primary' : 'bg-muted'}`} />
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground">
-              {addStep === 1 ? 'Step 1 of 3 — Choose package' : addStep === 2 ? 'Step 2 of 3 — Configure services & pricing' : 'Step 3 of 3 — Set billing'}
+              {addStep === packageStep
+                ? `Step ${packageStep} of ${totalSteps} — ${isCreateAndAddFlow ? 'Enrollment details & package' : 'Choose package'}`
+                : addStep === servicesStep
+                ? `Step ${servicesStep} of ${totalSteps} — Configure services & pricing`
+                : `Step ${billingStep} of ${totalSteps} — Set billing`}
             </p>
           </DialogHeader>
 
-          {addStep === 1 && (
+          {addStep === packageStep && (
             <div className="space-y-4 mt-2">
+              {isCreateAndAddFlow && (
+                <>
+                  <FormField label="Teacher" required>
+                    <div className="relative">
+                      <select
+                        value={createTeacherID}
+                        onChange={(e) => setCreateTeacherID(e.target.value)}
+                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                      >
+                        <option value="">Select teacher…</option>
+                        {teachers.map((t) => (
+                          <option key={t._id} value={t._id}>{t.name || t.email}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </FormField>
+                  <FormField label="Label (optional)">
+                    <input
+                      type="text"
+                      placeholder="e.g. Term 1 2026, Trial…"
+                      value={createLabel}
+                      onChange={(e) => setCreateLabel(e.target.value)}
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                    />
+                  </FormField>
+                </>
+              )}
               <FormField label="Package" required>
                 <div className="relative">
                   <select
@@ -2181,12 +2199,12 @@ function EnrollmentsTab({ customerID, statusFilter }) {
               </FormField>
               <div className="flex justify-end gap-2 pt-1">
                 <Button type="button" variant="outline" size="sm" onClick={() => setAddTargetEnrollment(null)}>Cancel</Button>
-                <Button type="button" size="sm" disabled={!addForm.packageID} onClick={() => setAddStep(2)}>Next</Button>
+                <Button type="button" size="sm" disabled={!addForm.packageID || (isCreateAndAddFlow && !createTeacherID)} onClick={() => setAddStep(servicesStep)}>Next</Button>
               </div>
             </div>
           )}
 
-          {addStep === 2 && (
+          {addStep === servicesStep && (
             <div className="space-y-4 mt-2">
               <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-[12px]">
@@ -2262,13 +2280,13 @@ function EnrollmentsTab({ customerID, statusFilter }) {
               </div>
 
               <div className="flex justify-between gap-2 pt-1">
-                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(1)}>Back</Button>
-                <Button type="button" size="sm" disabled={addForm.services.length === 0} onClick={() => setAddStep(3)}>Next</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(packageStep)}>Back</Button>
+                <Button type="button" size="sm" disabled={addForm.services.length === 0} onClick={() => setAddStep(billingStep)}>Next</Button>
               </div>
             </div>
           )}
 
-          {addStep === 3 && (
+          {addStep === billingStep && (
             <div className="space-y-4 mt-2">
               <div>
                 <p className="text-[12px] font-medium text-muted-foreground mb-2">Billing Type</p>
@@ -2365,9 +2383,9 @@ function EnrollmentsTab({ customerID, statusFilter }) {
               )}
 
               <div className="flex justify-between gap-2 pt-1">
-                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(2)}>Back</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(servicesStep)}>Back</Button>
                 <Button type="button" size="sm" disabled={adding} onClick={handleEnrAdd}>
-                  {adding ? 'Adding…' : 'Add Package'}
+                  {adding || creating ? (isCreateAndAddFlow ? 'Creating…' : 'Adding…') : (isCreateAndAddFlow ? 'Create Enrollment & Package' : 'Add Package')}
                 </Button>
               </div>
             </div>

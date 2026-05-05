@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
   CalendarDays,
   ChevronDown,
   Clock,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import NewEnrollmentPackageInline from "@/app/calendar/components/NewEnrollmentPackageInline";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -313,19 +315,25 @@ function EnrollmentServiceSelector({
   onServiceSelect,
   selectedServiceId,
   allServices,
+  onOpenEnrollmentWizard,
 }) {
   if (!customerId) return null;
 
-  const activeEnrollments = enrollments.filter(
-    (e) => e.status === "active" && e.package,
-  );
+  const activeEnrollments = enrollments.filter((e) => e.status === "active");
 
   if (enrollments.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">
         <p className="text-[11px] text-muted-foreground">
-          No enrollments found. Create one in the customer's Enrollments tab.
+          No enrollments found for this student.
         </p>
+        <button
+          type="button"
+          onClick={() => onOpenEnrollmentWizard?.(true)}
+          className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand hover:underline mx-auto"
+        >
+          <Plus className="h-3 w-3" /> Add enrollment
+        </button>
       </div>
     );
   }
@@ -337,6 +345,13 @@ function EnrollmentServiceSelector({
           No active enrollments with a package. Add a package to an enrollment
           first.
         </p>
+        <button
+          type="button"
+          onClick={() => onOpenEnrollmentWizard?.(true)}
+          className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand hover:underline mx-auto"
+        >
+          <Plus className="h-3 w-3" /> Add enrollment
+        </button>
       </div>
     );
   }
@@ -359,10 +374,17 @@ function EnrollmentServiceSelector({
           }}
           options={activeEnrollments.map((e) => ({
             value: String(e._id),
-            label: `${ordinalLabel(e.enrollmentNumber)} Enrollment${e.label ? ` — ${e.label}` : ""}`,
+            label: `${ordinalLabel(e.enrollmentNumber)} Enrollment${e.label ? ` — ${e.label}` : ""}${e.package ? "" : " (no package)"}`,
           }))}
           placeholder="Select enrollment…"
         />
+        <button
+          type="button"
+          onClick={() => onOpenEnrollmentWizard?.(true)}
+          className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand hover:underline"
+        >
+          <Plus className="h-3 w-3" /> Add enrollment
+        </button>
       </div>
 
       {selectedEnrollment && cp && (
@@ -466,6 +488,7 @@ function WhoSection({
   instructorOptions,
   customerOptions,
   onNewCustomer,
+  onOpenEnrollmentWizard,
   enrollments,
   allServices,
 }) {
@@ -491,6 +514,7 @@ function WhoSection({
           value={form.customer_id}
           onChange={(v) => {
             setField("customer_id", v);
+            onOpenEnrollmentWizard?.(false);
             setField("enrollment_id", "");
             setField("service_id", "");
             setField("event_color", "");
@@ -536,6 +560,7 @@ function WhoSection({
           }}
           selectedServiceId={form.service_id}
           allServices={allServices}
+          onOpenEnrollmentWizard={onOpenEnrollmentWizard}
         />
       )}
     </div>
@@ -1131,6 +1156,7 @@ function AppointmentFields({
   lessonDuration,
   suggestedAmount,
   onNewCustomer,
+  onOpenEnrollmentWizard,
   enrollments,
   allServices,
 }) {
@@ -1142,6 +1168,7 @@ function AppointmentFields({
         instructorOptions={instructorOptions}
         customerOptions={customerOptions}
         onNewCustomer={onNewCustomer}
+        onOpenEnrollmentWizard={onOpenEnrollmentWizard}
         enrollments={enrollments}
         allServices={allServices}
       />
@@ -1299,7 +1326,9 @@ export default function AppointmentComposerPanel({
   const [lessonByName, setLessonByName] = useState({});
   const [allServices, setAllServices] = useState([]);
   const [packageOptions, setPackageOptions] = useState([]);
+  const [packageTemplates, setPackageTemplates] = useState([]);
   const [enrollments, setEnrollments] = useState({}); // customerId → enrollment[]
+  const [showEnrollmentWizard, setShowEnrollmentWizard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -1308,6 +1337,7 @@ export default function AppointmentComposerPanel({
 
   const handleTabChange = (key) => {
     setActiveTab(key);
+  setShowEnrollmentWizard(false);
     setForm((prev) => ({
       ...prev,
       customer_id: "",
@@ -1371,6 +1401,7 @@ export default function AppointmentComposerPanel({
         }
 
         if (packagesRes.success && Array.isArray(packagesRes.data)) {
+          setPackageTemplates(packagesRes.data);
           setPackageOptions(
             packagesRes.data.map((p) => ({
               value: String(p._id),
@@ -1451,6 +1482,62 @@ export default function AppointmentComposerPanel({
       return newId;
     }
     return null;
+  };
+
+  const handleNewEnrollment = async (customerID, payload = {}) => {
+    if (!customerID) return null;
+    const enrRes = await api.post("/api/enrollment", {
+      customerID,
+      label: payload.label?.trim() || undefined,
+      teacherID: payload.teacherID || undefined,
+    });
+    if (!enrRes.success) return null;
+
+    const enrollment =
+      enrRes?.data?.enrollment && typeof enrRes.data.enrollment === "object"
+        ? enrRes.data.enrollment
+        : enrRes.data;
+    const enrollmentID = String(
+      enrollment?._id || enrollment?.enrollmentID || "",
+    );
+    if (!enrollmentID) return null;
+
+    const addRes = await api.post("/api/customer-package/add", {
+      customerID,
+      packageID: payload.packageID,
+      enrollmentID,
+      discountType: payload.discountType,
+      discountAmount: Number(payload.discountAmount || 0),
+      services: (payload.services || []).map((s) => ({
+        serviceCode: s.serviceCode,
+        serviceName: s.serviceName,
+        color: s.color,
+        numberOfSessions: Number(s.numberOfSessions || 0),
+        pricePerSession: Number(s.pricePerSession || 0),
+        finalAmount: Number(s.finalAmount || 0),
+      })),
+      billingType: payload.billingType,
+      billing:
+        payload.billingType === "one_time"
+          ? { method: payload.billing?.method || "cash" }
+          : payload.billingType === "payment_plan"
+            ? {
+                numberOfInstallments: Number(
+                  payload.billing?.numberOfInstallments || 0,
+                ),
+                frequency: payload.billing?.frequency,
+                startDate: payload.billing?.startDate,
+              }
+            : {},
+      ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
+    });
+    if (!addRes.success) return null;
+
+    const listRes = await api.get(`/api/enrollment?customerID=${customerID}`);
+    if (listRes.success && Array.isArray(listRes.data)) {
+      setEnrollments((prev) => ({ ...prev, [customerID]: listRes.data }));
+    }
+    return enrollmentID;
   };
 
   const handleSave = async () => {
@@ -1579,11 +1666,32 @@ export default function AppointmentComposerPanel({
     lessonDuration,
     suggestedAmount,
     packageOptions,
+    packageTemplates,
     enrollments,
     onNewCustomer: handleNewCustomer,
+    onOpenEnrollmentWizard: (open = true) => setShowEnrollmentWizard(Boolean(open)),
   };
 
   const tabContent = useMemo(() => {
+    if (showEnrollmentWizard) {
+      return (
+        <NewEnrollmentPackageInline
+          teacherOptions={instructorOptions}
+          packageTemplates={packageTemplates}
+          onCancel={() => setShowEnrollmentWizard(false)}
+          onSubmit={async (payload) => {
+            const createdId = await handleNewEnrollment(form.customer_id, payload);
+            if (createdId) {
+              setField("enrollment_id", String(createdId));
+              setField("service_id", "");
+              setShowEnrollmentWizard(false);
+              return true;
+            }
+            return false;
+          }}
+        />
+      );
+    }
     if (activeTab === "Appointment")
       return <AppointmentFields {...sharedProps} />;
     if (activeTab === "Group Class")
@@ -1603,6 +1711,7 @@ export default function AppointmentComposerPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeTab,
+    showEnrollmentWizard,
     form,
     instructorOptions,
     customerOptions,
@@ -1611,6 +1720,7 @@ export default function AppointmentComposerPanel({
     lessonMap,
     lessonDuration,
     packageOptions,
+    packageTemplates,
     allServices,
     enrollments,
   ]);
@@ -1627,15 +1737,27 @@ export default function AppointmentComposerPanel({
   return (
     <Sheet open={open} onClose={onClose}>
       <SheetContent
-        onClose={onClose}
+        onClose={showEnrollmentWizard ? undefined : onClose}
         className="flex flex-col overflow-hidden p-0"
       >
         {/* Header */}
         <div className="shrink-0 border-b border-border bg-muted/30">
-          <div className="flex items-center justify-between px-5 pt-4 pb-0">
-            <p className="text-[14px] font-bold text-foreground">New Booking</p>
+          <div className={`flex items-center justify-between px-5 ${showEnrollmentWizard ? "pt-5 pb-2" : "pt-4 pb-0"}`}>
+            {showEnrollmentWizard ? (
+              <button
+                type="button"
+                onClick={() => setShowEnrollmentWizard(false)}
+                className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-foreground hover:text-brand"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to Booking
+              </button>
+            ) : (
+              <p className="text-[14px] font-bold text-foreground">New Booking</p>
+            )}
           </div>
-          <div className="flex overflow-x-auto scrollbar-hide px-4 pb-0 gap-0.5 mt-2">
+          {!showEnrollmentWizard && (
+            <div className="flex overflow-x-auto scrollbar-hide px-4 pb-0 gap-0.5 mt-2">
             {TABS.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -1652,7 +1774,8 @@ export default function AppointmentComposerPanel({
                 {label}
               </button>
             ))}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Body */}
@@ -1666,23 +1789,25 @@ export default function AppointmentComposerPanel({
         )}
 
         {/* Footer */}
-        <div className="shrink-0 border-t border-border bg-muted/20 px-5 py-3 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 px-4 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="flex-1 h-9 rounded-lg bg-brand text-[12px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          >
-            {saveLabel}
-          </button>
-        </div>
+        {!showEnrollmentWizard && (
+          <div className="shrink-0 border-t border-border bg-muted/20 px-5 py-3 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-9 px-4 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="flex-1 h-9 rounded-lg bg-brand text-[12px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              {saveLabel}
+            </button>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );
