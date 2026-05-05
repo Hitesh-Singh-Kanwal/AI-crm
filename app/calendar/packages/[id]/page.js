@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, Save, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, ChevronDown, CalendarDays } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,25 @@ import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import LocationSelector from '@/components/shared/LocationSelector'
+import { cn } from '@/lib/utils'
+
+const EVENT_STATUS_COLORS = {
+  scheduled:           'bg-blue-500/10 text-blue-600',
+  completed:           'bg-emerald-500/10 text-emerald-600',
+  cancelled_no_charge: 'bg-muted text-muted-foreground',
+  cancelled_charged:   'bg-red-500/10 text-red-600',
+  no_show_no_charge:   'bg-muted text-muted-foreground',
+  no_show_charged:     'bg-red-500/10 text-red-600',
+}
+
+function formatEventDate(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+function formatEventTime(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
 
 function ServiceCodePicker({ value, onChange, onSelect, calendarServices }) {
   const [open, setOpen] = useState(false)
@@ -22,24 +41,28 @@ function ServiceCodePicker({ value, onChange, onSelect, calendarServices }) {
 
   useEffect(() => { setQuery(value || '') }, [value])
 
+  const dropdownRef = useRef(null)
+
   useEffect(() => {
-    function onClickOutside(e) {
+    function close(e) {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false)
     }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
+    function onScroll(e) {
+      if (dropdownRef.current && dropdownRef.current.contains(e.target)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      window.removeEventListener('scroll', onScroll, true)
+    }
   }, [])
 
   function openDropdown() {
     if (inputRef.current) {
       const rect = inputRef.current.getBoundingClientRect()
-      setDropdownStyle({
-        position: 'fixed',
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: 240,
-        zIndex: 9999,
-      })
+      setDropdownStyle({ position: 'fixed', top: rect.bottom + 4, left: rect.left, width: 240, zIndex: 9999 })
     }
     setOpen(true)
   }
@@ -51,7 +74,7 @@ function ServiceCodePicker({ value, onChange, onSelect, calendarServices }) {
   )
 
   return (
-    <div ref={wrapperRef} className="relative w-[110px]">
+    <div ref={wrapperRef} className="relative w-full">
       <div className="relative">
         <Input
           ref={inputRef}
@@ -65,6 +88,7 @@ function ServiceCodePicker({ value, onChange, onSelect, calendarServices }) {
       </div>
       {open && filtered.length > 0 && (
         <div
+          ref={dropdownRef}
           style={dropdownStyle}
           className="max-h-52 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg"
         >
@@ -108,6 +132,7 @@ function emptyService() {
     serviceName: '',
     serviceCode: '',
     serviceDetails: '',
+    color: '',
     numberOfSessions: '',
     pricePerSession: '',
     total: 0,
@@ -137,9 +162,35 @@ export default function PackageEditPage() {
   const router = useRouter()
   const isNew = id === 'new'
 
+  const [activeTab, setActiveTab] = useState('details')
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
   const [calendarServices, setCalendarServices] = useState([])
+
+  // Events tab state
+  const [events, setEvents]           = useState([])
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [eventsTotal, setEventsTotal]  = useState(0)
+  const [eventsPage, setEventsPage]    = useState(1)
+  const [dateStart, setDateStart]      = useState('')
+  const [dateEnd,   setDateEnd]        = useState('')
+
+  const loadEvents = useCallback(async (page = 1) => {
+    if (isNew) return
+    setEventsLoading(true)
+    const params = new URLSearchParams({ page: String(page), limit: '50' })
+    if (dateStart) params.set('start', new Date(dateStart).toISOString())
+    if (dateEnd)   params.set('end',   new Date(dateEnd + 'T23:59:59').toISOString())
+    const r = await api.get(`/api/calendar/package/${id}?${params}`)
+    if (r.success) {
+      setEvents(Array.isArray(r.data) ? r.data : [])
+      setEventsTotal(r.pagination?.total ?? 0)
+      setEventsPage(page)
+    }
+    setEventsLoading(false)
+  }, [id, isNew, dateStart, dateEnd])
+
+  useEffect(() => { if (activeTab === 'events') loadEvents(1) }, [activeTab, loadEvents])
 
   useEffect(() => {
     api.get('/api/calendar-service?limit=200').then((res) => {
@@ -176,11 +227,11 @@ export default function PackageEditPage() {
         )
       } else {
         toast.error('Failed to load package', { description: result.error })
-        router.push('/calendar/packages')
+        router.push('/settings/setup?tab=packages')
       }
     } catch {
       toast.error('Error', { description: 'Unable to load package' })
-      router.push('/calendar/packages')
+      router.push('/settings/setup?tab=packages')
     } finally {
       setLoading(false)
     }
@@ -199,6 +250,7 @@ export default function PackageEditPage() {
         serviceCode: catalogService.serviceCode,
         serviceDetails: catalogService.description || '',
         pricePerSession: catalogService.price ?? next[index].pricePerSession,
+        color: catalogService.color || next[index].color || '',
       }
       return next
     })
@@ -235,6 +287,7 @@ export default function PackageEditPage() {
           serviceName: s.serviceName.trim(),
           serviceCode: s.serviceCode?.trim() || '',
           serviceDetails: s.serviceDetails?.trim() || '',
+          color: s.color || undefined,
           numberOfSessions: Number(s.numberOfSessions) || 0,
           pricePerSession: Number(s.pricePerSession) || 0,
           total,
@@ -263,7 +316,7 @@ export default function PackageEditPage() {
 
       if (result.success) {
         toast.success(isNew ? 'Package created' : 'Package saved')
-        router.push('/calendar/packages')
+        router.push('/settings/setup?tab=packages')
       } else {
         toast.error('Failed to save', { description: result.error })
       }
@@ -284,14 +337,14 @@ export default function PackageEditPage() {
 
   return (
     <MainLayout title={isNew ? 'New Package' : 'Edit Package'} subtitle="">
-      <div className="max-w-[1100px] mx-auto pb-12">
+      <div className="max-w-[1400px] mx-auto pb-12">
 
         {/* Top bar */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => router.push('/calendar/packages')}
+              onClick={() => router.push('/settings/setup?tab=packages')}
               className="h-9 w-9 rounded-lg border border-border bg-background flex items-center justify-center hover:bg-muted/50 text-muted-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -314,6 +367,30 @@ export default function PackageEditPage() {
             {saving ? 'Saving…' : isNew ? 'Create Package' : 'Save Changes'}
           </Button>
         </div>
+
+        {/* Tabs (only for existing packages) */}
+        {!isNew && (
+          <div className="flex gap-1 rounded-full bg-muted p-1 w-fit mb-4">
+            {[{ id: 'details', label: 'Details' }, { id: 'events', label: 'Events' }].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveTab(t.id)}
+                className={cn(
+                  'h-8 px-4 rounded-full text-sm transition-all',
+                  activeTab === t.id
+                    ? 'bg-background text-[var(--studio-primary)] shadow-sm font-semibold'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── Details tab ── */}
+        {(isNew || activeTab === 'details') && <>
 
         {/* Package details card */}
         <div className="rounded-xl border border-border bg-card p-6 mb-6">
@@ -408,6 +485,7 @@ export default function PackageEditPage() {
                   <tr className="border-b border-border bg-muted/30">
                     <th className="py-2.5 px-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Service Name *</th>
                     <th className="py-2.5 px-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Code</th>
+                    <th className="py-2.5 px-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Color</th>
                     <th className="py-2.5 px-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Details</th>
                     <th className="py-2.5 px-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Sessions</th>
                     <th className="py-2.5 px-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Price/Session</th>
@@ -428,7 +506,7 @@ export default function PackageEditPage() {
                             placeholder="Service name"
                             value={svc.serviceName}
                             onChange={(e) => updateService(idx, 'serviceName', e.target.value)}
-                            className="h-8 text-sm min-w-[130px]"
+                            className="h-8 text-sm w-full"
                           />
                         </td>
                         <td className="py-2 px-3">
@@ -440,11 +518,19 @@ export default function PackageEditPage() {
                           />
                         </td>
                         <td className="py-2 px-3">
+                          <input
+                            type="color"
+                            value={svc.color || '#6366f1'}
+                            onChange={(e) => updateService(idx, 'color', e.target.value)}
+                            className="h-8 w-9 rounded cursor-pointer border border-border bg-background p-0.5"
+                          />
+                        </td>
+                        <td className="py-2 px-3">
                           <Input
                             placeholder="Details"
                             value={svc.serviceDetails}
                             onChange={(e) => updateService(idx, 'serviceDetails', e.target.value)}
-                            className="h-8 text-sm min-w-[120px]"
+                            className="h-8 text-sm w-full"
                           />
                         </td>
                         <td className="py-2 px-3">
@@ -454,7 +540,7 @@ export default function PackageEditPage() {
                             placeholder="0"
                             value={svc.numberOfSessions}
                             onChange={(e) => updateService(idx, 'numberOfSessions', e.target.value)}
-                            className="h-8 text-sm w-[72px]"
+                            className="h-8 text-sm w-full"
                           />
                         </td>
                         <td className="py-2 px-3">
@@ -467,12 +553,12 @@ export default function PackageEditPage() {
                               placeholder="0.00"
                               value={svc.pricePerSession}
                               onChange={(e) => updateService(idx, 'pricePerSession', e.target.value)}
-                              className="h-8 text-sm pl-5 w-[90px]"
+                              className="h-8 text-sm pl-5 w-full"
                             />
                           </div>
                         </td>
                         <td className="py-2 px-3">
-                          <div className="h-8 px-2.5 flex items-center rounded-md bg-muted/50 border border-border text-sm text-foreground w-[80px] font-medium">
+                          <div className="h-8 px-2.5 flex items-center rounded-md bg-muted/50 border border-border text-sm text-foreground w-full font-medium">
                             ${fmt(total)}
                           </div>
                         </td>
@@ -480,7 +566,7 @@ export default function PackageEditPage() {
                           <select
                             value={svc.discountType}
                             onChange={(e) => updateService(idx, 'discountType', e.target.value)}
-                            className="h-8 rounded-md border border-border bg-background text-sm px-2 focus:outline-none focus:ring-2 focus:ring-brand/30 w-[110px]"
+                            className="h-8 rounded-md border border-border bg-background text-sm px-2 focus:outline-none focus:ring-2 focus:ring-brand/30 w-full"
                           >
                             {DISCOUNT_TYPES.map((d) => (
                               <option key={d.value} value={d.value}>{d.label}</option>
@@ -496,12 +582,12 @@ export default function PackageEditPage() {
                             value={svc.discountAmount}
                             disabled={svc.discountType === 'none'}
                             onChange={(e) => updateService(idx, 'discountAmount', e.target.value)}
-                            className="h-8 text-sm w-[80px] disabled:opacity-40"
+                            className="h-8 text-sm w-full disabled:opacity-40"
                           />
                         </td>
                         <td className="py-2 px-3">
                           <div
-                            className="h-8 px-2.5 flex items-center rounded-md border text-sm font-semibold w-[80px]"
+                            className="h-8 px-2.5 flex items-center rounded-md border text-sm font-semibold w-full"
                             style={{
                               backgroundColor: `color-mix(in srgb, ${color} 12%, hsl(var(--card)))`,
                               borderColor: `color-mix(in srgb, ${color} 40%, transparent)`,
@@ -590,6 +676,84 @@ export default function PackageEditPage() {
             </div>
           </div>
         </div>
+        </> /* end details tab */}
+
+        {/* ── Events tab ── */}
+        {!isNew && activeTab === 'events' && (
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="flex items-center justify-between gap-3 p-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-semibold text-foreground">Booked Events</span>
+                <span className="text-xs text-muted-foreground">({eventsTotal})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)}
+                  className="h-8 rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary" />
+                <span className="text-muted-foreground text-xs">to</span>
+                <input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)}
+                  className="h-8 rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary" />
+                <Button size="sm" onClick={() => loadEvents(1)} className="h-8 px-3 bg-brand hover:bg-brand-dark text-brand-foreground text-xs">Filter</Button>
+              </div>
+            </div>
+
+            {eventsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <GlobalLoader variant="center" size="sm" text="Loading events…" />
+              </div>
+            ) : events.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">No events found for this package.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/30">
+                      <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Date & Time</th>
+                      <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Title</th>
+                      <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Students</th>
+                      <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Instructor</th>
+                      <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {events.map((ev) => (
+                      <tr key={ev._id} className="border-b border-border/60 hover:bg-muted/20 transition-colors">
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <p className="text-[12px] font-medium text-foreground">{formatEventDate(ev.startDateTime)}</p>
+                          <p className="text-[11px] text-muted-foreground">{formatEventTime(ev.startDateTime)}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            {ev.color && <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: ev.color }} />}
+                            <span className="text-[12px] text-foreground">{ev.title || '—'}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-[12px] text-muted-foreground">
+                          {ev.customerIDs?.map((c) => c.name || c.email).filter(Boolean).join(', ') || '—'}
+                        </td>
+                        <td className="py-3 px-4 text-[12px] text-muted-foreground">{ev.teacherID?.name || '—'}</td>
+                        <td className="py-3 px-4">
+                          <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', EVENT_STATUS_COLORS[ev.status] || 'bg-muted text-muted-foreground')}>
+                            {ev.status?.replace(/_/g, ' ') || '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {eventsTotal > 50 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                <Button variant="outline" size="sm" onClick={() => loadEvents(eventsPage - 1)} disabled={eventsPage === 1 || eventsLoading}>Previous</Button>
+                <span className="text-xs text-muted-foreground">Page {eventsPage}</span>
+                <Button variant="outline" size="sm" onClick={() => loadEvents(eventsPage + 1)} disabled={events.length < 50 || eventsLoading}>Next</Button>
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
     </MainLayout>
   )

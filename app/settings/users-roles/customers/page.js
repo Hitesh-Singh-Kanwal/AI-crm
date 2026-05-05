@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { Button } from '@/components/ui/button'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DropdownMenu,
@@ -33,7 +34,23 @@ const EMPTY_FORM = {
   phoneNumber: '',
   credits: 0,
   locationID: '',
+  dateOfBirth: '',
+  gender: '',
+  address: {
+    street: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    country: 'USA',
+  },
 }
+
+const GENDER_OPTIONS = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Other' },
+  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+]
 
 function FormField({ label, required, children }) {
   return (
@@ -62,6 +79,15 @@ function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
             phoneNumber: initial.phoneNumber || '',
             credits: initial.credits ?? 0,
             locationID: String(initial.locationID?._id ?? initial.locationID ?? ''),
+            dateOfBirth: initial.dateOfBirth ? String(initial.dateOfBirth).slice(0, 10) : '',
+            gender: initial.gender || '',
+            address: {
+              street: initial.address?.street || '',
+              city: initial.address?.city || '',
+              state: initial.address?.state || '',
+              zipCode: initial.address?.zipCode || '',
+              country: initial.address?.country || 'USA',
+            },
           }
         : EMPTY_FORM
       )
@@ -70,6 +96,8 @@ function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
   }, [open, initial])
 
   const setField = (key, val) => setForm((prev) => ({ ...prev, [key]: val }))
+  const setAddressField = (key, val) =>
+    setForm((prev) => ({ ...prev, address: { ...prev.address, [key]: val } }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -83,12 +111,24 @@ function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
       return
     }
     setSaving(true)
+    const address = {
+      street: form.address.street.trim(),
+      city: form.address.city.trim(),
+      state: form.address.state.trim(),
+      zipCode: form.address.zipCode.trim(),
+      country: form.address.country.trim() || 'USA',
+    }
+    const hasAddress = address.street || address.city || address.state || address.zipCode
+
     const payload = {
       name: form.name.trim(),
       email: form.email.trim(),
       phoneNumber: form.phoneNumber.trim() || undefined,
       credits: Number(form.credits) || 0,
       locationID: form.locationID,
+      dateOfBirth: form.dateOfBirth || undefined,
+      gender: form.gender || undefined,
+      address: hasAddress ? address : undefined,
     }
     const result = isEdit
       ? await api.put(`/api/customer/${initial._id}`, payload)
@@ -105,12 +145,12 @@ function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Customer' : 'Add Customer'}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>{isEdit ? 'Edit Customer' : 'Add Customer'}</SheetTitle>
+        </SheetHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2 px-6">
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Name" required>
               <input
@@ -154,6 +194,81 @@ function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
               </div>
             </FormField>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Date of Birth">
+              <input
+                type="date"
+                value={form.dateOfBirth}
+                onChange={(e) => setField('dateOfBirth', e.target.value)}
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+              />
+            </FormField>
+            <FormField label="Gender">
+              <div className="relative">
+                <select
+                  value={form.gender}
+                  onChange={(e) => setField('gender', e.target.value)}
+                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] text-foreground outline-none focus:border-primary"
+                >
+                  <option value="">Select…</option>
+                  {GENDER_OPTIONS.map((g) => (
+                    <option key={g.value} value={g.value}>{g.label}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              </div>
+            </FormField>
+          </div>
+
+          <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+            <p className="text-[12px] font-semibold text-muted-foreground">Address</p>
+            <FormField label="Street">
+              <input
+                type="text"
+                value={form.address.street}
+                onChange={(e) => setAddressField('street', e.target.value)}
+                placeholder="123 Main St"
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+              />
+            </FormField>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="City">
+                <input
+                  type="text"
+                  value={form.address.city}
+                  onChange={(e) => setAddressField('city', e.target.value)}
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+                />
+              </FormField>
+              <FormField label="State">
+                <input
+                  type="text"
+                  value={form.address.state}
+                  onChange={(e) => setAddressField('state', e.target.value)}
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+                />
+              </FormField>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Zip Code">
+                <input
+                  type="text"
+                  value={form.address.zipCode}
+                  onChange={(e) => setAddressField('zipCode', e.target.value)}
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+                />
+              </FormField>
+              <FormField label="Country">
+                <input
+                  type="text"
+                  value={form.address.country}
+                  onChange={(e) => setAddressField('country', e.target.value)}
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+                />
+              </FormField>
+            </div>
+          </div>
+
           <FormField label="Location" required>
             <div className="relative">
               <select
@@ -181,8 +296,8 @@ function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
             </Button>
           </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -335,7 +450,7 @@ export default function CustomersPage() {
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
-                        ${customer.credits ?? 0}
+                        ${Number(customer.credits ?? 0).toFixed(2)}
                       </span>
                     </TableCell>
                     <TableCell className="text-[12px] text-muted-foreground">

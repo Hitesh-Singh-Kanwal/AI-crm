@@ -22,14 +22,13 @@ const EMPTY_FORM = {
   serviceCode: "",
   locationID: "",
   description: "",
+  color: "",
+  price: "",
   isChargeable: false,
-  serviceClass: "",
-  schedulingCode: "",
   isGroup: false,
   isSundry: false,
   countOnCalendar: true,
-  sortByOrder: "",
-  price: "",
+  isActive: true,
   documents: [],
 };
 
@@ -61,6 +60,34 @@ function RadioGroup({ label, value, onChange }) {
   );
 }
 
+function StatusGroup({ value, onChange }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>Status</Label>
+      <div className="flex items-center gap-4 h-9">
+        <label className="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input
+            type="radio"
+            checked={value === true}
+            onChange={() => onChange(true)}
+            className="accent-brand"
+          />
+          Active
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer text-sm">
+          <input
+            type="radio"
+            checked={value === false}
+            onChange={() => onChange(false)}
+            className="accent-brand"
+          />
+          Inactive
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export default function ServiceDialog({ open, onClose, service, onRefresh }) {
   const isEdit = Boolean(service);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -75,18 +102,14 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
         locationID: service.locationID?._id || service.locationID || "",
         description: service.description || "",
         isChargeable: service.isChargeable ?? false,
-        serviceClass: service.serviceClass || "",
-        schedulingCode: service.schedulingCode || "",
         isGroup: service.isGroup ?? false,
         isSundry: service.isSundry ?? false,
         countOnCalendar: service.countOnCalendar ?? true,
-        sortByOrder: service.sortByOrder ?? "",
-        price: service.price ?? "",
+        isActive: service.isActive ?? true,
+        color: service.color || "",
+        price: service.price != null ? String(service.price) : "",
         documents: service.documents
-          ? service.documents.map((d) => ({
-              name: d.name || "",
-              url: d.url || "",
-            }))
+          ? service.documents.map((d) => ({ name: d.name || "", url: d.url || "" }))
           : [],
       });
     } else {
@@ -99,10 +122,7 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
   }
 
   function addDocument() {
-    setForm((prev) => ({
-      ...prev,
-      documents: [...prev.documents, { name: "", url: "" }],
-    }));
+    setForm((prev) => ({ ...prev, documents: [...prev.documents, { name: "", url: "" }] }));
   }
 
   function updateDocument(index, field, value) {
@@ -114,24 +134,17 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
   }
 
   function removeDocument(index) {
-    setForm((prev) => ({
-      ...prev,
-      documents: prev.documents.filter((_, i) => i !== index),
-    }));
+    setForm((prev) => ({ ...prev, documents: prev.documents.filter((_, i) => i !== index) }));
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.serviceName.trim() || !form.serviceCode.trim()) {
-      toast.error("Missing fields", {
-        description: "Service name and code are required.",
-      });
+      toast.error("Missing fields", { description: "Service name and code are required." });
       return;
     }
 
-    const validDocs = form.documents.filter(
-      (d) => d.name.trim() || d.url.trim(),
-    );
+    const validDocs = form.documents.filter((d) => d.name.trim() || d.url.trim());
 
     setSaving(true);
     try {
@@ -140,14 +153,13 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
         serviceCode: form.serviceCode.trim(),
         locationID: form.locationID || undefined,
         description: form.description.trim() || undefined,
+        color: form.color || undefined,
+        price: form.price !== "" ? Number(form.price) : undefined,
         isChargeable: form.isChargeable,
-        serviceClass: form.serviceClass.trim() || undefined,
-        schedulingCode: form.schedulingCode.trim() || undefined,
         isGroup: form.isGroup,
         isSundry: form.isSundry,
         countOnCalendar: form.countOnCalendar,
-        sortByOrder: form.sortByOrder === "" ? 0 : Number(form.sortByOrder),
-        price: form.price === "" ? 0 : Number(form.price),
+        isActive: form.isActive,
         documents: validDocs,
       };
 
@@ -168,12 +180,7 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) onClose();
-      }}
-    >
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Service" : "Add Service"}</DialogTitle>
@@ -203,11 +210,6 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <RadioGroup
-                label="Is Chargeable?"
-                value={form.isChargeable}
-                onChange={(v) => set("isChargeable", v)}
-              />
               <div className="flex flex-col gap-1.5">
                 <Label>Location</Label>
                 <LocationSelector
@@ -215,6 +217,7 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
                   onChange={(id) => set("locationID", id)}
                 />
               </div>
+              <StatusGroup value={form.isActive} onChange={(v) => set("isActive", v)} />
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -229,37 +232,41 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border">
-              <RadioGroup
-                label="Is Group?"
-                value={form.isGroup}
-                onChange={(v) => set("isGroup", v)}
-              />
-              <RadioGroup
-                label="Is Sundry?"
-                value={form.isSundry}
-                onChange={(v) => set("isSundry", v)}
-              />
-              <RadioGroup
-                label="Count on Calendar?"
-                value={form.countOnCalendar}
-                onChange={(v) => set("countOnCalendar", v)}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="svc-price">Price per Session ($)</Label>
+              <Input
+                id="svc-price"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={form.price}
+                onChange={(e) => set("price", e.target.value)}
               />
             </div>
 
-            <div className="w-40">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="svc-price">Price ($)</Label>
-                <Input
-                  id="svc-price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={form.price}
-                  onChange={(e) => set("price", e.target.value)}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="svc-color">Service Color</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="svc-color"
+                  type="color"
+                  value={form.color || '#6366f1'}
+                  onChange={(e) => set("color", e.target.value)}
+                  className="h-9 w-12 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
                 />
+                <span className="text-sm font-mono text-muted-foreground">{form.color || '#6366f1'}</span>
+                {form.color && (
+                  <button type="button" onClick={() => set("color", "")} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
+                )}
               </div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-4 pt-2 border-t border-border">
+              <RadioGroup label="Is Chargeable?" value={form.isChargeable} onChange={(v) => set("isChargeable", v)} />
+              <RadioGroup label="Is Group?" value={form.isGroup} onChange={(v) => set("isGroup", v)} />
+              <RadioGroup label="Is Sundry?" value={form.isSundry} onChange={(v) => set("isSundry", v)} />
+              <RadioGroup label="Count on Calendar?" value={form.countOnCalendar} onChange={(v) => set("countOnCalendar", v)} />
             </div>
           </div>
 
@@ -278,9 +285,7 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
             </div>
 
             {form.documents.length === 0 && (
-              <p className="text-xs text-muted-foreground py-2">
-                No documents attached.
-              </p>
+              <p className="text-xs text-muted-foreground py-2">No documents attached.</p>
             )}
 
             {form.documents.map((doc, idx) => (
@@ -289,9 +294,7 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
                   <Input
                     placeholder="Document name"
                     value={doc.name}
-                    onChange={(e) =>
-                      updateDocument(idx, "name", e.target.value)
-                    }
+                    onChange={(e) => updateDocument(idx, "name", e.target.value)}
                     className="h-8 text-sm"
                   />
                   <Input
@@ -314,12 +317,7 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
           </div>
 
           <DialogFooter className="pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={saving}
-            >
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>

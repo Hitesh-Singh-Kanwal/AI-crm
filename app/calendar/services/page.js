@@ -217,7 +217,10 @@ export default function CalendarServicesPage() {
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground shrink-0">
+                          <div
+                            className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-medium shrink-0 ${service.color ? '' : 'bg-muted text-muted-foreground'}`}
+                            style={service.color ? { backgroundColor: service.color, color: '#fff' } : undefined}
+                          >
                             {service.serviceName.charAt(0).toUpperCase()}
                           </div>
                           <p className="text-sm font-normal text-foreground leading-tight">{service.serviceName}</p>
