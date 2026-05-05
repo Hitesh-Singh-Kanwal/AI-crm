@@ -14,8 +14,21 @@ import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import api from '@/lib/api'
+import { useAiAutomationVoice } from '@/app/ai-automation/AiAutomationVoiceContext'
+import {
+  DEFAULT_ELEVENLABS_TTS_MODEL_ID,
+  ELEVENLABS_CONVAI_TTS_OPTIONS,
+  FALLBACK_CONVAI_LLM_OPTIONS,
+  normalizeConvaiLlmApiPayload,
+  clampConvaiLlmTemperature,
+  orderConvaiLlmsForUi,
+  isNonV3ConvaiTtsModel,
+  CONVAI_TTS_VOICE_DEFAULTS,
+} from '@/lib/elevenlabsConvai'
 
 const ASSISTANTS_PAGE_SIZE = 9
+const DEFAULT_LLM = 'gpt-4o'
+const DEFAULT_TEMPERATURE = 0.75
 const DEFAULT_ASSISTANT_OPTIONS = {
   firstMessageMode: 'assistant-speaks-first-with-model-generated-message',
   firstMessage: 'Hello.',
@@ -51,6 +64,13 @@ function extractAssistantsPayload(result) {
 
 export default function AiAssistTab() {
   const toast = useToast()
+  const {
+    isElevenLabs,
+    effectiveVoiceProvider,
+    loading: voiceProviderSettingsLoading,
+    saving: voiceProviderSaving,
+    updateVoiceProvider,
+  } = useAiAutomationVoice()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [assistants, setAssistants] = useState([])
@@ -81,6 +101,14 @@ export default function AiAssistTab() {
   const [voiceMessage, setVoiceMessage] = useState(DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
   const [backgroundSound, setBackgroundSound] = useState(DEFAULT_ASSISTANT_OPTIONS.backgroundSound)
   const [endCallMessage, setEndCallMessage] = useState(DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
+  const [llmModel, setLlmModel] = useState(DEFAULT_LLM)
+  const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE)
+  const [ttsModelId, setTtsModelId] = useState(DEFAULT_ELEVENLABS_TTS_MODEL_ID)
+  /** ElevenLabs Flash / Multilingual: per-assistant voice tuning (v3 uses persona defaults + expressive TTS). */
+  const [ttsStability, setTtsStability] = useState(CONVAI_TTS_VOICE_DEFAULTS.stability)
+  const [ttsSimilarity, setTtsSimilarity] = useState(CONVAI_TTS_VOICE_DEFAULTS.similarityBoost)
+  const [ttsSpeed, setTtsSpeed] = useState(CONVAI_TTS_VOICE_DEFAULTS.speed)
+  const [convaiLlms, setConvaiLlms] = useState([])
 
   // --- preview state ---
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -96,7 +124,49 @@ export default function AiAssistTab() {
 
   useEffect(() => { setPage(1) }, [debouncedSearch])
 
+  useEffect(() => {
+    if (!isElevenLabs) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await api.get('/api/ai-assistant/elevenlabs/convai-llms')
+        const rows = orderConvaiLlmsForUi(normalizeConvaiLlmApiPayload(r.data))
+        if (!cancelled && r.success && rows.length > 0) {
+          setConvaiLlms(rows)
+        } else if (!cancelled && r.success && rows.length === 0) {
+          console.warn('[AiAssistTab] ConvAI LLM list empty:', r.message)
+        } else if (!cancelled && !r.success) {
+          toast.error({
+            title: 'LLM list',
+            message: r.error || 'Could not load ConvAI models from the server.',
+          })
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error(e)
+          toast.error({
+            title: 'LLM list',
+            message: 'Network error loading ConvAI models.',
+          })
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isElevenLabs, toast])
+
   // ── derived selected items ──
+  const llmSelectOptions = useMemo(() => {
+    const raw = convaiLlms.length > 0 ? convaiLlms : FALLBACK_CONVAI_LLM_OPTIONS
+    const base = orderConvaiLlmsForUi(raw)
+    const has = base.some((o) => o.value === llmModel)
+    if (llmModel && !has) {
+      return [{ value: llmModel, label: `${llmModel} (saved)` }, ...base]
+    }
+    return base
+  }, [convaiLlms, llmModel])
+
   const selectedPersona = useMemo(
     () => personas.find((p) => p._id === selectedPersonaId) || null,
     [personas, selectedPersonaId]
@@ -191,7 +261,26 @@ export default function AiAssistTab() {
     setVoiceMessage(DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
     setBackgroundSound(DEFAULT_ASSISTANT_OPTIONS.backgroundSound)
     setEndCallMessage(DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
+    setLlmModel(DEFAULT_LLM)
+    setTemperature(DEFAULT_TEMPERATURE)
+    setTtsModelId(DEFAULT_ELEVENLABS_TTS_MODEL_ID)
+    setTtsStability(CONVAI_TTS_VOICE_DEFAULTS.stability)
+    setTtsSimilarity(CONVAI_TTS_VOICE_DEFAULTS.similarityBoost)
+    setTtsSpeed(CONVAI_TTS_VOICE_DEFAULTS.speed)
   }
+
+  const syncVoiceTuningFromPersona = useCallback((persona) => {
+    if (!persona) return
+    setTtsStability(
+      typeof persona.stability === 'number' ? persona.stability : CONVAI_TTS_VOICE_DEFAULTS.stability
+    )
+    setTtsSimilarity(
+      typeof persona.similarityBoost === 'number'
+        ? persona.similarityBoost
+        : CONVAI_TTS_VOICE_DEFAULTS.similarityBoost
+    )
+    setTtsSpeed(CONVAI_TTS_VOICE_DEFAULTS.speed)
+  }, [])
 
   // ── open create dialog ──
   const openCreate = async () => {
@@ -252,6 +341,25 @@ export default function AiAssistTab() {
       setVoiceMessage(full.voiceMessage || DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
       setBackgroundSound(full.backgroundSound || DEFAULT_ASSISTANT_OPTIONS.backgroundSound)
       setEndCallMessage(full.endCallMessage || DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
+      setLlmModel(full.llmModel || DEFAULT_LLM)
+      setTemperature(
+        clampConvaiLlmTemperature(
+          typeof full.temperature === 'number' ? full.temperature : DEFAULT_TEMPERATURE,
+          DEFAULT_TEMPERATURE
+        )
+      )
+      const savedTts = full.ttsModelId && String(full.ttsModelId).trim()
+      setTtsModelId(savedTts || DEFAULT_ELEVENLABS_TTS_MODEL_ID)
+      const p = full.persona || {}
+      setTtsStability(
+        typeof p.stability === 'number' ? p.stability : CONVAI_TTS_VOICE_DEFAULTS.stability
+      )
+      setTtsSimilarity(
+        typeof p.similarityBoost === 'number'
+          ? p.similarityBoost
+          : CONVAI_TTS_VOICE_DEFAULTS.similarityBoost
+      )
+      setTtsSpeed(typeof p.speed === 'number' ? p.speed : CONVAI_TTS_VOICE_DEFAULTS.speed)
     } catch (e) {
       console.error(e)
       toast.error({ title: 'Error', message: 'Could not load assistant details.' })
@@ -319,11 +427,25 @@ export default function AiAssistTab() {
         firstMessageMode: String(firstMessageMode || ''),
         fileID: String(selectedKnowledgeFile?.fileID || selectedKnowledgeFileId || ''),
         firstMessage: String(firstMessage || ''),
+        llmModel: String(llmModel || DEFAULT_LLM),
+        temperature: Number(temperature),
+        ...(isElevenLabs
+          ? { ttsModelId: String(ttsModelId || DEFAULT_ELEVENLABS_TTS_MODEL_ID) }
+          : {}),
         persona: {
           provider: selectedPersona.provider,
-          similarityBoost: Number(selectedPersona.similarityBoost ?? 0.45),
-          stability: Number(selectedPersona.stability ?? 0.2),
           voiceId: selectedPersona.voiceId,
+          ...(isElevenLabs && isNonV3ConvaiTtsModel(ttsModelId)
+            ? {
+                stability: Number(ttsStability),
+                similarityBoost: Number(ttsSimilarity),
+                speed: Number(ttsSpeed),
+              }
+            : {
+                stability: Number(selectedPersona.stability ?? 0.2),
+                similarityBoost: Number(selectedPersona.similarityBoost ?? 0.45),
+                speed: CONVAI_TTS_VOICE_DEFAULTS.speed,
+              }),
         },
         scriptData: { script: String(selectedScript.script || '') },
         voiceMessage: String(voiceMessage || ''),
@@ -403,6 +525,48 @@ export default function AiAssistTab() {
           className="pl-9"
         />
       </div>
+
+      <Card className="border-border/80 bg-muted/20">
+        <CardContent className="py-4 space-y-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+            <div>
+              <p className="text-sm font-medium">Voice call backend</p>
+              <p className="text-xs text-muted-foreground max-w-xl">
+                This organisation uses <span className="font-mono text-foreground">{effectiveVoiceProvider}</span> for
+                assistants, knowledge uploads, and outbound calls. Choose ElevenLabs or Vapi below.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {voiceProviderSettingsLoading && <GlobalLoader variant="inline" size="sm" />}
+              <Select
+                className="min-w-[200px]"
+                value={effectiveVoiceProvider}
+                disabled={voiceProviderSettingsLoading || voiceProviderSaving}
+                onChange={async (e) => {
+                  const v = e.target.value
+                  if (v === effectiveVoiceProvider) return
+                  const r = await updateVoiceProvider(v)
+                  if (r.ok) {
+                    toast.success({
+                      title: 'Updated',
+                      message: 'Voice backend saved for your organisation.',
+                    })
+                  } else {
+                    toast.error({
+                      title: 'Update failed',
+                      message: r.error || 'Could not save voice backend.',
+                    })
+                  }
+                }}
+              >
+                <option value="elevenlabs">ElevenLabs</option>
+                <option value="vapi">Vapi</option>
+              </Select>
+            </div>
+          </div>
+         
+        </CardContent>
+      </Card>
 
       {/* States */}
       {loading && (
@@ -582,7 +746,16 @@ export default function AiAssistTab() {
 
               <div className="space-y-1.5">
                 <p className="text-sm font-medium">Persona <span className="text-destructive">*</span></p>
-                <Select value={selectedPersonaId} onChange={(e) => setSelectedPersonaId(e.target.value)} disabled={editorLoading}>
+                <Select
+                  value={selectedPersonaId}
+                  onChange={(e) => {
+                    const id = e.target.value
+                    setSelectedPersonaId(id)
+                    const p = personas.find((x) => x._id === id)
+                    if (p) syncVoiceTuningFromPersona(p)
+                  }}
+                  disabled={editorLoading}
+                >
                   <option value="">Select persona</option>
                   {personas.map((persona) => (
                     <option key={persona._id} value={persona._id}>
@@ -629,6 +802,137 @@ export default function AiAssistTab() {
                   ))}
                 </Select>
               </div>
+
+              {isElevenLabs && (
+                <div className="md:col-span-2 rounded-lg border border-border/80 bg-muted/30 p-4 space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold">ElevenLabs agent settings</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Pick the ConvAI LLM from your ElevenLabs workspace, the TTS family for the voice, and tuning
+                      for the LLM response. The backend injects audio-tag behaviour into the system prompt (e.g.{' '}
+                      <code className="text-[11px]">[laughs]</code>, <code className="text-[11px]">[sighs]</code>,{' '}
+                      <code className="text-[11px]">[pauses]</code>)—use those tags in your script for expressive
+                      delivery when using v3 Conversational TTS.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium">TTS model family</p>
+                    <p className="text-xs text-muted-foreground">
+                      Same three voice families as the ElevenLabs agent builder (Flash, v3 Conversational,
+                      Multilingual). Turbo variants are not listed; pick “(saved)” if your agent already uses one.
+                    </p>
+                    <Select
+                      value={ttsModelId}
+                      onChange={(e) => setTtsModelId(e.target.value)}
+                      disabled={editorLoading}
+                    >
+                      {[
+                        ...(ttsModelId &&
+                        !ELEVENLABS_CONVAI_TTS_OPTIONS.some((o) => o.value === ttsModelId)
+                          ? [{ value: ttsModelId, label: `${ttsModelId} (saved)` }]
+                          : []),
+                        ...ELEVENLABS_CONVAI_TTS_OPTIONS,
+                      ]
+                        .filter(
+                          (o, i, arr) => arr.findIndex((x) => x.value === o.value) === i
+                        )
+                        .map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                    </Select>
+                  </div>
+                  {isNonV3ConvaiTtsModel(ttsModelId) && (
+                    <div className="rounded-lg border border-border/60 bg-background/50 p-3 space-y-3">
+                      <p className="text-sm font-medium">Voice tuning (Flash / Multilingual)</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Maps to ElevenLabs ConvAI <code className="text-[10px]">conversation_config.tts</code>{' '}
+                        (stability, similarity_boost, speed). v3 Conversational uses expressive mode instead; tune the
+                        persona or switch TTS here for these sliders.
+                      </p>
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium">Stability ({ttsStability.toFixed(2)})</p>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={ttsStability}
+                          onChange={(e) => setTtsStability(Number(e.target.value))}
+                          disabled={editorLoading}
+                          className="w-full"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium">Similarity boost ({ttsSimilarity.toFixed(2)})</p>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={ttsSimilarity}
+                          onChange={(e) => setTtsSimilarity(Number(e.target.value))}
+                          disabled={editorLoading}
+                          className="w-full"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium">Speed ({ttsSpeed.toFixed(2)})</p>
+                        <input
+                          type="range"
+                          min={0.5}
+                          max={1.5}
+                          step={0.05}
+                          value={ttsSpeed}
+                          onChange={(e) => setTtsSpeed(Number(e.target.value))}
+                          disabled={editorLoading}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-medium">LLM model</p>
+                      <p className="text-xs text-muted-foreground">
+                        From your workspace <code className="text-[11px]">GET /v1/convai/llm/list</code> — the web app
+                        often shows a shorter curated picker, but the API can return more model IDs. Order below is for
+                        readability (GPT-family first, then Gemini, Claude, etc.).
+                      </p>
+                      <Select
+                        value={llmModel}
+                        onChange={(e) => setLlmModel(e.target.value)}
+                        disabled={editorLoading}
+                        className="font-mono text-xs"
+                      >
+                        {llmSelectOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-medium">Temperature ({temperature}) — 0–1</p>
+                      <p className="text-xs text-muted-foreground">
+                        LLM randomness (ElevenLabs ConvAI uses 0–1). For v3 TTS, voice mainly follows the persona;
+                        Flash / Multilingual adds stability, similarity, and speed above.
+                      </p>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={temperature}
+                        onChange={(e) => setTemperature(Number(e.target.value))}
+                        disabled={editorLoading}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -724,6 +1028,19 @@ export default function AiAssistTab() {
                     <Badge variant="outline" className="text-xs">
                       {previewData.backgroundSound || 'no background sound'}
                     </Badge>
+                    {isElevenLabs && (
+                      <>
+                        <Badge variant="outline" className="text-xs">
+                          LLM: {previewData.llmModel || 'gpt-4o'}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          temp: {previewData.temperature ?? '—'}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs font-mono">
+                          TTS: {previewData.ttsModelId || DEFAULT_ELEVENLABS_TTS_MODEL_ID}
+                        </Badge>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
