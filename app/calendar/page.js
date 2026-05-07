@@ -38,9 +38,9 @@ const FULLCALENDAR_VIEW = {
   [VIEW_MODE.MONTH]: "dayGridMonth",
 };
 const FULL_START_HOUR = 6;
-const FULL_END_HOUR = 22;
-const COMPACT_START_HOUR = 8;
-const COMPACT_END_HOUR = 21;
+const FULL_END_HOUR = 23;
+const COMPACT_START_HOUR = 9;
+const COMPACT_END_HOUR = 19;
 const DAY_ROW_HEIGHT = 72;
 const DAY_LEFT_RAIL_WIDTH = 86;
 
@@ -214,7 +214,7 @@ function SegmentedButton({ active, children, className, onClick }) {
       type="button"
       onClick={onClick}
       className={[
-        "h-10 px-4 text-[12px] leading-none select-none bg-background border border-border transition-colors",
+        "h-8 px-3 text-[11px] leading-none select-none bg-background border border-border transition-colors",
         active
           ? "font-bold text-foreground"
           : "font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50",
@@ -235,7 +235,7 @@ function IconCircleButton({ children, ariaLabel, onClick }) {
       type="button"
       aria-label={ariaLabel}
       onClick={onClick}
-      className="h-10 w-10 rounded-full bg-background border border-border grid place-items-center hover:bg-muted/50 transition-colors"
+      className="h-8 w-8 rounded-full bg-background border border-border grid place-items-center hover:bg-muted/50 transition-colors"
       style={{ boxShadow: COLORS.shadow }}
     >
       {children}
@@ -249,7 +249,7 @@ function SmallRoundedButton({ children, onClick, active }) {
       type="button"
       onClick={onClick}
       className={[
-        "h-10 rounded-[20px] px-4 border text-[12px] font-bold transition-colors",
+        "h-8 rounded-[20px] px-3 border text-[11px] font-bold transition-colors",
         active
           ? "border-[var(--studio-primary)] bg-[color-mix(in_srgb,var(--studio-primary)_12%,transparent)] text-[var(--studio-primary)]"
           : "border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
@@ -948,7 +948,7 @@ function TutorDayCalendar({
 
   const isToday = isSameDate(focusDate, now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const dayStartMins = startHour * 60 + slotAlignMins;
+  const dayStartMins = slotAlignMins;
   const nowOffset =
     isToday && nowMinutes >= dayStartMins && nowMinutes <= endHour * 60
       ? ((nowMinutes - dayStartMins) / customSlotMins) * DAY_ROW_HEIGHT
@@ -1224,8 +1224,17 @@ function TutorDayCalendar({
 
 function SlotSizePicker({ value, onApply }) {
   const [open, setOpen] = useState(false);
+  const [startTime, setStartTime] = useState("06:00");
+  const [pendingMins, setPendingMins] = useState(value);
 
   const isActive = value !== 30;
+
+  function handleApply() {
+    const [h, m] = startTime.split(":").map(Number);
+    const totalMins = (Number.isFinite(h) && Number.isFinite(m)) ? h * 60 + m : FULL_START_HOUR * 60;
+    onApply(pendingMins, totalMins);
+    setOpen(false);
+  }
 
   return (
     <div
@@ -1238,7 +1247,7 @@ function SlotSizePicker({ value, onApply }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={[
-          "h-10 rounded-[20px] border px-4 text-[12px] font-bold transition-colors inline-flex items-center gap-1.5",
+          "h-8 rounded-[20px] border px-3 text-[11px] font-bold transition-colors inline-flex items-center gap-1.5",
           isActive
             ? "border-primary bg-primary/10 text-primary"
             : "border-border bg-background text-foreground hover:bg-muted",
@@ -1252,32 +1261,52 @@ function SlotSizePicker({ value, onApply }) {
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-popover shadow-lg p-3 z-50 space-y-2"
+          className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-border bg-popover shadow-lg p-3 z-50 space-y-3"
         >
-          <p className="text-[11px] font-semibold text-foreground">Slot Size</p>
-          <div className="flex flex-wrap gap-1.5">
-            {[30, 45, 50, 60, 90].map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => { onApply(m, 0); setOpen(false); }}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
-                  value === m
-                    ? "bg-primary border-primary text-white"
-                    : "bg-muted/50 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                {m}m
-              </button>
-            ))}
+          <div>
+            <p className="text-[11px] font-semibold text-foreground mb-1.5">Slot Size</p>
+            <div className="flex flex-wrap gap-1.5">
+              {[30, 45, 50, 60, 90].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPendingMins(m)}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                    pendingMins === m
+                      ? "bg-primary border-primary text-white"
+                      : "bg-muted/50 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  {m}m
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="pt-1">
+
+          <div>
+            <p className="text-[11px] font-semibold text-foreground mb-1.5">Start Time</p>
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              className="h-8 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary transition-colors"
+            />
+          </div>
+
+          <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => { onApply(30, 0); setOpen(false); }}
-              className="w-full h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-muted-foreground hover:bg-muted/40"
+              onClick={() => { setStartTime("06:00"); setPendingMins(30); onApply(30, FULL_START_HOUR * 60); setOpen(false); }}
+              className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-muted-foreground hover:bg-muted/40"
             >
-              Reset (30m)
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={handleApply}
+              className="flex-1 h-8 rounded-lg bg-primary text-[11px] font-semibold text-white hover:bg-primary/90 transition-colors"
+            >
+              Apply
             </button>
           </div>
         </div>
@@ -1318,7 +1347,7 @@ function StatusFilterDropdown({ value, onChange }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="h-10 rounded-[20px] border border-border bg-background px-4 text-[12px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5"
+        className="h-8 rounded-[20px] border border-border bg-background px-3 text-[11px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5"
         style={{ boxShadow: COLORS.shadow }}
       >
         {value !== "all" && (
@@ -1357,6 +1386,95 @@ function StatusFilterDropdown({ value, onChange }) {
   );
 }
 
+function PrivateLessonSummaryBar({ viewMode, focusDate, events, allServices = [] }) {
+  const privateServiceCodes = useMemo(
+    () => new Set(allServices.filter((s) => !s.type || s.type === "private").map((s) => s.serviceCode)),
+    [allServices],
+  );
+
+  const cells = useMemo(() => {
+    const privateEvents = events.filter((e) => {
+      const { eventType, serviceCode } = e.extendedProps ?? {};
+      if (eventType !== "private") return false;
+      if (!privateServiceCodes.size) return true;
+      return privateServiceCodes.has(serviceCode);
+    });
+
+    if (viewMode === VIEW_MODE.DAY) {
+      const count = privateEvents.filter((e) => {
+        const d = new Date(e.start);
+        return isSameDate(d, focusDate);
+      }).length;
+      return [{ label: focusDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }), count }];
+    }
+
+    if (viewMode === VIEW_MODE.WEEK) {
+      const weekStart = startOfWeekSunday(focusDate);
+      return Array.from({ length: 7 }, (_, i) => {
+        const day = addDays(weekStart, i);
+        const count = privateEvents.filter((e) => isSameDate(new Date(e.start), day)).length;
+        return {
+          label: day.toLocaleDateString("en-US", { weekday: "short", day: "numeric" }),
+          count,
+          isToday: isSameDate(day, new Date()),
+        };
+      });
+    }
+
+    if (viewMode === VIEW_MODE.MONTH) {
+      // Show per-week totals for the 5 weeks of the month view
+      const monthStart = new Date(focusDate.getFullYear(), focusDate.getMonth(), 1);
+      const firstSunday = startOfWeekSunday(monthStart);
+      return Array.from({ length: 5 }, (_, i) => {
+        const weekStart = addDays(firstSunday, i * 7);
+        const weekEnd = addDays(weekStart, 6);
+        const count = privateEvents.filter((e) => {
+          const d = new Date(e.start);
+          return d >= weekStart && d <= weekEnd;
+        }).length;
+        const label = `${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekEnd.toLocaleDateString("en-US", { day: "numeric" })}`;
+        return { label, count };
+      });
+    }
+
+    return [];
+  }, [viewMode, focusDate, events]);
+
+  if (!cells.length || viewMode === VIEW_MODE.LIST) return null;
+
+  const total = cells.reduce((s, c) => s + c.count, 0);
+
+  return (
+    <div className="shrink-0 px-6 py-2 border-b border-border/50 flex items-center gap-3 overflow-x-auto scrollbar-hide">
+      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 shrink-0">
+        Private Lessons
+      </span>
+      <div className="flex items-center gap-1.5">
+        {cells.map((cell, i) => (
+          <div
+            key={i}
+            className={[
+              "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium shrink-0 border transition-colors",
+              cell.count > 0
+                ? "border-brand/30 bg-brand/10 text-brand"
+                : "border-border/50 bg-muted/30 text-muted-foreground/50",
+              cell.isToday ? "ring-1 ring-brand/40" : "",
+            ].join(" ")}
+          >
+            <span className="text-[10px] text-muted-foreground/70">{cell.label}</span>
+            <span className={`font-bold ${cell.count > 0 ? "text-brand" : "text-muted-foreground/40"}`}>
+              {cell.count}
+            </span>
+          </div>
+        ))}
+      </div>
+      <span className="text-[11px] font-bold text-foreground shrink-0">
+        {total} total
+      </span>
+    </div>
+  );
+}
+
 function TeacherFilterDropdown({ instructors, value, onChange }) {
   const [open, setOpen] = useState(false);
   const current = value ? instructors.find((i) => i.key === value) : null;
@@ -1370,7 +1488,7 @@ function TeacherFilterDropdown({ instructors, value, onChange }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="h-10 rounded-[20px] border border-border bg-background px-4 text-[12px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5"
+        className="h-8 rounded-[20px] border border-border bg-background px-3 text-[11px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5"
         style={{ boxShadow: COLORS.shadow }}
       >
         {current && (
@@ -1381,7 +1499,7 @@ function TeacherFilterDropdown({ instructors, value, onChange }) {
             {current.initials}
           </span>
         )}
-        {current ? current.name : "All Teachers"}
+        {current ? current.name : "T"}
         <ChevronDown
           className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
         />
@@ -1436,6 +1554,7 @@ export default function CalendarPage() {
 
   const [events, setEvents] = useState([]);
   const [instructors, setInstructors] = useState([]);
+  const [allServices, setAllServices] = useState([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedTeacherId, setSelectedTeacherId] = useState(null);
@@ -1444,7 +1563,7 @@ export default function CalendarPage() {
   const [compactHours, setCompactHours] = useState(false);
   const [hideEmptySlots, setHideEmptySlots] = useState(false);
   const [customSlotMins, setCustomSlotMins] = useState(30);
-  const [slotAlignMins, setSlotAlignMins] = useState(0);
+  const [slotAlignMins, setSlotAlignMins] = useState(FULL_START_HOUR * 60);
 
   const dayStartHour = compactHours ? COMPACT_START_HOUR : FULL_START_HOUR;
   const dayEndHour   = compactHours ? COMPACT_END_HOUR   : FULL_END_HOUR;
@@ -1488,6 +1607,12 @@ export default function CalendarPage() {
     fetchCalendarEvents();
   }, [fetchCalendarEvents]);
 
+  useEffect(() => {
+    api.get("/api/calendar-service?limit=200").then((res) => {
+      if (res.success && Array.isArray(res.data)) setAllServices(res.data);
+    });
+  }, []);
+
   const headerLabel = useMemo(() => {
     if (viewMode === VIEW_MODE.LIST) {
       const end = addDays(focusDate, 13);
@@ -1500,19 +1625,28 @@ export default function CalendarPage() {
 
   // Apply status filter — compare against effectiveStatus (auto-completed for past events)
   const filteredEvents = useMemo(() => {
-    if (statusFilter === "all") return events;
-    return events.filter(
-      (e) => (e.extendedProps?.effectiveStatus ?? e.extendedProps?.status ?? "scheduled") === statusFilter,
-    );
-  }, [events, statusFilter]);
+    let result = events;
+    if (statusFilter !== "all") {
+      result = result.filter(
+        (e) => (e.extendedProps?.effectiveStatus ?? e.extendedProps?.status ?? "scheduled") === statusFilter,
+      );
+    }
+    if (selectedTeacherId) {
+      result = result.filter((e) => e.extendedProps?.tutorKey === selectedTeacherId);
+    }
+    return result;
+  }, [events, statusFilter, selectedTeacherId]);
+
+  // effectiveStartMins: the later of the user's start-time-picker and compact/full range start
+  const effectiveStartMins = Math.max(slotAlignMins, dayStartHour * 60);
 
   // When hideEmptySlots is on, shrink the visible hour range to where events actually are
   const { effectiveSlotMin, effectiveSlotMax, effectiveSlotMinStr, effectiveSlotMaxStr } = useMemo(() => {
     if (!hideEmptySlots) {
       return {
-        effectiveSlotMin: dayStartHour,
+        effectiveSlotMin: Math.floor(effectiveStartMins / 60),
         effectiveSlotMax: dayEndHour,
-        effectiveSlotMinStr: `${String(dayStartHour).padStart(2, "0")}:${String(slotAlignMins).padStart(2, "0")}:00`,
+        effectiveSlotMinStr: `${String(Math.floor(effectiveStartMins / 60)).padStart(2, "0")}:${String(effectiveStartMins % 60).padStart(2, "0")}:00`,
         effectiveSlotMaxStr: `${String(dayEndHour).padStart(2, "0")}:00:00`,
       };
     }
@@ -1524,9 +1658,9 @@ export default function CalendarPage() {
     });
     if (visible.length === 0) {
       return {
-        effectiveSlotMin: dayStartHour,
+        effectiveSlotMin: Math.floor(effectiveStartMins / 60),
         effectiveSlotMax: dayEndHour,
-        effectiveSlotMinStr: `${String(dayStartHour).padStart(2, "0")}:${String(slotAlignMins).padStart(2, "0")}:00`,
+        effectiveSlotMinStr: `${String(Math.floor(effectiveStartMins / 60)).padStart(2, "0")}:${String(effectiveStartMins % 60).padStart(2, "0")}:00`,
         effectiveSlotMaxStr: `${String(dayEndHour).padStart(2, "0")}:00:00`,
       };
     }
@@ -1537,13 +1671,15 @@ export default function CalendarPage() {
       minH = Math.min(minH, s.getHours());
       maxH = Math.max(maxH, end.getHours() + (end.getMinutes() > 0 ? 1 : 0));
     });
+    const clampedMinH = Math.max(0, minH - 1);
+    const clampedMaxH = Math.min(24, maxH + 1);
     return {
-      effectiveSlotMin: Math.max(0, minH - 1),
-      effectiveSlotMax: Math.min(24, maxH + 1),
-      effectiveSlotMinStr: `${String(Math.max(0, minH - 1)).padStart(2, "0")}:${String(slotAlignMins).padStart(2, "0")}:00`,
-      effectiveSlotMaxStr: `${String(Math.min(24, maxH + 1)).padStart(2, "0")}:00:00`,
+      effectiveSlotMin: clampedMinH,
+      effectiveSlotMax: clampedMaxH,
+      effectiveSlotMinStr: `${String(clampedMinH).padStart(2, "0")}:${String(effectiveStartMins % 60).padStart(2, "0")}:00`,
+      effectiveSlotMaxStr: `${String(clampedMaxH).padStart(2, "0")}:00:00`,
     };
-  }, [hideEmptySlots, filteredEvents, focusDate, dayStartHour, dayEndHour, slotAlignMins]);
+  }, [hideEmptySlots, filteredEvents, focusDate, dayStartHour, dayEndHour, effectiveStartMins]);
   
   const effectiveSlotLabelInterval = useMemo(() => {
     if (customSlotMins === 30) return "01:00:00";
@@ -1641,7 +1777,7 @@ export default function CalendarPage() {
           className="bg-background rounded-[24px_0px_24px_24px] w-full flex flex-col"
           style={{ height: "calc(100vh - 120px)" }}
         >
-          <div className="shrink-0 px-6 py-3 flex items-center justify-between gap-3 border-b border-border/50">
+          <div className="shrink-0 px-6 py-1.5 flex items-center justify-between gap-3 border-b border-border/50">
             <div className="flex items-center gap-2">
               <SmallRoundedButton onClick={goToToday}>Today</SmallRoundedButton>
               <SmallRoundedButton active={compactHours} onClick={() => setCompactHours((v) => !v)}>
@@ -1702,7 +1838,7 @@ export default function CalendarPage() {
                 </SegmentedButton>
               </div>
 
-              {viewMode === VIEW_MODE.DAY && instructors.length > 0 && (
+              {instructors.length > 0 && (
                 <TeacherFilterDropdown
                   instructors={instructors}
                   value={selectedTeacherId}
@@ -1720,7 +1856,7 @@ export default function CalendarPage() {
               <Link
                 href="/settings/setup"
                 title="Calendar Setup"
-                className="h-9 w-9 rounded-full border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+                className="h-8 w-8 rounded-full border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
               >
                 <Settings2 className="h-4 w-4" />
               </Link>
@@ -1728,19 +1864,26 @@ export default function CalendarPage() {
               <button
                 type="button"
                 onClick={() => setIsAppointmentPanelOpen(true)}
-                className="h-10 rounded-[20px] bg-brand px-5 text-[12px] font-bold text-brand-foreground hover:bg-brand-dark active:scale-[0.98] transition-all shrink-0"
+                className="h-8 rounded-[20px] bg-brand px-4 text-[11px] font-bold text-brand-foreground hover:bg-brand-dark active:scale-[0.98] transition-all shrink-0"
               >
                 + Create
               </button>
             </div>
           </div>
 
+          <PrivateLessonSummaryBar
+            viewMode={viewMode}
+            focusDate={focusDate}
+            events={filteredEvents}
+            allServices={allServices}
+          />
+
           <div className="flex-1 min-h-0 px-6 pt-6 pb-6">
             <div className="flex h-full gap-4 min-w-0">
               <div className="flex-1 min-w-0">
                 {viewMode === VIEW_MODE.DAY ? (
                   <TutorDayCalendar
-                    startHour={effectiveSlotMin}
+                    startHour={Math.floor(effectiveStartMins / 60)}
                     endHour={effectiveSlotMax}
                     focusDate={focusDate}
                     now={now}
@@ -1758,7 +1901,7 @@ export default function CalendarPage() {
                       setIsAppointmentPanelOpen(true);
                     }}
                     customSlotMins={customSlotMins}
-                    slotAlignMins={slotAlignMins}
+                    slotAlignMins={effectiveStartMins}
                   />
                 ) : viewMode === VIEW_MODE.LIST ? (
                   <ListCalendarView

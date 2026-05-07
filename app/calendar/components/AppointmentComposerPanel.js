@@ -1195,13 +1195,14 @@ function GroupClassFields({
   form,
   setField,
   instructorOptions,
-  customerOptions,
+  groupCustomerOptions,
   lessonOptions,
   lessonMap,
   allServices,
   schedulingCodeOptions,
   lessonDuration,
   packageOptions,
+  suggestedAmount,
   onNewCustomer,
 }) {
   return (
@@ -1210,7 +1211,7 @@ function GroupClassFields({
         form={form}
         setField={setField}
         instructorOptions={instructorOptions}
-        customerOptions={customerOptions}
+        customerOptions={groupCustomerOptions}
         packageOptions={packageOptions}
         onNewCustomer={onNewCustomer}
       />
@@ -1229,8 +1230,9 @@ function GroupClassFields({
         lessonDuration={lessonDuration}
       />
       <div className="space-y-3">
-        <SectionDivider label="Notes" />
+        <SectionDivider label="Notes & Payment" />
         <NotesBlock form={form} setField={setField} />
+        <PaymentBlock form={form} setField={setField} suggestedAmount={suggestedAmount} />
       </div>
     </div>
   );
@@ -1308,17 +1310,7 @@ export default function AppointmentComposerPanel({
   initialDuration,
 }) {
   const [activeTab, setActiveTab] = useState("Appointment");
-  const [form, setForm] = useState(() => ({
-    ...EMPTY_FORM,
-    date: initialDate || "",
-    start_time: initialTime || "",
-    end_time: initialTime
-      ? initialDuration
-        ? addMinutes(initialTime, initialDuration)
-        : bumpHour(initialTime)
-      : "",
-  }));
-
+  const [form, setForm] = useState({ ...EMPTY_FORM });
   const [instructorOptions, setInstructorOptions] = useState([]);
   const [customerOptions, setCustomerOptions] = useState([]);
   const [lessonOptions, setLessonOptions] = useState([]);
@@ -1327,10 +1319,29 @@ export default function AppointmentComposerPanel({
   const [allServices, setAllServices] = useState([]);
   const [packageOptions, setPackageOptions] = useState([]);
   const [packageTemplates, setPackageTemplates] = useState([]);
-  const [enrollments, setEnrollments] = useState({}); // customerId → enrollment[]
+  const [allEnrollmentsForGroupFilter, setAllEnrollmentsForGroupFilter] = useState([]);
+  const [enrollments, setEnrollments] = useState({});
   const [showEnrollmentWizard, setShowEnrollmentWizard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setActiveTab("Appointment");
+    setShowEnrollmentWizard(false);
+    setError(null);
+    setForm({
+      ...EMPTY_FORM,
+      date: initialDate || "",
+      start_time: initialTime || "",
+      end_time: initialTime
+        ? initialDuration
+          ? addMinutes(initialTime, initialDuration)
+          : bumpHour(initialTime)
+        : "",
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const setField = (key, value) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -1354,13 +1365,14 @@ export default function AppointmentComposerPanel({
   useEffect(() => {
     async function load() {
       try {
-        const [usersRes, customersRes, lessonsRes, packagesRes, servicesRes] =
+        const [usersRes, customersRes, lessonsRes, packagesRes, servicesRes, customerPkgRes] =
           await Promise.all([
             api.get("/api/teacher?limit=200&status=active"),
             api.get("/api/customer?limit=200"),
             api.get("/api/lesson?limit=200"),
             api.get("/api/package?limit=200"),
             api.get("/api/calendar-service?limit=200"),
+            api.get("/api/customer-package?limit=500"),
           ]);
 
         if (usersRes.success && Array.isArray(usersRes.data))
@@ -1378,6 +1390,11 @@ export default function AppointmentComposerPanel({
               label: c.name || c.email || String(c._id),
             })),
           );
+
+        // Store raw enrollments for later cross-referencing once calendarServices are loaded
+        if (customerPkgRes.success && Array.isArray(customerPkgRes.data)) {
+          setAllEnrollmentsForGroupFilter(customerPkgRes.data);
+        }
 
         if (lessonsRes.success && Array.isArray(lessonsRes.data)) {
           const map = {};
@@ -1429,14 +1446,22 @@ export default function AppointmentComposerPanel({
       .catch(() => {});
   }, [form.customer_id]);
 
-  const schedulingCodeOptions = useMemo(
-    () =>
-      allServices.map((s) => ({
+  const SERVICE_TYPE_MAP = {
+    Appointment: "private",
+    "Group Class": "group",
+    "To Do": "todo",
+  };
+
+  const schedulingCodeOptions = useMemo(() => {
+    const typeFilter = SERVICE_TYPE_MAP[activeTab];
+    return allServices
+      .filter((s) => !typeFilter || s.type === typeFilter)
+      .map((s) => ({
         value: String(s._id),
         label: s.serviceCode || s.serviceName,
-      })),
-    [allServices],
-  );
+      }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allServices, activeTab]);
 
   const suggestedAmount = useMemo(() => {
     if (!form.service_id) return null;
@@ -1572,7 +1597,7 @@ export default function AppointmentComposerPanel({
             : undefined,
       lessonID: form.lesson_id || undefined,
       calendarServiceID: form.service_id || undefined,
-      enrollmentID: form.enrollment_id || undefined,
+      enrollmentID: activeTab === "Group Class" ? undefined : form.enrollment_id || undefined,
       packageID: packageTemplateId || undefined,
       color: form.event_color || undefined,
       notes:
@@ -1654,6 +1679,31 @@ export default function AppointmentComposerPanel({
     setIsSaving(false);
   };
 
+  const privateServices = useMemo(
+    () => allServices.filter((s) => s.type === "private"),
+    [allServices],
+  );
+
+  // Build a set of serviceCodes that have type=group in the catalog
+  const groupServiceCodes = useMemo(
+    () => new Set(allServices.filter((s) => s.type === "group").map((s) => s.serviceCode)),
+    [allServices],
+  );
+
+  // Customers who have at least one active enrollment containing a group service
+  const groupCustomerOptions = useMemo(() => {
+    if (!groupServiceCodes.size || !allEnrollmentsForGroupFilter.length) return customerOptions;
+    const ids = new Set();
+    allEnrollmentsForGroupFilter.forEach((enrollment) => {
+      const services = enrollment.package?.services ?? [];
+      if (services.some((s) => groupServiceCodes.has(s.serviceCode))) {
+        const cid = enrollment.customerID?._id ?? enrollment.customerID;
+        if (cid) ids.add(String(cid));
+      }
+    });
+    return customerOptions.filter((c) => ids.has(c.value));
+  }, [allEnrollmentsForGroupFilter, groupServiceCodes, customerOptions]);
+
   const sharedProps = {
     form,
     setField,
@@ -1661,7 +1711,7 @@ export default function AppointmentComposerPanel({
     customerOptions,
     lessonOptions,
     lessonMap,
-    allServices,
+    allServices: activeTab === "Appointment" ? privateServices : allServices,
     schedulingCodeOptions,
     lessonDuration,
     suggestedAmount,
@@ -1695,7 +1745,7 @@ export default function AppointmentComposerPanel({
     if (activeTab === "Appointment")
       return <AppointmentFields {...sharedProps} />;
     if (activeTab === "Group Class")
-      return <GroupClassFields {...sharedProps} />;
+      return <GroupClassFields {...sharedProps} groupCustomerOptions={groupCustomerOptions} />;
     if (activeTab === "To Do")
       return (
         <ToDoFields
