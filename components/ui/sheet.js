@@ -4,7 +4,7 @@ import { Fragment } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-function Sheet({ open, onClose, children, side = 'right' }) {
+function Sheet({ open, onClose, children, side = 'right', width }) {
   if (!open) return null
 
   const sideClasses = {
@@ -24,7 +24,10 @@ function Sheet({ open, onClose, children, side = 'right' }) {
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
-      <div className={`fixed ${sideClasses[side]} z-50 bg-card border-border shadow-2xl ${animationClasses[side]}`}>
+      <div
+        className={`fixed ${sideClasses[side]} z-50 bg-card border-border shadow-2xl ${animationClasses[side]}`}
+        style={width ? { width } : undefined}
+      >
         {children}
       </div>
     </div>

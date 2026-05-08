@@ -41,7 +41,7 @@ const FULL_START_HOUR = 6;
 const FULL_END_HOUR = 23;
 const COMPACT_START_HOUR = 9;
 const COMPACT_END_HOUR = 19;
-const DAY_ROW_HEIGHT = 72;
+const DAY_ROW_HEIGHT = 28;
 const DAY_LEFT_RAIL_WIDTH = 86;
 
 function addDays(date, days) {
@@ -1120,7 +1120,7 @@ function TutorDayCalendar({
 
                 const top =
                   ((startMins - dayStartMins) / customSlotMins) * DAY_ROW_HEIGHT;
-                const height = Math.max((duration / customSlotMins) * DAY_ROW_HEIGHT, 22);
+                const height = Math.max((duration / customSlotMins) * DAY_ROW_HEIGHT, DAY_ROW_HEIGHT);
 
                 const widthPercent = 100 / (event.totalLanes || 1);
                 const leftPercent = (event.lane || 0) * widthPercent;
@@ -1146,7 +1146,7 @@ function TutorDayCalendar({
                     } ${isCompletedEvent ? "opacity-75" : ""}`}
                     style={{
                       top,
-                      minHeight: height,
+                      height,
                       left: `calc(${leftPercent}% + 2px)`,
                       width: `calc(${widthPercent}% - 4px)`,
                       borderLeft: `3px solid ${accentColor}`,
@@ -1154,8 +1154,21 @@ function TutorDayCalendar({
                       boxShadow: "0 1px 3px hsl(var(--foreground)/0.06)",
                       zIndex: 10,
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 4px 12px ${accentColor}40`; e.currentTarget.style.zIndex = "20"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 1px 3px hsl(var(--foreground)/0.06)"; e.currentTarget.style.zIndex = "10"; }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = `0 4px 12px ${accentColor}40`;
+                      e.currentTarget.style.zIndex = "20";
+                      e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 38%, hsl(var(--card)))`;
+                      e.currentTarget.style.transform = "scaleX(1.01)";
+                      showEventTooltip(e, event.extendedProps || {});
+                    }}
+                    onMouseMove={(e) => positionTooltip(e)}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = "0 1px 3px hsl(var(--foreground)/0.06)";
+                      e.currentTarget.style.zIndex = "10";
+                      e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 22%, hsl(var(--card)))`;
+                      e.currentTarget.style.transform = "scaleX(1)";
+                      hideEventTooltip();
+                    }}
                   >
                     {isCompletedEvent && (
                       <span

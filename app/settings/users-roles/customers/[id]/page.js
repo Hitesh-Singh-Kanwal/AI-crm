@@ -1,52 +1,83 @@
-'use client'
+"use client";
 
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeft, Pencil, Plus, Trash2, Pin, PinOff,
-  Package, BookOpen, StickyNote, User, ChevronDown, X,
-  CreditCard, RotateCcw, Receipt, ClipboardList,
-} from 'lucide-react'
-import MainLayout from '@/components/layout/MainLayout'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import LoadingSpinner from '@/components/shared/LoadingSpinner'
-import api from '@/lib/api'
-import { useToast } from '@/components/ui/toast'
-import { getInitials, formatDate } from '@/lib/utils'
+  ArrowLeft,
+  Pencil,
+  Plus,
+  Trash2,
+  Pin,
+  PinOff,
+  Package,
+  BookOpen,
+  StickyNote,
+  User,
+  ChevronDown,
+  X,
+  CreditCard,
+  RotateCcw,
+  Receipt,
+  ClipboardList,
+} from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import LoadingSpinner from "@/components/shared/LoadingSpinner";
+import api from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
+import { getInitials, formatDate } from "@/lib/utils";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 function statusColor(status) {
-  return {
-    active: 'bg-emerald-500/10 text-emerald-600',
-    expired: 'bg-amber-500/10 text-amber-600',
-    exhausted: 'bg-rose-500/10 text-rose-600',
-    cancelled: 'bg-muted text-muted-foreground',
-  }[status] ?? 'bg-muted text-muted-foreground'
+  return (
+    {
+      active: "bg-emerald-500/10 text-emerald-600",
+      expired: "bg-amber-500/10 text-amber-600",
+      exhausted: "bg-rose-500/10 text-rose-600",
+      cancelled: "bg-muted text-muted-foreground",
+    }[status] ?? "bg-muted text-muted-foreground"
+  );
 }
 
 function paymentStatusColor(ps) {
-  return {
-    paid: 'bg-emerald-500/10 text-emerald-600',
-    partial: 'bg-amber-500/10 text-amber-600',
-    unpaid: 'bg-rose-500/10 text-rose-600',
-  }[ps] ?? 'bg-muted text-muted-foreground'
+  return (
+    {
+      paid: "bg-emerald-500/10 text-emerald-600",
+      partial: "bg-amber-500/10 text-amber-600",
+      unpaid: "bg-rose-500/10 text-rose-600",
+    }[ps] ?? "bg-muted text-muted-foreground"
+  );
 }
 
 function paymentTypeBadge(type) {
-  return {
-    package_purchase: { label: 'Package Sale', cls: 'bg-blue-500/10 text-blue-600' },
-    credit_topup: { label: 'Credit Top-up', cls: 'bg-violet-500/10 text-violet-600' },
-    refund: { label: 'Refund', cls: 'bg-rose-500/10 text-rose-600' },
-  }[type] ?? { label: type, cls: 'bg-muted text-muted-foreground' }
+  return (
+    {
+      package_purchase: {
+        label: "Package Sale",
+        cls: "bg-blue-500/10 text-blue-600",
+      },
+      credit_topup: {
+        label: "Credit Top-up",
+        cls: "bg-violet-500/10 text-violet-600",
+      },
+      refund: { label: "Refund", cls: "bg-rose-500/10 text-rose-600" },
+    }[type] ?? { label: type, cls: "bg-muted text-muted-foreground" }
+  );
 }
 
-const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other']
+const PAYMENT_METHODS = ["cash", "card", "online", "cheque", "other"];
 
 function SessionBar({ used, total }) {
-  const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0
+  const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
   return (
     <div className="flex items-center gap-2 mt-0.5">
       <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
@@ -59,84 +90,123 @@ function SessionBar({ used, total }) {
         {total - used} left / {total}
       </span>
     </div>
-  )
+  );
 }
 
 function FormField({ label, required, children }) {
   return (
     <div className="space-y-1.5">
       <label className="block text-[12px] font-medium text-muted-foreground">
-        {label}{required && <span className="text-destructive ml-0.5">*</span>}
+        {label}
+        {required && <span className="text-destructive ml-0.5">*</span>}
       </label>
       {children}
     </div>
-  )
+  );
 }
 
 // ─── RecordPaymentDialog ─────────────────────────────────────────────────────
 
-function RecordPaymentDialog({ open, onClose, customerID, enrollmentID, outstanding, onSuccess }) {
-  const [amount, setAmount] = useState('')
-  const [method, setMethod] = useState('cash')
-  const [notes, setNotes] = useState('')
-  const [saving, setSaving] = useState(false)
-  const toast = useToast()
+function RecordPaymentDialog({
+  open,
+  onClose,
+  customerID,
+  enrollmentID,
+  outstanding,
+  onSuccess,
+}) {
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("cash");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
-  function reset() { setAmount(''); setMethod('cash'); setNotes('') }
+  function reset() {
+    setAmount("");
+    setMethod("cash");
+    setNotes("");
+  }
 
-  const num = parseFloat(amount)
-  const isPartial = outstanding != null && !isNaN(num) && num > 0 && num < outstanding
-  const isFull = outstanding != null && !isNaN(num) && num >= outstanding
+  const num = parseFloat(amount);
+  const isPartial =
+    outstanding != null && !isNaN(num) && num > 0 && num < outstanding;
+  const isFull = outstanding != null && !isNaN(num) && num >= outstanding;
 
   async function handleSubmit(e) {
-    e.preventDefault()
-    if (isNaN(num) || num <= 0) return
-    setSaving(true)
-    const res = await api.post('/api/payment', {
+    e.preventDefault();
+    if (isNaN(num) || num <= 0) return;
+    setSaving(true);
+    const res = await api.post("/api/payment", {
       customerID,
       enrollmentID,
-      type: 'package_purchase',
+      type: "package_purchase",
       amount: num,
       method,
       notes: notes.trim() || undefined,
-    })
+    });
     if (res.success) {
-      toast.success(isPartial ? 'Partial payment recorded.' : 'Payment recorded.')
-      reset()
-      onSuccess()
-      onClose()
+      toast.success(
+        isPartial ? "Partial payment recorded." : "Payment recorded.",
+      );
+      reset();
+      onSuccess();
+      onClose();
     } else {
-      toast.error(res.error || 'Failed to record payment.')
+      toast.error(res.error || "Failed to record payment.");
     }
-    setSaving(false)
+    setSaving(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose() } }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) {
+          reset();
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="max-w-sm">
-        <DialogHeader><DialogTitle>Record Payment</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Record Payment</DialogTitle>
+        </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           {outstanding != null && (
             <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
-              <span className="text-[12px] text-muted-foreground">Outstanding</span>
-              <span className="text-[13px] font-semibold text-rose-500">${Number(outstanding).toFixed(2)}</span>
+              <span className="text-[12px] text-muted-foreground">
+                Outstanding
+              </span>
+              <span className="text-[13px] font-semibold text-rose-500">
+                ${Number(outstanding).toFixed(2)}
+              </span>
             </div>
           )}
           <FormField label="Amount" required>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">
+                $
+              </span>
               <input
-                type="number" min="0.01" step="0.01" value={amount}
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
                 className="h-9 w-full rounded-lg border border-border bg-background pl-7 pr-3 text-[13px] outline-none focus:border-primary"
               />
             </div>
             {isPartial && (
-              <p className="text-[11px] text-amber-500 mt-1">Partial payment — ${(outstanding - num).toFixed(2)} will remain outstanding</p>
+              <p className="text-[11px] text-amber-500 mt-1">
+                Partial payment — ${(outstanding - num).toFixed(2)} will remain
+                outstanding
+              </p>
             )}
             {isFull && (
-              <p className="text-[11px] text-emerald-500 mt-1">Full payment — package will be marked as paid</p>
+              <p className="text-[11px] text-emerald-500 mt-1">
+                Full payment — package will be marked as paid
+              </p>
             )}
           </FormField>
           <FormField label="Method" required>
@@ -146,77 +216,121 @@ function RecordPaymentDialog({ open, onClose, customerID, enrollmentID, outstand
                 onChange={(e) => setMethod(e.target.value)}
                 className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
               >
-                {PAYMENT_METHODS.map((m) => <option key={m} value={m} className="capitalize">{m}</option>)}
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m} value={m} className="capitalize">
+                    {m}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             </div>
           </FormField>
           <FormField label="Notes (optional)">
             <input
-              type="text" value={notes}
+              type="text"
+              value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Cash on arrival"
               className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
             />
           </FormField>
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" size="sm" onClick={() => { reset(); onClose() }}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={saving || !amount || isNaN(num) || num <= 0}>
-              {saving ? 'Saving…' : isPartial ? 'Record Partial' : 'Record Payment'}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                reset();
+                onClose();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving || !amount || isNaN(num) || num <= 0}
+            >
+              {saving
+                ? "Saving…"
+                : isPartial
+                  ? "Record Partial"
+                  : "Record Payment"}
             </Button>
           </div>
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ─── IssueRefundDialog ───────────────────────────────────────────────────────
 
 function IssueRefundDialog({ open, onClose, payment, onSuccess }) {
-  const [amount, setAmount] = useState('')
-  const [notes, setNotes] = useState('')
-  const [saving, setSaving] = useState(false)
-  const toast = useToast()
+  const [amount, setAmount] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
-  function reset() { setAmount(''); setNotes('') }
+  function reset() {
+    setAmount("");
+    setNotes("");
+  }
 
   async function handleSubmit(e) {
-    e.preventDefault()
-    const num = parseFloat(amount)
-    if (isNaN(num) || num <= 0) return
-    setSaving(true)
-    const res = await api.post('/api/payment/refund', {
+    e.preventDefault();
+    const num = parseFloat(amount);
+    if (isNaN(num) || num <= 0) return;
+    setSaving(true);
+    const res = await api.post("/api/payment/refund", {
       paymentID: payment._id,
       amount: num,
       notes: notes.trim() || undefined,
-    })
+    });
     if (res.success) {
-      toast.success('Refund issued.')
-      reset()
-      onSuccess()
-      onClose()
+      toast.success("Refund issued.");
+      reset();
+      onSuccess();
+      onClose();
     } else {
-      toast.error(res.error || 'Failed to issue refund.')
+      toast.error(res.error || "Failed to issue refund.");
     }
-    setSaving(false)
+    setSaving(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose() } }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) {
+          reset();
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="max-w-sm">
-        <DialogHeader><DialogTitle>Issue Refund</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Issue Refund</DialogTitle>
+        </DialogHeader>
         {payment && (
           <p className="text-[12px] text-muted-foreground -mt-1">
-            Original payment: <span className="text-foreground font-medium">${Number(payment.amount).toFixed(2)}</span> via {payment.method}
+            Original payment:{" "}
+            <span className="text-foreground font-medium">
+              ${Number(payment.amount).toFixed(2)}
+            </span>{" "}
+            via {payment.method}
           </p>
         )}
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <FormField label="Refund amount" required>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">
+                $
+              </span>
               <input
-                type="number" min="0.01" step="0.01"
+                type="number"
+                min="0.01"
+                step="0.01"
                 max={payment?.amount}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -227,78 +341,104 @@ function IssueRefundDialog({ open, onClose, payment, onSuccess }) {
           </FormField>
           <FormField label="Reason (optional)">
             <input
-              type="text" value={notes}
+              type="text"
+              value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Class cancelled"
               className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
             />
           </FormField>
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" size="sm" onClick={() => { reset(); onClose() }}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={saving || !amount} className="bg-rose-600 hover:bg-rose-700 text-white">
-              {saving ? 'Refunding…' : 'Issue Refund'}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                reset();
+                onClose();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving || !amount}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              {saving ? "Refunding…" : "Issue Refund"}
             </Button>
           </div>
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'profile', label: 'Profile', Icon: User },
-  { id: 'active-enrollments', label: 'Active Enrollments', Icon: ClipboardList },
-  { id: 'completed-enrollments', label: 'Completed Enrollments', Icon: ClipboardList },
-  { id: 'payments', label: 'Payment History', Icon: Receipt },
-  { id: 'lessons', label: 'Lessons', Icon: BookOpen },
-  { id: 'notes', label: 'Notes', Icon: StickyNote },
-]
+  { id: "profile", label: "Profile", Icon: User },
+  {
+    id: "active-enrollments",
+    label: "Active Enrollments",
+    Icon: ClipboardList,
+  },
+  {
+    id: "completed-enrollments",
+    label: "Completed Enrollments",
+    Icon: ClipboardList,
+  },
+  { id: "payments", label: "Payment History", Icon: Receipt },
+  { id: "lessons", label: "Lessons", Icon: BookOpen },
+  { id: "notes", label: "Notes", Icon: StickyNote },
+];
 
 // ─── Profile Tab ─────────────────────────────────────────────────────────────
 
 function ProfileTab({ customer, locations, onUpdated }) {
-  const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState({})
-  const [saving, setSaving] = useState(false)
-  const [adjustOpen, setAdjustOpen] = useState(false)
-  const [adjustAmount, setAdjustAmount] = useState('')
-  const [adjustReason, setAdjustReason] = useState('')
-  const [adjusting, setAdjusting] = useState(false)
-  const toast = useToast()
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustAmount, setAdjustAmount] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [adjusting, setAdjusting] = useState(false);
+  const toast = useToast();
 
   function startEdit() {
     setForm({
-      name: customer.name || '',
-      email: customer.email || '',
-      phoneNumber: customer.phoneNumber || '',
-      locationID: String(customer.locationID?._id ?? customer.locationID ?? ''),
-      dateOfBirth: customer.dateOfBirth ? String(customer.dateOfBirth).slice(0, 10) : '',
-      gender: customer.gender || '',
+      name: customer.name || "",
+      email: customer.email || "",
+      phoneNumber: customer.phoneNumber || "",
+      locationID: String(customer.locationID?._id ?? customer.locationID ?? ""),
+      dateOfBirth: customer.dateOfBirth
+        ? String(customer.dateOfBirth).slice(0, 10)
+        : "",
+      gender: customer.gender || "",
       address: {
-        street: customer.address?.street || '',
-        city: customer.address?.city || '',
-        state: customer.address?.state || '',
-        zipCode: customer.address?.zipCode || '',
-        country: customer.address?.country || 'USA',
+        street: customer.address?.street || "",
+        city: customer.address?.city || "",
+        state: customer.address?.state || "",
+        zipCode: customer.address?.zipCode || "",
+        country: customer.address?.country || "USA",
       },
-    })
-    setEditing(true)
+    });
+    setEditing(true);
   }
 
   async function saveProfile(e) {
-    e.preventDefault()
-    if (!form.name.trim() || !form.email.trim()) return
-    setSaving(true)
+    e.preventDefault();
+    if (!form.name.trim() || !form.email.trim()) return;
+    setSaving(true);
     const addr = {
       street: form.address.street.trim(),
       city: form.address.city.trim(),
       state: form.address.state.trim(),
       zipCode: form.address.zipCode.trim(),
-      country: form.address.country.trim() || 'USA',
-    }
-    const hasAddress = addr.street || addr.city || addr.state || addr.zipCode
+      country: form.address.country.trim() || "USA",
+    };
+    const hasAddress = addr.street || addr.city || addr.state || addr.zipCode;
     const res = await api.put(`/api/customer/${customer._id}`, {
       name: form.name.trim(),
       email: form.email.trim(),
@@ -307,278 +447,427 @@ function ProfileTab({ customer, locations, onUpdated }) {
       dateOfBirth: form.dateOfBirth || undefined,
       gender: form.gender || undefined,
       address: hasAddress ? addr : undefined,
-    })
-    if (res.success) { toast.success('Profile saved.'); onUpdated(); setEditing(false) }
-    else toast.error(res.error || 'Save failed.')
-    setSaving(false)
+    });
+    if (res.success) {
+      toast.success("Profile saved.");
+      onUpdated();
+      setEditing(false);
+    } else toast.error(res.error || "Save failed.");
+    setSaving(false);
   }
 
   async function handleAdjust(e) {
-    e.preventDefault()
-    const num = parseFloat(adjustAmount)
-    if (isNaN(num) || num === 0) return
-    setAdjusting(true)
-    const res = await api.patch(`/api/customer/${customer._id}/adjust-credits`, {
-      amount: num,
-      reason: adjustReason.trim() || undefined,
-    })
+    e.preventDefault();
+    const num = parseFloat(adjustAmount);
+    if (isNaN(num) || num === 0) return;
+    setAdjusting(true);
+    const res = await api.patch(
+      `/api/customer/${customer._id}/adjust-credits`,
+      {
+        amount: num,
+        reason: adjustReason.trim() || undefined,
+      },
+    );
     if (res.success) {
-      toast.success(`Credits ${num >= 0 ? 'added' : 'deducted'}: $${Math.abs(num).toFixed(2)}`)
-      onUpdated()
-      setAdjustOpen(false)
-      setAdjustAmount('')
-      setAdjustReason('')
+      toast.success(
+        `Credits ${num >= 0 ? "added" : "deducted"}: $${Math.abs(num).toFixed(2)}`,
+      );
+      onUpdated();
+      setAdjustOpen(false);
+      setAdjustAmount("");
+      setAdjustReason("");
     } else {
-      toast.error(res.error || 'Adjustment failed.')
+      toast.error(res.error || "Adjustment failed.");
     }
-    setAdjusting(false)
+    setAdjusting(false);
   }
 
   const locationName = (id) => {
-    const loc = locations.find((l) => String(l._id) === String(id))
-    return loc?.name || '—'
-  }
+    const loc = locations.find((l) => String(l._id) === String(id));
+    return loc?.name || "—";
+  };
 
   return (
     <div className="space-y-6">
       {/* Quick stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Credits Balance', value: `$${(customer.credits ?? 0).toFixed(2)}`, accent: 'text-emerald-500' },
-          { label: 'Classes Assigned', value: customer.classAssigned?.length ?? 0 },
-          { label: 'Notes', value: customer.notes?.length ?? 0 },
-          { label: 'Member Since', value: formatDate(customer.createdAt) },
+          {
+            label: "Credits Balance",
+            value: `$${(customer.credits ?? 0).toFixed(2)}`,
+            accent: "text-emerald-500",
+          },
+          {
+            label: "Classes Assigned",
+            value: customer.classAssigned?.length ?? 0,
+          },
+          { label: "Notes", value: customer.notes?.length ?? 0 },
+          { label: "Member Since", value: formatDate(customer.createdAt) },
         ].map(({ label, value, accent }) => (
-          <div key={label} className="rounded-xl border border-border bg-card px-4 py-3">
+          <div
+            key={label}
+            className="rounded-xl border border-border bg-card px-4 py-3"
+          >
             <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-            <p className={`text-[15px] font-semibold ${accent ?? 'text-foreground'}`}>{value}</p>
+            <p
+              className={`text-[15px] font-semibold ${accent ?? "text-foreground"}`}
+            >
+              {value}
+            </p>
           </div>
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Info card */}
-      <div className="lg:col-span-2 rounded-xl border border-border bg-card p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-[13px] font-semibold text-foreground">Personal details</h2>
-          {!editing && (
-            <Button variant="outline" size="sm" className="h-7 px-2.5 text-[12px]" onClick={startEdit}>
-              <Pencil className="h-3 w-3 mr-1.5" /> Edit
-            </Button>
+        {/* Info card */}
+        <div className="lg:col-span-2 rounded-xl border border-border bg-card p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[13px] font-semibold text-foreground">
+              Personal details
+            </h2>
+            {!editing && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2.5 text-[12px]"
+                onClick={startEdit}
+              >
+                <Pencil className="h-3 w-3 mr-1.5" /> Edit
+              </Button>
+            )}
+          </div>
+
+          {editing ? (
+            <form onSubmit={saveProfile} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Name" required>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </FormField>
+                <FormField label="Email" required>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) =>
+                      setForm({ ...form, email: e.target.value })
+                    }
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </FormField>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Phone">
+                  <input
+                    type="tel"
+                    value={form.phoneNumber}
+                    onChange={(e) =>
+                      setForm({ ...form, phoneNumber: e.target.value })
+                    }
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </FormField>
+                <FormField label="Location">
+                  <div className="relative">
+                    <select
+                      value={form.locationID}
+                      onChange={(e) =>
+                        setForm({ ...form, locationID: e.target.value })
+                      }
+                      className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                    >
+                      <option value="">No location</option>
+                      {locations.map((loc) => (
+                        <option key={loc._id} value={loc._id}>
+                          {loc.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </FormField>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Date of Birth">
+                  <input
+                    type="date"
+                    value={form.dateOfBirth}
+                    onChange={(e) =>
+                      setForm({ ...form, dateOfBirth: e.target.value })
+                    }
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </FormField>
+                <FormField label="Gender">
+                  <div className="relative">
+                    <select
+                      value={form.gender}
+                      onChange={(e) =>
+                        setForm({ ...form, gender: e.target.value })
+                      }
+                      className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                    >
+                      <option value="">Select…</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                      <option value="prefer_not_to_say">
+                        Prefer not to say
+                      </option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </FormField>
+              </div>
+              <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+                <p className="text-[12px] font-semibold text-muted-foreground">
+                  Address
+                </p>
+                <FormField label="Street">
+                  <input
+                    type="text"
+                    value={form.address.street}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        address: { ...form.address, street: e.target.value },
+                      })
+                    }
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </FormField>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField label="City">
+                    <input
+                      type="text"
+                      value={form.address.city}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          address: { ...form.address, city: e.target.value },
+                        })
+                      }
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                    />
+                  </FormField>
+                  <FormField label="State">
+                    <input
+                      type="text"
+                      value={form.address.state}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          address: { ...form.address, state: e.target.value },
+                        })
+                      }
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                    />
+                  </FormField>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField label="Zip Code">
+                    <input
+                      type="text"
+                      value={form.address.zipCode}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          address: { ...form.address, zipCode: e.target.value },
+                        })
+                      }
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                    />
+                  </FormField>
+                  <FormField label="Country">
+                    <input
+                      type="text"
+                      value={form.address.country}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          address: { ...form.address, country: e.target.value },
+                        })
+                      }
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                    />
+                  </FormField>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button type="submit" size="sm" disabled={saving}>
+                  {saving ? "Saving…" : "Save"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditing(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-5">
+              {/* Contact */}
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                  Contact
+                </p>
+                <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                  {[
+                    { label: "Name", value: customer.name },
+                    { label: "Email", value: customer.email },
+                    { label: "Phone", value: customer.phoneNumber || "—" },
+                    {
+                      label: "Location",
+                      value: locationName(
+                        customer.locationID?._id ?? customer.locationID,
+                      ),
+                    },
+                  ].map(({ label, value }) => (
+                    <div key={label}>
+                      <p className="text-[11px] text-muted-foreground mb-0.5">
+                        {label}
+                      </p>
+                      <p className="text-[13px] text-foreground break-all">
+                        {value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-border" />
+
+              {/* Personal */}
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                  Personal
+                </p>
+                <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                  <div>
+                    <p className="text-[11px] text-muted-foreground mb-0.5">
+                      Date of Birth
+                    </p>
+                    <p className="text-[13px] text-foreground">
+                      {customer.dateOfBirth
+                        ? formatDate(customer.dateOfBirth)
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground mb-0.5">
+                      Gender
+                    </p>
+                    <p className="text-[13px] text-foreground">
+                      {customer.gender
+                        ? customer.gender
+                            .replace(/_/g, " ")
+                            .replace(/\b\w/g, (c) => c.toUpperCase())
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-border" />
+
+              {/* Address */}
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                  Address
+                </p>
+                {(() => {
+                  const a = customer.address;
+                  const hasAny =
+                    a &&
+                    [a.street, a.city, a.state, a.zipCode, a.country].some(
+                      Boolean,
+                    );
+                  if (!hasAny)
+                    return (
+                      <p className="text-[13px] text-muted-foreground">—</p>
+                    );
+                  return (
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                      {[
+                        { label: "Street", value: a.street },
+                        { label: "City", value: a.city },
+                        { label: "State", value: a.state },
+                        { label: "Zip Code", value: a.zipCode },
+                        { label: "Country", value: a.country },
+                      ].map(({ label, value }) => (
+                        <div key={label}>
+                          <p className="text-[11px] text-muted-foreground mb-0.5">
+                            {label}
+                          </p>
+                          <p className="text-[13px] text-foreground">
+                            {value || "—"}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
           )}
         </div>
 
-        {editing ? (
-          <form onSubmit={saveProfile} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="Name" required>
-                <input
-                  type="text" value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                />
-              </FormField>
-              <FormField label="Email" required>
-                <input
-                  type="email" value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                />
-              </FormField>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="Phone">
-                <input
-                  type="tel" value={form.phoneNumber}
-                  onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                />
-              </FormField>
-              <FormField label="Location">
-                <div className="relative">
-                  <select
-                    value={form.locationID}
-                    onChange={(e) => setForm({ ...form, locationID: e.target.value })}
-                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
-                  >
-                    <option value="">No location</option>
-                    {locations.map((loc) => <option key={loc._id} value={loc._id}>{loc.name}</option>)}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                </div>
-              </FormField>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="Date of Birth">
-                <input
-                  type="date" value={form.dateOfBirth}
-                  onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                />
-              </FormField>
-              <FormField label="Gender">
-                <div className="relative">
-                  <select
-                    value={form.gender}
-                    onChange={(e) => setForm({ ...form, gender: e.target.value })}
-                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
-                  >
-                    <option value="">Select…</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                    <option value="prefer_not_to_say">Prefer not to say</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                </div>
-              </FormField>
-            </div>
-            <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-              <p className="text-[12px] font-semibold text-muted-foreground">Address</p>
-              <FormField label="Street">
-                <input
-                  type="text" value={form.address.street}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, street: e.target.value } })}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                />
-              </FormField>
-              <div className="grid grid-cols-2 gap-3">
-                <FormField label="City">
-                  <input
-                    type="text" value={form.address.city}
-                    onChange={(e) => setForm({ ...form, address: { ...form.address, city: e.target.value } })}
-                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                  />
-                </FormField>
-                <FormField label="State">
-                  <input
-                    type="text" value={form.address.state}
-                    onChange={(e) => setForm({ ...form, address: { ...form.address, state: e.target.value } })}
-                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                  />
-                </FormField>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <FormField label="Zip Code">
-                  <input
-                    type="text" value={form.address.zipCode}
-                    onChange={(e) => setForm({ ...form, address: { ...form.address, zipCode: e.target.value } })}
-                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                  />
-                </FormField>
-                <FormField label="Country">
-                  <input
-                    type="text" value={form.address.country}
-                    onChange={(e) => setForm({ ...form, address: { ...form.address, country: e.target.value } })}
-                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                  />
-                </FormField>
-              </div>
-            </div>
-            <div className="flex gap-2 pt-1">
-              <Button type="submit" size="sm" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
-            </div>
-          </form>
-        ) : (
-          <div className="space-y-5">
-            {/* Contact */}
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Contact</p>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-                {[
-                  { label: 'Name', value: customer.name },
-                  { label: 'Email', value: customer.email },
-                  { label: 'Phone', value: customer.phoneNumber || '—' },
-                  { label: 'Location', value: locationName(customer.locationID?._id ?? customer.locationID) },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-[11px] text-muted-foreground mb-0.5">{label}</p>
-                    <p className="text-[13px] text-foreground break-all">{value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="border-t border-border" />
-
-            {/* Personal */}
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Personal</p>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-                <div>
-                  <p className="text-[11px] text-muted-foreground mb-0.5">Date of Birth</p>
-                  <p className="text-[13px] text-foreground">{customer.dateOfBirth ? formatDate(customer.dateOfBirth) : '—'}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-muted-foreground mb-0.5">Gender</p>
-                  <p className="text-[13px] text-foreground">
-                    {customer.gender ? customer.gender.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '—'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-border" />
-
-            {/* Address */}
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Address</p>
-              {(() => {
-                const a = customer.address
-                const hasAny = a && [a.street, a.city, a.state, a.zipCode, a.country].some(Boolean)
-                if (!hasAny) return <p className="text-[13px] text-muted-foreground">—</p>
-                return (
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-                    {[
-                      { label: 'Street', value: a.street },
-                      { label: 'City', value: a.city },
-                      { label: 'State', value: a.state },
-                      { label: 'Zip Code', value: a.zipCode },
-                      { label: 'Country', value: a.country },
-                    ].map(({ label, value }) => (
-                      <div key={label}>
-                        <p className="text-[11px] text-muted-foreground mb-0.5">{label}</p>
-                        <p className="text-[13px] text-foreground">{value || '—'}</p>
-                      </div>
-                    ))}
-                  </div>
-                )
-              })()}
-            </div>
+        {/* Credits card */}
+        <div className="rounded-xl border border-border bg-card p-6 flex flex-col gap-4">
+          <h2 className="text-[13px] font-semibold text-foreground">
+            Credits balance
+          </h2>
+          <div className="flex-1 flex items-center justify-center">
+            <span className="text-4xl font-bold text-foreground">
+              ${(customer.credits ?? 0).toFixed(2)}
+            </span>
           </div>
-        )}
-      </div>
-
-      {/* Credits card */}
-      <div className="rounded-xl border border-border bg-card p-6 flex flex-col gap-4">
-        <h2 className="text-[13px] font-semibold text-foreground">Credits balance</h2>
-        <div className="flex-1 flex items-center justify-center">
-          <span className="text-4xl font-bold text-foreground">${(customer.credits ?? 0).toFixed(2)}</span>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            size="sm" className="flex-1 h-8 text-[12px] bg-emerald-600 hover:bg-emerald-700 text-white"
-            onClick={() => { setAdjustAmount(''); setAdjustReason(''); setAdjustOpen(true) }}
-          >
-            <Plus className="h-3.5 w-3.5 mr-1" /> Add / Deduct
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              className="flex-1 h-8 text-[12px] bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => {
+                setAdjustAmount("");
+                setAdjustReason("");
+                setAdjustOpen(true);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" /> Add / Deduct
+            </Button>
+          </div>
         </div>
       </div>
-      </div>{/* end inner grid */}
+      {/* end inner grid */}
 
       {/* Adjust credits dialog */}
-      <Dialog open={adjustOpen} onOpenChange={(v) => { if (!v) setAdjustOpen(false) }}>
+      <Dialog
+        open={adjustOpen}
+        onOpenChange={(v) => {
+          if (!v) setAdjustOpen(false);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Adjust Credits</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleAdjust} className="space-y-4 mt-2">
-            <FormField label="Amount (positive to add, negative to deduct)" required>
+            <FormField
+              label="Amount (positive to add, negative to deduct)"
+              required
+            >
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">
+                  $
+                </span>
                 <input
-                  type="number" step="0.01"
+                  type="number"
+                  step="0.01"
                   value={adjustAmount}
                   onChange={(e) => setAdjustAmount(e.target.value)}
                   placeholder="e.g. 50 or -20"
@@ -588,58 +877,91 @@ function ProfileTab({ customer, locations, onUpdated }) {
             </FormField>
             <FormField label="Reason (optional)">
               <input
-                type="text" value={adjustReason}
+                type="text"
+                value={adjustReason}
                 onChange={(e) => setAdjustReason(e.target.value)}
                 placeholder="e.g. Top-up, refund, correction"
                 className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
               />
             </FormField>
             <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" variant="outline" size="sm" onClick={() => setAdjustOpen(false)}>Cancel</Button>
-              <Button type="submit" size="sm" disabled={adjusting}>{adjusting ? 'Saving…' : 'Apply'}</Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAdjustOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={adjusting}>
+                {adjusting ? "Saving…" : "Apply"}
+              </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
 
 // ─── PayInstallmentDialog ────────────────────────────────────────────────────
 
-function PayInstallmentDialog({ open, onClose, plan, installmentIndex, onSuccess }) {
-  const [method, setMethod] = useState('cash')
-  const [saving, setSaving] = useState(false)
-  const toast = useToast()
+function PayInstallmentDialog({
+  open,
+  onClose,
+  plan,
+  installmentIndex,
+  onSuccess,
+}) {
+  const [method, setMethod] = useState("cash");
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
-  const installment = plan?.installments?.[installmentIndex]
+  const installment = plan?.installments?.[installmentIndex];
 
   async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true)
-    const res = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
-      installmentIndex,
-      method,
-    })
+    e.preventDefault();
+    setSaving(true);
+    const res = await api.post(
+      `/api/payment-plan/${plan._id}/pay-installment`,
+      {
+        installmentIndex,
+        method,
+      },
+    );
     if (res.success) {
-      toast.success('Installment payment recorded.')
-      onSuccess()
-      onClose()
+      toast.success("Installment payment recorded.");
+      onSuccess();
+      onClose();
     } else {
-      toast.error(res.error || 'Failed to record payment.')
+      toast.error(res.error || "Failed to record payment.");
     }
-    setSaving(false)
+    setSaving(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <DialogContent className="max-w-sm">
-        <DialogHeader><DialogTitle>Pay Installment</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Pay Installment</DialogTitle>
+        </DialogHeader>
         {installment && (
           <p className="text-[12px] text-muted-foreground -mt-1">
-            Payment {installmentIndex + 1} of {plan.numberOfInstallments} ·{' '}
-            <span className="text-foreground font-medium">${Number(installment.amount).toFixed(2)}</span>
-            {' '}due {new Date(installment.dueDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+            Payment {installmentIndex + 1} of {plan.numberOfInstallments} ·{" "}
+            <span className="text-foreground font-medium">
+              ${Number(installment.amount).toFixed(2)}
+            </span>{" "}
+            due{" "}
+            {new Date(installment.dueDate).toLocaleDateString("en-AU", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
           </p>
         )}
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
@@ -650,175 +972,235 @@ function PayInstallmentDialog({ open, onClose, plan, installmentIndex, onSuccess
                 onChange={(e) => setMethod(e.target.value)}
                 className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
               >
-                {PAYMENT_METHODS.map((m) => <option key={m} value={m} className="capitalize">{m}</option>)}
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m} value={m} className="capitalize">
+                    {m}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             </div>
           </FormField>
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-              {saving ? 'Recording…' : `Pay $${Number(installment?.amount ?? 0).toFixed(2)}`}
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {saving
+                ? "Recording…"
+                : `Pay $${Number(installment?.amount ?? 0).toFixed(2)}`}
             </Button>
           </div>
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ─── Packages Tab ─────────────────────────────────────────────────────────────
 
 const BLANK_ADD_FORM = {
-  enrollmentID: '',
-  packageID: '',
-  purchaseDate: '',
+  enrollmentID: "",
+  packageID: "",
+  purchaseDate: "",
   services: [],
-  discountType: 'none',
+  discountType: "none",
   discountAmount: 0,
-  billingType: 'one_time',
-  billing: { method: 'cash', numberOfInstallments: 3, frequency: 'monthly', startDate: '' },
-}
+  billingType: "one_time",
+  billing: {
+    method: "cash",
+    numberOfInstallments: 3,
+    frequency: "monthly",
+    startDate: "",
+  },
+};
 
 function PackagesTab({ customerID }) {
-  const [customerPkgs, setCustomerPkgs] = useState([])
-  const [detailsMap, setDetailsMap] = useState({})
-  const [plansMap, setPlansMap] = useState({})   // cpId -> PaymentPlan doc
-  const [allPkgs, setAllPkgs] = useState([])
-  const [enrollments, setEnrollments] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [customerPkgs, setCustomerPkgs] = useState([]);
+  const [detailsMap, setDetailsMap] = useState({});
+  const [plansMap, setPlansMap] = useState({}); // cpId -> PaymentPlan doc
+  const [allPkgs, setAllPkgs] = useState([]);
+  const [enrollments, setEnrollments] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Add package multi-step
-  const [addOpen, setAddOpen] = useState(false)
-  const [addStep, setAddStep] = useState(1)
-  const [addForm, setAddForm] = useState(BLANK_ADD_FORM)
-  const [selectedPkg, setSelectedPkg] = useState(null)
-  const [adding, setAdding] = useState(false)
+  const [addOpen, setAddOpen] = useState(false);
+  const [addStep, setAddStep] = useState(1);
+  const [addForm, setAddForm] = useState(BLANK_ADD_FORM);
+  const [selectedPkg, setSelectedPkg] = useState(null);
+  const [adding, setAdding] = useState(false);
 
   // Cancel / pay / pay-installment
-  const [cancelTarget, setCancelTarget] = useState(null)
-  const [cancelling, setCancelling] = useState(false)
-  const [recordPaymentTarget, setRecordPaymentTarget] = useState(null)
-  const [payInstallTarget, setPayInstallTarget] = useState(null) // { plan, index }
-  const toast = useToast()
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [recordPaymentTarget, setRecordPaymentTarget] = useState(null);
+  const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
+  const toast = useToast();
 
   const load = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     const [pkgRes, allRes, enrRes] = await Promise.all([
       api.get(`/api/customer-package/customer/${customerID}`),
-      api.get('/api/package?limit=200&isActive=true'),
+      api.get("/api/package?limit=200&isActive=true"),
       api.get(`/api/enrollment?customerID=${customerID}&status=active`),
-    ])
-    if (allRes.success) setAllPkgs(allRes.data || [])
-    if (enrRes.success) setEnrollments(enrRes.data || [])
+    ]);
+    if (allRes.success) setAllPkgs(allRes.data || []);
+    if (enrRes.success) setEnrollments(enrRes.data || []);
     if (pkgRes.success) {
-      const list = pkgRes.data || []
-      setCustomerPkgs(list)
+      const list = pkgRes.data || [];
+      setCustomerPkgs(list);
       if (list.length > 0) {
-        const detailResults = await Promise.all(list.map((enr) => api.get(`/api/customer-package/${enr._id}/details`)))
-        const detMap = {}
-        list.forEach((enr, i) => { if (detailResults[i].success) detMap[String(enr._id)] = detailResults[i].data })
-        setDetailsMap(detMap)
+        const detailResults = await Promise.all(
+          list.map((enr) =>
+            api.get(`/api/customer-package/${enr._id}/details`),
+          ),
+        );
+        const detMap = {};
+        list.forEach((enr, i) => {
+          if (detailResults[i].success)
+            detMap[String(enr._id)] = detailResults[i].data;
+        });
+        setDetailsMap(detMap);
 
-        const hasPlanPkgs = list.some((enr) => enr.package?.billingType === 'payment_plan')
+        const hasPlanPkgs = list.some(
+          (enr) => enr.package?.billingType === "payment_plan",
+        );
         if (hasPlanPkgs) {
-          const plansRes = await api.get(`/api/payment-plan/customer/${customerID}`)
+          const plansRes = await api.get(
+            `/api/payment-plan/customer/${customerID}`,
+          );
           if (plansRes.success) {
-            const pm = {}
-            ;(plansRes.data || []).forEach((plan) => {
-              const enrId = String(plan.enrollmentID?._id ?? plan.enrollmentID)
-              pm[enrId] = plan
-            })
-            setPlansMap(pm)
+            const pm = {};
+            (plansRes.data || []).forEach((plan) => {
+              const enrId = String(plan.enrollmentID?._id ?? plan.enrollmentID);
+              pm[enrId] = plan;
+            });
+            setPlansMap(pm);
           }
         }
       }
     }
-    setLoading(false)
-  }, [customerID])
+    setLoading(false);
+  }, [customerID]);
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  function openAdd() { setAddForm(BLANK_ADD_FORM); setSelectedPkg(null); setAddStep(1); setAddOpen(true) }
-  function closeAdd() { setAddOpen(false) }
+  function openAdd() {
+    setAddForm(BLANK_ADD_FORM);
+    setSelectedPkg(null);
+    setAddStep(1);
+    setAddOpen(true);
+  }
+  function closeAdd() {
+    setAddOpen(false);
+  }
 
   function onPkgChange(pkgId) {
-    const pkg = allPkgs.find((p) => String(p._id) === pkgId)
-    setSelectedPkg(pkg || null)
+    const pkg = allPkgs.find((p) => String(p._id) === pkgId);
+    setSelectedPkg(pkg || null);
     setAddForm((f) => ({
       ...f,
       packageID: pkgId,
-      discountType: pkg?.discountType || 'none',
+      discountType: pkg?.discountType || "none",
       discountAmount: pkg?.discountAmount || 0,
       services: (pkg?.services || []).map((s) => ({
-        serviceCode: s.serviceCode || '',
-        serviceName: s.serviceName || '',
-        color: s.color || '',
+        serviceCode: s.serviceCode || "",
+        serviceName: s.serviceName || "",
+        color: s.color || "",
         numberOfSessions: s.numberOfSessions || 0,
         pricePerSession: s.pricePerSession || 0,
         finalAmount: (s.numberOfSessions || 0) * (s.pricePerSession || 0),
       })),
-    }))
+    }));
   }
 
   function updateSvc(i, field, val) {
     setAddForm((f) => {
       const svcs = f.services.map((s, idx) => {
-        if (idx !== i) return s
-        const updated = { ...s, [field]: val }
-        const price = Number(updated.pricePerSession) || 0
-        const sessions = Number(updated.numberOfSessions) || 0
-        updated.finalAmount = parseFloat((price * sessions).toFixed(2))
-        return updated
-      })
-      return { ...f, services: svcs }
-    })
+        if (idx !== i) return s;
+        const updated = { ...s, [field]: val };
+        const price = Number(updated.pricePerSession) || 0;
+        const sessions = Number(updated.numberOfSessions) || 0;
+        updated.finalAmount = parseFloat((price * sessions).toFixed(2));
+        return updated;
+      });
+      return { ...f, services: svcs };
+    });
   }
 
   function setBilling(field, val) {
-    setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }))
+    setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }));
   }
 
-  const rawTotal = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0)
+  const rawTotal = addForm.services.reduce(
+    (s, svc) => s + (Number(svc.finalAmount) || 0),
+    0,
+  );
   const pkgDiscountApplied = (() => {
-    if (addForm.discountType === 'percentage') return Math.min(rawTotal, rawTotal * (Number(addForm.discountAmount) || 0) / 100)
-    if (addForm.discountType === 'fixed') return Math.min(rawTotal, Number(addForm.discountAmount) || 0)
-    return 0
-  })()
-  const totalAmount = Math.max(0, rawTotal - pkgDiscountApplied)
+    if (addForm.discountType === "percentage")
+      return Math.min(
+        rawTotal,
+        (rawTotal * (Number(addForm.discountAmount) || 0)) / 100,
+      );
+    if (addForm.discountType === "fixed")
+      return Math.min(rawTotal, Number(addForm.discountAmount) || 0);
+    return 0;
+  })();
+  const totalAmount = Math.max(0, rawTotal - pkgDiscountApplied);
 
   function getInstallments() {
-    const { numberOfInstallments, frequency, startDate } = addForm.billing
-    if (!startDate || !numberOfInstallments) return []
-    const n = Number(numberOfInstallments)
-    if (!n || n < 1) return []
-    const baseAmt = parseFloat((rawTotal / n).toFixed(2))
-    const result = []
-    let d = new Date(startDate)
+    const { numberOfInstallments, frequency, startDate } = addForm.billing;
+    if (!startDate || !numberOfInstallments) return [];
+    const n = Number(numberOfInstallments);
+    if (!n || n < 1) return [];
+    const baseAmt = parseFloat((rawTotal / n).toFixed(2));
+    const result = [];
+    let d = new Date(startDate);
     for (let i = 0; i < n; i++) {
-      const isLast = i === n - 1
-      const amount = isLast ? Math.max(0, parseFloat((baseAmt - pkgDiscountApplied).toFixed(2))) : baseAmt
-      result.push({ date: d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }), amount, isLast })
-      if (frequency === 'weekly') d = new Date(d.getTime() + 7 * 86400000)
-      else if (frequency === 'biweekly') d = new Date(d.getTime() + 14 * 86400000)
-      else { d = new Date(d); d.setMonth(d.getMonth() + 1) }
+      const isLast = i === n - 1;
+      const amount = isLast
+        ? Math.max(0, parseFloat((baseAmt - pkgDiscountApplied).toFixed(2)))
+        : baseAmt;
+      result.push({
+        date: d.toLocaleDateString("en-AU", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }),
+        amount,
+        isLast,
+      });
+      if (frequency === "weekly") d = new Date(d.getTime() + 7 * 86400000);
+      else if (frequency === "biweekly")
+        d = new Date(d.getTime() + 14 * 86400000);
+      else {
+        d = new Date(d);
+        d.setMonth(d.getMonth() + 1);
+      }
     }
-    return result
+    return result;
   }
 
   async function handleAdd() {
     if (!addForm.enrollmentID) {
-      toast.error('Please select an enrollment.')
-      return
+      toast.error("Please select an enrollment.");
+      return;
     }
-    if (addForm.billingType === 'payment_plan') {
-      const { numberOfInstallments, frequency, startDate } = addForm.billing
+    if (addForm.billingType === "payment_plan") {
+      const { numberOfInstallments, frequency, startDate } = addForm.billing;
       if (!numberOfInstallments || !frequency || !startDate) {
-        toast.error('Please fill all payment plan fields.')
-        return
+        toast.error("Please fill all payment plan fields.");
+        return;
       }
     }
-    setAdding(true)
+    setAdding(true);
     const payload = {
       customerID,
       packageID: addForm.packageID,
@@ -835,41 +1217,59 @@ function PackagesTab({ customerID }) {
       })),
       billingType: addForm.billingType,
       billing:
-        addForm.billingType === 'one_time'
+        addForm.billingType === "one_time"
           ? { method: addForm.billing.method }
-          : addForm.billingType === 'payment_plan'
-          ? { numberOfInstallments: Number(addForm.billing.numberOfInstallments), frequency: addForm.billing.frequency, startDate: addForm.billing.startDate }
-          : {},
-    }
-    if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate
-    const res = await api.post('/api/customer-package/add', payload)
+          : addForm.billingType === "payment_plan"
+            ? {
+                numberOfInstallments: Number(
+                  addForm.billing.numberOfInstallments,
+                ),
+                frequency: addForm.billing.frequency,
+                startDate: addForm.billing.startDate,
+              }
+            : {},
+    };
+    if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate;
+    const res = await api.post("/api/customer-package/add", payload);
     if (res.success) {
-      toast.success('Package added to customer.')
-      closeAdd()
-      load()
+      toast.success("Package added to customer.");
+      closeAdd();
+      load();
     } else {
-      toast.error(res.error || 'Failed to add package.')
+      toast.error(res.error || "Failed to add package.");
     }
-    setAdding(false)
+    setAdding(false);
   }
 
   async function handleCancel() {
-    if (!cancelTarget) return
-    setCancelling(true)
-    const res = await api.patch(`/api/customer-package/${cancelTarget._id}/cancel`)
-    if (res.success) { toast.success('Package cancelled.'); setCancelTarget(null); load() }
-    else toast.error(res.error || 'Failed to cancel.')
-    setCancelling(false)
+    if (!cancelTarget) return;
+    setCancelling(true);
+    const res = await api.patch(
+      `/api/customer-package/${cancelTarget._id}/cancel`,
+    );
+    if (res.success) {
+      toast.success("Package cancelled.");
+      setCancelTarget(null);
+      load();
+    } else toast.error(res.error || "Failed to cancel.");
+    setCancelling(false);
   }
 
-  if (loading) return <div className="flex items-center justify-center py-16"><LoadingSpinner /></div>
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-16">
+        <LoadingSpinner />
+      </div>
+    );
 
-  const installments = getInstallments()
+  const installments = getInstallments();
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">{customerPkgs.length} package{customerPkgs.length !== 1 ? 's' : ''}</p>
+        <p className="text-[13px] text-muted-foreground">
+          {customerPkgs.length} package{customerPkgs.length !== 1 ? "s" : ""}
+        </p>
         <Button size="sm" className="h-8 text-[12px]" onClick={openAdd}>
           <Plus className="h-3.5 w-3.5 mr-1.5" /> Add Package
         </Button>
@@ -882,56 +1282,87 @@ function PackagesTab({ customerID }) {
       ) : (
         <div className="space-y-3">
           {customerPkgs.map((enr) => {
-            const pkg = enr.package ?? {}
-            const det = detailsMap[String(enr._id)]
-            const billing = det?.billing ?? {}
-            const services = det?.services ?? pkg.services ?? []
-            const totalPaid = billing.totalPaid ?? pkg.totalPaid ?? 0
-            const collected = billing.amountCollected ?? pkg.amountCollected ?? 0
-            const outstanding = billing.outstanding ?? Math.max(0, totalPaid - collected)
-            const refunded = billing.totalRefunded ?? 0
+            const pkg = enr.package ?? {};
+            const det = detailsMap[String(enr._id)];
+            const billing = det?.billing ?? {};
+            const services = det?.services ?? pkg.services ?? [];
+            const totalPaid = billing.totalPaid ?? pkg.totalPaid ?? 0;
+            const collected =
+              billing.amountCollected ?? pkg.amountCollected ?? 0;
+            const outstanding =
+              billing.outstanding ?? Math.max(0, totalPaid - collected);
+            const refunded = billing.totalRefunded ?? 0;
             return (
-              <div key={enr._id} className="rounded-xl border border-border bg-card p-5">
+              <div
+                key={enr._id}
+                className="rounded-xl border border-border bg-card p-5"
+              >
                 {/* Header row */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     {pkg.packageRef?.color && (
-                      <div className="h-9 w-9 rounded-lg shrink-0 border border-black/10" style={{ backgroundColor: pkg.packageRef.color }} />
+                      <div
+                        className="h-9 w-9 rounded-lg shrink-0 border border-black/10"
+                        style={{ backgroundColor: pkg.packageRef.color }}
+                      />
                     )}
                     <div>
-                      <p className="text-[13px] font-semibold text-foreground">{pkg.packageName ?? pkg.packageRef?.packageName ?? 'Package'}</p>
+                      <p className="text-[13px] font-semibold text-foreground">
+                        {pkg.packageName ??
+                          pkg.packageRef?.packageName ??
+                          "Package"}
+                      </p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
                         Purchased {formatDate(pkg.purchaseDate)}
-                        {pkg.expiryDate ? ` · Expires ${formatDate(pkg.expiryDate)}` : ' · No expiry'}
+                        {pkg.expiryDate
+                          ? ` · Expires ${formatDate(pkg.expiryDate)}`
+                          : " · No expiry"}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">
-                    {pkg.billingType && pkg.billingType !== 'one_time' && (
+                    {pkg.billingType && pkg.billingType !== "one_time" && (
                       <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-violet-500/10 text-violet-600 capitalize">
-                        {pkg.billingType.replace('_', ' ')}
+                        {pkg.billingType.replace("_", " ")}
                       </span>
                     )}
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${paymentStatusColor(pkg.paymentStatus)}`}>
-                      {pkg.paymentStatus ?? 'unpaid'}
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${paymentStatusColor(pkg.paymentStatus)}`}
+                    >
+                      {pkg.paymentStatus ?? "unpaid"}
                     </span>
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(pkg.status)}`}>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(pkg.status)}`}
+                    >
                       {pkg.status}
                     </span>
-                    {pkg.status === 'active' && pkg.paymentStatus !== 'paid' && pkg.billingType !== 'payment_plan' && (
+                    {pkg.status === "active" &&
+                      pkg.paymentStatus !== "paid" &&
+                      pkg.billingType !== "payment_plan" && (
+                        <Button
+                          size="sm"
+                          className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() =>
+                            setRecordPaymentTarget({
+                              _id: enr._id,
+                              outstanding,
+                            })
+                          }
+                        >
+                          <CreditCard className="h-3 w-3 mr-1" /> Pay
+                        </Button>
+                      )}
+                    {pkg.status === "active" && (
                       <Button
+                        variant="ghost"
                         size="sm"
-                        className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={() => setRecordPaymentTarget({ _id: enr._id, outstanding })}
-                      >
-                        <CreditCard className="h-3 w-3 mr-1" /> Pay
-                      </Button>
-                    )}
-                    {pkg.status === 'active' && (
-                      <Button
-                        variant="ghost" size="sm"
                         className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
-                        onClick={() => setCancelTarget({ _id: enr._id, packageName: pkg.packageName })}
+                        onClick={() =>
+                          setCancelTarget({
+                            _id: enr._id,
+                            packageName: pkg.packageName,
+                          })
+                        }
                       >
                         <X className="h-3 w-3 mr-1" /> Cancel
                       </Button>
@@ -942,14 +1373,41 @@ function PackagesTab({ customerID }) {
                 {/* Billing summary — 4 columns */}
                 <div className="mt-4 grid grid-cols-4 gap-3 rounded-lg bg-muted/40 p-3">
                   {[
-                    { label: 'Total Price', value: `$${Number(totalPaid).toFixed(2)}` },
-                    { label: 'Collected', value: `$${Number(collected).toFixed(2)}`, cls: 'text-emerald-600' },
-                    { label: 'Outstanding', value: `$${Number(outstanding).toFixed(2)}`, cls: outstanding > 0 ? 'text-rose-600' : 'text-muted-foreground' },
-                    { label: 'Refunded', value: `$${Number(refunded).toFixed(2)}`, cls: refunded > 0 ? 'text-amber-600' : 'text-muted-foreground' },
+                    {
+                      label: "Total Price",
+                      value: `$${Number(totalPaid).toFixed(2)}`,
+                    },
+                    {
+                      label: "Collected",
+                      value: `$${Number(collected).toFixed(2)}`,
+                      cls: "text-emerald-600",
+                    },
+                    {
+                      label: "Outstanding",
+                      value: `$${Number(outstanding).toFixed(2)}`,
+                      cls:
+                        outstanding > 0
+                          ? "text-rose-600"
+                          : "text-muted-foreground",
+                    },
+                    {
+                      label: "Refunded",
+                      value: `$${Number(refunded).toFixed(2)}`,
+                      cls:
+                        refunded > 0
+                          ? "text-amber-600"
+                          : "text-muted-foreground",
+                    },
                   ].map(({ label, value, cls }) => (
                     <div key={label} className="text-center">
-                      <p className="text-[10px] text-muted-foreground mb-0.5">{label}</p>
-                      <p className={`text-[13px] font-semibold ${cls ?? 'text-foreground'}`}>{value}</p>
+                      <p className="text-[10px] text-muted-foreground mb-0.5">
+                        {label}
+                      </p>
+                      <p
+                        className={`text-[13px] font-semibold ${cls ?? "text-foreground"}`}
+                      >
+                        {value}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -957,139 +1415,231 @@ function PackagesTab({ customerID }) {
                 {/* Services with full session breakdown */}
                 {services.length > 0 && (
                   <div className="mt-4 border-t border-border pt-4">
-                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2.5">Services</p>
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2.5">
+                      Services
+                    </p>
                     <div className="space-y-2.5">
                       {services.map((svc, i) => {
-                        const sessTotal = svc.sessionsTotal ?? 0
-                        const sessUsed = svc.sessionsUsed ?? 0
-                        const sessSched = svc.sessionsScheduled ?? 0
-                        const sessRemaining = svc.sessionsRemaining ?? Math.max(0, sessTotal - sessUsed)
-                        const svcTotal = sessTotal * (Number(svc.pricePerSession) || 0)
+                        const sessTotal = svc.sessionsTotal ?? 0;
+                        const sessUsed = svc.sessionsUsed ?? 0;
+                        const sessSched = svc.sessionsScheduled ?? 0;
+                        const sessRemaining =
+                          svc.sessionsRemaining ??
+                          Math.max(0, sessTotal - sessUsed);
+                        const svcTotal =
+                          sessTotal * (Number(svc.pricePerSession) || 0);
                         return (
-                          <div key={i} className="rounded-lg border border-border/60 bg-background p-3">
+                          <div
+                            key={i}
+                            className="rounded-lg border border-border/60 bg-background p-3"
+                          >
                             <div className="flex items-center gap-2 mb-2.5">
                               {svc.color && (
-                                <span className="h-3 w-3 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: svc.color }} />
+                                <span
+                                  className="h-3 w-3 rounded-full shrink-0 border border-black/10"
+                                  style={{ backgroundColor: svc.color }}
+                                />
                               )}
-                              <p className="text-[12px] font-medium text-foreground flex-1">{svc.serviceName}</p>
+                              <p className="text-[12px] font-medium text-foreground flex-1">
+                                {svc.serviceName}
+                              </p>
                               {svc.pricePerSession > 0 && (
                                 <span className="text-[11px] text-muted-foreground">
-                                  ${Number(svc.pricePerSession).toFixed(2)}/session
+                                  ${Number(svc.pricePerSession).toFixed(2)}
+                                  /session
                                 </span>
                               )}
                               {svcTotal > 0 && (
-                                <span className="text-[12px] font-semibold text-foreground">${svcTotal.toFixed(2)}</span>
+                                <span className="text-[12px] font-semibold text-foreground">
+                                  ${svcTotal.toFixed(2)}
+                                </span>
                               )}
                             </div>
                             {/* Session counts — 4 boxes */}
                             <div className="grid grid-cols-4 gap-1.5 mb-2">
                               {[
-                                { label: 'Total', value: sessTotal },
-                                { label: 'Used', value: sessUsed, cls: sessUsed > 0 ? 'text-blue-600' : '' },
-                                { label: 'Scheduled', value: sessSched, cls: sessSched > 0 ? 'text-violet-600' : '' },
-                                { label: 'Remaining', value: sessRemaining, cls: sessRemaining > 0 ? 'text-emerald-600' : 'text-muted-foreground' },
+                                { label: "Total", value: sessTotal },
+                                {
+                                  label: "Used",
+                                  value: sessUsed,
+                                  cls: sessUsed > 0 ? "text-blue-600" : "",
+                                },
+                                {
+                                  label: "Scheduled",
+                                  value: sessSched,
+                                  cls: sessSched > 0 ? "text-violet-600" : "",
+                                },
+                                {
+                                  label: "Remaining",
+                                  value: sessRemaining,
+                                  cls:
+                                    sessRemaining > 0
+                                      ? "text-emerald-600"
+                                      : "text-muted-foreground",
+                                },
                               ].map(({ label, value, cls }) => (
-                                <div key={label} className="text-center bg-muted/40 rounded-md py-1.5">
-                                  <p className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</p>
-                                  <p className={`text-[14px] font-bold ${cls ?? 'text-foreground'}`}>{value}</p>
+                                <div
+                                  key={label}
+                                  className="text-center bg-muted/40 rounded-md py-1.5"
+                                >
+                                  <p className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                                    {label}
+                                  </p>
+                                  <p
+                                    className={`text-[14px] font-bold ${cls ?? "text-foreground"}`}
+                                  >
+                                    {value}
+                                  </p>
                                 </div>
                               ))}
                             </div>
                             <SessionBar used={sessUsed} total={sessTotal} />
                           </div>
-                        )
+                        );
                       })}
                     </div>
                   </div>
                 )}
 
                 {/* Payment plan installment schedule */}
-                {pkg.billingType === 'payment_plan' && (() => {
-                  const plan = plansMap[String(enr._id)]
-                  if (!plan) return null
-                  const paidCount = plan.installments.filter((i) => i.status === 'paid').length
-                  return (
-                    <div className="mt-4 border-t border-border pt-4">
-                      <div className="flex items-center justify-between mb-2.5">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                          Payment Schedule
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                            plan.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600' :
-                            plan.status === 'cancelled' ? 'bg-muted text-muted-foreground' :
-                            'bg-violet-500/10 text-violet-600'
-                          }`}>
-                            {plan.status}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {paidCount} / {plan.numberOfInstallments} paid
-                          </span>
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-border overflow-hidden">
-                        {plan.installments.map((inst, idx) => {
-                          const isLast = idx === plan.installments.length - 1
-                          const hasDiscount = isLast && plan.installmentAmount > inst.amount
-                          return (
-                          <div
-                            key={idx}
-                            className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? 'border-t border-border' : ''} ${
-                              inst.status === 'paid' ? 'bg-emerald-500/5' : ''
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <div className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
-                                inst.status === 'paid'
-                                  ? 'bg-emerald-600 text-white'
-                                  : inst.status === 'failed'
-                                  ? 'bg-rose-600 text-white'
-                                  : 'bg-muted text-muted-foreground'
-                              }`}>
-                                {inst.status === 'paid' ? '✓' : idx + 1}
-                              </div>
-                              <div>
-                                <p className="text-[12px] text-foreground font-medium">
-                                  Payment {idx + 1}
-                                  {inst.status === 'paid' && <span className="ml-1.5 text-[11px] font-normal text-emerald-600">Paid</span>}
-                                  {inst.status === 'failed' && <span className="ml-1.5 text-[11px] font-normal text-rose-600">Failed</span>}
-                                </p>
-                                <p className="text-[11px] text-muted-foreground">
-                                  Due {new Date(inst.dueDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {hasDiscount && (
-                                <span className="text-[11px] text-muted-foreground line-through">${Number(plan.installmentAmount).toFixed(2)}</span>
-                              )}
-                              <p className="text-[13px] font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</p>
-                              {hasDiscount && (
-                                <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">discount</span>
-                              )}
-                              {inst.status === 'pending' && plan.status === 'active' && pkg.status === 'active' && (
-                                <Button
-                                  size="sm"
-                                  className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                                  onClick={() => setPayInstallTarget({ plan, index: idx })}
-                                >
-                                  Pay
-                                </Button>
-                              )}
-                            </div>
+                {pkg.billingType === "payment_plan" &&
+                  (() => {
+                    const plan = plansMap[String(enr._id)];
+                    if (!plan) return null;
+                    const paidCount = plan.installments.filter(
+                      (i) => i.status === "paid",
+                    ).length;
+                    return (
+                      <div className="mt-4 border-t border-border pt-4">
+                        <div className="flex items-center justify-between mb-2.5">
+                          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                            Payment Schedule
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                plan.status === "completed"
+                                  ? "bg-emerald-500/10 text-emerald-600"
+                                  : plan.status === "cancelled"
+                                    ? "bg-muted text-muted-foreground"
+                                    : "bg-violet-500/10 text-violet-600"
+                              }`}
+                            >
+                              {plan.status}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {paidCount} / {plan.numberOfInstallments} paid
+                            </span>
                           </div>
-                        )})}
+                        </div>
+                        <div className="rounded-lg border border-border overflow-hidden">
+                          {plan.installments.map((inst, idx) => {
+                            const isLast = idx === plan.installments.length - 1;
+                            const hasDiscount =
+                              isLast && plan.installmentAmount > inst.amount;
+                            return (
+                              <div
+                                key={idx}
+                                className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${
+                                  inst.status === "paid"
+                                    ? "bg-emerald-500/5"
+                                    : ""
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <div
+                                    className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                                      inst.status === "paid"
+                                        ? "bg-emerald-600 text-white"
+                                        : inst.status === "failed"
+                                          ? "bg-rose-600 text-white"
+                                          : "bg-muted text-muted-foreground"
+                                    }`}
+                                  >
+                                    {inst.status === "paid" ? "✓" : idx + 1}
+                                  </div>
+                                  <div>
+                                    <p className="text-[12px] text-foreground font-medium">
+                                      Payment {idx + 1}
+                                      {inst.status === "paid" && (
+                                        <span className="ml-1.5 text-[11px] font-normal text-emerald-600">
+                                          Paid
+                                        </span>
+                                      )}
+                                      {inst.status === "failed" && (
+                                        <span className="ml-1.5 text-[11px] font-normal text-rose-600">
+                                          Failed
+                                        </span>
+                                      )}
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground">
+                                      Due{" "}
+                                      {new Date(
+                                        inst.dueDate,
+                                      ).toLocaleDateString("en-AU", {
+                                        day: "numeric",
+                                        month: "short",
+                                        year: "numeric",
+                                      })}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {hasDiscount && (
+                                    <span className="text-[11px] text-muted-foreground line-through">
+                                      $
+                                      {Number(plan.installmentAmount).toFixed(
+                                        2,
+                                      )}
+                                    </span>
+                                  )}
+                                  <p className="text-[13px] font-semibold text-foreground">
+                                    ${Number(inst.amount).toFixed(2)}
+                                  </p>
+                                  {hasDiscount && (
+                                    <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                                      discount
+                                    </span>
+                                  )}
+                                  {inst.status === "pending" &&
+                                    plan.status === "active" &&
+                                    pkg.status === "active" && (
+                                      <Button
+                                        size="sm"
+                                        className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        onClick={() =>
+                                          setPayInstallTarget({
+                                            plan,
+                                            index: idx,
+                                          })
+                                        }
+                                      >
+                                        Pay
+                                      </Button>
+                                    )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {plan.nextPaymentDate && plan.status === "active" && (
+                          <p className="text-[11px] text-muted-foreground mt-1.5">
+                            Next payment due:{" "}
+                            {new Date(plan.nextPaymentDate).toLocaleDateString(
+                              "en-AU",
+                              {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              },
+                            )}
+                          </p>
+                        )}
                       </div>
-                      {plan.nextPaymentDate && plan.status === 'active' && (
-                        <p className="text-[11px] text-muted-foreground mt-1.5">
-                          Next payment due: {new Date(plan.nextPaymentDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </p>
-                      )}
-                    </div>
-                  )
-                })()}
+                    );
+                  })()}
               </div>
-            )
+            );
           })}
         </div>
       )}
@@ -1114,34 +1664,68 @@ function PackagesTab({ customerID }) {
       />
 
       {/* Cancel confirm */}
-      <Dialog open={Boolean(cancelTarget)} onOpenChange={(v) => { if (!v) setCancelTarget(null) }}>
+      <Dialog
+        open={Boolean(cancelTarget)}
+        onOpenChange={(v) => {
+          if (!v) setCancelTarget(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Cancel Package</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Cancel Package</DialogTitle>
+          </DialogHeader>
           <p className="text-[13px] text-muted-foreground mt-1">
-            Cancel <span className="font-semibold text-foreground">{cancelTarget?.packageName}</span>? Sessions will no longer be used for new bookings.
+            Cancel{" "}
+            <span className="font-semibold text-foreground">
+              {cancelTarget?.packageName}
+            </span>
+            ? Sessions will no longer be used for new bookings.
           </p>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" size="sm" onClick={() => setCancelTarget(null)}>Keep</Button>
-            <Button variant="destructive" size="sm" disabled={cancelling} onClick={handleCancel}>
-              {cancelling ? 'Cancelling…' : 'Cancel Package'}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCancelTarget(null)}
+            >
+              Keep
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={cancelling}
+              onClick={handleCancel}
+            >
+              {cancelling ? "Cancelling…" : "Cancel Package"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Add Package — 3-step dialog */}
-      <Dialog open={addOpen} onOpenChange={(v) => { if (!v) closeAdd() }}>
-        <DialogContent className={addStep === 2 ? 'max-w-3xl' : 'max-w-lg'}>
+      <Dialog
+        open={addOpen}
+        onOpenChange={(v) => {
+          if (!v) closeAdd();
+        }}
+      >
+        <DialogContent className={addStep === 2 ? "max-w-3xl" : "max-w-lg"}>
           <DialogHeader>
             <DialogTitle>Add Package</DialogTitle>
             {/* Step progress bar */}
             <div className="flex gap-1 mt-2">
               {[1, 2, 3].map((s) => (
-                <div key={s} className={`h-1 flex-1 rounded-full transition-colors ${s <= addStep ? 'bg-primary' : 'bg-muted'}`} />
+                <div
+                  key={s}
+                  className={`h-1 flex-1 rounded-full transition-colors ${s <= addStep ? "bg-primary" : "bg-muted"}`}
+                />
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground">
-              {addStep === 1 ? 'Step 1 of 3 — Choose package' : addStep === 2 ? 'Step 2 of 3 — Configure services & pricing' : 'Step 3 of 3 — Set billing'}
+              {addStep === 1
+                ? "Step 1 of 3 — Choose package"
+                : addStep === 2
+                  ? "Step 2 of 3 — Configure services & pricing"
+                  : "Step 3 of 3 — Set billing"}
             </p>
           </DialogHeader>
 
@@ -1152,23 +1736,35 @@ function PackagesTab({ customerID }) {
                 <div className="relative">
                   <select
                     value={addForm.enrollmentID}
-                    onChange={(e) => setAddForm((f) => ({ ...f, enrollmentID: e.target.value }))}
+                    onChange={(e) =>
+                      setAddForm((f) => ({
+                        ...f,
+                        enrollmentID: e.target.value,
+                      }))
+                    }
                     className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
                   >
                     <option value="">Select enrollment…</option>
-                    {enrollments.filter((e) => !e.package).map((e) => {
-                      const ordinal = ['1st','2nd','3rd'][e.enrollmentNumber - 1] ?? `${e.enrollmentNumber}th`
-                      return (
-                        <option key={e._id} value={e._id}>
-                          {ordinal} Enrollment{e.label ? ` — ${e.label}` : ''}
-                        </option>
-                      )
-                    })}
+                    {enrollments
+                      .filter((e) => !e.package)
+                      .map((e) => {
+                        const ordinal =
+                          ["1st", "2nd", "3rd"][e.enrollmentNumber - 1] ??
+                          `${e.enrollmentNumber}th`;
+                        return (
+                          <option key={e._id} value={e._id}>
+                            {ordinal} Enrollment{e.label ? ` — ${e.label}` : ""}
+                          </option>
+                        );
+                      })}
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 </div>
                 {enrollments.filter((e) => !e.package).length === 0 && (
-                  <p className="text-[11px] text-amber-600 mt-1">No active enrollments without a package. Create an enrollment first in the Enrollments tab.</p>
+                  <p className="text-[11px] text-amber-600 mt-1">
+                    No active enrollments without a package. Create an
+                    enrollment first in the Enrollments tab.
+                  </p>
                 )}
               </FormField>
               <FormField label="Package" required>
@@ -1179,32 +1775,62 @@ function PackagesTab({ customerID }) {
                     className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
                   >
                     <option value="">Select package…</option>
-                    {allPkgs.map((p) => <option key={p._id} value={p._id}>{p.packageName}</option>)}
+                    {allPkgs.map((p) => (
+                      <option key={p._id} value={p._id}>
+                        {p.packageName}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 </div>
               </FormField>
               {selectedPkg && (
                 <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
-                  <p className="text-[12px] font-medium text-foreground">{selectedPkg.packageName}</p>
-                  {selectedPkg.description && <p className="text-[11px] text-muted-foreground">{selectedPkg.description}</p>}
+                  <p className="text-[12px] font-medium text-foreground">
+                    {selectedPkg.packageName}
+                  </p>
+                  {selectedPkg.description && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {selectedPkg.description}
+                    </p>
+                  )}
                   <p className="text-[11px] text-muted-foreground">
-                    {selectedPkg.services?.length ?? 0} service{selectedPkg.services?.length !== 1 ? 's' : ''}
-                    {' · '}
-                    {selectedPkg.totalDays > 0 ? `${selectedPkg.totalDays} days validity` : 'No expiry'}
+                    {selectedPkg.services?.length ?? 0} service
+                    {selectedPkg.services?.length !== 1 ? "s" : ""}
+                    {" · "}
+                    {selectedPkg.totalDays > 0
+                      ? `${selectedPkg.totalDays} days validity`
+                      : "No expiry"}
                   </p>
                 </div>
               )}
               <FormField label="Purchase date (optional)">
                 <input
-                  type="date" value={addForm.purchaseDate}
-                  onChange={(e) => setAddForm((f) => ({ ...f, purchaseDate: e.target.value }))}
+                  type="date"
+                  value={addForm.purchaseDate}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, purchaseDate: e.target.value }))
+                  }
                   className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
                 />
               </FormField>
               <div className="flex justify-end gap-2 pt-1">
-                <Button type="button" variant="outline" size="sm" onClick={closeAdd}>Cancel</Button>
-                <Button type="button" size="sm" disabled={!addForm.packageID || !addForm.enrollmentID} onClick={() => setAddStep(2)}>Next</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={closeAdd}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!addForm.packageID || !addForm.enrollmentID}
+                  onClick={() => setAddStep(2)}
+                >
+                  Next
+                </Button>
               </div>
             </div>
           )}
@@ -1216,47 +1842,86 @@ function PackagesTab({ customerID }) {
                 <table className="w-full text-[12px]">
                   <thead>
                     <tr className="bg-muted/40 border-b border-border">
-                      {['Service', 'Color', 'Sessions', 'Price / Session', 'Subtotal'].map((h) => (
-                        <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap">{h}</th>
+                      {[
+                        "Service",
+                        "Color",
+                        "Sessions",
+                        "Price / Session",
+                        "Subtotal",
+                      ].map((h) => (
+                        <th
+                          key={h}
+                          className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap"
+                        >
+                          {h}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {addForm.services.map((svc, i) => (
-                      <tr key={i} className={i > 0 ? 'border-t border-border' : ''}>
-                        <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">{svc.serviceName}</td>
+                      <tr
+                        key={i}
+                        className={i > 0 ? "border-t border-border" : ""}
+                      >
+                        <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">
+                          {svc.serviceName}
+                        </td>
                         <td className="px-3 py-2">
                           <input
-                            type="color" value={svc.color || '#6366f1'}
-                            onChange={(e) => updateSvc(i, 'color', e.target.value)}
+                            type="color"
+                            value={svc.color || "#6366f1"}
+                            onChange={(e) =>
+                              updateSvc(i, "color", e.target.value)
+                            }
                             className="h-7 w-9 rounded border border-border cursor-pointer p-0.5 bg-background"
                           />
                         </td>
                         <td className="px-3 py-2">
                           <input
-                            type="number" min="0" value={svc.numberOfSessions}
-                            onChange={(e) => updateSvc(i, 'numberOfSessions', e.target.value)}
+                            type="number"
+                            min="0"
+                            value={svc.numberOfSessions}
+                            onChange={(e) =>
+                              updateSvc(i, "numberOfSessions", e.target.value)
+                            }
                             className="h-7 w-16 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
                           />
                         </td>
                         <td className="px-3 py-2">
                           <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+                              $
+                            </span>
                             <input
-                              type="number" min="0" step="0.01" value={svc.pricePerSession}
-                              onChange={(e) => updateSvc(i, 'pricePerSession', e.target.value)}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={svc.pricePerSession}
+                              onChange={(e) =>
+                                updateSvc(i, "pricePerSession", e.target.value)
+                              }
                               className="h-7 w-20 rounded border border-border bg-background pl-5 pr-2 text-[12px] outline-none focus:border-primary"
                             />
                           </div>
                         </td>
-                        <td className="px-3 py-2 font-semibold text-foreground whitespace-nowrap">${Number(svc.finalAmount).toFixed(2)}</td>
+                        <td className="px-3 py-2 font-semibold text-foreground whitespace-nowrap">
+                          ${Number(svc.finalAmount).toFixed(2)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-border bg-muted/30">
-                      <td colSpan={4} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Subtotal</td>
-                      <td className="px-3 py-2 text-[12px] font-semibold text-foreground">${rawTotal.toFixed(2)}</td>
+                      <td
+                        colSpan={4}
+                        className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right"
+                      >
+                        Subtotal
+                      </td>
+                      <td className="px-3 py-2 text-[12px] font-semibold text-foreground">
+                        ${rawTotal.toFixed(2)}
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
@@ -1264,42 +1929,78 @@ function PackagesTab({ customerID }) {
 
               {/* Package-level discount */}
               <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Package Discount</p>
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                  Package Discount
+                </p>
                 <div className="flex items-center gap-3">
                   <select
                     value={addForm.discountType}
-                    onChange={(e) => setAddForm((f) => ({ ...f, discountType: e.target.value, discountAmount: 0 }))}
+                    onChange={(e) =>
+                      setAddForm((f) => ({
+                        ...f,
+                        discountType: e.target.value,
+                        discountAmount: 0,
+                      }))
+                    }
                     className="h-8 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
                   >
                     <option value="none">No discount</option>
                     <option value="percentage">Percentage (%)</option>
                     <option value="fixed">Fixed ($)</option>
                   </select>
-                  {addForm.discountType !== 'none' && (
+                  {addForm.discountType !== "none" && (
                     <div className="relative">
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
-                        {addForm.discountType === 'percentage' ? '%' : '$'}
+                        {addForm.discountType === "percentage" ? "%" : "$"}
                       </span>
                       <input
-                        type="number" min="0" step="0.01" value={addForm.discountAmount}
-                        onChange={(e) => setAddForm((f) => ({ ...f, discountAmount: e.target.value }))}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={addForm.discountAmount}
+                        onChange={(e) =>
+                          setAddForm((f) => ({
+                            ...f,
+                            discountAmount: e.target.value,
+                          }))
+                        }
                         className="h-8 w-24 rounded border border-border bg-background pl-6 pr-2 text-[12px] outline-none focus:border-primary"
                       />
                     </div>
                   )}
                   {pkgDiscountApplied > 0 && (
-                    <span className="text-[12px] text-amber-600 font-medium ml-auto">-${pkgDiscountApplied.toFixed(2)}</span>
+                    <span className="text-[12px] text-amber-600 font-medium ml-auto">
+                      -${pkgDiscountApplied.toFixed(2)}
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center justify-between border-t border-border pt-2">
-                  <p className="text-[12px] font-medium text-muted-foreground">Total</p>
-                  <p className="text-[14px] font-bold text-foreground">${totalAmount.toFixed(2)}</p>
+                  <p className="text-[12px] font-medium text-muted-foreground">
+                    Total
+                  </p>
+                  <p className="text-[14px] font-bold text-foreground">
+                    ${totalAmount.toFixed(2)}
+                  </p>
                 </div>
               </div>
 
               <div className="flex justify-between gap-2 pt-1">
-                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(1)}>Back</Button>
-                <Button type="button" size="sm" disabled={addForm.services.length === 0} onClick={() => setAddStep(3)}>Next</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAddStep(1)}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={addForm.services.length === 0}
+                  onClick={() => setAddStep(3)}
+                >
+                  Next
+                </Button>
               </div>
             </div>
           )}
@@ -1309,53 +2010,90 @@ function PackagesTab({ customerID }) {
             <div className="space-y-4 mt-2">
               {/* Billing type selector */}
               <div>
-                <p className="text-[12px] font-medium text-muted-foreground mb-2">Billing Type</p>
+                <p className="text-[12px] font-medium text-muted-foreground mb-2">
+                  Billing Type
+                </p>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { value: 'one_time', label: 'One-time', desc: 'Full payment now' },
-                    { value: 'payment_plan', label: 'Payment Plan', desc: 'Autopay installments' },
-                    { value: 'flexible', label: 'Flexible', desc: 'Pay as you go' },
+                    {
+                      value: "one_time",
+                      label: "One-time",
+                      desc: "Full payment now",
+                    },
+                    {
+                      value: "payment_plan",
+                      label: "Payment Plan",
+                      desc: "Autopay installments",
+                    },
+                    {
+                      value: "flexible",
+                      label: "Flexible",
+                      desc: "Pay as you go",
+                    },
                   ].map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
-                      onClick={() => setAddForm((f) => ({ ...f, billingType: opt.value }))}
+                      onClick={() =>
+                        setAddForm((f) => ({ ...f, billingType: opt.value }))
+                      }
                       className={`rounded-lg border-2 p-3 text-left transition-colors ${
                         addForm.billingType === opt.value
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:border-border/80 bg-background'
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-border/80 bg-background"
                       }`}
                     >
-                      <p className="text-[12px] font-semibold text-foreground">{opt.label}</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{opt.desc}</p>
+                      <p className="text-[12px] font-semibold text-foreground">
+                        {opt.label}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {opt.desc}
+                      </p>
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* One-time */}
-              {addForm.billingType === 'one_time' && (
+              {addForm.billingType === "one_time" && (
                 <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-[12px] text-muted-foreground">Billing Date</p>
+                    <p className="text-[12px] text-muted-foreground">
+                      Billing Date
+                    </p>
                     <p className="text-[12px] font-medium text-foreground">
                       {addForm.purchaseDate
-                        ? new Date(addForm.purchaseDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
-                        : new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        ? new Date(addForm.purchaseDate).toLocaleDateString(
+                            "en-AU",
+                            { day: "numeric", month: "short", year: "numeric" },
+                          )
+                        : new Date().toLocaleDateString("en-AU", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
                     </p>
                   </div>
                   <div className="flex items-center justify-between border-t border-border pt-3">
-                    <p className="text-[12px] text-muted-foreground">Payable Balance</p>
-                    <p className="text-[15px] font-bold text-foreground">${totalAmount.toFixed(2)}</p>
+                    <p className="text-[12px] text-muted-foreground">
+                      Payable Balance
+                    </p>
+                    <p className="text-[15px] font-bold text-foreground">
+                      ${totalAmount.toFixed(2)}
+                    </p>
                   </div>
                   <FormField label="Payment Method" required>
                     <div className="relative">
                       <select
                         value={addForm.billing.method}
-                        onChange={(e) => setBilling('method', e.target.value)}
+                        onChange={(e) => setBilling("method", e.target.value)}
                         className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
                       >
-                        {PAYMENT_METHODS.map((m) => <option key={m} value={m} className="capitalize">{m}</option>)}
+                        {PAYMENT_METHODS.map((m) => (
+                          <option key={m} value={m} className="capitalize">
+                            {m}
+                          </option>
+                        ))}
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     </div>
@@ -1364,13 +2102,18 @@ function PackagesTab({ customerID }) {
               )}
 
               {/* Payment plan */}
-              {addForm.billingType === 'payment_plan' && (
+              {addForm.billingType === "payment_plan" && (
                 <div className="space-y-3">
                   <div className="grid grid-cols-3 gap-3">
                     <FormField label="Installments" required>
                       <input
-                        type="number" min="2" max="52" value={addForm.billing.numberOfInstallments}
-                        onChange={(e) => setBilling('numberOfInstallments', e.target.value)}
+                        type="number"
+                        min="2"
+                        max="52"
+                        value={addForm.billing.numberOfInstallments}
+                        onChange={(e) =>
+                          setBilling("numberOfInstallments", e.target.value)
+                        }
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
                       />
                     </FormField>
@@ -1378,7 +2121,9 @@ function PackagesTab({ customerID }) {
                       <div className="relative">
                         <select
                           value={addForm.billing.frequency}
-                          onChange={(e) => setBilling('frequency', e.target.value)}
+                          onChange={(e) =>
+                            setBilling("frequency", e.target.value)
+                          }
                           className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
                         >
                           <option value="weekly">Weekly</option>
@@ -1390,8 +2135,11 @@ function PackagesTab({ customerID }) {
                     </FormField>
                     <FormField label="Start Date" required>
                       <input
-                        type="date" value={addForm.billing.startDate}
-                        onChange={(e) => setBilling('startDate', e.target.value)}
+                        type="date"
+                        value={addForm.billing.startDate}
+                        onChange={(e) =>
+                          setBilling("startDate", e.target.value)
+                        }
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
                       />
                     </FormField>
@@ -1399,27 +2147,42 @@ function PackagesTab({ customerID }) {
                   {installments.length > 0 && (
                     <div className="rounded-lg border border-border bg-muted/20 p-3">
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Schedule Preview</p>
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                          Schedule Preview
+                        </p>
                         {pkgDiscountApplied > 0 && (
-                          <span className="text-[11px] text-amber-600">Discount applied to last payment</span>
+                          <span className="text-[11px] text-amber-600">
+                            Discount applied to last payment
+                          </span>
                         )}
                       </div>
                       <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
                         {installments.map((inst, i) => (
-                          <div key={i} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
+                          <div
+                            key={i}
+                            className="flex items-center justify-between py-1 border-b border-border/30 last:border-0"
+                          >
                             <span className="text-[11px] text-muted-foreground">
                               Payment {i + 1} · {inst.date}
                               {inst.isLast && pkgDiscountApplied > 0 && (
-                                <span className="ml-1 text-amber-600">(-${pkgDiscountApplied.toFixed(2)} discount)</span>
+                                <span className="ml-1 text-amber-600">
+                                  (-${pkgDiscountApplied.toFixed(2)} discount)
+                                </span>
                               )}
                             </span>
-                            <span className="text-[11px] font-medium text-foreground">${inst.amount.toFixed(2)}</span>
+                            <span className="text-[11px] font-medium text-foreground">
+                              ${inst.amount.toFixed(2)}
+                            </span>
                           </div>
                         ))}
                       </div>
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
-                        <p className="text-[11px] font-medium text-muted-foreground">Payable Balance</p>
-                        <p className="text-[13px] font-bold text-foreground">${totalAmount.toFixed(2)}</p>
+                        <p className="text-[11px] font-medium text-muted-foreground">
+                          Payable Balance
+                        </p>
+                        <p className="text-[13px] font-bold text-foreground">
+                          ${totalAmount.toFixed(2)}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -1427,22 +2190,39 @@ function PackagesTab({ customerID }) {
               )}
 
               {/* Flexible */}
-              {addForm.billingType === 'flexible' && (
+              {addForm.billingType === "flexible" && (
                 <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
                   <p className="text-[12px] text-muted-foreground">
-                    No schedule set. Payments can be recorded manually at any time.
+                    No schedule set. Payments can be recorded manually at any
+                    time.
                   </p>
                   <div className="flex items-center justify-between pt-2 border-t border-border">
-                    <p className="text-[12px] text-muted-foreground">Payable Balance</p>
-                    <p className="text-[15px] font-bold text-foreground">${totalAmount.toFixed(2)}</p>
+                    <p className="text-[12px] text-muted-foreground">
+                      Payable Balance
+                    </p>
+                    <p className="text-[15px] font-bold text-foreground">
+                      ${totalAmount.toFixed(2)}
+                    </p>
                   </div>
                 </div>
               )}
 
               <div className="flex justify-between gap-2 pt-1">
-                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(2)}>Back</Button>
-                <Button type="button" size="sm" disabled={adding} onClick={handleAdd}>
-                  {adding ? 'Adding…' : 'Add Package'}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAddStep(2)}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={adding}
+                  onClick={handleAdd}
+                >
+                  {adding ? "Adding…" : "Add Package"}
                 </Button>
               </div>
             </div>
@@ -1450,209 +2230,279 @@ function PackagesTab({ customerID }) {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
 
 // ─── Enrollments Tab ─────────────────────────────────────────────────────────
 
 const BLANK_ENR_FORM = {
-  packageID: '',
-  purchaseDate: '',
+  packageID: "",
+  purchaseDate: "",
   services: [],
-  discountType: 'none',
+  discountType: "none",
   discountAmount: 0,
-  billingType: 'one_time',
-  billing: { method: 'cash', numberOfInstallments: 3, frequency: 'monthly', startDate: '' },
-}
+  billingType: "one_time",
+  billing: {
+    method: "cash",
+    numberOfInstallments: 3,
+    frequency: "monthly",
+    startDate: "",
+  },
+};
 
 function EnrollmentsTab({ customerID, statusFilter }) {
-  const [enrollments, setEnrollments] = useState([])
-  const [detailsMap, setDetailsMap] = useState({})
-  const [plansMap, setPlansMap] = useState({})
-  const [allPkgs, setAllPkgs] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [enrollments, setEnrollments] = useState([]);
+  const [detailsMap, setDetailsMap] = useState({});
+  const [plansMap, setPlansMap] = useState({});
+  const [allPkgs, setAllPkgs] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [createLabel, setCreateLabel] = useState('')
-  const [createTeacherID, setCreateTeacherID] = useState('')
-  const [teachers, setTeachers] = useState([])
-  const [creating, setCreating] = useState(false)
+  const [createLabel, setCreateLabel] = useState("");
+  const [createTeacherID, setCreateTeacherID] = useState("");
+  const [teachers, setTeachers] = useState([]);
+  const [creating, setCreating] = useState(false);
 
-  const [addTargetEnrollment, setAddTargetEnrollment] = useState(null)
-  const [addStep, setAddStep] = useState(1)
-  const [addForm, setAddForm] = useState(BLANK_ENR_FORM)
-  const [selectedPkg, setSelectedPkg] = useState(null)
-  const [adding, setAdding] = useState(false)
+  const [addTargetEnrollment, setAddTargetEnrollment] = useState(null);
+  const [addStep, setAddStep] = useState(1);
+  const [addForm, setAddForm] = useState(BLANK_ENR_FORM);
+  const [selectedPkg, setSelectedPkg] = useState(null);
+  const [adding, setAdding] = useState(false);
 
-  const [cancelTarget, setCancelTarget] = useState(null)
-  const [cancelling, setCancelling] = useState(false)
-  const [recordPaymentTarget, setRecordPaymentTarget] = useState(null)
-  const [payInstallTarget, setPayInstallTarget] = useState(null)
-  const [expandedServices, setExpandedServices] = useState(new Set())
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [recordPaymentTarget, setRecordPaymentTarget] = useState(null);
+  const [payInstallTarget, setPayInstallTarget] = useState(null);
+  const [expandedServices, setExpandedServices] = useState(new Set());
 
   function toggleService(key) {
     setExpandedServices((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
-  const toast = useToast()
+  const toast = useToast();
 
   const load = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     const [enrRes, allRes, teachersRes] = await Promise.all([
       api.get(`/api/enrollment?customerID=${customerID}`),
-      api.get('/api/package?limit=200&isActive=true'),
-      api.get('/api/teacher?limit=200&status=active'),
-    ])
-    if (allRes.success) setAllPkgs(allRes.data || [])
-    if (teachersRes.success) setTeachers(teachersRes.data || [])
+      api.get("/api/package?limit=200&isActive=true"),
+      api.get("/api/teacher?limit=200&status=active"),
+    ]);
+    if (allRes.success) setAllPkgs(allRes.data || []);
+    if (teachersRes.success) setTeachers(teachersRes.data || []);
     if (enrRes.success) {
-      const list = enrRes.data || []
-      setEnrollments(list)
-      const withPkg = list.filter((e) => e.package)
+      const list = enrRes.data || [];
+      setEnrollments(list);
+      const withPkg = list.filter((e) => e.package);
       if (withPkg.length > 0) {
-        const detResults = await Promise.all(withPkg.map((e) => api.get(`/api/customer-package/${e._id}/details`)))
-        const detMap = {}
-        withPkg.forEach((e, i) => { if (detResults[i].success) detMap[String(e._id)] = detResults[i].data })
-        setDetailsMap(detMap)
-        const hasPlan = withPkg.some((e) => e.package?.billingType === 'payment_plan')
+        const detResults = await Promise.all(
+          withPkg.map((e) => api.get(`/api/customer-package/${e._id}/details`)),
+        );
+        const detMap = {};
+        withPkg.forEach((e, i) => {
+          if (detResults[i].success) detMap[String(e._id)] = detResults[i].data;
+        });
+        setDetailsMap(detMap);
+        const hasPlan = withPkg.some(
+          (e) => e.package?.billingType === "payment_plan",
+        );
         if (hasPlan) {
-          const plansRes = await api.get(`/api/payment-plan/customer/${customerID}`)
+          const plansRes = await api.get(
+            `/api/payment-plan/customer/${customerID}`,
+          );
           if (plansRes.success) {
-            const pm = {}
-            ;(plansRes.data || []).forEach((plan) => {
-              const enrId = String(plan.enrollmentID?._id ?? plan.enrollmentID)
-              pm[enrId] = plan
-            })
-            setPlansMap(pm)
+            const pm = {};
+            (plansRes.data || []).forEach((plan) => {
+              const enrId = String(plan.enrollmentID?._id ?? plan.enrollmentID);
+              pm[enrId] = plan;
+            });
+            setPlansMap(pm);
           }
         }
       }
     }
-    setLoading(false)
-  }, [customerID])
+    setLoading(false);
+  }, [customerID]);
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load();
+  }, [load]);
 
   function openCreateAndAddFlow() {
-    setCreateLabel('')
-    setCreateTeacherID('')
-    setAddForm(BLANK_ENR_FORM)
-    setSelectedPkg(null)
-    setAddStep(1)
-    setAddTargetEnrollment({ isNew: true })
+    setCreateLabel("");
+    setCreateTeacherID("");
+    setAddForm(BLANK_ENR_FORM);
+    setSelectedPkg(null);
+    setAddStep(1);
+    setAddTargetEnrollment({ isNew: true });
   }
 
   function openAddPackage(enrollment) {
-    setAddTargetEnrollment(enrollment)
-    setAddForm(BLANK_ENR_FORM)
-    setSelectedPkg(null)
-    setAddStep(1)
+    setAddTargetEnrollment(enrollment);
+    setAddForm(BLANK_ENR_FORM);
+    setSelectedPkg(null);
+    setAddStep(1);
   }
 
   function onEnrPkgChange(pkgId) {
-    const pkg = allPkgs.find((p) => String(p._id) === pkgId)
-    setSelectedPkg(pkg || null)
+    const pkg = allPkgs.find((p) => String(p._id) === pkgId);
+    setSelectedPkg(pkg || null);
     setAddForm((f) => ({
       ...f,
       packageID: pkgId,
-      discountType: pkg?.discountType || 'none',
+      discountType: pkg?.discountType || "none",
       discountAmount: pkg?.discountAmount || 0,
       services: (pkg?.services || []).map((s) => ({
-        serviceCode: s.serviceCode || '',
-        serviceName: s.serviceName || '',
-        color: s.color || '',
+        serviceCode: s.serviceCode || "",
+        serviceName: s.serviceName || "",
+        color: s.color || "",
         numberOfSessions: s.numberOfSessions || 0,
         pricePerSession: s.pricePerSession || 0,
         finalAmount: (s.numberOfSessions || 0) * (s.pricePerSession || 0),
       })),
-    }))
+    }));
   }
 
   function updateEnrSvc(i, field, val) {
     setAddForm((f) => {
       const svcs = f.services.map((s, idx) => {
-        if (idx !== i) return s
-        const updated = { ...s, [field]: val }
-        const price = Number(updated.pricePerSession) || 0
-        const sessions = Number(updated.numberOfSessions) || 0
-        updated.finalAmount = parseFloat((price * sessions).toFixed(2))
-        return updated
-      })
-      return { ...f, services: svcs }
-    })
+        if (idx !== i) return s;
+        const updated = { ...s, [field]: val };
+        const price = Number(updated.pricePerSession) || 0;
+        const sessions = Number(updated.numberOfSessions) || 0;
+        updated.finalAmount = parseFloat((price * sessions).toFixed(2));
+        return updated;
+      });
+      return { ...f, services: svcs };
+    });
+  }
+
+  function addEnrSvcRow() {
+    setAddForm((f) => ({
+      ...f,
+      services: [
+        ...f.services,
+        {
+          serviceCode: "",
+          serviceName: "",
+          color: "",
+          numberOfSessions: 0,
+          pricePerSession: 0,
+          finalAmount: 0,
+        },
+      ],
+    }));
+  }
+
+  function removeEnrSvcRow(i) {
+    setAddForm((f) => ({
+      ...f,
+      services: f.services.filter((_, idx) => idx !== i),
+    }));
   }
 
   function setEnrBilling(field, val) {
-    setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }))
+    setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }));
   }
 
-  const enrRawTotal = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0)
+  const enrRawTotal = addForm.services.reduce(
+    (s, svc) => s + (Number(svc.finalAmount) || 0),
+    0,
+  );
   const enrDiscountApplied = (() => {
-    if (addForm.discountType === 'percentage') return Math.min(enrRawTotal, enrRawTotal * (Number(addForm.discountAmount) || 0) / 100)
-    if (addForm.discountType === 'fixed') return Math.min(enrRawTotal, Number(addForm.discountAmount) || 0)
-    return 0
-  })()
-  const enrTotalAmount = Math.max(0, enrRawTotal - enrDiscountApplied)
+    if (addForm.discountType === "percentage")
+      return Math.min(
+        enrRawTotal,
+        (enrRawTotal * (Number(addForm.discountAmount) || 0)) / 100,
+      );
+    if (addForm.discountType === "fixed")
+      return Math.min(enrRawTotal, Number(addForm.discountAmount) || 0);
+    return 0;
+  })();
+  const enrTotalAmount = Math.max(0, enrRawTotal - enrDiscountApplied);
 
   function getEnrInstallments() {
-    const { numberOfInstallments, frequency, startDate } = addForm.billing
-    if (!startDate || !numberOfInstallments) return []
-    const n = Number(numberOfInstallments)
-    if (!n || n < 1) return []
-    const baseAmt = parseFloat((enrRawTotal / n).toFixed(2))
-    const result = []
-    let d = new Date(startDate)
+    const { numberOfInstallments, frequency, startDate } = addForm.billing;
+    if (!startDate || !numberOfInstallments) return [];
+    const n = Number(numberOfInstallments);
+    if (!n || n < 1) return [];
+    const baseAmt = parseFloat((enrRawTotal / n).toFixed(2));
+    const result = [];
+    let d = new Date(startDate);
     for (let i = 0; i < n; i++) {
-      const isLast = i === n - 1
-      const amount = isLast ? Math.max(0, parseFloat((baseAmt - enrDiscountApplied).toFixed(2))) : baseAmt
-      result.push({ date: d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }), amount, isLast })
-      if (frequency === 'weekly') d = new Date(d.getTime() + 7 * 86400000)
-      else if (frequency === 'biweekly') d = new Date(d.getTime() + 14 * 86400000)
-      else { d = new Date(d); d.setMonth(d.getMonth() + 1) }
+      const isLast = i === n - 1;
+      const amount = isLast
+        ? Math.max(0, parseFloat((baseAmt - enrDiscountApplied).toFixed(2)))
+        : baseAmt;
+      result.push({
+        date: d.toLocaleDateString("en-AU", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }),
+        amount,
+        isLast,
+      });
+      if (frequency === "weekly") d = new Date(d.getTime() + 7 * 86400000);
+      else if (frequency === "biweekly")
+        d = new Date(d.getTime() + 14 * 86400000);
+      else {
+        d = new Date(d);
+        d.setMonth(d.getMonth() + 1);
+      }
     }
-    return result
+    return result;
   }
 
   async function handleEnrAdd() {
-    const isCreateAndAddFlow = Boolean(addTargetEnrollment?.isNew)
-    if (addForm.billingType === 'payment_plan') {
-      const { numberOfInstallments, frequency, startDate } = addForm.billing
+    const isCreateAndAddFlow = Boolean(addTargetEnrollment?.isNew);
+    if (addForm.billingType === "payment_plan") {
+      const { numberOfInstallments, frequency, startDate } = addForm.billing;
       if (!numberOfInstallments || !frequency || !startDate) {
-        toast.error('Please fill all payment plan fields.')
-        return
+        toast.error("Please fill all payment plan fields.");
+        return;
       }
     }
     if (isCreateAndAddFlow && !createTeacherID) {
-      toast.error('Please select a teacher.')
-      return
+      toast.error("Please select a teacher.");
+      return;
     }
-    setAdding(true)
-    let targetEnrollmentID = addTargetEnrollment?._id ? String(addTargetEnrollment._id) : ''
+    setAdding(true);
+    let targetEnrollmentID = addTargetEnrollment?._id
+      ? String(addTargetEnrollment._id)
+      : "";
     if (isCreateAndAddFlow) {
-      setCreating(true)
-      const enrRes = await api.post('/api/enrollment', {
+      setCreating(true);
+      const enrRes = await api.post("/api/enrollment", {
         customerID,
         label: createLabel.trim() || undefined,
         teacherID: createTeacherID || undefined,
-      })
-      setCreating(false)
+      });
+      setCreating(false);
       if (!enrRes.success) {
-        toast.error(enrRes.error || 'Failed to create enrollment.')
-        setAdding(false)
-        return
+        toast.error(enrRes.error || "Failed to create enrollment.");
+        setAdding(false);
+        return;
       }
-      const createdPayload = enrRes?.data && typeof enrRes.data === 'object' ? (enrRes.data.enrollment ?? enrRes.data) : null
-      const createdEnrollmentId = createdPayload?._id ?? enrRes?.data?._id ?? createdPayload?.enrollmentID ?? null
+      const createdPayload =
+        enrRes?.data && typeof enrRes.data === "object"
+          ? (enrRes.data.enrollment ?? enrRes.data)
+          : null;
+      const createdEnrollmentId =
+        createdPayload?._id ??
+        enrRes?.data?._id ??
+        createdPayload?.enrollmentID ??
+        null;
       if (!createdEnrollmentId) {
-        toast.error('Enrollment created but no enrollment ID returned.')
-        setAdding(false)
-        return
+        toast.error("Enrollment created but no enrollment ID returned.");
+        setAdding(false);
+        return;
       }
-      targetEnrollmentID = String(createdEnrollmentId)
+      targetEnrollmentID = String(createdEnrollmentId);
     }
 
     const payload = {
@@ -1671,60 +2521,83 @@ function EnrollmentsTab({ customerID, statusFilter }) {
       })),
       billingType: addForm.billingType,
       billing:
-        addForm.billingType === 'one_time'
+        addForm.billingType === "one_time"
           ? { method: addForm.billing.method }
-          : addForm.billingType === 'payment_plan'
-          ? { numberOfInstallments: Number(addForm.billing.numberOfInstallments), frequency: addForm.billing.frequency, startDate: addForm.billing.startDate }
-          : {},
-    }
-    if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate
-    const res = await api.post('/api/customer-package/add', payload)
+          : addForm.billingType === "payment_plan"
+            ? {
+                numberOfInstallments: Number(
+                  addForm.billing.numberOfInstallments,
+                ),
+                frequency: addForm.billing.frequency,
+                startDate: addForm.billing.startDate,
+              }
+            : {},
+    };
+    if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate;
+    const res = await api.post("/api/customer-package/add", payload);
     if (res.success) {
-      toast.success(isCreateAndAddFlow ? 'Enrollment and package created.' : 'Package added.')
-      setAddTargetEnrollment(null)
-      setCreateLabel('')
-      setCreateTeacherID('')
-      load()
+      toast.success(
+        isCreateAndAddFlow
+          ? "Enrollment and package created."
+          : "Package added.",
+      );
+      setAddTargetEnrollment(null);
+      setCreateLabel("");
+      setCreateTeacherID("");
+      load();
     } else {
-      toast.error(res.error || 'Failed to add package.')
+      toast.error(res.error || "Failed to add package.");
     }
-    setAdding(false)
+    setAdding(false);
   }
 
   async function handleEnrCancel() {
-    if (!cancelTarget) return
-    setCancelling(true)
-    const res = await api.patch(`/api/customer-package/${cancelTarget.enrollmentId}/cancel`)
-    if (res.success) { toast.success('Package cancelled.'); setCancelTarget(null); load() }
-    else toast.error(res.error || 'Failed.')
-    setCancelling(false)
+    if (!cancelTarget) return;
+    setCancelling(true);
+    const res = await api.patch(
+      `/api/customer-package/${cancelTarget.enrollmentId}/cancel`,
+    );
+    if (res.success) {
+      toast.success("Package cancelled.");
+      setCancelTarget(null);
+      load();
+    } else toast.error(res.error || "Failed.");
+    setCancelling(false);
   }
 
-  if (loading) return <div className="flex items-center justify-center py-16"><LoadingSpinner /></div>
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-16">
+        <LoadingSpinner />
+      </div>
+    );
 
-  const enrInstallments = getEnrInstallments()
-  const isCreateAndAddFlow = Boolean(addTargetEnrollment?.isNew)
-  const packageStep = 1
-  const servicesStep = isCreateAndAddFlow ? 2 : 2
-  const billingStep = isCreateAndAddFlow ? 3 : 3
-  const totalSteps = isCreateAndAddFlow ? 3 : 3
+  const enrInstallments = getEnrInstallments();
+  const isCreateAndAddFlow = Boolean(addTargetEnrollment?.isNew);
 
   const filteredEnrollments = statusFilter
     ? enrollments.filter((e) => {
-        if (statusFilter === 'active') return e.status === 'active'
-        if (statusFilter === 'completed') return e.status !== 'active'
-        return true
+        if (statusFilter === "active") return e.status === "active";
+        if (statusFilter === "completed") return e.status !== "active";
+        return true;
       })
-    : enrollments
+    : enrollments;
 
-  const isActiveTab = statusFilter === 'active'
+  const isActiveTab = statusFilter === "active";
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">{filteredEnrollments.length} enrollment{filteredEnrollments.length !== 1 ? 's' : ''}</p>
+        <p className="text-[13px] text-muted-foreground">
+          {filteredEnrollments.length} enrollment
+          {filteredEnrollments.length !== 1 ? "s" : ""}
+        </p>
         {isActiveTab && (
-          <Button size="sm" className="h-8 text-[12px]" onClick={openCreateAndAddFlow}>
+          <Button
+            size="sm"
+            className="h-8 text-[12px]"
+            onClick={openCreateAndAddFlow}
+          >
             <Plus className="h-3.5 w-3.5 mr-1.5" /> New Enrollment
           </Button>
         )}
@@ -1732,23 +2605,32 @@ function EnrollmentsTab({ customerID, statusFilter }) {
 
       {filteredEnrollments.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          {isActiveTab ? 'No active enrollments. Click "New Enrollment" to create one.' : 'No completed enrollments yet.'}
+          {isActiveTab
+            ? 'No active enrollments. Click "New Enrollment" to create one.'
+            : "No completed enrollments yet."}
         </div>
       ) : (
         <div className="space-y-4">
           {filteredEnrollments.map((enr) => {
-            const det = enr.package ? detailsMap[String(enr._id)] : null
-            const cp = enr.package ?? null
-            const billing = det?.billing ?? {}
-            const services = det?.services ?? cp?.services ?? []
-            const totalPaid = billing.totalPaid ?? cp?.totalPaid ?? 0
-            const collected = billing.amountCollected ?? cp?.amountCollected ?? 0
-            const outstanding = billing.outstanding ?? Math.max(0, totalPaid - collected)
-            const refunded = billing.totalRefunded ?? 0
-            const ordinal = ['1st','2nd','3rd'][enr.enrollmentNumber - 1] ?? `${enr.enrollmentNumber}th`
+            const det = enr.package ? detailsMap[String(enr._id)] : null;
+            const cp = enr.package ?? null;
+            const billing = det?.billing ?? {};
+            const services = det?.services ?? cp?.services ?? [];
+            const totalPaid = billing.totalPaid ?? cp?.totalPaid ?? 0;
+            const collected =
+              billing.amountCollected ?? cp?.amountCollected ?? 0;
+            const outstanding =
+              billing.outstanding ?? Math.max(0, totalPaid - collected);
+            const refunded = billing.totalRefunded ?? 0;
+            const ordinal =
+              ["1st", "2nd", "3rd"][enr.enrollmentNumber - 1] ??
+              `${enr.enrollmentNumber}th`;
 
             return (
-              <div key={enr._id} className="rounded-xl border border-border bg-card overflow-hidden">
+              <div
+                key={enr._id}
+                className="rounded-xl border border-border bg-card overflow-hidden"
+              >
                 {/* Enrollment header bar */}
                 <div className="flex items-center justify-between px-5 py-4 bg-muted/40 border-b border-border">
                   <div className="flex items-center gap-3">
@@ -1756,26 +2638,40 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                       {ordinal} Enrollment
                     </span>
                     {enr.label && (
-                      <span className="text-[12px] font-medium text-muted-foreground">· {enr.label}</span>
+                      <span className="text-[12px] font-medium text-muted-foreground">
+                        · {enr.label}
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
                     {enr.teacherID?.name && (
-                      <span className="text-[12px] font-medium text-foreground">{enr.teacherID.name}</span>
+                      <span className="text-[12px] font-medium text-foreground">
+                        {enr.teacherID.name}
+                      </span>
                     )}
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusColor(enr.status)}`}>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusColor(enr.status)}`}
+                    >
                       {enr.status}
                     </span>
-                    <span className="text-[12px] text-muted-foreground">{formatDate(enr.createdAt)}</span>
+                    <span className="text-[12px] text-muted-foreground">
+                      {formatDate(enr.createdAt)}
+                    </span>
                   </div>
                 </div>
 
                 {/* No package yet */}
                 {!cp ? (
                   <div className="flex items-center justify-between px-5 py-8">
-                    <p className="text-[13px] text-muted-foreground">No package assigned yet.</p>
-                    {enr.status === 'active' && (
-                      <Button size="sm" className="h-8 text-[12px]" onClick={() => openAddPackage(enr)}>
+                    <p className="text-[13px] text-muted-foreground">
+                      No package assigned yet.
+                    </p>
+                    {enr.status === "active" && (
+                      <Button
+                        size="sm"
+                        className="h-8 text-[12px]"
+                        onClick={() => openAddPackage(enr)}
+                      >
                         <Plus className="h-3.5 w-3.5 mr-1.5" /> Add Package
                       </Button>
                     )}
@@ -1786,42 +2682,68 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
                         {cp.packageRef?.color && (
-                          <div className="h-9 w-9 rounded-lg shrink-0 border border-black/10" style={{ backgroundColor: cp.packageRef.color }} />
+                          <div
+                            className="h-9 w-9 rounded-lg shrink-0 border border-black/10"
+                            style={{ backgroundColor: cp.packageRef.color }}
+                          />
                         )}
                         <div>
-                          <p className="text-[15px] font-bold text-foreground">{cp.packageName ?? cp.packageRef?.packageName ?? 'Package'}</p>
+                          <p className="text-[15px] font-bold text-foreground">
+                            {cp.packageName ??
+                              cp.packageRef?.packageName ??
+                              "Package"}
+                          </p>
                           <p className="text-[12px] text-muted-foreground mt-1">
                             Purchased {formatDate(cp.purchaseDate)}
-                            {cp.expiryDate ? ` · Expires ${formatDate(cp.expiryDate)}` : ' · No expiry'}
+                            {cp.expiryDate
+                              ? ` · Expires ${formatDate(cp.expiryDate)}`
+                              : " · No expiry"}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">
-                        {cp.billingType && cp.billingType !== 'one_time' && (
+                        {cp.billingType && cp.billingType !== "one_time" && (
                           <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-violet-500/10 text-violet-600 capitalize">
-                            {cp.billingType.replace('_', ' ')}
+                            {cp.billingType.replace("_", " ")}
                           </span>
                         )}
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${paymentStatusColor(cp.paymentStatus)}`}>
-                          {cp.paymentStatus ?? 'unpaid'}
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${paymentStatusColor(cp.paymentStatus)}`}
+                        >
+                          {cp.paymentStatus ?? "unpaid"}
                         </span>
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(cp.status)}`}>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(cp.status)}`}
+                        >
                           {cp.status}
                         </span>
-                        {cp.status === 'active' && cp.paymentStatus !== 'paid' && cp.billingType !== 'payment_plan' && (
+                        {cp.status === "active" &&
+                          cp.paymentStatus !== "paid" &&
+                          cp.billingType !== "payment_plan" && (
+                            <Button
+                              size="sm"
+                              className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                              onClick={() =>
+                                setRecordPaymentTarget({
+                                  enrollmentId: enr._id,
+                                  outstanding,
+                                })
+                              }
+                            >
+                              <CreditCard className="h-3 w-3 mr-1" /> Pay
+                            </Button>
+                          )}
+                        {cp.status === "active" && (
                           <Button
+                            variant="ghost"
                             size="sm"
-                            className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                            onClick={() => setRecordPaymentTarget({ enrollmentId: enr._id, outstanding })}
-                          >
-                            <CreditCard className="h-3 w-3 mr-1" /> Pay
-                          </Button>
-                        )}
-                        {cp.status === 'active' && (
-                          <Button
-                            variant="ghost" size="sm"
                             className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
-                            onClick={() => setCancelTarget({ enrollmentId: enr._id, packageName: cp.packageName })}
+                            onClick={() =>
+                              setCancelTarget({
+                                enrollmentId: enr._id,
+                                packageName: cp.packageName,
+                              })
+                            }
                           >
                             <X className="h-3 w-3 mr-1" /> Cancel
                           </Button>
@@ -1832,253 +2754,578 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                     {/* Billing summary */}
                     <div className="mt-4 grid grid-cols-4 divide-x divide-border rounded-lg border border-border bg-muted/30 overflow-hidden">
                       {[
-                        { label: 'Total Price', value: `$${Number(totalPaid).toFixed(2)}` },
-                        { label: 'Collected', value: `$${Number(collected).toFixed(2)}`, cls: 'text-emerald-600' },
-                        { label: 'Outstanding', value: `$${Number(outstanding).toFixed(2)}`, cls: outstanding > 0 ? 'text-rose-500' : 'text-muted-foreground' },
-                        { label: 'Refunded', value: `$${Number(refunded).toFixed(2)}`, cls: refunded > 0 ? 'text-amber-500' : 'text-muted-foreground' },
+                        {
+                          label: "Total Price",
+                          value: `$${Number(totalPaid).toFixed(2)}`,
+                        },
+                        {
+                          label: "Collected",
+                          value: `$${Number(collected).toFixed(2)}`,
+                          cls: "text-emerald-600",
+                        },
+                        {
+                          label: "Outstanding",
+                          value: `$${Number(outstanding).toFixed(2)}`,
+                          cls:
+                            outstanding > 0
+                              ? "text-rose-500"
+                              : "text-muted-foreground",
+                        },
+                        {
+                          label: "Refunded",
+                          value: `$${Number(refunded).toFixed(2)}`,
+                          cls:
+                            refunded > 0
+                              ? "text-amber-500"
+                              : "text-muted-foreground",
+                        },
                       ].map(({ label, value, cls }) => (
                         <div key={label} className="text-center py-3 px-2">
-                          <p className="text-[11px] font-medium text-muted-foreground mb-1 uppercase tracking-wide">{label}</p>
-                          <p className={`text-[15px] font-bold ${cls ?? 'text-foreground'}`}>{value}</p>
+                          <p className="text-[11px] font-medium text-muted-foreground mb-1 uppercase tracking-wide">
+                            {label}
+                          </p>
+                          <p
+                            className={`text-[15px] font-bold ${cls ?? "text-foreground"}`}
+                          >
+                            {value}
+                          </p>
                         </div>
                       ))}
                     </div>
 
                     {/* Services */}
-                    {services.length > 0 && (() => {
-                      let totalEnrolled = 0, totalUsed = 0, totalSched = 0, totalRemaining = 0, totalCredit = 0, totalServicePrice = 0
-                      const rows = services.map((svc, i) => {
-                        const sessTotal = svc.sessionsTotal ?? 0
-                        const sessUsed = svc.sessionsUsed ?? 0
-                        const sessSched = svc.sessionsScheduled ?? 0
-                        const sessRemaining = svc.sessionsRemaining ?? Math.max(0, sessTotal - sessUsed - sessSched)
-                        const svcCredit = sessRemaining * (Number(svc.pricePerSession) || 0)
-                        const svcTotal = sessTotal * (Number(svc.pricePerSession) || 0)
-                        totalEnrolled += sessTotal; totalUsed += sessUsed; totalSched += sessSched
-                        totalRemaining += sessRemaining; totalCredit += svcCredit; totalServicePrice += svcTotal
-                        return { svc, i, sessTotal, sessUsed, sessSched, sessRemaining, svcCredit, svcTotal }
-                      })
-                      return (
-                        <div className="mt-5 border-t border-border pt-5">
-                          <p className="text-[12px] font-bold text-foreground uppercase tracking-widest mb-3">Services</p>
-                          <div className="rounded-lg border border-border overflow-hidden">
-                            {/* Column headers */}
-                            <div className="grid sticky top-0 z-10 bg-muted/50 border-b-2 border-border px-3 py-2.5" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}>
-                              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Service</span>
-                              {['Price/Sess', 'Total', 'Enrolled', 'Used', 'Scheduled', 'Remaining', 'Credit Value'].map((h) => (
-                                <span key={h} className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">{h}</span>
-                              ))}
-                            </div>
-                            {/* Service rows */}
-                            {rows.map(({ svc, i, sessTotal, sessUsed, sessSched, sessRemaining, svcCredit, svcTotal }) => {
-                              const expandKey = `${enr._id}-${i}`
-                              const isExpanded = expandedServices.has(expandKey)
-                              return (
-                                <div key={i} className={i > 0 ? 'border-t border-border' : ''}>
-                                  <div
-                                    className="grid items-center px-3 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
-                                    style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}
-                                    onClick={() => toggleService(expandKey)}
+                    {services.length > 0 &&
+                      (() => {
+                        let totalEnrolled = 0,
+                          totalUsed = 0,
+                          totalSched = 0,
+                          totalRemaining = 0,
+                          totalCredit = 0,
+                          totalServicePrice = 0;
+                        const rows = services.map((svc, i) => {
+                          const sessTotal = svc.sessionsTotal ?? 0;
+                          const sessUsed = svc.sessionsUsed ?? 0;
+                          const sessSched = svc.sessionsScheduled ?? 0;
+                          const sessRemaining =
+                            svc.sessionsRemaining ??
+                            Math.max(0, sessTotal - sessUsed - sessSched);
+                          const svcCredit =
+                            sessRemaining * (Number(svc.pricePerSession) || 0);
+                          const svcTotal =
+                            sessTotal * (Number(svc.pricePerSession) || 0);
+                          totalEnrolled += sessTotal;
+                          totalUsed += sessUsed;
+                          totalSched += sessSched;
+                          totalRemaining += sessRemaining;
+                          totalCredit += svcCredit;
+                          totalServicePrice += svcTotal;
+                          return {
+                            svc,
+                            i,
+                            sessTotal,
+                            sessUsed,
+                            sessSched,
+                            sessRemaining,
+                            svcCredit,
+                            svcTotal,
+                          };
+                        });
+                        return (
+                          <div className="mt-5 border-t border-border pt-5">
+                            <p className="text-[12px] font-bold text-foreground uppercase tracking-widest mb-3">
+                              Services
+                            </p>
+                            <div className="rounded-lg border border-border overflow-hidden">
+                              {/* Column headers */}
+                              <div
+                                className="grid sticky top-0 z-10 bg-muted/50 border-b-2 border-border px-3 py-2.5"
+                                style={{
+                                  gridTemplateColumns:
+                                    "1fr 80px 80px 80px 80px 80px 80px 100px",
+                                }}
+                              >
+                                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                                  Service
+                                </span>
+                                {[
+                                  "Price/Sess",
+                                  "Total",
+                                  "Enrolled",
+                                  "Used",
+                                  "Scheduled",
+                                  "Remaining",
+                                  "Credit Value",
+                                ].map((h) => (
+                                  <span
+                                    key={h}
+                                    className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right"
                                   >
-                                    <div>
-                                      <div className="flex items-center gap-2">
-                                        <ChevronDown className={`h-3 w-3 text-muted-foreground shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                        {svc.color && <span className="h-2.5 w-2.5 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: svc.color }} />}
-                                        <span className="text-[12px] font-medium text-foreground">{svc.serviceName}</span>
-                                      </div>
-                                      <div className="mt-1.5 pl-[28px]">
-                                        <SessionBar used={sessUsed} total={sessTotal} />
-                                      </div>
-                                    </div>
-                                    <span className="text-[12px] text-muted-foreground text-right">
-                                      {svc.pricePerSession > 0 ? `$${Number(svc.pricePerSession).toFixed(2)}` : '—'}
-                                    </span>
-                                    <span className="text-[13px] font-semibold text-foreground text-right">
-                                      {svcTotal > 0 ? `$${svcTotal.toFixed(2)}` : '—'}
-                                    </span>
-                                    <span className="text-[13px] font-semibold text-foreground text-right">{sessTotal}</span>
-                                    <span className={`text-[13px] font-semibold text-right ${sessUsed > 0 ? 'text-blue-600' : 'text-muted-foreground'}`}>{sessUsed}</span>
-                                    <span className={`text-[13px] font-semibold text-right ${sessSched > 0 ? 'text-violet-600' : 'text-muted-foreground'}`}>{sessSched}</span>
-                                    <span className={`text-[13px] font-semibold text-right ${sessRemaining > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{sessRemaining}</span>
-                                    <span className={`text-[13px] font-semibold text-right ${svcCredit > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>${svcCredit.toFixed(2)}</span>
-                                  </div>
-                                  {isExpanded && (
-                                    <div className="border-t border-border/50 bg-muted/10 px-4 py-4 pl-10">
-                                      <div className="grid grid-cols-3 gap-0 divide-x divide-border rounded-lg border border-border overflow-hidden">
-                                        {/* Pricing */}
-                                        <div className="px-4 py-3">
-                                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">Pricing</p>
-                                          <div className="space-y-2">
-                                            <div className="flex justify-between items-center gap-4">
-                                              <span className="text-[12px] text-muted-foreground">Price / session</span>
-                                              <span className="text-[12px] font-semibold text-foreground">${Number(svc.pricePerSession || 0).toFixed(2)}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center gap-4">
-                                              <span className="text-[12px] text-muted-foreground">Sessions × {sessTotal}</span>
-                                              <span className="text-[12px] font-semibold text-foreground">${svcTotal.toFixed(2)}</span>
-                                            </div>
-                                            {cp.discountType && cp.discountType !== 'none' && Number(cp.discountApplied) > 0 && (
-                                              <div className="flex justify-between items-center gap-4 pt-1 border-t border-border/50">
-                                                <span className="text-[12px] text-muted-foreground">
-                                                  Discount ({cp.discountType === 'percentage' ? `${cp.discountAmount}%` : `$${Number(cp.discountAmount).toFixed(2)} off`})
-                                                </span>
-                                                <span className="text-[12px] font-semibold text-amber-500">-${Number(cp.discountApplied).toFixed(2)}</span>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                        {/* Sessions */}
-                                        <div className="px-4 py-3">
-                                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">Sessions</p>
-                                          <div className="space-y-2">
-                                            {[
-                                              { label: 'Enrolled', value: sessTotal, cls: 'text-foreground' },
-                                              { label: 'Used', value: sessUsed, cls: 'text-blue-500' },
-                                              { label: 'Scheduled', value: sessSched, cls: 'text-violet-500' },
-                                              { label: 'Remaining', value: sessRemaining, cls: 'text-emerald-500' },
-                                            ].map(({ label, value, cls }) => (
-                                              <div key={label} className="flex justify-between items-center gap-4">
-                                                <span className="text-[12px] text-muted-foreground">{label}</span>
-                                                <span className={`text-[12px] font-semibold ${cls}`}>{value}</span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                        {/* Value */}
-                                        <div className="px-4 py-3">
-                                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">Value</p>
-                                          <div className="space-y-2">
-                                            <div className="flex justify-between items-center gap-4">
-                                              <span className="text-[12px] text-muted-foreground">Used ({sessUsed} sess)</span>
-                                              <span className="text-[12px] font-semibold text-blue-500">${(sessUsed * (svc.pricePerSession || 0)).toFixed(2)}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center gap-4">
-                                              <span className="text-[12px] text-muted-foreground">Scheduled ({sessSched} sess)</span>
-                                              <span className="text-[12px] font-semibold text-violet-500">${(sessSched * (svc.pricePerSession || 0)).toFixed(2)}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center gap-4">
-                                              <span className="text-[12px] text-muted-foreground">Remaining ({sessRemaining} sess)</span>
-                                              <span className="text-[12px] font-semibold text-emerald-500">${svcCredit.toFixed(2)}</span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                            {/* Totals row */}
-                            {rows.length > 1 && (
-                              <>
-                              <div className="grid px-3 py-2 border-t-2 border-border bg-muted/60" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}>
-                                <span />
-                                <span />
-                                {['Total After Discount', 'Enrolled', 'Used', 'Scheduled', 'Remaining', 'Total'].map((h) => (
-                                  <span key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-right">{h}</span>
+                                    {h}
+                                  </span>
                                 ))}
                               </div>
-                              <div className="grid items-center px-3 py-3 border-t border-border bg-muted/40" style={{ gridTemplateColumns: '1fr 80px 80px 80px 80px 80px 80px 100px' }}>
-                                <span className="text-[12px] font-bold text-foreground uppercase tracking-wider">Total</span>
-                                <span />
-                                <div className="text-right">
-                                  {cp.discountApplied > 0 ? (
-                                    <>
-                                      <span className="text-[11px] text-muted-foreground line-through block">${totalServicePrice.toFixed(2)}</span>
-                                      <span className="text-[13px] font-bold text-emerald-600">${(totalServicePrice - Number(cp.discountApplied)).toFixed(2)}</span>
-                                    </>
-                                  ) : (
-                                    <span className="text-[13px] font-bold text-foreground">${totalServicePrice.toFixed(2)}</span>
-                                  )}
-                                </div>
-                                <span className="text-[13px] font-bold text-foreground text-right">{totalEnrolled}</span>
-                                <span className={`text-[13px] font-bold text-right ${totalUsed > 0 ? 'text-blue-600' : 'text-muted-foreground'}`}>{totalUsed}</span>
-                                <span className={`text-[13px] font-bold text-right ${totalSched > 0 ? 'text-violet-600' : 'text-muted-foreground'}`}>{totalSched}</span>
-                                <span className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{totalRemaining}</span>
-                                <span className={`text-[13px] font-bold text-right ${totalCredit > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>${totalCredit.toFixed(2)}</span>
-                              </div>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })()}
-
-                    {/* Payment plan installments */}
-                    {cp.billingType === 'payment_plan' && (() => {
-                      const plan = plansMap[String(enr._id)]
-                      if (!plan) return null
-                      const paidCount = plan.installments.filter((i) => i.status === 'paid').length
-                      return (
-                        <div className="mt-5 border-t border-border pt-5">
-                          <div className="flex items-center justify-between mb-3">
-                            <p className="text-[12px] font-bold text-foreground uppercase tracking-widest">Payment Schedule</p>
-                            <div className="flex items-center gap-2">
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                plan.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600' :
-                                plan.status === 'cancelled' ? 'bg-muted text-muted-foreground' :
-                                'bg-violet-500/10 text-violet-600'
-                              }`}>{plan.status}</span>
-                              <span className="text-[11px] text-muted-foreground">{paidCount} / {plan.numberOfInstallments} paid</span>
+                              {/* Service rows */}
+                              {rows.map(
+                                ({
+                                  svc,
+                                  i,
+                                  sessTotal,
+                                  sessUsed,
+                                  sessSched,
+                                  sessRemaining,
+                                  svcCredit,
+                                  svcTotal,
+                                }) => {
+                                  const expandKey = `${enr._id}-${i}`;
+                                  const isExpanded =
+                                    expandedServices.has(expandKey);
+                                  return (
+                                    <div
+                                      key={i}
+                                      className={
+                                        i > 0 ? "border-t border-border" : ""
+                                      }
+                                    >
+                                      <div
+                                        className="grid items-center px-3 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
+                                        style={{
+                                          gridTemplateColumns:
+                                            "1fr 80px 80px 80px 80px 80px 80px 100px",
+                                        }}
+                                        onClick={() => toggleService(expandKey)}
+                                      >
+                                        <div>
+                                          <div className="flex items-center gap-2">
+                                            <ChevronDown
+                                              className={`h-3 w-3 text-muted-foreground shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                            />
+                                            {svc.color && (
+                                              <span
+                                                className="h-2.5 w-2.5 rounded-full shrink-0 border border-black/10"
+                                                style={{
+                                                  backgroundColor: svc.color,
+                                                }}
+                                              />
+                                            )}
+                                            <span className="text-[12px] font-medium text-foreground">
+                                              {svc.serviceName}
+                                            </span>
+                                          </div>
+                                          <div className="mt-1.5 pl-[28px]">
+                                            <SessionBar
+                                              used={sessUsed}
+                                              total={sessTotal}
+                                            />
+                                          </div>
+                                        </div>
+                                        <span className="text-[12px] text-muted-foreground text-right">
+                                          {svc.pricePerSession > 0
+                                            ? `$${Number(svc.pricePerSession).toFixed(2)}`
+                                            : "—"}
+                                        </span>
+                                        <span className="text-[13px] font-semibold text-foreground text-right">
+                                          {svcTotal > 0
+                                            ? `$${svcTotal.toFixed(2)}`
+                                            : "—"}
+                                        </span>
+                                        <span className="text-[13px] font-semibold text-foreground text-right">
+                                          {sessTotal}
+                                        </span>
+                                        <span
+                                          className={`text-[13px] font-semibold text-right ${sessUsed > 0 ? "text-blue-600" : "text-muted-foreground"}`}
+                                        >
+                                          {sessUsed}
+                                        </span>
+                                        <span
+                                          className={`text-[13px] font-semibold text-right ${sessSched > 0 ? "text-violet-600" : "text-muted-foreground"}`}
+                                        >
+                                          {sessSched}
+                                        </span>
+                                        <span
+                                          className={`text-[13px] font-semibold text-right ${sessRemaining > 0 ? "text-foreground" : "text-muted-foreground"}`}
+                                        >
+                                          {sessRemaining}
+                                        </span>
+                                        <span
+                                          className={`text-[13px] font-semibold text-right ${svcCredit > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
+                                        >
+                                          ${svcCredit.toFixed(2)}
+                                        </span>
+                                      </div>
+                                      {isExpanded && (
+                                        <div className="border-t border-border/50 bg-muted/10 px-4 py-4 pl-10">
+                                          <div className="grid grid-cols-3 gap-0 divide-x divide-border rounded-lg border border-border overflow-hidden">
+                                            {/* Pricing */}
+                                            <div className="px-4 py-3">
+                                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">
+                                                Pricing
+                                              </p>
+                                              <div className="space-y-2">
+                                                <div className="flex justify-between items-center gap-4">
+                                                  <span className="text-[12px] text-muted-foreground">
+                                                    Price / session
+                                                  </span>
+                                                  <span className="text-[12px] font-semibold text-foreground">
+                                                    $
+                                                    {Number(
+                                                      svc.pricePerSession || 0,
+                                                    ).toFixed(2)}
+                                                  </span>
+                                                </div>
+                                                <div className="flex justify-between items-center gap-4">
+                                                  <span className="text-[12px] text-muted-foreground">
+                                                    Sessions × {sessTotal}
+                                                  </span>
+                                                  <span className="text-[12px] font-semibold text-foreground">
+                                                    ${svcTotal.toFixed(2)}
+                                                  </span>
+                                                </div>
+                                                {cp.discountType &&
+                                                  cp.discountType !== "none" &&
+                                                  Number(cp.discountApplied) >
+                                                    0 && (
+                                                    <div className="flex justify-between items-center gap-4 pt-1 border-t border-border/50">
+                                                      <span className="text-[12px] text-muted-foreground">
+                                                        Discount (
+                                                        {cp.discountType ===
+                                                        "percentage"
+                                                          ? `${cp.discountAmount}%`
+                                                          : `$${Number(cp.discountAmount).toFixed(2)} off`}
+                                                        )
+                                                      </span>
+                                                      <span className="text-[12px] font-semibold text-amber-500">
+                                                        -$
+                                                        {Number(
+                                                          cp.discountApplied,
+                                                        ).toFixed(2)}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                              </div>
+                                            </div>
+                                            {/* Sessions */}
+                                            <div className="px-4 py-3">
+                                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">
+                                                Sessions
+                                              </p>
+                                              <div className="space-y-2">
+                                                {[
+                                                  {
+                                                    label: "Enrolled",
+                                                    value: sessTotal,
+                                                    cls: "text-foreground",
+                                                  },
+                                                  {
+                                                    label: "Used",
+                                                    value: sessUsed,
+                                                    cls: "text-blue-500",
+                                                  },
+                                                  {
+                                                    label: "Scheduled",
+                                                    value: sessSched,
+                                                    cls: "text-violet-500",
+                                                  },
+                                                  {
+                                                    label: "Remaining",
+                                                    value: sessRemaining,
+                                                    cls: "text-emerald-500",
+                                                  },
+                                                ].map(
+                                                  ({ label, value, cls }) => (
+                                                    <div
+                                                      key={label}
+                                                      className="flex justify-between items-center gap-4"
+                                                    >
+                                                      <span className="text-[12px] text-muted-foreground">
+                                                        {label}
+                                                      </span>
+                                                      <span
+                                                        className={`text-[12px] font-semibold ${cls}`}
+                                                      >
+                                                        {value}
+                                                      </span>
+                                                    </div>
+                                                  ),
+                                                )}
+                                              </div>
+                                            </div>
+                                            {/* Value */}
+                                            <div className="px-4 py-3">
+                                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">
+                                                Value
+                                              </p>
+                                              <div className="space-y-2">
+                                                <div className="flex justify-between items-center gap-4">
+                                                  <span className="text-[12px] text-muted-foreground">
+                                                    Used ({sessUsed} sess)
+                                                  </span>
+                                                  <span className="text-[12px] font-semibold text-blue-500">
+                                                    $
+                                                    {(
+                                                      sessUsed *
+                                                      (svc.pricePerSession || 0)
+                                                    ).toFixed(2)}
+                                                  </span>
+                                                </div>
+                                                <div className="flex justify-between items-center gap-4">
+                                                  <span className="text-[12px] text-muted-foreground">
+                                                    Scheduled ({sessSched} sess)
+                                                  </span>
+                                                  <span className="text-[12px] font-semibold text-violet-500">
+                                                    $
+                                                    {(
+                                                      sessSched *
+                                                      (svc.pricePerSession || 0)
+                                                    ).toFixed(2)}
+                                                  </span>
+                                                </div>
+                                                <div className="flex justify-between items-center gap-4">
+                                                  <span className="text-[12px] text-muted-foreground">
+                                                    Remaining ({sessRemaining}{" "}
+                                                    sess)
+                                                  </span>
+                                                  <span className="text-[12px] font-semibold text-emerald-500">
+                                                    ${svcCredit.toFixed(2)}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                },
+                              )}
+                              {/* Totals row */}
+                              {rows.length > 1 && (
+                                <>
+                                  <div
+                                    className="grid px-3 py-2 border-t-2 border-border bg-muted/60"
+                                    style={{
+                                      gridTemplateColumns:
+                                        "1fr 80px 80px 80px 80px 80px 80px 100px",
+                                    }}
+                                  >
+                                    <span />
+                                    <span />
+                                    {[
+                                      "Total After Discount",
+                                      "Enrolled",
+                                      "Used",
+                                      "Scheduled",
+                                      "Remaining",
+                                      "Total",
+                                    ].map((h) => (
+                                      <span
+                                        key={h}
+                                        className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-right"
+                                      >
+                                        {h}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div
+                                    className="grid items-center px-3 py-3 border-t border-border bg-muted/40"
+                                    style={{
+                                      gridTemplateColumns:
+                                        "1fr 80px 80px 80px 80px 80px 80px 100px",
+                                    }}
+                                  >
+                                    <span className="text-[12px] font-bold text-foreground uppercase tracking-wider">
+                                      Total
+                                    </span>
+                                    <span />
+                                    <div className="text-right">
+                                      {cp.discountApplied > 0 ? (
+                                        <>
+                                          <span className="text-[11px] text-muted-foreground line-through block">
+                                            ${totalServicePrice.toFixed(2)}
+                                          </span>
+                                          <span className="text-[13px] font-bold text-emerald-600">
+                                            $
+                                            {(
+                                              totalServicePrice -
+                                              Number(cp.discountApplied)
+                                            ).toFixed(2)}
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <span className="text-[13px] font-bold text-foreground">
+                                          ${totalServicePrice.toFixed(2)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[13px] font-bold text-foreground text-right">
+                                      {totalEnrolled}
+                                    </span>
+                                    <span
+                                      className={`text-[13px] font-bold text-right ${totalUsed > 0 ? "text-blue-600" : "text-muted-foreground"}`}
+                                    >
+                                      {totalUsed}
+                                    </span>
+                                    <span
+                                      className={`text-[13px] font-bold text-right ${totalSched > 0 ? "text-violet-600" : "text-muted-foreground"}`}
+                                    >
+                                      {totalSched}
+                                    </span>
+                                    <span
+                                      className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? "text-foreground" : "text-muted-foreground"}`}
+                                    >
+                                      {totalRemaining}
+                                    </span>
+                                    <span
+                                      className={`text-[13px] font-bold text-right ${totalCredit > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
+                                    >
+                                      ${totalCredit.toFixed(2)}
+                                    </span>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
-                          <div className="rounded-lg border border-border overflow-hidden">
-                            {plan.installments.map((inst, idx) => {
-                              const isLast = idx === plan.installments.length - 1
-                              const hasDiscount = isLast && plan.installmentAmount > inst.amount
-                              return (
-                              <div key={idx} className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? 'border-t border-border' : ''} ${inst.status === 'paid' ? 'bg-emerald-500/5' : ''}`}>
-                                <div className="flex items-center gap-2.5">
-                                  <div className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
-                                    inst.status === 'paid' ? 'bg-emerald-600 text-white' :
-                                    inst.status === 'failed' ? 'bg-rose-600 text-white' :
-                                    'bg-muted text-muted-foreground'
-                                  }`}>{inst.status === 'paid' ? '✓' : idx + 1}</div>
-                                  <div>
-                                    <p className="text-[12px] text-foreground font-medium">
-                                      Payment {idx + 1}
-                                      {inst.status === 'paid' && <span className="ml-1.5 text-[11px] font-normal text-emerald-600">Paid</span>}
-                                      {inst.status === 'failed' && <span className="ml-1.5 text-[11px] font-normal text-rose-600">Failed</span>}
-                                    </p>
-                                    <p className="text-[11px] text-muted-foreground">
-                                      Due {new Date(inst.dueDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {hasDiscount && (
-                                    <span className="text-[11px] text-muted-foreground line-through">${Number(plan.installmentAmount).toFixed(2)}</span>
-                                  )}
-                                  <p className="text-[13px] font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</p>
-                                  {hasDiscount && (
-                                    <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">discount</span>
-                                  )}
-                                  {inst.status === 'pending' && plan.status === 'active' && cp.status === 'active' && (
-                                    <Button
-                                      size="sm"
-                                      className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                                      onClick={() => setPayInstallTarget({ plan, index: idx })}
-                                    >
-                                      Pay
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                            )})}
+                        );
+                      })()}
 
+                    {/* Payment plan installments */}
+                    {cp.billingType === "payment_plan" &&
+                      (() => {
+                        const plan = plansMap[String(enr._id)];
+                        if (!plan) return null;
+                        const paidCount = plan.installments.filter(
+                          (i) => i.status === "paid",
+                        ).length;
+                        return (
+                          <div className="mt-5 border-t border-border pt-5">
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="text-[12px] font-bold text-foreground uppercase tracking-widest">
+                                Payment Schedule
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                    plan.status === "completed"
+                                      ? "bg-emerald-500/10 text-emerald-600"
+                                      : plan.status === "cancelled"
+                                        ? "bg-muted text-muted-foreground"
+                                        : "bg-violet-500/10 text-violet-600"
+                                  }`}
+                                >
+                                  {plan.status}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {paidCount} / {plan.numberOfInstallments} paid
+                                </span>
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-border overflow-hidden">
+                              {plan.installments.map((inst, idx) => {
+                                const isLast =
+                                  idx === plan.installments.length - 1;
+                                const hasDiscount =
+                                  isLast &&
+                                  plan.installmentAmount > inst.amount;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${inst.status === "paid" ? "bg-emerald-500/5" : ""}`}
+                                  >
+                                    <div className="flex items-center gap-2.5">
+                                      <div
+                                        className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                                          inst.status === "paid"
+                                            ? "bg-emerald-600 text-white"
+                                            : inst.status === "failed"
+                                              ? "bg-rose-600 text-white"
+                                              : "bg-muted text-muted-foreground"
+                                        }`}
+                                      >
+                                        {inst.status === "paid" ? "✓" : idx + 1}
+                                      </div>
+                                      <div>
+                                        <p className="text-[12px] text-foreground font-medium">
+                                          Payment {idx + 1}
+                                          {inst.status === "paid" && (
+                                            <span className="ml-1.5 text-[11px] font-normal text-emerald-600">
+                                              Paid
+                                            </span>
+                                          )}
+                                          {inst.status === "failed" && (
+                                            <span className="ml-1.5 text-[11px] font-normal text-rose-600">
+                                              Failed
+                                            </span>
+                                          )}
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                          Due{" "}
+                                          {new Date(
+                                            inst.dueDate,
+                                          ).toLocaleDateString("en-AU", {
+                                            day: "numeric",
+                                            month: "short",
+                                            year: "numeric",
+                                          })}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {hasDiscount && (
+                                        <span className="text-[11px] text-muted-foreground line-through">
+                                          $
+                                          {Number(
+                                            plan.installmentAmount,
+                                          ).toFixed(2)}
+                                        </span>
+                                      )}
+                                      <p className="text-[13px] font-semibold text-foreground">
+                                        ${Number(inst.amount).toFixed(2)}
+                                      </p>
+                                      {hasDiscount && (
+                                        <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                                          discount
+                                        </span>
+                                      )}
+                                      {inst.status === "pending" &&
+                                        plan.status === "active" &&
+                                        cp.status === "active" && (
+                                          <Button
+                                            size="sm"
+                                            className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                            onClick={() =>
+                                              setPayInstallTarget({
+                                                plan,
+                                                index: idx,
+                                              })
+                                            }
+                                          >
+                                            Pay
+                                          </Button>
+                                        )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {plan.nextPaymentDate &&
+                              plan.status === "active" && (
+                                <p className="text-[11px] text-muted-foreground mt-1.5">
+                                  Next payment due:{" "}
+                                  {new Date(
+                                    plan.nextPaymentDate,
+                                  ).toLocaleDateString("en-AU", {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
+                                  })}
+                                </p>
+                              )}
                           </div>
-                          {plan.nextPaymentDate && plan.status === 'active' && (
-                            <p className="text-[11px] text-muted-foreground mt-1.5">
-                              Next payment due: {new Date(plan.nextPaymentDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </p>
-                          )}
-                        </div>
-                      )
-                    })()}
+                        );
+                      })()}
                   </div>
                 )}
               </div>
-            )
+            );
           })}
         </div>
       )}
@@ -2103,57 +3350,83 @@ function EnrollmentsTab({ customerID, statusFilter }) {
       />
 
       {/* Cancel confirm */}
-      <Dialog open={Boolean(cancelTarget)} onOpenChange={(v) => { if (!v) setCancelTarget(null) }}>
+      <Dialog
+        open={Boolean(cancelTarget)}
+        onOpenChange={(v) => {
+          if (!v) setCancelTarget(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Cancel Package</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Cancel Package</DialogTitle>
+          </DialogHeader>
           <p className="text-[13px] text-muted-foreground mt-1">
-            Cancel <span className="font-semibold text-foreground">{cancelTarget?.packageName}</span>? Sessions will no longer be used for new bookings.
+            Cancel{" "}
+            <span className="font-semibold text-foreground">
+              {cancelTarget?.packageName}
+            </span>
+            ? Sessions will no longer be used for new bookings.
           </p>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" size="sm" onClick={() => setCancelTarget(null)}>Keep</Button>
-            <Button variant="destructive" size="sm" disabled={cancelling} onClick={handleEnrCancel}>
-              {cancelling ? 'Cancelling…' : 'Cancel Package'}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCancelTarget(null)}
+            >
+              Keep
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={cancelling}
+              onClick={handleEnrCancel}
+            >
+              {cancelling ? "Cancelling…" : "Cancel Package"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Add Package dialog (3 steps, for a specific enrollment) */}
-      <Dialog open={Boolean(addTargetEnrollment)} onOpenChange={(v) => { if (!v) { setAddTargetEnrollment(null); setCreateLabel(''); setCreateTeacherID('') } }}>
-        <DialogContent className={addStep === servicesStep ? 'max-w-3xl' : 'max-w-lg'}>
-          <DialogHeader>
-            <DialogTitle>{isCreateAndAddFlow ? 'New Enrollment & Package' : 'Add Package'}</DialogTitle>
-            <div className="flex gap-1 mt-2">
-              {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
-                <div key={s} className={`h-1 flex-1 rounded-full transition-colors ${s <= addStep ? 'bg-primary' : 'bg-muted'}`} />
-              ))}
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              {addStep === packageStep
-                ? `Step ${packageStep} of ${totalSteps} — ${isCreateAndAddFlow ? 'Enrollment details & package' : 'Choose package'}`
-                : addStep === servicesStep
-                ? `Step ${servicesStep} of ${totalSteps} — Configure services & pricing`
-                : `Step ${billingStep} of ${totalSteps} — Set billing`}
-            </p>
-          </DialogHeader>
+      {/* New Enrollment / Add Package — side panel */}
+      <Sheet
+        open={Boolean(addTargetEnrollment)}
+        onClose={() => { setAddTargetEnrollment(null); setCreateLabel(""); setCreateTeacherID(""); }}
+        width="680px"
+      >
+        <SheetContent
+          onClose={() => { setAddTargetEnrollment(null); setCreateLabel(""); setCreateTeacherID(""); }}
+          className="flex flex-col overflow-hidden p-0"
+        >
+          <div className="shrink-0 border-b border-border px-6 py-5">
+            <h2 className="text-[17px] font-bold text-foreground">
+              {isCreateAndAddFlow ? "New Enrollment & Package" : "Add Package"}
+            </h2>
+          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-5">
 
-          {addStep === packageStep && (
-            <div className="space-y-4 mt-2">
-              {isCreateAndAddFlow && (
-                <>
+          <div className="space-y-6 mt-3">
+            {/* ── Enrollment details (new enrollment flow only) ── */}
+            {isCreateAndAddFlow && (
+              <div className="rounded-xl border border-border bg-muted/20 p-5 space-y-4">
+                <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Enrollment Details
+                </p>
+                <div className="grid grid-cols-2 gap-5">
                   <FormField label="Teacher" required>
                     <div className="relative">
                       <select
                         value={createTeacherID}
                         onChange={(e) => setCreateTeacherID(e.target.value)}
-                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                        className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary"
                       >
                         <option value="">Select teacher…</option>
                         {teachers.map((t) => (
-                          <option key={t._id} value={t._id}>{t.name || t.email}</option>
+                          <option key={t._id} value={t._id}>
+                            {t.name || t.email}
+                          </option>
                         ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     </div>
                   </FormField>
                   <FormField label="Label (optional)">
@@ -2162,270 +3435,487 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                       placeholder="e.g. Term 1 2026, Trial…"
                       value={createLabel}
                       onChange={(e) => setCreateLabel(e.target.value)}
-                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[14px] outline-none focus:border-primary"
                     />
                   </FormField>
-                </>
-              )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Package ── */}
+            <div className="grid grid-cols-2 gap-5">
               <FormField label="Package" required>
                 <div className="relative">
                   <select
                     value={addForm.packageID}
                     onChange={(e) => onEnrPkgChange(e.target.value)}
-                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                    className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary"
                   >
                     <option value="">Select package…</option>
-                    {allPkgs.map((p) => <option key={p._id} value={p._id}>{p.packageName}</option>)}
+                    {allPkgs.map((p) => (
+                      <option key={p._id} value={p._id}>
+                        {p.packageName}
+                      </option>
+                    ))}
                   </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 </div>
               </FormField>
-              {selectedPkg && (
-                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
-                  <p className="text-[12px] font-medium text-foreground">{selectedPkg.packageName}</p>
-                  {selectedPkg.description && <p className="text-[11px] text-muted-foreground">{selectedPkg.description}</p>}
-                  <p className="text-[11px] text-muted-foreground">
-                    {selectedPkg.services?.length ?? 0} service{selectedPkg.services?.length !== 1 ? 's' : ''}
-                    {' · '}{selectedPkg.totalDays > 0 ? `${selectedPkg.totalDays} days validity` : 'No expiry'}
-                  </p>
-                </div>
-              )}
               <FormField label="Purchase date (optional)">
                 <input
-                  type="date" value={addForm.purchaseDate}
-                  onChange={(e) => setAddForm((f) => ({ ...f, purchaseDate: e.target.value }))}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  type="date"
+                  value={addForm.purchaseDate}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, purchaseDate: e.target.value }))
+                  }
+                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[14px] outline-none focus:border-primary"
                 />
               </FormField>
-              <div className="flex justify-end gap-2 pt-1">
-                <Button type="button" variant="outline" size="sm" onClick={() => setAddTargetEnrollment(null)}>Cancel</Button>
-                <Button type="button" size="sm" disabled={!addForm.packageID || (isCreateAndAddFlow && !createTeacherID)} onClick={() => setAddStep(servicesStep)}>Next</Button>
-              </div>
             </div>
-          )}
 
-          {addStep === servicesStep && (
-            <div className="space-y-4 mt-2">
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-[12px]">
-                  <thead>
-                    <tr className="bg-muted/40 border-b border-border">
-                      {['Service', 'Color', 'Sessions', 'Price / Session', 'Subtotal'].map((h) => (
-                        <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {addForm.services.map((svc, i) => (
-                      <tr key={i} className={i > 0 ? 'border-t border-border' : ''}>
-                        <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">{svc.serviceName}</td>
-                        <td className="px-3 py-2">
-                          <input type="color" value={svc.color || '#6366f1'} onChange={(e) => updateEnrSvc(i, 'color', e.target.value)} className="h-7 w-9 rounded border border-border cursor-pointer p-0.5 bg-background" />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input type="number" min="0" value={svc.numberOfSessions} onChange={(e) => updateEnrSvc(i, 'numberOfSessions', e.target.value)} className="h-7 w-16 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary" />
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
-                            <input type="number" min="0" step="0.01" value={svc.pricePerSession} onChange={(e) => updateEnrSvc(i, 'pricePerSession', e.target.value)} className="h-7 w-20 rounded border border-border bg-background pl-5 pr-2 text-[12px] outline-none focus:border-primary" />
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 font-semibold text-foreground whitespace-nowrap">${Number(svc.finalAmount).toFixed(2)}</td>
+            {/* ── Services table ── */}
+            {(addForm.packageID || addForm.services.length > 0) && (
+              <div>
+                <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                  Services
+                </p>
+                <div className="rounded-xl border border-border overflow-hidden">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr className="bg-muted/40 border-b border-border">
+                        {[
+                          "Service",
+                          "Color",
+                          "Sessions",
+                          "Price / Session",
+                          "Subtotal",
+                          "",
+                        ].map((h, i) => (
+                          <th
+                            key={i}
+                            className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground whitespace-nowrap"
+                          >
+                            {h}
+                          </th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-border bg-muted/30">
-                      <td colSpan={4} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Subtotal</td>
-                      <td className="px-3 py-2 text-[12px] font-semibold text-foreground">${enrRawTotal.toFixed(2)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    </thead>
+                    <tbody>
+                      {addForm.services.map((svc, i) => (
+                        <tr
+                          key={i}
+                          className={i > 0 ? "border-t border-border" : ""}
+                        >
+                          <td className="px-4 py-3">
+                            <input
+                              type="text"
+                              value={svc.serviceName}
+                              onChange={(e) =>
+                                updateEnrSvc(i, "serviceName", e.target.value)
+                              }
+                              placeholder="Service name"
+                              className="h-9 w-48 rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <input
+                              type="color"
+                              value={svc.color || "#6366f1"}
+                              onChange={(e) =>
+                                updateEnrSvc(i, "color", e.target.value)
+                              }
+                              className="h-9 w-10 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <input
+                              type="number"
+                              min="0"
+                              value={svc.numberOfSessions}
+                              onChange={(e) =>
+                                updateEnrSvc(
+                                  i,
+                                  "numberOfSessions",
+                                  e.target.value,
+                                )
+                              }
+                              className="h-9 w-20 rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
+                                $
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={svc.pricePerSession}
+                                onChange={(e) =>
+                                  updateEnrSvc(
+                                    i,
+                                    "pricePerSession",
+                                    e.target.value,
+                                  )
+                                }
+                                className="h-9 w-24 rounded-lg border border-border bg-background pl-6 pr-3 text-[13px] outline-none focus:border-primary"
+                              />
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-[14px] font-semibold text-foreground whitespace-nowrap">
+                            ${Number(svc.finalAmount).toFixed(2)}
+                          </td>
+                          <td className="px-3 py-3">
+                            <button
+                              type="button"
+                              onClick={() => removeEnrSvcRow(i)}
+                              className="text-muted-foreground hover:text-destructive text-[18px] leading-none"
+                            >
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-border bg-muted/30">
+                        <td
+                          colSpan={4}
+                          className="px-4 py-3 text-[12px] font-medium text-muted-foreground text-right"
+                        >
+                          Subtotal
+                        </td>
+                        <td className="px-4 py-3 text-[14px] font-semibold text-foreground">
+                          ${enrRawTotal.toFixed(2)}
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <button
+                  type="button"
+                  onClick={addEnrSvcRow}
+                  className="mt-2.5 flex items-center gap-1.5 text-[12px] font-semibold text-primary hover:underline"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add service
+                </button>
               </div>
+            )}
 
-              {/* Package-level discount */}
-              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Package Discount</p>
-                <div className="flex items-center gap-3">
+            {/* ── Discount ── */}
+            {addForm.services.length > 0 && (
+              <div className="rounded-xl border border-border bg-muted/20 p-5 space-y-4">
+                <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Package Discount
+                </p>
+                <div className="flex items-center gap-4">
                   <select
                     value={addForm.discountType}
-                    onChange={(e) => setAddForm((f) => ({ ...f, discountType: e.target.value, discountAmount: 0 }))}
-                    className="h-8 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
+                    onChange={(e) =>
+                      setAddForm((f) => ({
+                        ...f,
+                        discountType: e.target.value,
+                        discountAmount: 0,
+                      }))
+                    }
+                    className="h-10 rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
                   >
                     <option value="none">No discount</option>
                     <option value="percentage">Percentage (%)</option>
                     <option value="fixed">Fixed ($)</option>
                   </select>
-                  {addForm.discountType !== 'none' && (
+                  {addForm.discountType !== "none" && (
                     <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
-                        {addForm.discountType === 'percentage' ? '%' : '$'}
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
+                        {addForm.discountType === "percentage" ? "%" : "$"}
                       </span>
                       <input
-                        type="number" min="0" step="0.01" value={addForm.discountAmount}
-                        onChange={(e) => setAddForm((f) => ({ ...f, discountAmount: e.target.value }))}
-                        className="h-8 w-24 rounded border border-border bg-background pl-6 pr-2 text-[12px] outline-none focus:border-primary"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={addForm.discountAmount}
+                        onChange={(e) =>
+                          setAddForm((f) => ({
+                            ...f,
+                            discountAmount: e.target.value,
+                          }))
+                        }
+                        className="h-10 w-28 rounded-lg border border-border bg-background pl-7 pr-3 text-[13px] outline-none focus:border-primary"
                       />
                     </div>
                   )}
                   {enrDiscountApplied > 0 && (
-                    <span className="text-[12px] text-amber-600 font-medium ml-auto">-${enrDiscountApplied.toFixed(2)}</span>
+                    <span className="text-[13px] text-amber-600 font-medium ml-auto">
+                      -${enrDiscountApplied.toFixed(2)}
+                    </span>
                   )}
                 </div>
-                <div className="flex items-center justify-between border-t border-border pt-2">
-                  <p className="text-[12px] font-medium text-muted-foreground">Total</p>
-                  <p className="text-[14px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</p>
+                <div className="flex items-center justify-between border-t border-border pt-3">
+                  <p className="text-[13px] font-medium text-muted-foreground">
+                    Total
+                  </p>
+                  <p className="text-[18px] font-bold text-foreground">
+                    ${enrTotalAmount.toFixed(2)}
+                  </p>
                 </div>
               </div>
+            )}
 
-              <div className="flex justify-between gap-2 pt-1">
-                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(packageStep)}>Back</Button>
-                <Button type="button" size="sm" disabled={addForm.services.length === 0} onClick={() => setAddStep(billingStep)}>Next</Button>
-              </div>
-            </div>
-          )}
-
-          {addStep === billingStep && (
-            <div className="space-y-4 mt-2">
-              <div>
-                <p className="text-[12px] font-medium text-muted-foreground mb-2">Billing Type</p>
-                <div className="grid grid-cols-3 gap-2">
+            {/* ── Billing ── */}
+            {addForm.services.length > 0 && (
+              <div className="space-y-4">
+                <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Billing
+                </p>
+                <div className="grid grid-cols-3 gap-3">
                   {[
-                    { value: 'one_time', label: 'One-time', desc: 'Full payment now' },
-                    { value: 'payment_plan', label: 'Payment Plan', desc: 'Autopay installments' },
-                    { value: 'flexible', label: 'Flexible', desc: 'Pay as you go' },
+                    {
+                      value: "one_time",
+                      label: "One-time",
+                      desc: "Full payment now",
+                    },
+                    {
+                      value: "payment_plan",
+                      label: "Payment Plan",
+                      desc: "Autopay installments",
+                    },
+                    {
+                      value: "flexible",
+                      label: "Flexible",
+                      desc: "Pay as you go",
+                    },
                   ].map((opt) => (
-                    <button key={opt.value} type="button" onClick={() => setAddForm((f) => ({ ...f, billingType: opt.value }))}
-                      className={`rounded-lg border-2 p-3 text-left transition-colors ${addForm.billingType === opt.value ? 'border-primary bg-primary/5' : 'border-border hover:border-border/80 bg-background'}`}>
-                      <p className="text-[12px] font-semibold text-foreground">{opt.label}</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{opt.desc}</p>
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() =>
+                        setAddForm((f) => ({ ...f, billingType: opt.value }))
+                      }
+                      className={`rounded-xl border-2 p-4 text-left transition-colors ${addForm.billingType === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-border/80 bg-background"}`}
+                    >
+                      <p className="text-[14px] font-semibold text-foreground">
+                        {opt.label}
+                      </p>
+                      <p className="text-[12px] text-muted-foreground mt-1">
+                        {opt.desc}
+                      </p>
                     </button>
                   ))}
                 </div>
-              </div>
 
-              {addForm.billingType === 'one_time' && (
-                <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
-                  <div className="flex items-center justify-between border-t border-border pt-3">
-                    <p className="text-[12px] text-muted-foreground">Payable Balance</p>
-                    <p className="text-[15px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</p>
-                  </div>
-                  <FormField label="Payment Method" required>
-                    <div className="relative">
-                      <select value={addForm.billing.method} onChange={(e) => setEnrBilling('method', e.target.value)} className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize">
-                        {PAYMENT_METHODS.map((m) => <option key={m} value={m} className="capitalize">{m}</option>)}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                {addForm.billingType === "one_time" && (
+                  <div className="rounded-xl border border-border bg-muted/20 p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[13px] text-muted-foreground">
+                        Payable Balance
+                      </p>
+                      <p className="text-[20px] font-bold text-foreground">
+                        ${enrTotalAmount.toFixed(2)}
+                      </p>
                     </div>
-                  </FormField>
-                </div>
-              )}
-
-              {addForm.billingType === 'payment_plan' && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    <FormField label="Installments" required>
-                      <input type="number" min="2" max="52" value={addForm.billing.numberOfInstallments} onChange={(e) => setEnrBilling('numberOfInstallments', e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
-                    </FormField>
-                    <FormField label="Frequency" required>
+                    <FormField label="Payment Method" required>
                       <div className="relative">
-                        <select value={addForm.billing.frequency} onChange={(e) => setEnrBilling('frequency', e.target.value)} className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary">
-                          <option value="weekly">Weekly</option>
-                          <option value="biweekly">Fortnightly</option>
-                          <option value="monthly">Monthly</option>
+                        <select
+                          value={addForm.billing.method}
+                          onChange={(e) =>
+                            setEnrBilling("method", e.target.value)
+                          }
+                          className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary capitalize"
+                        >
+                          {PAYMENT_METHODS.map((m) => (
+                            <option key={m} value={m} className="capitalize">
+                              {m}
+                            </option>
+                          ))}
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       </div>
-                    </FormField>
-                    <FormField label="Start Date" required>
-                      <input type="date" value={addForm.billing.startDate} onChange={(e) => setEnrBilling('startDate', e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
                     </FormField>
                   </div>
-                  {enrInstallments.length > 0 && (
-                    <div className="rounded-lg border border-border bg-muted/20 p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Schedule Preview</p>
-                        {enrDiscountApplied > 0 && (
-                          <span className="text-[11px] text-amber-600">Discount applied to last payment</span>
-                        )}
-                      </div>
-                      <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                        {enrInstallments.map((inst, i) => (
-                          <div key={i} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
-                            <span className="text-[11px] text-muted-foreground">
-                              Payment {i + 1} · {inst.date}
-                              {inst.isLast && enrDiscountApplied > 0 && (
-                                <span className="ml-1 text-amber-600">(-${enrDiscountApplied.toFixed(2)} discount)</span>
-                              )}
-                            </span>
-                            <span className="text-[11px] font-medium text-foreground">${inst.amount.toFixed(2)}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
-                        <p className="text-[11px] font-medium text-muted-foreground">Payable Balance</p>
-                        <p className="text-[13px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</p>
-                      </div>
+                )}
+
+                {addForm.billingType === "payment_plan" && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-4">
+                      <FormField label="Installments" required>
+                        <input
+                          type="number"
+                          min="2"
+                          max="52"
+                          value={addForm.billing.numberOfInstallments}
+                          onChange={(e) =>
+                            setEnrBilling(
+                              "numberOfInstallments",
+                              e.target.value,
+                            )
+                          }
+                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[14px] outline-none focus:border-primary"
+                        />
+                      </FormField>
+                      <FormField label="Frequency" required>
+                        <div className="relative">
+                          <select
+                            value={addForm.billing.frequency}
+                            onChange={(e) =>
+                              setEnrBilling("frequency", e.target.value)
+                            }
+                            className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary"
+                          >
+                            <option value="weekly">Weekly</option>
+                            <option value="biweekly">Fortnightly</option>
+                            <option value="monthly">Monthly</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        </div>
+                      </FormField>
+                      <FormField label="Start Date" required>
+                        <input
+                          type="date"
+                          value={addForm.billing.startDate}
+                          onChange={(e) =>
+                            setEnrBilling("startDate", e.target.value)
+                          }
+                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[14px] outline-none focus:border-primary"
+                        />
+                      </FormField>
                     </div>
-                  )}
-                </div>
-              )}
-
-              {addForm.billingType === 'flexible' && (
-                <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
-                  <p className="text-[12px] text-muted-foreground">No schedule set. Payments can be recorded manually at any time.</p>
-                  <div className="flex items-center justify-between pt-2 border-t border-border">
-                    <p className="text-[12px] text-muted-foreground">Payable Balance</p>
-                    <p className="text-[15px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</p>
+                    {enrInstallments.length > 0 && (
+                      <div className="rounded-xl border border-border bg-muted/20 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
+                            Schedule Preview
+                          </p>
+                          {enrDiscountApplied > 0 && (
+                            <span className="text-[12px] text-amber-600">
+                              Discount on last payment
+                            </span>
+                          )}
+                        </div>
+                        <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                          {enrInstallments.map((inst, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0"
+                            >
+                              <span className="text-[12px] text-muted-foreground">
+                                Payment {i + 1} · {inst.date}
+                                {inst.isLast && enrDiscountApplied > 0 && (
+                                  <span className="ml-1 text-amber-600">
+                                    (-${enrDiscountApplied.toFixed(2)})
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-[13px] font-medium text-foreground">
+                                ${inst.amount.toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+                          <p className="text-[13px] font-medium text-muted-foreground">
+                            Payable Balance
+                          </p>
+                          <p className="text-[16px] font-bold text-foreground">
+                            ${enrTotalAmount.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className="flex justify-between gap-2 pt-1">
-                <Button type="button" variant="outline" size="sm" onClick={() => setAddStep(servicesStep)}>Back</Button>
-                <Button type="button" size="sm" disabled={adding} onClick={handleEnrAdd}>
-                  {adding || creating ? (isCreateAndAddFlow ? 'Creating…' : 'Adding…') : (isCreateAndAddFlow ? 'Create Enrollment & Package' : 'Add Package')}
-                </Button>
+                {addForm.billingType === "flexible" && (
+                  <div className="rounded-xl border border-border bg-muted/20 p-4 flex items-center justify-between">
+                    <p className="text-[13px] text-muted-foreground">
+                      Payments recorded manually at any time.
+                    </p>
+                    <p className="text-[20px] font-bold text-foreground">
+                      ${enrTotalAmount.toFixed(2)}
+                    </p>
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* ── Footer ── */}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAddTargetEnrollment(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={adding || (isCreateAndAddFlow && !createTeacherID)}
+                onClick={handleEnrAdd}
+              >
+                {adding || creating
+                  ? isCreateAndAddFlow
+                    ? "Creating…"
+                    : "Adding…"
+                  : isCreateAndAddFlow
+                    ? addForm.packageID
+                      ? "Create Enrollment & Package"
+                      : "Create Enrollment"
+                    : "Add Package"}
+              </Button>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
-  )
+  );
 }
 
 // ─── Payment History Tab ─────────────────────────────────────────────────────
 
 function PaymentsTab({ customerID }) {
-  const [payments, setPayments] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
-  const [refundTarget, setRefundTarget] = useState(null)
-  const LIMIT = 20
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [refundTarget, setRefundTarget] = useState(null);
+  const LIMIT = 20;
 
-  const load = useCallback(async (p = 1) => {
-    setLoading(true)
-    const res = await api.get(`/api/payment/customer/${customerID}?page=${p}&limit=${LIMIT}`)
-    if (res.success) {
-      setPayments(res.data || [])
-      setTotal(res.meta?.total ?? (res.data?.length ?? 0))
-    }
-    setLoading(false)
-  }, [customerID])
+  const load = useCallback(
+    async (p = 1) => {
+      setLoading(true);
+      const res = await api.get(
+        `/api/payment/customer/${customerID}?page=${p}&limit=${LIMIT}`,
+      );
+      if (res.success) {
+        setPayments(res.data || []);
+        setTotal(res.meta?.total ?? res.data?.length ?? 0);
+      }
+      setLoading(false);
+    },
+    [customerID],
+  );
 
-  useEffect(() => { load(page) }, [load, page])
+  useEffect(() => {
+    load(page);
+  }, [load, page]);
 
-  const totalPages = Math.max(1, Math.ceil(total / LIMIT))
+  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
-  if (loading) return <div className="flex items-center justify-center py-16"><LoadingSpinner /></div>
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-16">
+        <LoadingSpinner />
+      </div>
+    );
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">{total} transaction{total !== 1 ? 's' : ''}</p>
+        <p className="text-[13px] text-muted-foreground">
+          {total} transaction{total !== 1 ? "s" : ""}
+        </p>
       </div>
 
       {payments.length === 0 ? (
@@ -2438,45 +3928,76 @@ function PaymentsTab({ customerID }) {
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
-                  {['Date', 'Type', 'Amount', 'Method', 'Package', 'Processed By', 'Status', ''].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[11px] font-medium text-muted-foreground">{h}</th>
+                  {[
+                    "Date",
+                    "Type",
+                    "Amount",
+                    "Method",
+                    "Package",
+                    "Processed By",
+                    "Status",
+                    "",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-2.5 text-left text-[11px] font-medium text-muted-foreground"
+                    >
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {payments.map((p, i) => {
-                  const badge = paymentTypeBadge(p.type)
+                  const badge = paymentTypeBadge(p.type);
                   return (
-                    <tr key={p._id} className={`${i > 0 ? 'border-t border-border' : ''} hover:bg-muted/20`}>
-                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{formatDate(p.createdAt)}</td>
+                    <tr
+                      key={p._id}
+                      className={`${i > 0 ? "border-t border-border" : ""} hover:bg-muted/20`}
+                    >
+                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                        {formatDate(p.createdAt)}
+                      </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.cls}`}>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.cls}`}
+                        >
                           {badge.label}
                         </span>
                       </td>
-                      <td className={`px-4 py-3 font-semibold ${p.type === 'refund' ? 'text-rose-600' : 'text-foreground'}`}>
-                        {p.type === 'refund' ? '-' : ''}${Number(p.amount).toFixed(2)}
+                      <td
+                        className={`px-4 py-3 font-semibold ${p.type === "refund" ? "text-rose-600" : "text-foreground"}`}
+                      >
+                        {p.type === "refund" ? "-" : ""}$
+                        {Number(p.amount).toFixed(2)}
                       </td>
-                      <td className="px-4 py-3 capitalize text-muted-foreground">{p.method}</td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {p.customerPackageID?.packageID?.packageName ?? '—'}
+                      <td className="px-4 py-3 capitalize text-muted-foreground">
+                        {p.method}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {p.processedBy?.name ?? '—'}
+                        {p.customerPackageID?.packageID?.packageName ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {p.processedBy?.name ?? "—"}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                          p.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600' :
-                          p.status === 'pending' ? 'bg-amber-500/10 text-amber-600' :
-                          'bg-rose-500/10 text-rose-600'
-                        }`}>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            p.status === "completed"
+                              ? "bg-emerald-500/10 text-emerald-600"
+                              : p.status === "pending"
+                                ? "bg-amber-500/10 text-amber-600"
+                                : "bg-rose-500/10 text-rose-600"
+                          }`}
+                        >
                           {p.status}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        {p.type !== 'refund' && p.status === 'completed' && (
+                        {p.type !== "refund" && p.status === "completed" && (
                           <Button
-                            variant="ghost" size="sm"
+                            variant="ghost"
+                            size="sm"
                             className="h-7 px-2 text-[11px] text-muted-foreground hover:text-rose-600"
                             onClick={() => setRefundTarget(p)}
                           >
@@ -2485,7 +4006,7 @@ function PaymentsTab({ customerID }) {
                         )}
                       </td>
                     </tr>
-                  )
+                  );
                 })}
               </tbody>
             </table>
@@ -2493,10 +4014,28 @@ function PaymentsTab({ customerID }) {
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between">
-              <p className="text-[12px] text-muted-foreground">Page {page} of {totalPages}</p>
+              <p className="text-[12px] text-muted-foreground">
+                Page {page} of {totalPages}
+              </p>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="h-7 text-[12px]" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Prev</Button>
-                <Button variant="outline" size="sm" className="h-7 text-[12px]" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[12px]"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[12px]"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
               </div>
             </div>
           )}
@@ -2510,62 +4049,80 @@ function PaymentsTab({ customerID }) {
         onSuccess={() => load(page)}
       />
     </div>
-  )
+  );
 }
 
 // ─── Lessons Tab ──────────────────────────────────────────────────────────────
 
 function LessonsTab({ customer, onUpdated }) {
-  const [allLessons, setAllLessons] = useState([])
-  const [assignOpen, setAssignOpen] = useState(false)
-  const [selected, setSelected] = useState([])
-  const [saving, setSaving] = useState(false)
-  const [removing, setRemoving] = useState(null)
-  const toast = useToast()
+  const [allLessons, setAllLessons] = useState([]);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(null);
+  const toast = useToast();
 
-  const assigned = customer.classAssigned || []
+  const assigned = customer.classAssigned || [];
 
   useEffect(() => {
-    api.get('/api/lesson?limit=200').then((res) => {
-      if (res.success) setAllLessons(res.data || [])
-    })
-  }, [])
+    api.get("/api/lesson?limit=200").then((res) => {
+      if (res.success) setAllLessons(res.data || []);
+    });
+  }, []);
 
   const unassignedLessons = allLessons.filter(
-    (l) => !assigned.some((a) => String(a._id) === String(l._id))
-  )
+    (l) => !assigned.some((a) => String(a._id) === String(l._id)),
+  );
 
   async function handleAssign(e) {
-    e.preventDefault()
-    if (!selected.length) return
-    setSaving(true)
-    const res = await api.post(`/api/customer/${customer._id}/assign-lessons`, { lessonIds: selected })
+    e.preventDefault();
+    if (!selected.length) return;
+    setSaving(true);
+    const res = await api.post(`/api/customer/${customer._id}/assign-lessons`, {
+      lessonIds: selected,
+    });
     if (res.success) {
-      toast.success('Lessons assigned.')
-      onUpdated()
-      setAssignOpen(false)
-      setSelected([])
-    } else toast.error(res.error || 'Failed.')
-    setSaving(false)
+      toast.success("Lessons assigned.");
+      onUpdated();
+      setAssignOpen(false);
+      setSelected([]);
+    } else toast.error(res.error || "Failed.");
+    setSaving(false);
   }
 
   async function handleRemove(lessonId) {
-    setRemoving(lessonId)
-    const res = await api.post(`/api/customer/${customer._id}/unassign-lessons`, { lessonIds: [lessonId] })
-    if (res.success) { toast.success('Lesson removed.'); onUpdated() }
-    else toast.error(res.error || 'Failed.')
-    setRemoving(null)
+    setRemoving(lessonId);
+    const res = await api.post(
+      `/api/customer/${customer._id}/unassign-lessons`,
+      { lessonIds: [lessonId] },
+    );
+    if (res.success) {
+      toast.success("Lesson removed.");
+      onUpdated();
+    } else toast.error(res.error || "Failed.");
+    setRemoving(null);
   }
 
   function toggleSelect(id) {
-    setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">{assigned.length} lesson{assigned.length !== 1 ? 's' : ''} assigned</p>
-        <Button size="sm" className="h-8 text-[12px]" onClick={() => { setSelected([]); setAssignOpen(true) }}>
+        <p className="text-[13px] text-muted-foreground">
+          {assigned.length} lesson{assigned.length !== 1 ? "s" : ""} assigned
+        </p>
+        <Button
+          size="sm"
+          className="h-8 text-[12px]"
+          onClick={() => {
+            setSelected([]);
+            setAssignOpen(true);
+          }}
+        >
           <Plus className="h-3.5 w-3.5 mr-1.5" /> Assign Lesson
         </Button>
       </div>
@@ -2579,42 +4136,63 @@ function LessonsTab({ customer, onUpdated }) {
           {assigned.map((lesson, i) => (
             <div
               key={lesson._id}
-              className={`flex items-center justify-between px-5 py-3.5 ${i > 0 ? 'border-t border-border' : ''}`}
+              className={`flex items-center justify-between px-5 py-3.5 ${i > 0 ? "border-t border-border" : ""}`}
             >
               <div className="flex items-center gap-3">
                 {lesson.color && (
-                  <div className="h-6 w-6 rounded shrink-0 border border-black/10" style={{ backgroundColor: lesson.color }} />
+                  <div
+                    className="h-6 w-6 rounded shrink-0 border border-black/10"
+                    style={{ backgroundColor: lesson.color }}
+                  />
                 )}
                 <div>
-                  <p className="text-[13px] text-foreground font-medium">{lesson.name}</p>
+                  <p className="text-[13px] text-foreground font-medium">
+                    {lesson.name}
+                  </p>
                   {lesson.duration && (
-                    <p className="text-[11px] text-muted-foreground">{lesson.duration} min · Unit {lesson.unit ?? 1}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {lesson.duration} min · Unit {lesson.unit ?? 1}
+                    </p>
                   )}
                 </div>
               </div>
               <Button
-                variant="ghost" size="sm"
+                variant="ghost"
+                size="sm"
                 className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
                 disabled={removing === lesson._id}
                 onClick={() => handleRemove(lesson._id)}
               >
-                <X className="h-3.5 w-3.5 mr-1" />{removing === lesson._id ? 'Removing…' : 'Remove'}
+                <X className="h-3.5 w-3.5 mr-1" />
+                {removing === lesson._id ? "Removing…" : "Remove"}
               </Button>
             </div>
           ))}
         </div>
       )}
 
-      <Dialog open={assignOpen} onOpenChange={(v) => { if (!v) setAssignOpen(false) }}>
+      <Dialog
+        open={assignOpen}
+        onOpenChange={(v) => {
+          if (!v) setAssignOpen(false);
+        }}
+      >
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Assign Lessons</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Assign Lessons</DialogTitle>
+          </DialogHeader>
           {unassignedLessons.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground py-4">All lessons are already assigned.</p>
+            <p className="text-[13px] text-muted-foreground py-4">
+              All lessons are already assigned.
+            </p>
           ) : (
             <form onSubmit={handleAssign} className="space-y-3 mt-2">
               <div className="max-h-64 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
                 {unassignedLessons.map((l) => (
-                  <label key={l._id} className="flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-muted/40 cursor-pointer">
+                  <label
+                    key={l._id}
+                    className="flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-muted/40 cursor-pointer"
+                  >
                     <input
                       type="checkbox"
                       checked={selected.includes(l._id)}
@@ -2622,16 +4200,36 @@ function LessonsTab({ customer, onUpdated }) {
                       className="rounded border-border"
                     />
                     <div className="flex items-center gap-2 min-w-0">
-                      {l.color && <div className="h-4 w-4 rounded shrink-0 border border-black/10" style={{ backgroundColor: l.color }} />}
-                      <span className="text-[13px] text-foreground truncate">{l.name}</span>
+                      {l.color && (
+                        <div
+                          className="h-4 w-4 rounded shrink-0 border border-black/10"
+                          style={{ backgroundColor: l.color }}
+                        />
+                      )}
+                      <span className="text-[13px] text-foreground truncate">
+                        {l.name}
+                      </span>
                     </div>
                   </label>
                 ))}
               </div>
               <div className="flex justify-end gap-2 pt-1">
-                <Button type="button" variant="outline" size="sm" onClick={() => setAssignOpen(false)}>Cancel</Button>
-                <Button type="submit" size="sm" disabled={saving || !selected.length}>
-                  {saving ? 'Assigning…' : `Assign ${selected.length > 0 ? `(${selected.length})` : ''}`}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAssignOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={saving || !selected.length}
+                >
+                  {saving
+                    ? "Assigning…"
+                    : `Assign ${selected.length > 0 ? `(${selected.length})` : ""}`}
                 </Button>
               </div>
             </form>
@@ -2639,60 +4237,75 @@ function LessonsTab({ customer, onUpdated }) {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
 
 // ─── Notes Tab ────────────────────────────────────────────────────────────────
 
 function NotesTab({ customer, onUpdated }) {
-  const [text, setText] = useState('')
-  const [adding, setAdding] = useState(false)
-  const [deletingId, setDeletingId] = useState(null)
-  const [pinningId, setPinningId] = useState(null)
-  const toast = useToast()
+  const [text, setText] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [pinningId, setPinningId] = useState(null);
+  const toast = useToast();
 
   const notes = [...(customer.notes || [])].sort((a, b) => {
-    if (a.isPinned && !b.isPinned) return -1
-    if (!a.isPinned && b.isPinned) return 1
-    return new Date(b.createdAt) - new Date(a.createdAt)
-  })
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
 
   async function handleAdd(e) {
-    e.preventDefault()
-    if (!text.trim()) return
-    setAdding(true)
-    const res = await api.post(`/api/customer/${customer._id}/notes`, { text: text.trim() })
-    if (res.success) { toast.success('Note added.'); setText(''); onUpdated() }
-    else toast.error(res.error || 'Failed.')
-    setAdding(false)
+    e.preventDefault();
+    if (!text.trim()) return;
+    setAdding(true);
+    const res = await api.post(`/api/customer/${customer._id}/notes`, {
+      text: text.trim(),
+    });
+    if (res.success) {
+      toast.success("Note added.");
+      setText("");
+      onUpdated();
+    } else toast.error(res.error || "Failed.");
+    setAdding(false);
   }
 
   async function handlePin(noteId) {
-    setPinningId(noteId)
-    await api.patch(`/api/customer/${customer._id}/notes/${noteId}`)
-    onUpdated()
-    setPinningId(null)
+    setPinningId(noteId);
+    await api.patch(`/api/customer/${customer._id}/notes/${noteId}`);
+    onUpdated();
+    setPinningId(null);
   }
 
   async function handleDelete(noteId) {
-    setDeletingId(noteId)
-    const res = await api.delete(`/api/customer/${customer._id}/notes/${noteId}`)
-    if (res.success) { toast.success('Note deleted.'); onUpdated() }
-    else toast.error(res.error || 'Failed.')
-    setDeletingId(null)
+    setDeletingId(noteId);
+    const res = await api.delete(
+      `/api/customer/${customer._id}/notes/${noteId}`,
+    );
+    if (res.success) {
+      toast.success("Note deleted.");
+      onUpdated();
+    } else toast.error(res.error || "Failed.");
+    setDeletingId(null);
   }
 
   return (
     <div className="space-y-4">
       <form onSubmit={handleAdd} className="flex gap-2">
         <input
-          type="text" value={text}
+          type="text"
+          value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Add a note…"
           className="flex-1 h-9 rounded-lg border border-border bg-card px-3 text-[13px] outline-none focus:border-primary"
         />
-        <Button type="submit" size="sm" className="h-9 px-4 text-[12px]" disabled={adding || !text.trim()}>
-          {adding ? 'Adding…' : 'Add'}
+        <Button
+          type="submit"
+          size="sm"
+          className="h-9 px-4 text-[12px]"
+          disabled={adding || !text.trim()}
+        >
+          {adding ? "Adding…" : "Add"}
         </Button>
       </form>
 
@@ -2705,21 +4318,29 @@ function NotesTab({ customer, onUpdated }) {
           {notes.map((note) => (
             <div
               key={note._id}
-              className={`rounded-xl border bg-card px-4 py-3.5 ${note.isPinned ? 'border-primary/30 bg-primary/5' : 'border-border'}`}
+              className={`rounded-xl border bg-card px-4 py-3.5 ${note.isPinned ? "border-primary/30 bg-primary/5" : "border-border"}`}
             >
               <div className="flex items-start justify-between gap-3">
-                <p className="text-[13px] text-foreground leading-relaxed flex-1">{note.text}</p>
+                <p className="text-[13px] text-foreground leading-relaxed flex-1">
+                  {note.text}
+                </p>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
-                    variant="ghost" size="icon"
+                    variant="ghost"
+                    size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-primary"
                     disabled={pinningId === note._id}
                     onClick={() => handlePin(note._id)}
                   >
-                    {note.isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                    {note.isPinned ? (
+                      <PinOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Pin className="h-3.5 w-3.5" />
+                    )}
                   </Button>
                   <Button
-                    variant="ghost" size="icon"
+                    variant="ghost"
+                    size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
                     disabled={deletingId === note._id}
                     onClick={() => handleDelete(note._id)}
@@ -2728,36 +4349,40 @@ function NotesTab({ customer, onUpdated }) {
                   </Button>
                 </div>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1.5">{formatDate(note.createdAt)}</p>
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                {formatDate(note.createdAt)}
+              </p>
             </div>
           ))}
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CustomerDetailPage() {
-  const { id } = useParams()
-  const router = useRouter()
-  const [customer, setCustomer] = useState(null)
-  const [locations, setLocations] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('profile')
+  const { id } = useParams();
+  const router = useRouter();
+  const [customer, setCustomer] = useState(null);
+  const [locations, setLocations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("profile");
 
   const load = useCallback(async () => {
     const [custRes, locRes] = await Promise.all([
       api.get(`/api/customer/${id}`),
-      api.get('/api/location?limit=200'),
-    ])
-    if (custRes.success) setCustomer(custRes.data)
-    if (locRes.success) setLocations(locRes.data || [])
-    setLoading(false)
-  }, [id])
+      api.get("/api/location?limit=200"),
+    ]);
+    if (custRes.success) setCustomer(custRes.data);
+    if (locRes.success) setLocations(locRes.data || []);
+    setLoading(false);
+  }, [id]);
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -2766,18 +4391,22 @@ export default function CustomerDetailPage() {
           <LoadingSpinner />
         </div>
       </MainLayout>
-    )
+    );
   }
 
   if (!customer) {
     return (
       <MainLayout>
         <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] gap-4">
-          <p className="text-[13px] text-muted-foreground">Customer not found.</p>
-          <Button variant="outline" onClick={() => router.back()}>Go back</Button>
+          <p className="text-[13px] text-muted-foreground">
+            Customer not found.
+          </p>
+          <Button variant="outline" onClick={() => router.back()}>
+            Go back
+          </Button>
         </div>
       </MainLayout>
-    )
+    );
   }
 
   return (
@@ -2785,7 +4414,12 @@ export default function CustomerDetailPage() {
       <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
         {/* Back + header */}
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.back()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => router.back()}
+          >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -2795,8 +4429,12 @@ export default function CustomerDetailPage() {
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-foreground truncate">{customer.name}</h1>
-              <p className="text-[13px] text-muted-foreground truncate">{customer.email}</p>
+              <h1 className="text-xl font-semibold text-foreground truncate">
+                {customer.name}
+              </h1>
+              <p className="text-[13px] text-muted-foreground truncate">
+                {customer.email}
+              </p>
             </div>
           </div>
           <div className="shrink-0">
@@ -2814,11 +4452,11 @@ export default function CustomerDetailPage() {
               type="button"
               onClick={() => setTab(tabId)}
               className={[
-                'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 transition-colors',
+                "flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 transition-colors",
                 tab === tabId
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              ].join(' ')}
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              ].join(" ")}
             >
               <Icon className="h-3.5 w-3.5" />
               {label}
@@ -2828,14 +4466,29 @@ export default function CustomerDetailPage() {
 
         {/* Tab content */}
         <div>
-          {tab === 'profile' && <ProfileTab customer={customer} locations={locations} onUpdated={load} />}
-          {tab === 'active-enrollments' && <EnrollmentsTab customerID={customer._id} statusFilter="active" />}
-          {tab === 'completed-enrollments' && <EnrollmentsTab customerID={customer._id} statusFilter="completed" />}
-          {tab === 'payments' && <PaymentsTab customerID={customer._id} />}
-          {tab === 'lessons' && <LessonsTab customer={customer} onUpdated={load} />}
-          {tab === 'notes' && <NotesTab customer={customer} onUpdated={load} />}
+          {tab === "profile" && (
+            <ProfileTab
+              customer={customer}
+              locations={locations}
+              onUpdated={load}
+            />
+          )}
+          {tab === "active-enrollments" && (
+            <EnrollmentsTab customerID={customer._id} statusFilter="active" />
+          )}
+          {tab === "completed-enrollments" && (
+            <EnrollmentsTab
+              customerID={customer._id}
+              statusFilter="completed"
+            />
+          )}
+          {tab === "payments" && <PaymentsTab customerID={customer._id} />}
+          {tab === "lessons" && (
+            <LessonsTab customer={customer} onUpdated={load} />
+          )}
+          {tab === "notes" && <NotesTab customer={customer} onUpdated={load} />}
         </div>
       </div>
     </MainLayout>
-  )
+  );
 }
