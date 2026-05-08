@@ -12,6 +12,8 @@ const TABS = [
   { key: "messages", label: "Messages" },
 ];
 
+const BLANK_NEW_ENR = { label: "", teacherID: "", packageID: "", purchaseDate: "", services: [] };
+
 function statusColor(status) {
   if (status === "completed") return "bg-green-500/10 text-green-400";
   if (status === "cancelled") return "bg-red-500/10 text-red-400";
@@ -33,6 +35,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
   const [isSavingNote, setIsSavingNote] = useState(false);
 
   const [catalogPackages, setCatalogPackages] = useState([]);
+  const [catalogTeachers, setCatalogTeachers] = useState([]);
   const [sellTargetEnrollmentId, setSellTargetEnrollmentId] = useState(null);
   const [sellForm, setSellForm] = useState({ packageID: "", purchaseDate: "", notes: "" });
   const [sellServices, setSellServices] = useState([]);
@@ -41,8 +44,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
 
   const [enrollments, setEnrollments] = useState([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(false);
-  const [showEnrollForm, setShowEnrollForm] = useState(false);
-  const [enrollForm, setEnrollForm] = useState({ label: "", notes: "" });
+
+  const [showNewEnrForm, setShowNewEnrForm] = useState(false);
+  const [newEnrForm, setNewEnrForm] = useState(BLANK_NEW_ENR);
   const [isCreatingEnroll, setIsCreatingEnroll] = useState(false);
   const [enrollError, setEnrollError] = useState(null);
 
@@ -117,32 +121,112 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
     if (activeTab !== "enrollments") return;
     async function load() {
       setLoadingEnrollments(true);
-      const [enrResult, catalogResult] = await Promise.all([
+      const [enrResult, catalogResult, teachersResult] = await Promise.all([
         api.get(`/api/enrollment?customerID=${customerId}&limit=50`),
         api.get("/api/package?limit=200&isActive=true"),
+        api.get("/api/teacher?limit=200&status=active"),
       ]);
       if (enrResult.success && Array.isArray(enrResult.data)) setEnrollments(enrResult.data);
       if (catalogResult.success && Array.isArray(catalogResult.data)) setCatalogPackages(catalogResult.data);
+      if (teachersResult.success && Array.isArray(teachersResult.data)) setCatalogTeachers(teachersResult.data);
       setLoadingEnrollments(false);
     }
     load();
   }, [activeTab, customerId]);
 
+  function setNewEnrField(field, val) {
+    setNewEnrForm((f) => ({ ...f, [field]: val }));
+  }
+
+  function onNewEnrPkgChange(pkgId) {
+    const pkg = catalogPackages.find((p) => String(p._id) === pkgId);
+    setNewEnrForm((f) => ({
+      ...f,
+      packageID: pkgId,
+      services: (pkg?.services || []).map((s) => ({
+        serviceCode: s.serviceCode || "",
+        serviceName: s.serviceName || "",
+        color: s.color || "",
+        numberOfSessions: s.numberOfSessions || 0,
+        pricePerSession: s.pricePerSession || 0,
+        finalAmount: (s.numberOfSessions || 0) * (s.pricePerSession || 0),
+      })),
+    }));
+  }
+
+  function updateNewEnrSvc(i, field, val) {
+    setNewEnrForm((f) => {
+      const services = f.services.map((s, idx) => {
+        if (idx !== i) return s;
+        const updated = { ...s, [field]: val };
+        updated.finalAmount = parseFloat(
+          ((Number(updated.pricePerSession) || 0) * (Number(updated.numberOfSessions) || 0)).toFixed(2)
+        );
+        return updated;
+      });
+      return { ...f, services };
+    });
+  }
+
+  function addNewEnrSvcRow() {
+    setNewEnrForm((f) => ({
+      ...f,
+      services: [...f.services, { serviceCode: "", serviceName: "", color: "", numberOfSessions: 0, pricePerSession: 0, finalAmount: 0 }],
+    }));
+  }
+
+  function removeNewEnrSvcRow(i) {
+    setNewEnrForm((f) => ({ ...f, services: f.services.filter((_, idx) => idx !== i) }));
+  }
+
   async function handleCreateEnrollment() {
     setIsCreatingEnroll(true);
     setEnrollError(null);
-    const result = await api.post("/api/enrollment", {
+
+    const enrRes = await api.post("/api/enrollment", {
       customerID: customerId,
-      label: enrollForm.label.trim() || undefined,
-      notes: enrollForm.notes.trim() || undefined,
+      label: newEnrForm.label.trim() || undefined,
+      teacherID: newEnrForm.teacherID || undefined,
     });
-    if (result.success) {
-      setEnrollments((prev) => [result.data, ...prev]);
-      setShowEnrollForm(false);
-      setEnrollForm({ label: "", notes: "" });
-    } else {
-      setEnrollError(result.error || "Failed to create enrollment.");
+    if (!enrRes.success) {
+      setEnrollError(enrRes.error || "Failed to create enrollment.");
+      setIsCreatingEnroll(false);
+      return;
     }
+    const created = enrRes.data?.enrollment ?? enrRes.data;
+    const enrollmentID = String(created?._id || "");
+
+    if (newEnrForm.packageID && enrollmentID) {
+      const pkgRes = await api.post("/api/customer-package/add", {
+        customerID: customerId,
+        enrollmentID,
+        packageID: newEnrForm.packageID,
+        purchaseDate: newEnrForm.purchaseDate || undefined,
+        services: newEnrForm.services.map((s) => ({
+          serviceCode: s.serviceCode,
+          serviceName: s.serviceName,
+          color: s.color,
+          numberOfSessions: Number(s.numberOfSessions),
+          pricePerSession: Number(s.pricePerSession),
+          finalAmount: Number(s.finalAmount),
+        })),
+        billingType: "flexible",
+        billing: {},
+      });
+      if (!pkgRes.success) {
+        setEnrollError(pkgRes.error || "Enrollment created but failed to add package.");
+        setIsCreatingEnroll(false);
+        // still reload so the enrollment shows
+        const enrListRes = await api.get(`/api/enrollment?customerID=${customerId}&limit=50`);
+        if (enrListRes.success) setEnrollments(enrListRes.data);
+        return;
+      }
+    }
+
+    const enrListRes = await api.get(`/api/enrollment?customerID=${customerId}&limit=50`);
+    if (enrListRes.success) setEnrollments(enrListRes.data);
+    setShowNewEnrForm(false);
+    setNewEnrForm(BLANK_NEW_ENR);
     setIsCreatingEnroll(false);
   }
 
@@ -474,35 +558,136 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
               <div className="space-y-3">
                 <button
                   type="button"
-                  onClick={() => { setShowEnrollForm((v) => !v); setEnrollError(null); }}
+                  onClick={() => { setShowNewEnrForm((v) => !v); setEnrollError(null); setNewEnrForm(BLANK_NEW_ENR); }}
                   className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark"
                 >
                   <Plus className="h-3 w-3" />
                   New Enrollment
                 </button>
 
-                {showEnrollForm && (
-                  <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-                    <p className="text-[11px] font-semibold text-foreground">New Enrollment</p>
-                    <input
-                      type="text"
-                      value={enrollForm.label}
-                      onChange={(e) => setEnrollForm((f) => ({ ...f, label: e.target.value }))}
-                      placeholder="Label (optional, e.g. Term 1)"
-                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
-                    />
-                    <textarea
-                      rows={2}
-                      value={enrollForm.notes}
-                      onChange={(e) => setEnrollForm((f) => ({ ...f, notes: e.target.value }))}
-                      placeholder="Notes (optional)"
-                      className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] text-foreground outline-none focus:border-primary"
-                    />
+                {showNewEnrForm && (
+                  <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-3">
+                    <p className="text-[11px] font-bold text-foreground uppercase tracking-wide">New Enrollment</p>
+
+                    {/* Teacher */}
+                    <div>
+                      <p className="text-[10px] font-semibold text-muted-foreground mb-1">Teacher</p>
+                      <select
+                        value={newEnrForm.teacherID}
+                        onChange={(e) => setNewEnrField("teacherID", e.target.value)}
+                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
+                      >
+                        <option value="">Select teacher…</option>
+                        {catalogTeachers.map((t) => (
+                          <option key={t._id} value={t._id}>{t.name || t.email}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Label */}
+                    <div>
+                      <p className="text-[10px] font-semibold text-muted-foreground mb-1">Label <span className="font-normal">(optional)</span></p>
+                      <input
+                        type="text"
+                        value={newEnrForm.label}
+                        onChange={(e) => setNewEnrField("label", e.target.value)}
+                        placeholder="e.g. Term 1, Trial…"
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
+                      />
+                    </div>
+
+                    {/* Package */}
+                    <div>
+                      <p className="text-[10px] font-semibold text-muted-foreground mb-1">Package <span className="font-normal">(optional)</span></p>
+                      <select
+                        value={newEnrForm.packageID}
+                        onChange={(e) => onNewEnrPkgChange(e.target.value)}
+                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
+                      >
+                        <option value="">Select package…</option>
+                        {catalogPackages.map((p) => (
+                          <option key={p._id} value={p._id}>{p.packageName}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Services table — shown when package selected or services added */}
+                    {(newEnrForm.packageID || newEnrForm.services.length > 0) && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-muted-foreground mb-1.5">Services</p>
+                        <div className="rounded-lg border border-border overflow-hidden">
+                          {/* Header */}
+                          <div className="grid grid-cols-[1fr_56px_64px_60px_20px] gap-1 bg-muted/40 px-2 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <span>Service</span>
+                            <span className="text-center">Sess.</span>
+                            <span className="text-center">$/Sess</span>
+                            <span className="text-right">Total</span>
+                            <span />
+                          </div>
+                          {newEnrForm.services.map((svc, i) => (
+                            <div key={i} className="grid grid-cols-[1fr_56px_64px_60px_20px] gap-1 items-center px-2 py-1.5 border-t border-border">
+                              <input
+                                type="text"
+                                value={svc.serviceName}
+                                onChange={(e) => updateNewEnrSvc(i, "serviceName", e.target.value)}
+                                placeholder="Name"
+                                className="h-6 w-full rounded border border-border bg-background px-1.5 text-[10px] text-foreground outline-none focus:border-primary"
+                              />
+                              <input
+                                type="number" min="0" value={svc.numberOfSessions}
+                                onChange={(e) => updateNewEnrSvc(i, "numberOfSessions", e.target.value)}
+                                className="h-6 w-full text-center rounded border border-border bg-background text-[10px] outline-none focus:border-primary"
+                              />
+                              <div className="relative">
+                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">$</span>
+                                <input
+                                  type="number" min="0" step="0.01" value={svc.pricePerSession}
+                                  onChange={(e) => updateNewEnrSvc(i, "pricePerSession", e.target.value)}
+                                  className="h-6 w-full pl-3.5 pr-1 rounded border border-border bg-background text-[10px] outline-none focus:border-primary"
+                                />
+                              </div>
+                              <p className="text-right text-[10px] font-semibold text-foreground">${Number(svc.finalAmount).toFixed(2)}</p>
+                              <button type="button" onClick={() => removeNewEnrSvcRow(i)} className="text-muted-foreground hover:text-destructive text-[12px] leading-none">×</button>
+                            </div>
+                          ))}
+                          {/* Total row */}
+                          {newEnrForm.services.length > 0 && (
+                            <div className="flex justify-between px-2 py-1 border-t border-border bg-muted/30">
+                              <span className="text-[9px] font-semibold text-muted-foreground uppercase">Total</span>
+                              <span className="text-[11px] font-bold text-foreground">
+                                ${newEnrForm.services.reduce((s, x) => s + (Number(x.finalAmount) || 0), 0).toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addNewEnrSvcRow}
+                          className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-brand hover:underline"
+                        >
+                          <Plus className="h-3 w-3" /> Add service
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Purchase date */}
+                    {newEnrForm.packageID && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-muted-foreground mb-1">Purchase date <span className="font-normal">(optional)</span></p>
+                        <input
+                          type="date" value={newEnrForm.purchaseDate}
+                          onChange={(e) => setNewEnrField("purchaseDate", e.target.value)}
+                          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
+                        />
+                      </div>
+                    )}
+
                     {enrollError && <p className="text-[11px] text-destructive">{enrollError}</p>}
-                    <div className="flex gap-2">
+
+                    <div className="flex gap-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => { setShowEnrollForm(false); setEnrollError(null); }}
+                        onClick={() => { setShowNewEnrForm(false); setEnrollError(null); }}
                         className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40"
                       >
                         Cancel
@@ -513,7 +698,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                         disabled={isCreatingEnroll}
                         className="flex-1 h-8 rounded-lg bg-brand text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60"
                       >
-                        {isCreatingEnroll ? "Creating…" : "Create"}
+                        {isCreatingEnroll ? "Creating…" : newEnrForm.packageID ? "Create & Add Package" : "Create Enrollment"}
                       </button>
                     </div>
                   </div>
