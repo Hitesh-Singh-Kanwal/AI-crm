@@ -1477,7 +1477,19 @@ function PrivateLessonSummaryBar({ viewMode, focusDate, events, allServices = []
 
 function TeacherFilterDropdown({ instructors, value, onChange }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const inputRef = useRef(null);
   const current = value ? instructors.find((i) => i.key === value) : null;
+
+  const filtered = query.trim()
+    ? instructors.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()))
+    : instructors;
+
+  useEffect(() => {
+    if (!open) { setQuery(""); return; }
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [open]);
+
   return (
     <div
       className="relative"
@@ -1507,36 +1519,54 @@ function TeacherFilterDropdown({ instructors, value, onChange }) {
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-50"
+          className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-border bg-popover shadow-lg z-50 overflow-hidden"
         >
-          <button
-            type="button"
-            onClick={() => { onChange(null); setOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] transition-colors ${
-              !value ? "font-bold text-foreground bg-muted/60" : "text-foreground hover:bg-muted/40"
-            }`}
-          >
-            <span className="h-2 w-2 rounded-full bg-muted-foreground shrink-0" />
-            All Teachers
-          </button>
-          {instructors.map((inst) => (
-            <button
-              key={inst.key}
-              type="button"
-              onClick={() => { onChange(inst.key); setOpen(false); }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] transition-colors ${
-                value === inst.key ? "font-bold text-foreground bg-muted/60" : "text-foreground hover:bg-muted/40"
-              }`}
-            >
-              <span
-                className="h-5 w-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold text-white"
-                style={{ backgroundColor: inst.color }}
+          <div className="p-2 border-b border-border">
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search teachers…"
+              className="h-7 w-full rounded-md border border-border bg-muted/30 px-2.5 text-[11px] text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/50"
+            />
+          </div>
+          <div className="py-1.5 max-h-56 overflow-y-auto">
+            {!query.trim() && (
+              <button
+                type="button"
+                onClick={() => { onChange(null); setOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] transition-colors ${
+                  !value ? "font-bold text-foreground bg-muted/60" : "text-foreground hover:bg-muted/40"
+                }`}
               >
-                {inst.initials}
-              </span>
-              <span className="truncate">{inst.name}</span>
-            </button>
-          ))}
+                <span className="h-2 w-2 rounded-full bg-muted-foreground shrink-0" />
+                All Teachers
+              </button>
+            )}
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-[11px] text-muted-foreground">No results</p>
+            ) : (
+              filtered.map((inst) => (
+                <button
+                  key={inst.key}
+                  type="button"
+                  onClick={() => { onChange(inst.key); setOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] transition-colors ${
+                    value === inst.key ? "font-bold text-foreground bg-muted/60" : "text-foreground hover:bg-muted/40"
+                  }`}
+                >
+                  <span
+                    className="h-5 w-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold text-white"
+                    style={{ backgroundColor: inst.color }}
+                  >
+                    {inst.initials}
+                  </span>
+                  <span className="truncate">{inst.name}</span>
+                </button>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>
