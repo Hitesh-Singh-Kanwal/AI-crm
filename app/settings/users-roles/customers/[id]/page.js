@@ -19,6 +19,9 @@ import {
   RotateCcw,
   Receipt,
   ClipboardList,
+  Users,
+  FileText,
+  Send,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -392,6 +395,8 @@ const TABS = [
   { id: "payments", label: "Payment History", Icon: Receipt },
   { id: "lessons", label: "Lessons", Icon: BookOpen },
   { id: "notes", label: "Notes", Icon: StickyNote },
+  { id: "members", label: "Members", Icon: Users },
+  { id: "contracts", label: "Contracts", Icon: FileText },
 ];
 
 // ─── Profile Tab ─────────────────────────────────────────────────────────────
@@ -4487,8 +4492,397 @@ export default function CustomerDetailPage() {
             <LessonsTab customer={customer} onUpdated={load} />
           )}
           {tab === "notes" && <NotesTab customer={customer} onUpdated={load} />}
+          {tab === "members" && <MembersTab customer={customer} onUpdated={load} />}
+          {tab === "contracts" && <ContractsTab customerID={customer._id} />}
         </div>
       </div>
     </MainLayout>
+  );
+}
+
+// ─── Members Tab ─────────────────────────────────────────────────────────────
+
+const MEMBER_GENDER_OPTIONS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "other", label: "Other" },
+  { value: "prefer_not_to_say", label: "Prefer not to say" },
+];
+
+const EMPTY_MEMBER = { name: "", email: "", phoneNumber: "", gender: "", dateOfBirth: "", relationship: "", notes: "" };
+
+function MemberFormSheet({ open, onClose, customerId, member, onSaved }) {
+  const [form, setForm] = useState(EMPTY_MEMBER);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const toast = useToast();
+  const isEdit = Boolean(member?._id);
+
+  useEffect(() => {
+    if (open) {
+      setForm(member
+        ? { name: member.name || "", email: member.email || "", phoneNumber: member.phoneNumber || "", gender: member.gender || "", dateOfBirth: member.dateOfBirth ? String(member.dateOfBirth).slice(0, 10) : "", relationship: member.relationship || "", notes: member.notes || "" }
+        : EMPTY_MEMBER
+      );
+      setError(null);
+    }
+  }, [open, member]);
+
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.name.trim()) { setError("Name is required."); return; }
+    setSaving(true);
+    const payload = { name: form.name.trim(), email: form.email || undefined, phoneNumber: form.phoneNumber || undefined, gender: form.gender || undefined, dateOfBirth: form.dateOfBirth || undefined, relationship: form.relationship || undefined, notes: form.notes || undefined };
+    const result = isEdit
+      ? await api.put(`/api/customer/${customerId}/members/${member._id}`, payload)
+      : await api.post(`/api/customer/${customerId}/members`, payload);
+    if (result.success) {
+      toast.success(isEdit ? "Member updated." : "Member added.");
+      onSaved();
+      onClose();
+    } else {
+      setError(result.error || "Something went wrong.");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <SheetContent>
+        <div className="px-6 py-4 border-b border-border">
+          <h2 className="text-base font-semibold text-foreground">{isEdit ? "Edit Member" : "Add Member"}</h2>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4 px-6">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="block text-[12px] font-medium text-muted-foreground">Name<span className="text-destructive ml-0.5">*</span></label>
+              <input type="text" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Full name" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[12px] font-medium text-muted-foreground">Relationship</label>
+              <input type="text" value={form.relationship} onChange={(e) => set("relationship", e.target.value)} placeholder="e.g. Spouse, Partner" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[12px] font-medium text-muted-foreground">Email</label>
+              <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="Optional" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[12px] font-medium text-muted-foreground">Phone</label>
+              <input type="tel" value={form.phoneNumber} onChange={(e) => set("phoneNumber", e.target.value)} placeholder="Optional" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[12px] font-medium text-muted-foreground">Date of Birth</label>
+              <input type="date" value={form.dateOfBirth} onChange={(e) => set("dateOfBirth", e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[12px] font-medium text-muted-foreground">Gender</label>
+              <div className="relative">
+                <select value={form.gender} onChange={(e) => set("gender", e.target.value)} className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary">
+                  <option value="">Select…</option>
+                  {MEMBER_GENDER_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              </div>
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <label className="block text-[12px] font-medium text-muted-foreground">Notes</label>
+              <input type="text" value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Any notes about this member" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+            </div>
+          </div>
+          {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Saving…" : isEdit ? "Save Changes" : "Add Member"}</Button>
+          </div>
+        </form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function MembersTab({ customer, onUpdated }) {
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const toast = useToast();
+
+  const members = customer.members || [];
+
+  async function handleDelete(memberId) {
+    if (!window.confirm("Remove this member?")) return;
+    setDeletingId(memberId);
+    const res = await api.delete(`/api/customer/${customer._id}/members/${memberId}`);
+    if (res.success) { toast.success("Member removed."); onUpdated(); }
+    else toast.error(res.error || "Failed to remove member.");
+    setDeletingId(null);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-muted-foreground">{members.length} member{members.length !== 1 ? "s" : ""} on this account</p>
+        <Button size="sm" onClick={() => { setEditingMember(null); setSheetOpen(true); }}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Member
+        </Button>
+      </div>
+
+      {members.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-10 text-center">
+          <Users className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+          <p className="text-[13px] text-muted-foreground">No members added yet.</p>
+          <p className="text-[12px] text-muted-foreground mt-1">Add a family member or partner to this account.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {members.map((m) => (
+            <div key={m._id} className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-[12px] font-semibold text-primary">
+                    {(m.name || "?").charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-medium text-foreground">{m.name}</p>
+                    {m.relationship && <p className="text-[11px] text-muted-foreground capitalize">{m.relationship}</p>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingMember(m); setSheetOpen(true); }}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={deletingId === m._id} onClick={() => handleDelete(m._id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <div className="text-[12px] text-muted-foreground space-y-0.5 pl-11">
+                {m.email && <p>{m.email}</p>}
+                {m.phoneNumber && <p>{m.phoneNumber}</p>}
+                {m.dateOfBirth && <p>DOB: {new Date(m.dateOfBirth).toLocaleDateString()}</p>}
+                {m.gender && <p className="capitalize">{m.gender.replace(/_/g, " ")}</p>}
+                {m.notes && <p className="italic">"{m.notes}"</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <MemberFormSheet open={sheetOpen} onClose={() => setSheetOpen(false)} customerId={customer._id} member={editingMember} onSaved={onUpdated} />
+    </div>
+  );
+}
+
+// ─── Contracts Tab ─────────────────────────────────────────────────────────────
+
+const CONTRACT_STATUS_STYLES = {
+  draft: "bg-slate-100 text-slate-700",
+  sent: "bg-blue-100 text-blue-700",
+  signed: "bg-emerald-100 text-emerald-700",
+  expired: "bg-amber-100 text-amber-700",
+  revoked: "bg-red-100 text-red-700",
+};
+
+function ContractFormSheet({ open, onClose, customerId, contract, onSaved }) {
+  const [form, setForm] = useState({ title: "", content: "", notes: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const toast = useToast();
+  const isEdit = Boolean(contract?._id);
+
+  useEffect(() => {
+    if (open) {
+      setForm(contract ? { title: contract.title || "", content: contract.content || "", notes: contract.notes || "" } : { title: "", content: "", notes: "" });
+      setError(null);
+    }
+  }, [open, contract]);
+
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.title.trim() || !form.content.trim()) { setError("Title and content are required."); return; }
+    setSaving(true);
+    const payload = { customerID: customerId, title: form.title.trim(), content: form.content.trim(), notes: form.notes || undefined };
+    const result = isEdit
+      ? await api.put(`/api/contract/${contract._id}`, payload)
+      : await api.post("/api/contract", payload);
+    if (result.success) {
+      toast.success(isEdit ? "Contract updated." : "Contract created.");
+      onSaved();
+      onClose();
+    } else {
+      setError(result.error || "Something went wrong.");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <SheetContent className="w-full sm:max-w-xl">
+        <div className="px-6 py-4 border-b border-border">
+          <h2 className="text-base font-semibold text-foreground">{isEdit ? "Edit Contract" : "New Contract"}</h2>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4 px-6">
+          <div className="space-y-1.5">
+            <label className="block text-[12px] font-medium text-muted-foreground">Title<span className="text-destructive ml-0.5">*</span></label>
+            <input type="text" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Enrollment Agreement" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-[12px] font-medium text-muted-foreground">Contract Content<span className="text-destructive ml-0.5">*</span></label>
+            <textarea value={form.content} onChange={(e) => set("content", e.target.value)} rows={10} placeholder="Enter the full contract text here…" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[13px] outline-none focus:border-primary resize-y" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-[12px] font-medium text-muted-foreground">Internal Notes</label>
+            <input type="text" value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Staff notes (not shown to customer)" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+          </div>
+          {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Saving…" : isEdit ? "Save Changes" : "Create Contract"}</Button>
+          </div>
+        </form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function ContractsTab({ customerID }) {
+  const [contracts, setContracts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingContract, setEditingContract] = useState(null);
+  const [viewingContract, setViewingContract] = useState(null);
+  const [sendingId, setSendingId] = useState(null);
+  const toast = useToast();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await api.get(`/api/contract?customerID=${customerID}&limit=50`);
+    if (res.success) setContracts(res.data || []);
+    setLoading(false);
+  }, [customerID]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleSend(c) {
+    if (!window.confirm(`Send "${c.title}" to the customer for signing?`)) return;
+    setSendingId(c._id);
+    const res = await api.post(`/api/contract/${c._id}/send`, {});
+    if (res.success) { toast.success("Contract sent for signing."); load(); }
+    else toast.error(res.error || "Failed to send.");
+    setSendingId(null);
+  }
+
+  async function handleRevoke(c) {
+    if (!window.confirm(`Revoke "${c.title}"?`)) return;
+    const res = await api.post(`/api/contract/${c._id}/revoke`, {});
+    if (res.success) { toast.success("Contract revoked."); load(); }
+    else toast.error(res.error || "Failed to revoke.");
+  }
+
+  async function handleDelete(c) {
+    if (!window.confirm(`Delete "${c.title}"?`)) return;
+    const res = await api.delete(`/api/contract/${c._id}`);
+    if (res.success) { toast.success("Contract deleted."); load(); }
+    else toast.error(res.error || "Failed to delete.");
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-muted-foreground">{contracts.length} contract{contracts.length !== 1 ? "s" : ""}</p>
+        <Button size="sm" onClick={() => { setEditingContract(null); setSheetOpen(true); }}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> New Contract
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="py-10 text-center text-[13px] text-muted-foreground">Loading…</div>
+      ) : contracts.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-10 text-center">
+          <FileText className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+          <p className="text-[13px] text-muted-foreground">No contracts yet.</p>
+          <p className="text-[12px] text-muted-foreground mt-1">Create a contract and send it to the customer for digital signing.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {contracts.map((c) => (
+            <div key={c._id} className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-[13px] font-medium text-foreground truncate">{c.title}</p>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize shrink-0 ${CONTRACT_STATUS_STYLES[c.status] ?? "bg-muted text-muted-foreground"}`}>
+                      {c.status}
+                    </span>
+                  </div>
+                  {c.signedByName && (
+                    <p className="text-[12px] text-emerald-600">Signed by {c.signedByName} · {formatDate(c.signedAt)}</p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Created {formatDate(c.createdAt)}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" title="View" onClick={() => setViewingContract(c)}>
+                    <FileText className="h-3.5 w-3.5" />
+                  </Button>
+                  {c.status === "draft" && (
+                    <>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit" onClick={() => { setEditingContract(c); setSheetOpen(true); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600 hover:text-blue-700" title="Send for signing" disabled={sendingId === c._id} onClick={() => handleSend(c)}>
+                        <Send className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" title="Delete" onClick={() => handleDelete(c)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  )}
+                  {c.status === "sent" && (
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600 hover:text-amber-700" title="Revoke" onClick={() => handleRevoke(c)}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ContractFormSheet open={sheetOpen} onClose={() => setSheetOpen(false)} customerId={customerID} contract={editingContract} onSaved={load} />
+
+      {/* View contract dialog */}
+      <Dialog open={Boolean(viewingContract)} onOpenChange={(v) => { if (!v) setViewingContract(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{viewingContract?.title}</DialogTitle>
+          </DialogHeader>
+          {viewingContract && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize ${CONTRACT_STATUS_STYLES[viewingContract.status]}`}>
+                  {viewingContract.status}
+                </span>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/30 p-4 text-[13px] text-foreground whitespace-pre-wrap max-h-72 overflow-y-auto">
+                {viewingContract.content}
+              </div>
+              {viewingContract.signedByName && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-[12px] text-emerald-800 space-y-0.5">
+                  <p className="font-semibold">Signature Record</p>
+                  <p>Signed by: {viewingContract.signedByName}</p>
+                  <p>Date: {new Date(viewingContract.signedAt).toLocaleString()}</p>
+                  {viewingContract.signedByIp && <p>IP: {viewingContract.signedByIp}</p>}
+                </div>
+              )}
+              {viewingContract.notes && <p className="text-[12px] text-muted-foreground">Notes: {viewingContract.notes}</p>}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

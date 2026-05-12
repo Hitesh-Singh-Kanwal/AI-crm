@@ -61,6 +61,7 @@ const navItems = [
       { name: 'Workflows', href: '/ai-automation/workflows' },
       { name: 'AI Calls Data', href: '/ai-automation/ai-calling-data' },
       { name: 'Training', href: '/ai-automation/training' },
+      { name: 'AI SMS', href: '/ai-automation/ai-sms' },
     ],
   },
   { name: 'Workflow', href: '/workflow', iconSrc: '/figma/sidebar/ai-automation.svg', iconSize: 20, labelStyle: 'regular' },
