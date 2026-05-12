@@ -480,8 +480,14 @@ function EnrollmentServiceSelector({
     (e) => String(e._id) === selectedEnrollmentId,
   );
   const cp = selectedEnrollment?.package ?? null; // embedded package
+  // `allServices` here is the tab-scoped catalog (private vs group); only list
+  // package lines that match those service codes.
   const enrollmentServices =
-    cp?.services?.filter((s) => s.sessionsRemaining > 0) ?? [];
+    cp?.services?.filter(
+      (s) =>
+        s.sessionsRemaining > 0 &&
+        allServices.some((cat) => cat.serviceCode === s.serviceCode),
+    ) ?? [];
 
   return (
     <div className="space-y-2">
@@ -1575,7 +1581,11 @@ export default function AppointmentComposerPanel({
   const schedulingCodeOptions = useMemo(() => {
     const typeFilter = SERVICE_TYPE_MAP[activeTab];
     return allServices
-      .filter((s) => !typeFilter || s.type === typeFilter)
+      .filter((s) => {
+        if (activeTab === "Appointment")
+          return !s.type || s.type === "private";
+        return !typeFilter || s.type === typeFilter;
+      })
       .map((s) => ({
         value: String(s._id),
         label: s.serviceCode || s.serviceName,
@@ -1800,7 +1810,13 @@ export default function AppointmentComposerPanel({
   };
 
   const privateServices = useMemo(
-    () => allServices.filter((s) => s.type === "private"),
+    () =>
+      allServices.filter((s) => !s.type || s.type === "private"),
+    [allServices],
+  );
+
+  const groupServices = useMemo(
+    () => allServices.filter((s) => s.type === "group"),
     [allServices],
   );
 
@@ -1824,6 +1840,17 @@ export default function AppointmentComposerPanel({
     return customerOptions.filter((c) => ids.has(c.value));
   }, [allEnrollmentsForGroupFilter, groupServiceCodes, customerOptions]);
 
+  const tabCatalogServices = useMemo(() => {
+    if (activeTab === "Appointment") return privateServices;
+    if (activeTab === "Group Class") return groupServices;
+    return allServices;
+  }, [activeTab, privateServices, groupServices, allServices]);
+
+  const wizardAllowedServiceCodes = useMemo(
+    () => new Set(tabCatalogServices.map((s) => s.serviceCode).filter(Boolean)),
+    [tabCatalogServices],
+  );
+
   const sharedProps = {
     form,
     setField,
@@ -1831,7 +1858,7 @@ export default function AppointmentComposerPanel({
     customerOptions,
     lessonOptions,
     lessonMap,
-    allServices: activeTab === "Appointment" ? privateServices : allServices,
+    allServices: tabCatalogServices,
     schedulingCodeOptions,
     lessonDuration,
     suggestedAmount,
@@ -1848,6 +1875,7 @@ export default function AppointmentComposerPanel({
         <NewEnrollmentPackageInline
           teacherOptions={instructorOptions}
           packageTemplates={packageTemplates}
+          allowedServiceCodes={wizardAllowedServiceCodes}
           onCancel={() => setShowEnrollmentWizard(false)}
           onSubmit={async (payload) => {
             const createdId = await handleNewEnrollment(form.customer_id, payload);

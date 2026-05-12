@@ -38,10 +38,13 @@ const FULLCALENDAR_VIEW = {
   [VIEW_MODE.MONTH]: "dayGridMonth",
 };
 const FULL_START_HOUR = 6;
-const FULL_END_HOUR = 23;
+/** Exclusive end of visible grid (24 = through end of day; 23:00 events need room). */
+const FULL_END_HOUR = 24;
 const COMPACT_START_HOUR = 9;
 const COMPACT_END_HOUR = 19;
-const DAY_ROW_HEIGHT = 28;
+/** Minimum px per time-slot row (day view + week timeGrid). Keeps gaps readable for 30/60/90 min slots. */
+const TIME_SLOT_ROW_MIN_HEIGHT_PX = 44;
+const SLOT_GRID_BASE_MINS = 30;
 const DAY_LEFT_RAIL_WIDTH = 86;
 
 function addDays(date, days) {
@@ -94,6 +97,30 @@ function formatHeaderLabel(date, mode) {
   }
 
   return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+/** Align day start to the slot grid (pairs with FullCalendar slotDuration). */
+function snapSlotStartMinutes(startMins, slotMins) {
+  const step = Math.max(1, slotMins);
+  return Math.floor(Math.max(0, startMins) / step) * step;
+}
+
+/** FullCalendar slotMinTime / slotMaxTime (day boundary clamp). */
+function minutesToFcTimeString(mins) {
+  const m = Math.max(0, Math.min(mins, 24 * 60));
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+}
+
+/** Left-axis label for each day-view slot (e.g. 6:00am, 6:30am, 7:00am). */
+function formatDayAxisSlotLabel(totalMinsFromMidnight) {
+  const capped = Math.max(0, Math.min(totalMinsFromMidnight, 24 * 60 - 1));
+  const h24 = Math.floor(capped / 60);
+  const m = capped % 60;
+  const hour12 = h24 % 12 || 12;
+  const ampm = h24 >= 12 ? "pm" : "am";
+  return `${hour12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
 function deriveInstructors(appointments) {
@@ -452,7 +479,7 @@ function ListCalendarView({ events, focusDate, onEventClick }) {
   const visibleGroups = showEmpty ? grouped : grouped.filter((g) => g.events.length > 0);
 
   return (
-    <div className="h-full flex flex-col overflow-hidden rounded-[12px] border border-border bg-background">
+    <div className="flex flex-col overflow-hidden rounded-[12px] border border-border bg-background">
       {/* List header bar */}
       <div className="shrink-0 flex items-center justify-between px-5 py-2.5 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2">
@@ -472,8 +499,7 @@ function ListCalendarView({ events, focusDate, onEventClick }) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <div className="divide-y divide-border">
+      <div className="divide-y divide-border">
           {visibleGroups.map(({ day, events: dayEvents }) => {
             const isToday = isSameDate(day, new Date());
             const isPast  = day < new Date() && !isToday;
@@ -526,7 +552,6 @@ function ListCalendarView({ events, focusDate, onEventClick }) {
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 }
@@ -683,9 +708,114 @@ function hideEventTooltip() {
   tip.style.display = "none";
 }
 
+/** Same rows as week-view timeGrid events: customer, service—teacher, time, sessions left, Paid/Unpaid, type. */
+function AppointmentTimedEventRows({ event }) {
+  const ep = event.extendedProps || {};
+  const {
+    tutorName,
+    effectiveStatus,
+    customerNames,
+    eventType,
+    serviceCode,
+    sessionsRemaining,
+    totalSessions,
+    paymentCollected,
+  } = ep;
+  const cancelled =
+    effectiveStatus === "cancelled_no_charge" ||
+    effectiveStatus === "cancelled_charged";
+
+  const durationMins =
+    event.end && event.start
+      ? (new Date(event.end) - new Date(event.start)) / 60000
+      : 60;
+
+  const fmt = (d) =>
+    d
+      ? new Date(d).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        })
+      : "";
+
+  const startLabel = fmt(event.start);
+  const endLabel = fmt(event.end);
+  const timeRange =
+    startLabel && endLabel ? `${startLabel} – ${endLabel}` : startLabel;
+
+  const durationLabel = (() => {
+    if (durationMins < 60) return `${Math.round(durationMins)}m`;
+    const h = Math.floor(durationMins / 60);
+    const m = Math.round(durationMins % 60);
+    return m ? `${h}h ${m}m` : `${h}h`;
+  })();
+
+  const showTime = durationMins >= 30;
+  const showDetails = durationMins >= 45;
+
+  const firstCustomer =
+    Array.isArray(customerNames) && customerNames.length > 0
+      ? customerNames[0]
+      : null;
+
+  const teacherLine = [serviceCode, tutorName].filter(Boolean).join(" — ");
+
+  const sessionsLabel =
+    sessionsRemaining != null && totalSessions != null
+      ? `${sessionsRemaining}/${totalSessions}`
+      : null;
+
+  return (
+    <>
+      {firstCustomer && (
+        <div
+          className={`text-[10px] font-bold text-foreground leading-tight truncate shrink-0 ${cancelled ? "line-through" : ""}`}
+        >
+          {firstCustomer}
+        </div>
+      )}
+      {showTime && teacherLine && (
+        <div className="text-[9px] text-foreground/80 leading-tight truncate shrink-0 font-medium">
+          {teacherLine}
+        </div>
+      )}
+      {showTime && (timeRange || durationLabel) && (
+        <div className="text-[9px] text-muted-foreground leading-tight truncate shrink-0">
+          {timeRange}
+          {timeRange && durationLabel ? ` (${durationLabel})` : durationLabel}
+        </div>
+      )}
+      {showDetails && (
+        <div className="flex items-center gap-1.5 mt-auto pb-0.5 shrink-0 flex-wrap">
+          {sessionsLabel && (
+            <span className="text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
+              {sessionsLabel} left
+            </span>
+          )}
+          <span
+            className={`text-[8px] font-semibold rounded px-1 py-0.5 leading-none ${
+              paymentCollected
+                ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                : "bg-red-500/15 text-red-600 dark:text-red-400"
+            }`}
+          >
+            {paymentCollected ? "Paid" : "Unpaid"}
+          </span>
+          <TypeBadge type={eventType} />
+        </div>
+      )}
+      {!showDetails && (
+        <div className="flex items-center gap-1 shrink-0">
+          <TypeBadge type={eventType} />
+        </div>
+      )}
+    </>
+  );
+}
+
 function renderEventContent(info) {
-  const { tutorName, status, effectiveStatus, color, customerNames, eventType, serviceCode, sessionsRemaining, totalSessions, paymentCollected } =
-    info.event.extendedProps || {};
+  const { effectiveStatus, color } = info.event.extendedProps || {};
   const cancelled = effectiveStatus === "cancelled_no_charge" || effectiveStatus === "cancelled_charged";
   const completed = effectiveStatus === "completed";
   const accentColor = color || "var(--studio-primary)";
@@ -704,48 +834,6 @@ function renderEventContent(info) {
     );
   }
 
-  const durationMins =
-    info.event.end && info.event.start
-      ? (info.event.end - info.event.start) / 60000
-      : 60;
-
-  const fmt = (d) =>
-    d
-      ? d.toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        })
-      : "";
-
-  const startLabel = fmt(info.event.start);
-  const endLabel = fmt(info.event.end);
-  const timeRange =
-    startLabel && endLabel ? `${startLabel} – ${endLabel}` : startLabel;
-
-  const durationLabel = (() => {
-    if (durationMins < 60) return `${durationMins}m`;
-    const h = Math.floor(durationMins / 60);
-    const m = durationMins % 60;
-    return m ? `${h}h ${m}m` : `${h}h`;
-  })();
-
-  // thresholds: <30 min → title only; 30–44 min → title + time; 45+ → all details
-  const showTime = durationMins >= 30;
-  const showDetails = durationMins >= 45;
-
-  const firstCustomer =
-    Array.isArray(customerNames) && customerNames.length > 0
-      ? customerNames[0]
-      : null;
-
-  const teacherLine = [serviceCode, tutorName].filter(Boolean).join(" — ");
-
-  const sessionsLabel =
-    sessionsRemaining != null && totalSessions != null
-      ? `${sessionsRemaining}/${totalSessions}`
-      : null;
-
   return (
     <div
       className={`min-h-[100%] w-full overflow-visible rounded-[5px] flex flex-col relative ${cancelled ? "opacity-50" : ""} ${completed ? "opacity-80" : ""}`}
@@ -754,7 +842,6 @@ function renderEventContent(info) {
         backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
       }}
     >
-      {/* Completed green check */}
       {completed && (
         <span
           className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shrink-0"
@@ -766,49 +853,7 @@ function renderEventContent(info) {
         </span>
       )}
       <div className="px-1.5 py-0.5 flex flex-col overflow-visible min-h-full gap-[1px]">
-        {/* Row 1: customer name */}
-        {firstCustomer && (
-          <div className={`text-[10px] font-bold text-foreground leading-tight truncate shrink-0 ${cancelled ? "line-through" : ""}`}>
-            {firstCustomer}
-          </div>
-        )}
-        {/* Row 2: service code — teacher name */}
-        {showTime && teacherLine && (
-          <div className="text-[9px] text-foreground/80 leading-tight truncate shrink-0 font-medium">
-            {teacherLine}
-          </div>
-        )}
-        {/* Row 3: time range */}
-        {showTime && (timeRange || durationLabel) && (
-          <div className="text-[9px] text-muted-foreground leading-tight truncate shrink-0">
-            {timeRange}{timeRange && durationLabel ? ` (${durationLabel})` : durationLabel}
-          </div>
-        )}
-        {/* Row 4: sessions remaining + paid/unpaid */}
-        {showDetails && (sessionsLabel || true) && (
-          <div className="flex items-center gap-1.5 mt-auto pb-0.5 shrink-0">
-            {sessionsLabel && (
-              <span className="text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
-                {sessionsLabel} left
-              </span>
-            )}
-            <span
-              className={`text-[8px] font-semibold rounded px-1 py-0.5 leading-none ${
-                paymentCollected
-                  ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
-                  : "bg-red-500/15 text-red-600 dark:text-red-400"
-              }`}
-            >
-              {paymentCollected ? "Paid" : "Unpaid"}
-            </span>
-            <TypeBadge type={eventType} />
-          </div>
-        )}
-        {!showDetails && (
-          <div className="flex items-center gap-1 shrink-0">
-            <TypeBadge type={eventType} />
-          </div>
-        )}
+        <AppointmentTimedEventRows event={info.event} />
       </div>
     </div>
   );
@@ -890,7 +935,6 @@ function deriveTutorsFromEvents(events, passedTutors) {
 }
 
 function TutorDayCalendar({
-  startHour,
   endHour,
   focusDate,
   now,
@@ -903,9 +947,17 @@ function TutorDayCalendar({
   customSlotMins = 30,
   slotAlignMins = 0,
 }) {
-  const totalMins = (endHour - startHour) * 60;
-  const slotsCount = Math.floor(totalMins / customSlotMins);
-  const dayHeight = (slotsCount + 1) * DAY_ROW_HEIGHT;
+  /** Same calendar-time density as 30-minute mode: px per minute is constant. */
+  const slotRowHeightPx = Math.max(
+    28,
+    Math.round((TIME_SLOT_ROW_MIN_HEIGHT_PX * customSlotMins) / SLOT_GRID_BASE_MINS),
+  );
+  const totalMins = Math.max(0, endHour * 60 - slotAlignMins);
+  const slotsCount = Math.max(0, Math.floor(totalMins / customSlotMins));
+  const dayHeight = Math.max(slotRowHeightPx, slotsCount * slotRowHeightPx);
+  /** Push first slot below sticky header overlap (labels use -translate-y-1/2 on the top line). */
+  const gridPadTop = Math.max(12, Math.ceil(slotRowHeightPx / 2));
+  const paddedDayHeight = dayHeight + gridPadTop;
 
   const effectiveTutors = tutors.slice(0, 5);
 
@@ -951,38 +1003,34 @@ function TutorDayCalendar({
   const dayStartMins = slotAlignMins;
   const nowOffset =
     isToday && nowMinutes >= dayStartMins && nowMinutes <= endHour * 60
-      ? ((nowMinutes - dayStartMins) / customSlotMins) * DAY_ROW_HEIGHT
+      ? gridPadTop + ((nowMinutes - dayStartMins) / customSlotMins) * slotRowHeightPx
       : null;
 
   const focusDateLabel = focusDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-[12px] border border-border bg-background shadow-sm">
-      <div className="flex shrink-0 border-b border-border bg-muted/30">
-        <div className="w-[86px] shrink-0 border-r border-border flex items-end pb-2 px-2">
-          <span className="text-[10px] font-medium text-muted-foreground leading-tight">{focusDateLabel}</span>
-        </div>
-        {effectiveTutors.map((tutor, idx) => {
-          const todayCount = (byTutorTimed[tutor.key]?.length ?? 0) + (byTutorAllDay[tutor.key]?.length ?? 0);
-          const weekCount = weekCountByTutor[tutor.key] ?? 0;
-          return (
-            <div
-              key={tutor.key}
-              className="flex-1 px-3 py-2.5 text-center"
-              style={{
-                borderRight:
-                  idx < effectiveTutors.length - 1
-                    ? "1px solid hsl(var(--border))"
-                    : "none",
-              }}
-            >
-              <div className="flex flex-col items-center gap-1 min-w-0">
-                <span
-                  className="h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                  style={{ backgroundColor: tutor.color }}
-                >
-                  {tutor.initials || "T"}
-                </span>
+    <div className="flex flex-col rounded-[12px] border border-border bg-background shadow-sm">
+      <div className="sticky top-0 z-40 border-b border-border bg-background/95 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
+        <div className="flex shrink-0 border-b border-border bg-muted/30">
+          <div className="w-[86px] shrink-0 border-r border-border flex items-end pb-2 px-2">
+            <span className="text-[10px] font-medium text-muted-foreground leading-tight">{focusDateLabel}</span>
+          </div>
+          {effectiveTutors.map((tutor, idx) => {
+            const todayCount =
+              (byTutorTimed[tutor.key]?.length ?? 0) +
+              (byTutorAllDay[tutor.key]?.length ?? 0);
+            const weekCount = weekCountByTutor[tutor.key] ?? 0;
+            return (
+              <div
+                key={tutor.key}
+                className="flex-1 px-3 py-2.5 text-center"
+                style={{
+                  borderRight:
+                    idx < effectiveTutors.length - 1
+                      ? "1px solid hsl(var(--border))"
+                      : "none",
+                }}
+              >
                 <div className="flex flex-col items-center min-w-0">
                   <span className="text-[11px] font-semibold text-foreground truncate max-w-full leading-tight">
                     {tutor.name || tutor.label || "Unknown"}
@@ -998,17 +1046,18 @@ function TutorDayCalendar({
                       {todayCount} today
                     </span>
                     {weekCount > 0 && (
-                      <span className="text-[10px] text-muted-foreground">· {weekCount}/wk</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        · {weekCount}/wk
+                      </span>
                     )}
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
 
-      <div className="flex-1 overflow-y-auto">
+        {/* All-day row (per-tutor all-day events) — hidden for now; uncomment to restore
         <div className="flex h-10 border-b border-border bg-muted/40">
           <div className="w-[86px] shrink-0 border-r border-border px-2 py-2 text-[10px] font-medium text-muted-foreground">
             All day
@@ -1042,30 +1091,25 @@ function TutorDayCalendar({
             </div>
           ))}
         </div>
+        */}
+      </div>
 
-        <div className="relative flex">
+      <div className="relative flex">
           <div
             className="relative w-[86px] shrink-0 border-r border-border"
-            style={{ height: dayHeight }}
+            style={{ height: paddedDayHeight }}
           >
-            {Array.from({ length: slotsCount + 1 }).map((_, idx) => {
+            {Array.from({ length: slotsCount }).map((_, idx) => {
               const currentMins = dayStartMins + idx * customSlotMins;
-              const h = Math.floor(currentMins / 60);
-              const m = currentMins % 60;
-              const isFirst = idx === 0;
-              const isTopOfHour = m === 0;
-              const isCustomSize = customSlotMins !== 30;
-              const label = (isFirst || isTopOfHour || isCustomSize) 
-                ? `${h % 12 || 12}${m ? ":" + String(m).padStart(2, "0") : ""}${h >= 12 ? "pm" : "am"}`
-                : "";
+              const label = formatDayAxisSlotLabel(currentMins);
 
               return (
                 <div
                   key={idx}
                   className="absolute left-0 right-0"
-                  style={{ top: idx * DAY_ROW_HEIGHT }}
+                  style={{ top: gridPadTop + idx * slotRowHeightPx }}
                 >
-                  <div className="-translate-y-1/2 px-2 text-[10px] font-medium text-muted-foreground">
+                  <div className="-translate-y-1/2 px-2 text-[10px] font-medium text-muted-foreground whitespace-nowrap">
                     {label}
                   </div>
                 </div>
@@ -1078,7 +1122,7 @@ function TutorDayCalendar({
               key={`${tutor.key}-day-col`}
               className="relative flex-1 group/col cursor-pointer"
               style={{
-                height: dayHeight,
+                height: paddedDayHeight,
                 borderRight:
                   colIdx < effectiveTutors.length - 1
                     ? "1px solid hsl(var(--border))"
@@ -1088,8 +1132,12 @@ function TutorDayCalendar({
               onClick={(e) => {
                 if (e.target.closest("[data-event]")) return;
                 const rect = e.currentTarget.getBoundingClientRect();
-                const offsetY = e.clientY - rect.top;
-                const slotIdx = Math.floor(offsetY / DAY_ROW_HEIGHT);
+                const offsetY = e.clientY - rect.top - gridPadTop;
+                const rawIdx = Math.floor(Math.max(0, offsetY) / slotRowHeightPx);
+                const slotIdx =
+                  slotsCount > 0
+                    ? Math.min(Math.max(0, rawIdx), slotsCount - 1)
+                    : 0;
                 const totalSlotMins = dayStartMins + slotIdx * customSlotMins;
                 const h = Math.floor(totalSlotMins / 60);
                 const m = totalSlotMins % 60;
@@ -1099,14 +1147,17 @@ function TutorDayCalendar({
                 });
               }}
             >
-              {Array.from({ length: slotsCount + 1 }).map((_, idx) => {
+              {Array.from({ length: slotsCount }).map((_, idx) => {
                 const slotMins = dayStartMins + idx * customSlotMins;
                 const isHourBoundary = slotMins % 60 === 0;
                 return (
                   <div
                     key={idx}
                     className={`absolute left-0 right-0 ${isHourBoundary ? "border-b border-border/60" : "border-b border-border/20"}`}
-                    style={{ top: idx * DAY_ROW_HEIGHT, height: DAY_ROW_HEIGHT }}
+                    style={{
+                      top: gridPadTop + idx * slotRowHeightPx,
+                      height: slotRowHeightPx,
+                    }}
                   />
                 );
               })}
@@ -1119,8 +1170,12 @@ function TutorDayCalendar({
                 const duration = endMins - startMins;
 
                 const top =
-                  ((startMins - dayStartMins) / customSlotMins) * DAY_ROW_HEIGHT;
-                const height = Math.max((duration / customSlotMins) * DAY_ROW_HEIGHT, DAY_ROW_HEIGHT);
+                  gridPadTop +
+                  ((startMins - dayStartMins) / customSlotMins) * slotRowHeightPx;
+                const height = Math.max(
+                  (duration / customSlotMins) * slotRowHeightPx,
+                  slotRowHeightPx,
+                );
 
                 const widthPercent = 100 / (event.totalLanes || 1);
                 const leftPercent = (event.lane || 0) * widthPercent;
@@ -1130,8 +1185,6 @@ function TutorDayCalendar({
                 const effectiveStatus = event.extendedProps?.effectiveStatus;
                 const isCancelledEvent = effectiveStatus === "cancelled_no_charge" || effectiveStatus === "cancelled_charged";
                 const isCompletedEvent = effectiveStatus === "completed";
-                const initials = (event.extendedProps?.tutorName || "?").charAt(0).toUpperCase();
-                const dayEventType = event.extendedProps?.eventType;
 
                 return (
                   <div
@@ -1150,7 +1203,7 @@ function TutorDayCalendar({
                       left: `calc(${leftPercent}% + 2px)`,
                       width: `calc(${widthPercent}% - 4px)`,
                       borderLeft: `3px solid ${accentColor}`,
-                      backgroundColor: `color-mix(in srgb, ${accentColor} 22%, hsl(var(--card)))`,
+                      backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
                       boxShadow: "0 1px 3px hsl(var(--foreground)/0.06)",
                       zIndex: 10,
                     }}
@@ -1165,45 +1218,23 @@ function TutorDayCalendar({
                     onMouseLeave={(e) => {
                       e.currentTarget.style.boxShadow = "0 1px 3px hsl(var(--foreground)/0.06)";
                       e.currentTarget.style.zIndex = "10";
-                      e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 22%, hsl(var(--card)))`;
+                      e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`;
                       e.currentTarget.style.transform = "scaleX(1)";
                       hideEventTooltip();
                     }}
                   >
                     {isCompletedEvent && (
                       <span
-                        className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-emerald-500 flex items-center justify-center z-10 shadow-sm"
+                        className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shadow-sm"
                         title="Completed"
                       >
-                        <svg viewBox="0 0 10 10" className="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg viewBox="0 0 10 10" className="h-2 w-2 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="1.5,5 4,7.5 8.5,2.5" />
                         </svg>
                       </span>
                     )}
-                    <div className="min-h-full flex flex-col px-2 py-1 overflow-hidden">
-                      <div className="flex items-center gap-1 min-w-0 shrink-0">
-                        <span
-                          className={`text-[11px] font-bold text-foreground leading-tight truncate ${isCancelledEvent ? "line-through opacity-60" : ""}`}
-                        >
-                          {event.title}
-                        </span>
-                        <TypeBadge type={dayEventType} />
-                      </div>
-                      {height >= 36 && (
-                        <div className="text-[9px] text-muted-foreground leading-tight truncate shrink-0 mt-px">
-                          {formatTime(event.start)} – {formatTime(event.end)}
-                        </div>
-                      )}
-                      {height >= 60 && event.extendedProps?.customerNames?.length > 0 && (
-                        <div className="text-[9px] text-foreground/70 truncate leading-tight shrink-0 mt-0.5">
-                          {event.extendedProps.customerNames.join(", ")}
-                        </div>
-                      )}
-                      {height >= 80 && event.extendedProps?.publicNote && (
-                        <div className="text-[8px] italic truncate leading-tight shrink-0 mt-0.5 opacity-70 border-t border-black/10 dark:border-white/10 pt-0.5">
-                          {event.extendedProps.publicNote}
-                        </div>
-                      )}
+                    <div className="min-h-full flex flex-col px-1.5 py-0.5 overflow-visible gap-[1px]">
+                      <AppointmentTimedEventRows event={event} />
                     </div>
                   </div>
                 );
@@ -1228,24 +1259,36 @@ function TutorDayCalendar({
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 }
 
 
 
-function SlotSizePicker({ value, onApply }) {
+function SlotSizePicker({ value, startMins, onApply }) {
   const [open, setOpen] = useState(false);
   const [startTime, setStartTime] = useState("06:00");
   const [pendingMins, setPendingMins] = useState(value);
 
-  const isActive = value !== 30;
+  useEffect(() => {
+    if (!open) return;
+    setPendingMins(value);
+    const base = Number.isFinite(startMins) ? startMins : FULL_START_HOUR * 60;
+    const h = Math.floor(base / 60);
+    const m = base % 60;
+    setStartTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+  }, [open, value, startMins]);
+
+  const isActive =
+    value !== 30 ||
+    (startMins != null && startMins !== FULL_START_HOUR * 60);
 
   function handleApply() {
-    const [h, m] = startTime.split(":").map(Number);
-    const totalMins = (Number.isFinite(h) && Number.isFinite(m)) ? h * 60 + m : FULL_START_HOUR * 60;
-    onApply(pendingMins, totalMins);
+    const [h, mm] = startTime.split(":").map(Number);
+    const rawMins =
+      Number.isFinite(h) && Number.isFinite(mm) ? h * 60 + mm : FULL_START_HOUR * 60;
+    const snappedStart = snapSlotStartMinutes(rawMins, pendingMins);
+    onApply(pendingMins, snappedStart);
     setOpen(false);
   }
 
@@ -1309,7 +1352,14 @@ function SlotSizePicker({ value, onApply }) {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => { setStartTime("06:00"); setPendingMins(30); onApply(30, FULL_START_HOUR * 60); setOpen(false); }}
+              onClick={() => {
+                const resetMins = 30;
+                const snapped = snapSlotStartMinutes(FULL_START_HOUR * 60, resetMins);
+                setStartTime("06:00");
+                setPendingMins(resetMins);
+                onApply(resetMins, snapped);
+                setOpen(false);
+              }}
               className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-muted-foreground hover:bg-muted/40"
             >
               Reset
@@ -1608,7 +1658,6 @@ export default function CalendarPage() {
   const [customSlotMins, setCustomSlotMins] = useState(30);
   const [slotAlignMins, setSlotAlignMins] = useState(FULL_START_HOUR * 60);
 
-  const dayStartHour = compactHours ? COMPACT_START_HOUR : FULL_START_HOUR;
   const dayEndHour   = compactHours ? COMPACT_END_HOUR   : FULL_END_HOUR;
 
   // slotDuration string for FullCalendar (HH:MM:SS)
@@ -1617,6 +1666,16 @@ export default function CalendarPage() {
     const m = customSlotMins % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
   }, [customSlotMins]);
+
+  /** Match day view: px per 30 minutes of time is constant at every slot size (week time grid). */
+  const weekSlotLaneMinHeightPx = useMemo(
+    () =>
+      Math.max(
+        28,
+        Math.round((TIME_SLOT_ROW_MIN_HEIGHT_PX * customSlotMins) / SLOT_GRID_BASE_MINS),
+      ),
+    [customSlotMins],
+  );
 
   const rangeStart = useMemo(() => {
     const monthStart = new Date(
@@ -1680,16 +1739,18 @@ export default function CalendarPage() {
     return result;
   }, [events, statusFilter, selectedTeacherId]);
 
-  // effectiveStartMins: the later of the user's start-time-picker and compact/full range start
-  const effectiveStartMins = Math.max(slotAlignMins, dayStartHour * 60);
+  const snappedGridStartMins = useMemo(
+    () => snapSlotStartMinutes(slotAlignMins, customSlotMins),
+    [slotAlignMins, customSlotMins],
+  );
 
   // When hideEmptySlots is on, shrink the visible hour range to where events actually are
   const { effectiveSlotMin, effectiveSlotMax, effectiveSlotMinStr, effectiveSlotMaxStr } = useMemo(() => {
     if (!hideEmptySlots) {
       return {
-        effectiveSlotMin: Math.floor(effectiveStartMins / 60),
+        effectiveSlotMin: Math.floor(snappedGridStartMins / 60),
         effectiveSlotMax: dayEndHour,
-        effectiveSlotMinStr: `${String(Math.floor(effectiveStartMins / 60)).padStart(2, "0")}:${String(effectiveStartMins % 60).padStart(2, "0")}:00`,
+        effectiveSlotMinStr: minutesToFcTimeString(snappedGridStartMins),
         effectiveSlotMaxStr: `${String(dayEndHour).padStart(2, "0")}:00:00`,
       };
     }
@@ -1701,9 +1762,9 @@ export default function CalendarPage() {
     });
     if (visible.length === 0) {
       return {
-        effectiveSlotMin: Math.floor(effectiveStartMins / 60),
+        effectiveSlotMin: Math.floor(snappedGridStartMins / 60),
         effectiveSlotMax: dayEndHour,
-        effectiveSlotMinStr: `${String(Math.floor(effectiveStartMins / 60)).padStart(2, "0")}:${String(effectiveStartMins % 60).padStart(2, "0")}:00`,
+        effectiveSlotMinStr: minutesToFcTimeString(snappedGridStartMins),
         effectiveSlotMaxStr: `${String(dayEndHour).padStart(2, "0")}:00:00`,
       };
     }
@@ -1719,15 +1780,10 @@ export default function CalendarPage() {
     return {
       effectiveSlotMin: clampedMinH,
       effectiveSlotMax: clampedMaxH,
-      effectiveSlotMinStr: `${String(clampedMinH).padStart(2, "0")}:${String(effectiveStartMins % 60).padStart(2, "0")}:00`,
+      effectiveSlotMinStr: `${String(clampedMinH).padStart(2, "0")}:00:00`,
       effectiveSlotMaxStr: `${String(clampedMaxH).padStart(2, "0")}:00:00`,
     };
-  }, [hideEmptySlots, filteredEvents, focusDate, dayStartHour, dayEndHour, effectiveStartMins]);
-  
-  const effectiveSlotLabelInterval = useMemo(() => {
-    if (customSlotMins === 30) return "01:00:00";
-    return slotDurationStr;
-  }, [customSlotMins, slotDurationStr]);
+  }, [hideEmptySlots, filteredEvents, focusDate, dayEndHour, snappedGridStartMins]);
 
   const dayTimedEvents = useMemo(
     () =>
@@ -1815,11 +1871,8 @@ export default function CalendarPage() {
 
   return (
     <MainLayout title="Calendar" subtitle="">
-      <div className="w-full h-full">
-        <div
-          className="bg-background rounded-[24px_0px_24px_24px] w-full flex flex-col"
-          style={{ height: "calc(100vh - 120px)" }}
-        >
+      <div className="w-full min-h-0">
+        <div className="bg-background rounded-[24px_0px_24px_24px] w-full flex flex-col">
           <div className="shrink-0 px-6 py-1.5 flex items-center justify-between gap-3 border-b border-border/50">
             <div className="flex items-center gap-2">
               <SmallRoundedButton onClick={goToToday}>Today</SmallRoundedButton>
@@ -1889,10 +1942,15 @@ export default function CalendarPage() {
                 />
               )}
               <StatusFilterDropdown value={statusFilter} onChange={setStatusFilter} />
-              <SlotSizePicker value={customSlotMins} onApply={(mins, startOff) => {
-                setCustomSlotMins(mins);
-                setSlotAlignMins(startOff);
-              }} />
+              <SlotSizePicker
+                value={customSlotMins}
+                startMins={slotAlignMins}
+                onApply={(mins, startOff) => {
+                  const snapped = snapSlotStartMinutes(startOff, mins);
+                  setCustomSlotMins(mins);
+                  setSlotAlignMins(snapped);
+                }}
+              />
 
               <div className="w-px h-6 bg-border shrink-0" />
 
@@ -1921,12 +1979,12 @@ export default function CalendarPage() {
             allServices={allServices}
           />
 
-          <div className="flex-1 min-h-0 px-6 pt-6 pb-6">
-            <div className="flex h-full gap-4 min-w-0">
+          <div className="px-6 pt-6 pb-6">
+            <div className="flex gap-4 min-w-0">
               <div className="flex-1 min-w-0">
                 {viewMode === VIEW_MODE.DAY ? (
                   <TutorDayCalendar
-                    startHour={Math.floor(effectiveStartMins / 60)}
+                    key={`day-${customSlotMins}-${snappedGridStartMins}-${effectiveSlotMax}`}
                     endHour={effectiveSlotMax}
                     focusDate={focusDate}
                     now={now}
@@ -1944,7 +2002,7 @@ export default function CalendarPage() {
                       setIsAppointmentPanelOpen(true);
                     }}
                     customSlotMins={customSlotMins}
-                    slotAlignMins={effectiveStartMins}
+                    slotAlignMins={snappedGridStartMins}
                   />
                 ) : viewMode === VIEW_MODE.LIST ? (
                   <ListCalendarView
@@ -1956,8 +2014,15 @@ export default function CalendarPage() {
                     }}
                   />
                 ) : (
-                  <div className="h-full overflow-hidden rounded-[12px] border border-border bg-background calendar-shell">
+                  <div
+                    className="rounded-[12px] border border-border bg-background calendar-shell"
+                    style={{
+                      "--cal-time-slot-min-height": `${weekSlotLaneMinHeightPx}px`,
+                    }}
+                  >
+                    {/* FullCalendar all-day row: was `allDaySlot` (default on); using false hides it */}
                     <FullCalendar
+                      key={`fc-${viewMode}-${customSlotMins}-${snappedGridStartMins}-${effectiveSlotMinStr}-${effectiveSlotMaxStr}`}
                       ref={calendarRef}
                       plugins={[
                         dayGridPlugin,
@@ -1967,23 +2032,24 @@ export default function CalendarPage() {
                       initialView={FULLCALENDAR_VIEW[viewMode]}
                       initialDate={focusDate}
                       headerToolbar={false}
-                      height="100%"
+                      height="auto"
                       nowIndicator
-                      allDaySlot
+                      allDaySlot={false}
                       slotMinTime={effectiveSlotMinStr}
                       slotMaxTime={effectiveSlotMaxStr}
                       slotDuration={slotDurationStr}
-                      slotLabelInterval={effectiveSlotLabelInterval}
+                      snapDuration={slotDurationStr}
+                      slotLabelInterval={slotDurationStr}
                       slotLabelFormat={{
                         hour: "numeric",
                         minute: "2-digit",
                         omitZeroMinute: false,
                         meridiem: "short",
                       }}
-                      expandRows
                       stickyHeaderDates
                       dayMaxEvents={false}
                       eventMaxStack={10}
+                      expandRows
                       events={filteredEvents}
                       editable={false}
                       selectable

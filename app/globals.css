@@ -178,7 +178,36 @@
 
 /* FullCalendar overrides */
 .calendar-shell .fc {
-  height: 100%;
+  height: auto;
+}
+
+/* No fixed max height: grid grows so late-evening appointments stay in view (page scrolls). */
+.calendar-shell .fc .fc-view-harness,
+.calendar-shell .fc .fc-scroller-harness,
+.calendar-shell .fc .fc-scroller,
+.calendar-shell .fc .fc-scrollgrid,
+.calendar-shell .fc .fc-scrollgrid-section-body {
+  max-height: none !important;
+}
+
+.calendar-shell {
+  overflow: visible;
+  /* Minimum height per slot in week time grid; --cal-time-slot-min-height is set from page (scales with slot size, 30m = base). */
+  --cal-time-slot-min-height: 44px;
+}
+
+.calendar-shell .fc td.fc-timegrid-slot-lane {
+  min-height: var(--cal-time-slot-min-height, 44px) !important;
+}
+
+.calendar-shell .fc .fc-timegrid-slot-label {
+  min-height: var(--cal-time-slot-min-height, 44px) !important;
+}
+
+.calendar-shell .fc .fc-timegrid-slot-label-frame,
+.calendar-shell .fc .fc-timegrid-slot-label-cushion,
+.calendar-shell .fc .fc-scrollgrid-shrink-cushion {
+  min-height: var(--cal-time-slot-min-height, 44px) !important;
 }
 
 .calendar-shell .fc .fc-toolbar {
