@@ -32,6 +32,51 @@ function addMinutes(timeStr, minutesToAdd) {
   return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
 }
 
+/** `/api/calendar` expects `start`/`end`, not `date`. Local calendar day bounds (ISO). */
+function localCalendarDayQueryRange(dateStr) {
+  const [y, mo, d] = String(dateStr).split("-").map(Number);
+  if (!y || !mo || !d) return null;
+  const dayStart = new Date(y, mo - 1, d, 0, 0, 0, 0);
+  const dayEndInclusive = new Date(y, mo - 1, d, 23, 59, 59, 999);
+  const dayEndExclusive = dayStart.getTime() + 86400000;
+  return {
+    startISO: dayStart.toISOString(),
+    endISO: dayEndInclusive.toISOString(),
+    dayStartMs: dayStart.getTime(),
+    dayEndExclusiveMs: dayEndExclusive,
+  };
+}
+
+/** Clip booking [evStart,evEnd) to this local day → minutes from midnight [start,end). */
+function clipIntervalToLocalDay(evStart, evEnd, dayStartMs, dayEndExclusiveMs) {
+  const s = Math.max(evStart.getTime(), dayStartMs);
+  const e = Math.min(evEnd.getTime(), dayEndExclusiveMs);
+  if (e <= s) return null;
+  return {
+    start: Math.max(0, Math.floor((s - dayStartMs) / 60000)),
+    end: Math.min(24 * 60, Math.ceil((e - dayStartMs) / 60000)),
+  };
+}
+
+/** Cancelled lessons free the slot for new bookings */
+function statusBlocksAvailability(status) {
+  if (status === "cancelled_no_charge" || status === "cancelled_charged") return false;
+  return true;
+}
+
+function mergeMinuteIntervals(intervals) {
+  if (!intervals.length) return [];
+  const sorted = [...intervals].sort((a, b) => a.start - b.start);
+  const out = [{ ...sorted[0] }];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = out[out.length - 1];
+    const cur = sorted[i];
+    if (cur.start < prev.end) prev.end = Math.max(prev.end, cur.end);
+    else out.push({ ...cur });
+  }
+  return out;
+}
+
 function ordinalLabel(n) {
   return ["1st", "2nd", "3rd"][n - 1] ?? `${n}th`;
 }
@@ -899,55 +944,80 @@ function AvailabilityPicker({
   selectedSlots,
   onToggleSlot,
 }) {
-  const [busySlots, setBusySlots] = useState([]);
+  /** Merged busy intervals for `date`, minutes from local midnight */
+  const [busyIntervalsMin, setBusyIntervalsMin] = useState([]);
+  const [blockingEventCount, setBlockingEventCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!instructorId || !date) {
-      setBusySlots([]);
+    const range = localCalendarDayQueryRange(date);
+    if (!instructorId || !range) {
+      setBusyIntervalsMin([]);
+      setBlockingEventCount(0);
       return;
     }
     setLoading(true);
+    const qs = new URLSearchParams({
+      teacherID: String(instructorId),
+      /* Widen start by 1d so lessons that began yesterday but end today are returned */
+      start: new Date(range.dayStartMs - 86400000).toISOString(),
+      end: range.endISO,
+      limit: "500",
+    });
     api
-      .get(`/api/calendar?teacherID=${instructorId}&date=${date}&limit=200`)
+      .get(`/api/calendar?${qs.toString()}`)
       .then((res) => {
-        if (res.success && Array.isArray(res.data)) {
-          setBusySlots(
-            res.data
-              .map((ev) => ({
-                start: ev.startDateTime ? new Date(ev.startDateTime) : null,
-                end: ev.endDateTime ? new Date(ev.endDateTime) : null,
-              }))
-              .filter((s) => s.start && s.end),
-          );
-        } else {
-          setBusySlots([]);
+        if (!res.success || !Array.isArray(res.data)) {
+          setBusyIntervalsMin([]);
+          setBlockingEventCount(0);
+          return;
         }
+        const intervals = [];
+        let blocking = 0;
+        for (const ev of res.data) {
+          if (!statusBlocksAvailability(ev.status)) continue;
+          const st = ev.startDateTime ? new Date(ev.startDateTime) : null;
+          const en = ev.endDateTime ? new Date(ev.endDateTime) : null;
+          if (!st || !en || !(en > st)) continue;
+          const clipped = clipIntervalToLocalDay(st, en, range.dayStartMs, range.dayEndExclusiveMs);
+          if (clipped && clipped.end > clipped.start) {
+            intervals.push(clipped);
+            blocking += 1;
+          }
+        }
+        setBlockingEventCount(blocking);
+        setBusyIntervalsMin(mergeMinuteIntervals(intervals));
       })
-      .catch(() => setBusySlots([]))
+      .catch(() => {
+        setBusyIntervalsMin([]);
+        setBlockingEventCount(0);
+      })
       .finally(() => setLoading(false));
   }, [instructorId, date]);
 
-  const { availableSlots, bookedCount } = useMemo(() => {
+  const availableSlots = useMemo(() => {
     const dur = Math.max(15, Number(duration) || 50);
-    const DAY_START = 7 * 60;
-    const DAY_END = 21 * 60;
-    const busy = busySlots.map((s) => ({
-      start: s.start.getHours() * 60 + s.start.getMinutes(),
-      end: s.end.getHours() * 60 + s.end.getMinutes(),
-    }));
+    const DAY_START_MIN = 7 * 60;
+    const DAY_END_MIN = 21 * 60;
+    /** Offer every aligned start within the day; step finer than lesson length */
+    const GRID_STEP_MIN = 15;
+
     const slots = [];
-    for (let t = DAY_START; t + dur <= DAY_END; t += dur) {
+    for (let t = DAY_START_MIN; t + dur <= DAY_END_MIN; t += GRID_STEP_MIN) {
       const slotEnd = t + dur;
-      if (busy.some((b) => t < b.end && slotEnd > b.start)) continue;
+      if (
+        busyIntervalsMin.some((b) => t < b.end && slotEnd > b.start)
+      ) {
+        continue;
+      }
       const hh = String(Math.floor(t / 60)).padStart(2, "0");
       const mm = String(t % 60).padStart(2, "0");
       const eh = String(Math.floor(slotEnd / 60)).padStart(2, "0");
       const em = String(slotEnd % 60).padStart(2, "0");
       slots.push({ start: `${hh}:${mm}`, end: `${eh}:${em}` });
     }
-    return { availableSlots: slots, bookedCount: busySlots.length };
-  }, [busySlots, duration]);
+    return slots;
+  }, [busyIntervalsMin, duration]);
 
   if (!instructorId || !date) return null;
 
@@ -964,7 +1034,7 @@ function AvailabilityPicker({
         </span>
         {!loading && (
           <span className="text-[10px] text-muted-foreground">
-            {availableSlots.length} free · {bookedCount} booked
+            {availableSlots.length} free · {blockingEventCount} booked
           </span>
         )}
       </div>

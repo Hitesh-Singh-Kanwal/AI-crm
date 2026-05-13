@@ -193,21 +193,21 @@
 .calendar-shell {
   overflow: visible;
   /* Minimum height per slot in week time grid; --cal-time-slot-min-height is set from page (scales with slot size, 30m = base). */
-  --cal-time-slot-min-height: 44px;
+  --cal-time-slot-min-height: 52px;
 }
 
 .calendar-shell .fc td.fc-timegrid-slot-lane {
-  min-height: var(--cal-time-slot-min-height, 44px) !important;
+  min-height: var(--cal-time-slot-min-height, 52px) !important;
 }
 
 .calendar-shell .fc .fc-timegrid-slot-label {
-  min-height: var(--cal-time-slot-min-height, 44px) !important;
+  min-height: var(--cal-time-slot-min-height, 52px) !important;
 }
 
 .calendar-shell .fc .fc-timegrid-slot-label-frame,
 .calendar-shell .fc .fc-timegrid-slot-label-cushion,
 .calendar-shell .fc .fc-scrollgrid-shrink-cushion {
-  min-height: var(--cal-time-slot-min-height, 44px) !important;
+  min-height: var(--cal-time-slot-min-height, 52px) !important;
 }
 
 .calendar-shell .fc .fc-toolbar {

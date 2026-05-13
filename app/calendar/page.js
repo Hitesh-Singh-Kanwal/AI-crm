@@ -43,9 +43,11 @@ const FULL_END_HOUR = 24;
 const COMPACT_START_HOUR = 9;
 const COMPACT_END_HOUR = 19;
 /** Minimum px per time-slot row (day view + week timeGrid). Keeps gaps readable for 30/60/90 min slots. */
-const TIME_SLOT_ROW_MIN_HEIGHT_PX = 44;
+const TIME_SLOT_ROW_MIN_HEIGHT_PX = 60;
 const SLOT_GRID_BASE_MINS = 30;
 const DAY_LEFT_RAIL_WIDTH = 86;
+/** Day-view events size by real duration; only enforce a thin px floor (do not use slot row height — that made 30m lessons fill a 90m row). */
+const MIN_DAY_TIMED_EVENT_HEIGHT_PX = 22;
 
 function addDays(date, days) {
   const next = new Date(date);
@@ -1165,16 +1167,19 @@ function TutorDayCalendar({
               {(byTutorTimed[tutor.key] || []).map((event) => {
                 const s = new Date(event.start);
                 const e = new Date(event.end);
+                const durationMins = Math.max(
+                  0,
+                  Math.round((e.getTime() - s.getTime()) / 60000),
+                );
+
                 const startMins = s.getHours() * 60 + s.getMinutes();
-                const endMins = e.getHours() * 60 + e.getMinutes();
-                const duration = endMins - startMins;
 
                 const top =
                   gridPadTop +
                   ((startMins - dayStartMins) / customSlotMins) * slotRowHeightPx;
                 const height = Math.max(
-                  (duration / customSlotMins) * slotRowHeightPx,
-                  slotRowHeightPx,
+                  MIN_DAY_TIMED_EVENT_HEIGHT_PX,
+                  (durationMins / customSlotMins) * slotRowHeightPx,
                 );
 
                 const widthPercent = 100 / (event.totalLanes || 1);
@@ -1194,12 +1199,13 @@ function TutorDayCalendar({
                       e.stopPropagation();
                       onEventClick?.(event.extendedProps?.raw);
                     }}
-                    className={`absolute cursor-pointer transition-all duration-150 rounded-lg group/event ${
-                      isCancelledEvent ? "opacity-40" : ""
-                    } ${isCompletedEvent ? "opacity-75" : ""}`}
+                    className={`absolute cursor-pointer transition-all duration-150 rounded-[5px] group/event flex flex-col overflow-hidden ${
+                      isCancelledEvent ? "opacity-50" : ""
+                    } ${isCompletedEvent ? "opacity-80" : ""}`}
                     style={{
                       top,
                       height,
+                      maxHeight: height,
                       left: `calc(${leftPercent}% + 2px)`,
                       width: `calc(${widthPercent}% - 4px)`,
                       borderLeft: `3px solid ${accentColor}`,
@@ -1225,7 +1231,7 @@ function TutorDayCalendar({
                   >
                     {isCompletedEvent && (
                       <span
-                        className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shadow-sm"
+                        className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shrink-0"
                         title="Completed"
                       >
                         <svg viewBox="0 0 10 10" className="h-2 w-2 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1233,7 +1239,7 @@ function TutorDayCalendar({
                         </svg>
                       </span>
                     )}
-                    <div className="min-h-full flex flex-col px-1.5 py-0.5 overflow-visible gap-[1px]">
+                    <div className="h-full min-h-0 flex flex-col overflow-hidden px-1.5 py-0.5 gap-[1px] box-border">
                       <AppointmentTimedEventRows event={event} />
                     </div>
                   </div>
