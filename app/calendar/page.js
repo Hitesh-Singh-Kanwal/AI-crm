@@ -1356,8 +1356,7 @@ function SlotSizePicker({ value, startMins, onApply }) {
     const [h, mm] = startTime.split(":").map(Number);
     const rawMins =
       Number.isFinite(h) && Number.isFinite(mm) ? h * 60 + mm : FULL_START_HOUR * 60;
-    const snappedStart = snapSlotStartMinutes(rawMins, pendingMins);
-    onApply(pendingMins, snappedStart);
+    onApply(pendingMins, rawMins);
     setOpen(false);
   }
 
@@ -1709,7 +1708,7 @@ function TeacherFilterDropdown({ instructors, value, onChange }) {
 export default function CalendarPage() {
   const calendarRef = useRef(null);
   const [focusDate, setFocusDate] = useState(() => new Date());
-  const [viewMode, setViewMode] = useState(VIEW_MODE.WEEK);
+  const [viewMode, setViewMode] = useState(VIEW_MODE.DAY);
   const [isAppointmentPanelOpen, setIsAppointmentPanelOpen] = useState(false);
   const [nowMarker, setNowMarker] = useState(() => Date.now());
   const now = useMemo(() => new Date(nowMarker), [nowMarker]);
@@ -1808,10 +1807,7 @@ export default function CalendarPage() {
     return result;
   }, [events, statusFilter, selectedTeacherId]);
 
-  const snappedGridStartMins = useMemo(
-    () => snapSlotStartMinutes(slotAlignMins, customSlotMins),
-    [slotAlignMins, customSlotMins],
-  );
+  const snappedGridStartMins = slotAlignMins;
 
   // When hideEmptySlots is on, shrink the visible hour range to where events actually are
   const { effectiveSlotMin, effectiveSlotMax, effectiveSlotMinStr, effectiveSlotMaxStr } = useMemo(() => {
@@ -2015,9 +2011,8 @@ export default function CalendarPage() {
                 value={customSlotMins}
                 startMins={slotAlignMins}
                 onApply={(mins, startOff) => {
-                  const snapped = snapSlotStartMinutes(startOff, mins);
                   setCustomSlotMins(mins);
-                  setSlotAlignMins(snapped);
+                  setSlotAlignMins(startOff);
                 }}
               />
 

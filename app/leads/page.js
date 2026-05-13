@@ -376,9 +376,10 @@ export default function LeadsPage() {
                 return (
                 <TableRow
                   key={lead._id}
-                  className="border-b border-border hover:bg-muted/30 transition-colors"
+                  className="border-b border-border hover:bg-muted/30 transition-colors cursor-pointer"
+                  onClick={() => openViewDialog(lead._id)}
                 >
-                  <TableCell className="py-3 pl-4 pr-0">
+                  <TableCell className="py-3 pl-4 pr-0" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedIds.includes(lead._id)}
                       onClick={() => toggleOne(lead._id)}
@@ -446,7 +447,7 @@ export default function LeadsPage() {
                       Last: {lastActiveLabel}
                     </p>
                   </TableCell>
-                  <TableCell className="py-3 pr-4 pl-0">
+                  <TableCell className="py-3 pr-4 pl-0" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
