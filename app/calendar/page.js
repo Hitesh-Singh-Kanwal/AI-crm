@@ -261,6 +261,69 @@ function SmallRoundedButton({ children, onClick, active }) {
   );
 }
 
+function ViewOptionsDropdown({ compactHours, setCompactHours, hideEmptySlots, setHideEmptySlots, goToToday }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const hasActive = compactHours || hideEmptySlots;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={[
+          "h-8 rounded-[20px] px-3 border text-[11px] font-bold transition-colors flex items-center gap-1.5",
+          hasActive
+            ? "border-[var(--studio-primary)] bg-[color-mix(in_srgb,var(--studio-primary)_12%,transparent)] text-[var(--studio-primary)]"
+            : "border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+        ].join(" ")}
+        style={{ boxShadow: COLORS.shadow }}
+      >
+        View Options
+        <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+6px)] z-50 min-w-[160px] rounded-xl border border-border bg-popover shadow-lg py-1.5">
+          <button
+            type="button"
+            onClick={() => { goToToday(); setOpen(false); }}
+            className="w-full px-4 py-2 text-left text-[12px] font-medium text-foreground hover:bg-muted/60 transition-colors"
+          >
+            Today
+          </button>
+          <div className="h-px bg-border mx-2 my-1" />
+          <button
+            type="button"
+            onClick={() => setCompactHours((v) => !v)}
+            className="w-full px-4 py-2 text-left text-[12px] font-medium flex items-center justify-between hover:bg-muted/60 transition-colors"
+          >
+            <span className={compactHours ? "text-[var(--studio-primary)]" : "text-foreground"}>Compact</span>
+            {compactHours && <span className="h-1.5 w-1.5 rounded-full bg-[var(--studio-primary)]" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setHideEmptySlots((v) => !v)}
+            className="w-full px-4 py-2 text-left text-[12px] font-medium flex items-center justify-between hover:bg-muted/60 transition-colors"
+          >
+            <span className={hideEmptySlots ? "text-[var(--studio-primary)]" : "text-foreground"}>Hide Empty</span>
+            {hideEmptySlots && <span className="h-1.5 w-1.5 rounded-full bg-[var(--studio-primary)]" />}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const EVENT_TYPE_LABEL = {
   private: "Appt",
   lesson:  "Group",
@@ -1822,13 +1885,13 @@ export default function CalendarPage() {
         >
           <div className="shrink-0 px-6 py-1.5 flex items-center justify-between gap-3 border-b border-border/50">
             <div className="flex items-center gap-2">
-              <SmallRoundedButton onClick={goToToday}>Today</SmallRoundedButton>
-              <SmallRoundedButton active={compactHours} onClick={() => setCompactHours((v) => !v)}>
-                Compact
-              </SmallRoundedButton>
-              <SmallRoundedButton active={hideEmptySlots} onClick={() => setHideEmptySlots((v) => !v)}>
-                Hide Empty
-              </SmallRoundedButton>
+              <ViewOptionsDropdown
+                compactHours={compactHours}
+                setCompactHours={setCompactHours}
+                hideEmptySlots={hideEmptySlots}
+                setHideEmptySlots={setHideEmptySlots}
+                goToToday={goToToday}
+              />
               <div className="flex items-center gap-2 ml-1">
                 <IconCircleButton ariaLabel="Previous" onClick={() => shiftView(-1)}>
                   <ChevronLeft className="h-4 w-4 text-muted-foreground" />
@@ -1914,12 +1977,6 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          <PrivateLessonSummaryBar
-            viewMode={viewMode}
-            focusDate={focusDate}
-            events={filteredEvents}
-            allServices={allServices}
-          />
 
           <div className="flex-1 min-h-0 px-6 pt-6 pb-6">
             <div className="flex h-full gap-4 min-w-0">

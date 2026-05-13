@@ -25,6 +25,7 @@ const navItems = [
     ],
   },
   { name: 'Leads', href: '/leads', iconSrc: '/figma/sidebar/leads.svg', iconSize: 20, labelStyle: 'regular' },
+  { name: 'Customers', href: '/settings/users-roles/customers', iconSrc: '/figma/sidebar/customers.svg', iconSize: 20, labelStyle: 'regular' },
   {
     name: 'Calendar',
     href: '/calendar',
@@ -73,7 +74,6 @@ const navItems = [
     labelStyle: 'regular',
     children: [
       { name: 'Studio', href: '/settings/studio' },
-      { name: 'Users & Roles', href: '/settings/users-roles' },
       { name: 'Setup', href: '/settings/setup' },
       { name: 'Integrations', href: '/settings/integrations' },
       { name: 'Billing', href: '/settings/billing' },

@@ -405,11 +405,64 @@ function ProfileTab({ customer, locations, onUpdated }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
-  const [adjustOpen, setAdjustOpen] = useState(false);
-  const [adjustAmount, setAdjustAmount] = useState("");
-  const [adjustReason, setAdjustReason] = useState("");
-  const [adjusting, setAdjusting] = useState(false);
+  const [customerEvents, setCustomerEvents] = useState([]);
+  const [sessionStats, setSessionStats] = useState({ usedValue: 0, scheduledValue: 0, remainingValue: 0, usedCount: 0, scheduledCount: 0, remainingCount: 0 });
   const toast = useToast();
+
+  useEffect(() => {
+    if (!customer?._id) return;
+    const now = new Date();
+    const past = new Date(now);
+    past.setDate(past.getDate() - 60);
+    const future = new Date(now);
+    future.setDate(future.getDate() + 60);
+    const params = new URLSearchParams({
+      start: past.toISOString(),
+      end: future.toISOString(),
+      limit: 200,
+    });
+    api.get(`/api/calendar?${params}`).then((res) => {
+      if (res.success && Array.isArray(res.data)) {
+        const custId = String(customer._id);
+        const filtered = res.data.filter((ev) => {
+          const ids = Array.isArray(ev.customerIDs) ? ev.customerIDs : [];
+          return ids.some((c) => String(c?._id ?? c) === custId);
+        });
+        setCustomerEvents(filtered);
+      }
+    });
+  }, [customer?._id]);
+
+  useEffect(() => {
+    if (!customer?._id) return;
+    api.get(`/api/enrollment?customerID=${customer._id}&status=active`).then(async (enrRes) => {
+      if (!enrRes.success) return;
+      const list = enrRes.data || [];
+      if (!list.length) return;
+      const detResults = await Promise.all(list.map((e) => api.get(`/api/customer-package/${e._id}/details`)));
+      let usedCount = 0, remainingCount = 0;
+      let usedValue = 0, remainingValue = 0;
+      detResults.forEach((res) => {
+        if (!res.success) return;
+        const services = res.data?.services ?? [];
+        services.forEach((svc) => {
+          const price = Number(svc.pricePerSession) || 0;
+          const used = svc.sessionsUsed ?? 0;
+          const sched = svc.sessionsScheduled ?? 0;
+          const remaining = svc.sessionsRemaining ?? Math.max(0, (svc.sessionsTotal ?? 0) - used - sched);
+          usedCount += used;
+          remainingCount += remaining;
+          usedValue += used * price;
+          remainingValue += remaining * price;
+        });
+      });
+      // Derive scheduled count from future calendar events
+      const now = new Date();
+      const scheduledCount = customerEvents.filter((ev) => new Date(ev.startDateTime) > now).length;
+      const scheduledValue = 0; // price per scheduled session not reliably available without per-event charge lookup
+      setSessionStats({ usedValue, scheduledValue, remainingValue, usedCount, scheduledCount, remainingCount });
+    });
+  }, [customer?._id, customerEvents]);
 
   function startEdit() {
     setForm({
@@ -461,31 +514,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
     setSaving(false);
   }
 
-  async function handleAdjust(e) {
-    e.preventDefault();
-    const num = parseFloat(adjustAmount);
-    if (isNaN(num) || num === 0) return;
-    setAdjusting(true);
-    const res = await api.patch(
-      `/api/customer/${customer._id}/adjust-credits`,
-      {
-        amount: num,
-        reason: adjustReason.trim() || undefined,
-      },
-    );
-    if (res.success) {
-      toast.success(
-        `Credits ${num >= 0 ? "added" : "deducted"}: $${Math.abs(num).toFixed(2)}`,
-      );
-      onUpdated();
-      setAdjustOpen(false);
-      setAdjustAmount("");
-      setAdjustReason("");
-    } else {
-      toast.error(res.error || "Adjustment failed.");
-    }
-    setAdjusting(false);
-  }
 
   const locationName = (id) => {
     const loc = locations.find((l) => String(l._id) === String(id));
@@ -495,19 +523,18 @@ function ProfileTab({ customer, locations, onUpdated }) {
   return (
     <div className="space-y-6">
       {/* Quick stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
           {
             label: "Credits Balance",
             value: `$${(customer.credits ?? 0).toFixed(2)}`,
             accent: "text-emerald-500",
           },
-          {
-            label: "Classes Assigned",
-            value: customer.classAssigned?.length ?? 0,
-          },
           { label: "Notes", value: customer.notes?.length ?? 0 },
           { label: "Member Since", value: formatDate(customer.createdAt) },
+          { label: `Used (${sessionStats.usedCount} sess)`, value: `$${sessionStats.usedValue.toFixed(2)}`, accent: "text-blue-500" },
+          { label: "Scheduled Events", value: sessionStats.scheduledCount, accent: "text-violet-500" },
+          { label: `Remaining (${sessionStats.remainingCount} sess)`, value: `$${sessionStats.remainingValue.toFixed(2)}`, accent: "text-emerald-500" },
         ].map(({ label, value, accent }) => (
           <div
             key={label}
@@ -823,88 +850,75 @@ function ProfileTab({ customer, locations, onUpdated }) {
           )}
         </div>
 
-        {/* Credits card */}
-        <div className="rounded-xl border border-border bg-card p-6 flex flex-col gap-4">
-          <h2 className="text-[13px] font-semibold text-foreground">
-            Credits balance
-          </h2>
-          <div className="flex-1 flex items-center justify-center">
-            <span className="text-4xl font-bold text-foreground">
-              ${(customer.credits ?? 0).toFixed(2)}
-            </span>
+        {/* Event cards */}
+        <div className="flex flex-col gap-4">
+          {/* Upcoming events */}
+          <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-3">
+            <h2 className="text-[13px] font-semibold text-foreground">Upcoming Events</h2>
+            {(() => {
+              const now = new Date();
+              const upcoming = customerEvents
+                .filter((ev) => new Date(ev.startDateTime) > now)
+                .sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime))
+                .slice(0, 3);
+              if (!upcoming.length)
+                return <p className="text-[12px] text-muted-foreground">No upcoming events.</p>;
+              return upcoming.map((ev, i) => {
+                const date = new Date(ev.startDateTime);
+                const instructor = ev.teacherID?.name;
+                const label = ev.title || ev.calendarServiceID?.name || "Event";
+                return (
+                  <div key={ev._id ?? i} className="flex flex-col gap-0.5 rounded-lg bg-muted/40 px-3 py-2.5">
+                    <span className="text-[12px] font-medium text-foreground leading-snug">{label}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {" · "}
+                      {date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                    </span>
+                    {instructor && (
+                      <span className="text-[11px] text-muted-foreground">with {instructor}</span>
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              className="flex-1 h-8 text-[12px] bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => {
-                setAdjustAmount("");
-                setAdjustReason("");
-                setAdjustOpen(true);
-              }}
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" /> Add / Deduct
-            </Button>
+
+          {/* Recent completed events */}
+          <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-3">
+            <h2 className="text-[13px] font-semibold text-foreground">Recent Completed</h2>
+            {(() => {
+              const now = new Date();
+              const past = customerEvents
+                .filter((ev) => new Date(ev.startDateTime) <= now)
+                .sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime))
+                .slice(0, 3);
+              if (!past.length)
+                return <p className="text-[12px] text-muted-foreground">No completed events.</p>;
+              return past.map((ev, i) => {
+                const date = new Date(ev.startDateTime);
+                const instructor = ev.teacherID?.name;
+                const label = ev.title || ev.calendarServiceID?.name || "Event";
+                return (
+                  <div key={ev._id ?? i} className="flex flex-col gap-0.5 rounded-lg bg-muted/40 px-3 py-2.5">
+                    <span className="text-[12px] font-medium text-foreground leading-snug">{label}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {" · "}
+                      {date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                    </span>
+                    {instructor && (
+                      <span className="text-[11px] text-muted-foreground">with {instructor}</span>
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       </div>
       {/* end inner grid */}
 
-      {/* Adjust credits dialog */}
-      <Dialog
-        open={adjustOpen}
-        onOpenChange={(v) => {
-          if (!v) setAdjustOpen(false);
-        }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Adjust Credits</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAdjust} className="space-y-4 mt-2">
-            <FormField
-              label="Amount (positive to add, negative to deduct)"
-              required
-            >
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">
-                  $
-                </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={adjustAmount}
-                  onChange={(e) => setAdjustAmount(e.target.value)}
-                  placeholder="e.g. 50 or -20"
-                  className="h-9 w-full rounded-lg border border-border bg-background pl-7 pr-3 text-[13px] outline-none focus:border-primary"
-                />
-              </div>
-            </FormField>
-            <FormField label="Reason (optional)">
-              <input
-                type="text"
-                value={adjustReason}
-                onChange={(e) => setAdjustReason(e.target.value)}
-                placeholder="e.g. Top-up, refund, correction"
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-              />
-            </FormField>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setAdjustOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" disabled={adjusting}>
-                {adjusting ? "Saving…" : "Apply"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -2261,6 +2275,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
   const [plansMap, setPlansMap] = useState({});
   const [allPkgs, setAllPkgs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedEnrId, setSelectedEnrId] = useState(null);
 
   const [createLabel, setCreateLabel] = useState("");
   const [createTeacherID, setCreateTeacherID] = useState("");
@@ -2302,6 +2317,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
     if (enrRes.success) {
       const list = enrRes.data || [];
       setEnrollments(list);
+      if (list.length > 0) setSelectedEnrId((prev) => prev ?? String(list[list.length - 1]._id));
       const withPkg = list.filter((e) => e.package);
       if (withPkg.length > 0) {
         const detResults = await Promise.all(
@@ -2590,13 +2606,33 @@ function EnrollmentsTab({ customerID, statusFilter }) {
 
   const isActiveTab = statusFilter === "active";
 
+  const selectedEnr = filteredEnrollments.find((e) => String(e._id) === selectedEnrId) ?? filteredEnrollments[filteredEnrollments.length - 1] ?? null;
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">
-          {filteredEnrollments.length} enrollment
-          {filteredEnrollments.length !== 1 ? "s" : ""}
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        {filteredEnrollments.length > 0 ? (
+          <div className="relative">
+            <select
+              value={selectedEnrId ?? ""}
+              onChange={(e) => setSelectedEnrId(e.target.value)}
+              className="h-8 rounded-lg border border-border bg-background pl-3 pr-8 text-[12px] font-medium text-foreground outline-none focus:border-primary appearance-none cursor-pointer"
+            >
+              {[...filteredEnrollments].reverse().map((enr) => {
+                const ordinal = ["1st", "2nd", "3rd"][enr.enrollmentNumber - 1] ?? `${enr.enrollmentNumber}th`;
+                const pkgName = enr.package?.packageName ?? enr.package?.packageRef?.packageName ?? enr.label ?? "";
+                return (
+                  <option key={enr._id} value={String(enr._id)}>
+                    {ordinal} Enrollment{pkgName ? ` — ${pkgName}` : ""}
+                  </option>
+                );
+              })}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          </div>
+        ) : (
+          <p className="text-[13px] text-muted-foreground">0 enrollments</p>
+        )}
         {isActiveTab && (
           <Button
             size="sm"
@@ -2614,9 +2650,9 @@ function EnrollmentsTab({ customerID, statusFilter }) {
             ? 'No active enrollments. Click "New Enrollment" to create one.'
             : "No completed enrollments yet."}
         </div>
-      ) : (
+      ) : selectedEnr ? (
         <div className="space-y-4">
-          {filteredEnrollments.map((enr) => {
+          {[selectedEnr].map((enr) => {
             const det = enr.package ? detailsMap[String(enr._id)] : null;
             const cp = enr.package ?? null;
             const billing = det?.billing ?? {};
@@ -3333,7 +3369,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
             );
           })}
         </div>
-      )}
+      ) : null}
 
       {/* Record Payment dialog */}
       <RecordPaymentDialog
@@ -4059,188 +4095,140 @@ function PaymentsTab({ customerID }) {
 
 // ─── Lessons Tab ──────────────────────────────────────────────────────────────
 
-function LessonsTab({ customer, onUpdated }) {
-  const [allLessons, setAllLessons] = useState([]);
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [selected, setSelected] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState(null);
-  const toast = useToast();
+function deriveEventStatus(ev) {
+  const explicit = ev.status;
+  if (explicit && explicit !== "scheduled") return explicit;
+  if (ev.endDateTime && new Date(ev.endDateTime) < new Date()) return "completed";
+  return explicit || "scheduled";
+}
 
-  const assigned = customer.classAssigned || [];
+function eventStatusBadge(status) {
+  const map = {
+    scheduled:           "bg-blue-500/10 text-blue-600",
+    completed:           "bg-emerald-500/10 text-emerald-600",
+    cancelled:           "bg-muted text-muted-foreground",
+    cancelled_no_charge: "bg-muted text-muted-foreground",
+    cancelled_charged:   "bg-amber-500/10 text-amber-600",
+    no_show:             "bg-rose-500/10 text-rose-600",
+  };
+  return map[status] ?? "bg-muted text-muted-foreground";
+}
+
+function eventStatusLabel(status) {
+  return {
+    scheduled:           "Scheduled",
+    completed:           "Completed",
+    cancelled:           "Cancelled",
+    cancelled_no_charge: "Cancelled",
+    cancelled_charged:   "Cancelled (charged)",
+    no_show:             "No Show",
+  }[status] ?? status;
+}
+
+function LessonsTab({ customer }) {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/api/lesson?limit=200").then((res) => {
-      if (res.success) setAllLessons(res.data || []);
+    if (!customer?._id) return;
+    const custId = String(customer._id);
+    const past = new Date();
+    past.setFullYear(past.getFullYear() - 2);
+    const future = new Date();
+    future.setFullYear(future.getFullYear() + 1);
+    const params = new URLSearchParams({
+      start: past.toISOString(),
+      end: future.toISOString(),
+      limit: 500,
     });
-  }, []);
-
-  const unassignedLessons = allLessons.filter(
-    (l) => !assigned.some((a) => String(a._id) === String(l._id)),
-  );
-
-  async function handleAssign(e) {
-    e.preventDefault();
-    if (!selected.length) return;
-    setSaving(true);
-    const res = await api.post(`/api/customer/${customer._id}/assign-lessons`, {
-      lessonIds: selected,
+    api.get(`/api/calendar?${params}`).then((res) => {
+      if (res.success && Array.isArray(res.data)) {
+        const filtered = res.data
+          .filter((ev) => {
+            const ids = Array.isArray(ev.customerIDs) ? ev.customerIDs : [];
+            return ids.some((c) => String(c?._id ?? c) === custId);
+          })
+          .sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime));
+        setEvents(filtered);
+      }
+      setLoading(false);
     });
-    if (res.success) {
-      toast.success("Lessons assigned.");
-      onUpdated();
-      setAssignOpen(false);
-      setSelected([]);
-    } else toast.error(res.error || "Failed.");
-    setSaving(false);
-  }
+  }, [customer?._id]);
 
-  async function handleRemove(lessonId) {
-    setRemoving(lessonId);
-    const res = await api.post(
-      `/api/customer/${customer._id}/unassign-lessons`,
-      { lessonIds: [lessonId] },
-    );
-    if (res.success) {
-      toast.success("Lesson removed.");
-      onUpdated();
-    } else toast.error(res.error || "Failed.");
-    setRemoving(null);
-  }
-
-  function toggleSelect(id) {
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <LoadingSpinner />
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">
-          {assigned.length} lesson{assigned.length !== 1 ? "s" : ""} assigned
-        </p>
-        <Button
-          size="sm"
-          className="h-8 text-[12px]"
-          onClick={() => {
-            setSelected([]);
-            setAssignOpen(true);
-          }}
-        >
-          <Plus className="h-3.5 w-3.5 mr-1.5" /> Assign Lesson
-        </Button>
-      </div>
+      <p className="text-[13px] text-muted-foreground">
+        {events.length} event{events.length !== 1 ? "s" : ""}
+      </p>
 
-      {assigned.length === 0 ? (
+      {events.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          No lessons assigned yet.
+          No events found for this customer.
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
-          {assigned.map((lesson, i) => (
-            <div
-              key={lesson._id}
-              className={`flex items-center justify-between px-5 py-3.5 ${i > 0 ? "border-t border-border" : ""}`}
-            >
-              <div className="flex items-center gap-3">
-                {lesson.color && (
-                  <div
-                    className="h-6 w-6 rounded shrink-0 border border-black/10"
-                    style={{ backgroundColor: lesson.color }}
-                  />
-                )}
-                <div>
-                  <p className="text-[13px] text-foreground font-medium">
-                    {lesson.name}
-                  </p>
-                  {lesson.duration && (
-                    <p className="text-[11px] text-muted-foreground">
-                      {lesson.duration} min · Unit {lesson.unit ?? 1}
+          {events.map((ev, i) => {
+            const status = deriveEventStatus(ev);
+            const date = new Date(ev.startDateTime);
+            const end = ev.endDateTime ? new Date(ev.endDateTime) : null;
+            const instructor = ev.teacherID?.name;
+            const label = ev.title || ev.calendarServiceID?.name || "Event";
+            const serviceCode = ev.calendarServiceID?.serviceCode ?? ev.type ?? "";
+            const isPaid = ev.chargeMethod === "package" || ev.chargeMethod === "credits" || ev.chargeMethod === "mixed" || ev.payment?.collected;
+            const isCancelledNoCharge = status === "cancelled_no_charge" || status === "no_show_no_charge";
+            const paymentLabel = isCancelledNoCharge ? "No Charge" : isPaid ? "Paid" : "Unpaid";
+            const paymentClass = isCancelledNoCharge
+              ? "bg-muted text-muted-foreground"
+              : isPaid
+                ? "bg-emerald-500/10 text-emerald-600"
+                : "bg-rose-500/10 text-rose-600";
+            return (
+              <div
+                key={ev._id ?? i}
+                className={`flex items-center justify-between px-5 py-4 gap-4 ${i > 0 ? "border-t border-border" : ""}`}
+              >
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="shrink-0 text-center w-12">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase">
+                      {date.toLocaleDateString("en-US", { month: "short" })}
                     </p>
-                  )}
+                    <p className="text-[18px] font-bold text-foreground leading-none">
+                      {date.getDate()}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium text-foreground truncate">{label}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      {end && ` – ${end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`}
+                      {instructor && ` · ${instructor}`}
+                    </p>
+                    {serviceCode && (
+                      <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide mt-0.5">{serviceCode}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${eventStatusBadge(status)}`}>
+                    {eventStatusLabel(status)}
+                  </span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${paymentClass}`}>
+                    {paymentLabel}
+                  </span>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
-                disabled={removing === lesson._id}
-                onClick={() => handleRemove(lesson._id)}
-              >
-                <X className="h-3.5 w-3.5 mr-1" />
-                {removing === lesson._id ? "Removing…" : "Remove"}
-              </Button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
-
-      <Dialog
-        open={assignOpen}
-        onOpenChange={(v) => {
-          if (!v) setAssignOpen(false);
-        }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Assign Lessons</DialogTitle>
-          </DialogHeader>
-          {unassignedLessons.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground py-4">
-              All lessons are already assigned.
-            </p>
-          ) : (
-            <form onSubmit={handleAssign} className="space-y-3 mt-2">
-              <div className="max-h-64 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
-                {unassignedLessons.map((l) => (
-                  <label
-                    key={l._id}
-                    className="flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-muted/40 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(l._id)}
-                      onChange={() => toggleSelect(l._id)}
-                      className="rounded border-border"
-                    />
-                    <div className="flex items-center gap-2 min-w-0">
-                      {l.color && (
-                        <div
-                          className="h-4 w-4 rounded shrink-0 border border-black/10"
-                          style={{ backgroundColor: l.color }}
-                        />
-                      )}
-                      <span className="text-[13px] text-foreground truncate">
-                        {l.name}
-                      </span>
-                    </div>
-                  </label>
-                ))}
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setAssignOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={saving || !selected.length}
-                >
-                  {saving
-                    ? "Assigning…"
-                    : `Assign ${selected.length > 0 ? `(${selected.length})` : ""}`}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -4416,7 +4404,7 @@ export default function CustomerDetailPage() {
 
   return (
     <MainLayout>
-      <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
+      <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         {/* Back + header */}
         <div className="flex items-center gap-4">
           <Button
@@ -4489,7 +4477,7 @@ export default function CustomerDetailPage() {
           )}
           {tab === "payments" && <PaymentsTab customerID={customer._id} />}
           {tab === "lessons" && (
-            <LessonsTab customer={customer} onUpdated={load} />
+            <LessonsTab customer={customer} />
           )}
           {tab === "notes" && <NotesTab customer={customer} onUpdated={load} />}
           {tab === "members" && <MembersTab customer={customer} onUpdated={load} />}
