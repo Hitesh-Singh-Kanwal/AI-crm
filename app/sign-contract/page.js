@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { CheckCircle, FileText, AlertTriangle, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
-export default function SignContractPage() {
+function SignContractContent() {
   const searchParams = useSearchParams()
   const contractId = searchParams.get('id')
   const token = searchParams.get('token')
@@ -174,5 +174,13 @@ export default function SignContractPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function SignContractPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
+      <SignContractContent />
+    </Suspense>
   )
 }
