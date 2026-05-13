@@ -1,13 +1,14 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState, useEffect } from 'react'
 import MainLayout from '@/components/layout/MainLayout'
 import { cn } from '@/lib/utils'
 import OverviewTab from './components/OverviewTab'
 import CustomersTab from './components/CustomersTab'
 import InvoicesTab from './components/InvoicesTab'
 import PlansTab from './components/PlansTab'
-import { INITIAL_CUSTOMERS, INVOICES, PLAN_CATALOG } from './components/billingData'
+import { INITIAL_CUSTOMERS, PLAN_CATALOG } from './components/billingData'
+import api from '@/lib/api'
 
 const BILLING_TABS = [
   { id: 'overview', label: 'Overview' },
@@ -18,37 +19,35 @@ const BILLING_TABS = [
 
 export default function BillingPage() {
   const [activeTab, setActiveTab] = useState('overview')
+  const [payments, setPayments] = useState([])
+  const [activePackages, setActivePackages] = useState([])
+  const [loadingBilling, setLoadingBilling] = useState(true)
 
-  const mrr = useMemo(
-    () => INITIAL_CUSTOMERS.filter((item) => item.status === 'Active').reduce((sum, item) => sum + item.monthlyAmount, 0),
-    []
-  )
-  const activeCustomers = useMemo(
-    () => INITIAL_CUSTOMERS.filter((item) => item.status === 'Active').length,
-    []
-  )
-  const pastDueCustomers = useMemo(
-    () => INITIAL_CUSTOMERS.filter((item) => item.status === 'Past Due').length,
-    []
-  )
-  const aiUsageTotal = useMemo(
-    () => INITIAL_CUSTOMERS.reduce((sum, item) => sum + item.aiCallsUsed, 0),
-    []
-  )
-  const highUsageCustomers = useMemo(
-    () =>
-      INITIAL_CUSTOMERS.filter((item) => item.aiCallsUsed / item.aiCallsLimit >= 0.8)
-        .sort((a, b) => b.aiCallsUsed / b.aiCallsLimit - a.aiCallsUsed / a.aiCallsLimit),
-    []
-  )
-  const upcomingRenewals = useMemo(
-    () =>
-      [...INITIAL_CUSTOMERS]
-        .filter((item) => item.status !== 'Past Due')
-        .sort((a, b) => new Date(a.nextBillingDate) - new Date(b.nextBillingDate))
-        .slice(0, 3),
-    []
-  )
+  useEffect(() => {
+    async function loadBillingData() {
+      const [payRes, pkgRes] = await Promise.all([
+        api.get('/api/payment?limit=50'),
+        api.get('/api/customer-package?status=active&limit=100'),
+      ])
+      if (payRes.success) setPayments(payRes.data || [])
+      if (pkgRes.success) setActivePackages(pkgRes.data || [])
+      setLoadingBilling(false)
+    }
+    loadBillingData()
+  }, [])
+
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const totalCollected = payments
+    .filter((p) => p.type !== 'refund' && p.status === 'completed' && new Date(p.createdAt) >= monthStart)
+    .reduce((sum, p) => sum + Number(p.amount), 0)
+
+  const outstanding = activePackages
+    .filter((cp) => cp.paymentStatus !== 'paid')
+    .reduce((sum, cp) => sum + Math.max(0, (cp.totalPaid ?? 0) - (cp.amountCollected ?? 0)), 0)
+
+  const recentPayments = [...payments].slice(0, 5)
 
   return (
     <MainLayout title="Billing" subtitle="Manage studio subscriptions, plans, invoices, and SaaS usage">
@@ -79,20 +78,19 @@ export default function BillingPage() {
         {activeTab === 'overview' && (
           <>
             <OverviewTab
-              mrr={mrr}
-              activeCustomers={activeCustomers}
-              pastDueCustomers={pastDueCustomers}
-              aiUsageTotal={aiUsageTotal}
-              highUsageCustomers={highUsageCustomers}
-              upcomingRenewals={upcomingRenewals}
+              totalCollected={totalCollected}
+              outstanding={outstanding}
+              activePackageCount={activePackages.length}
+              recentPayments={recentPayments}
+              loading={loadingBilling}
             />
-            <InvoicesTab invoices={INVOICES} />
+            <InvoicesTab payments={payments} loading={loadingBilling} />
             <PlansTab plans={PLAN_CATALOG} />
           </>
         )}
 
         {activeTab === 'customers' && <CustomersTab customers={INITIAL_CUSTOMERS} />}
-        {activeTab === 'invoices' && <InvoicesTab invoices={INVOICES} />}
+        {activeTab === 'invoices' && <InvoicesTab payments={payments} loading={loadingBilling} />}
         {activeTab === 'plans' && <PlansTab plans={PLAN_CATALOG} />}
       </div>
     </MainLayout>

@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import ContactList from '@/app/inbox/components/ContactList'
 import ConversationView from '@/app/inbox/components/ConversationView'
@@ -115,7 +115,9 @@ function normalizeContactType(type) {
 }
 
 function InboxPageContent() {
+  const pathname = usePathname()
   const searchParams = useSearchParams()
+  const isTalkToAssistant = pathname === '/inbox/talk-to-assistant'
   const { setInboxTeachersCount } = useInboxHeader()
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [showDetails, setShowDetails] = useState(true)
@@ -125,6 +127,7 @@ function InboxPageContent() {
   const [contactFilter, setContactFilter] = useState('All')
   const [conversations, setConversations] = useState([])
   const [threadMessages, setThreadMessages] = useState({})
+  const [threadMeta, setThreadMeta] = useState({}) // { [convId]: { page, hasMore, loading } }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [newConvOpen, setNewConvOpen] = useState(false)
@@ -202,13 +205,44 @@ function InboxPageContent() {
     setError(null)
     try {
       const [smsResult, emailResult] = await Promise.all([
-        api.get('/api/smsHistory?limit=200'),
+        api.get('/api/sms/conversations'),
         api.get('/api/emailHistory?limit=200'),
       ])
-      const smsRecords = Array.isArray(smsResult.data) ? smsResult.data : []
+
+      const smsConvs = Array.isArray(smsResult.data) ? smsResult.data : []
       const emailRecords = Array.isArray(emailResult.data) ? emailResult.data : []
-      const { conversations: convs, threadMessages: threads } = buildInboxData(smsRecords, emailRecords)
-      setConversations(convs)
+
+      const threads = {}
+
+      // Build SMS conversations from new API shape
+      const smsConversations = smsConvs.map((conv) => {
+        const convId = `lead-${conv.leadID}`
+        // messages not loaded yet for non-top leads — undefined signals "not fetched"
+        return {
+          id: convId,
+          contact: { id: conv.leadID, name: conv.name, type: 'Lead', stage: '', nextVisit: '', phoneNumber: '', email: '' },
+          lastMessage: conv.lastMessage,
+          timestamp: conv.lastMessageAt,
+          unread: 0,
+          channel: 'SMS',
+        }
+      })
+
+      // Build email conversations from history
+      const { conversations: emailConvs, threadMessages: emailThreads } = buildInboxData([], emailRecords)
+
+      // Only add email threads for leads that have no SMS conversation
+      const smsLeadIds = new Set(smsConversations.map((c) => c.id))
+      for (const [key, msgs] of Object.entries(emailThreads)) {
+        if (!smsLeadIds.has(key)) threads[key] = msgs
+      }
+
+      // Deduplicate by id — SMS entry wins, email fills in missing leads
+      const uniqueEmailConvs = emailConvs.filter((c) => !smsLeadIds.has(c.id))
+      const allConversations = [...smsConversations, ...uniqueEmailConvs]
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+
+      setConversations(allConversations)
       setThreadMessages(threads)
     } catch (e) {
       console.error(e)
@@ -250,11 +284,6 @@ function InboxPageContent() {
     setInboxTeachersCount(teachersCount)
   }, [teachersCount, setInboxTeachersCount])
 
-  useEffect(() => {
-    if (!selectedConversation && displayedConversations.length > 0) {
-      setSelectedConversation(displayedConversations[0].id)
-    }
-  }, [displayedConversations, selectedConversation])
 
   useEffect(() => {
     selectedConversationRef.current = selectedConversation
@@ -335,9 +364,50 @@ function InboxPageContent() {
       return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     })
 
-    // Send via existing scheduler endpoints
+    // Send via Talk to Assistant endpoint or existing scheduler endpoints
     try {
-      if (effectiveChannel === 'SMS') {
+      if (isTalkToAssistant) {
+        const assistantResult = await api.post('/api/sms/incoming_sms', {
+          From: '+919935638678',
+          To: '+18777302307',
+          Body: content.trim(),
+          MessageSid: `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        })
+        const assistantReply =
+          assistantResult?.data?.Response ||
+          assistantResult?.data?.data?.Response ||
+          assistantResult?.Response
+        if (assistantReply && String(assistantReply).trim()) {
+          const replyTimestamp = new Date().toISOString()
+          const inboundMessage = {
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            sender: 'Assistant',
+            direction: 'inbound',
+            content: String(assistantReply).trim(),
+            timestamp: replyTimestamp,
+            channel: 'SMS',
+          }
+
+          setThreadMessages((prev) => ({
+            ...prev,
+            [convId]: [...(prev[convId] || []), inboundMessage],
+          }))
+
+          setConversations((prev) => {
+            const updated = prev.map((c) =>
+              c.id === convId
+                ? {
+                    ...c,
+                    lastMessage: inboundMessage.content,
+                    timestamp: replyTimestamp,
+                    channel: 'SMS',
+                  }
+                : c
+            )
+            return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+          })
+        }
+      } else if (effectiveChannel === 'SMS') {
         await api.post('/api/sms/send-one', {
           lead: { _id: fallbackContact.id, phoneNumber: fallbackContact.phoneNumber || fallbackContact.name },
           message: content.trim(),
@@ -388,12 +458,57 @@ function InboxPageContent() {
     setShowContactList(false)
   }
 
+  const fetchLeadMessages = useCallback(async (conversationId, page = 1) => {
+    const leadID = conversationId.replace('lead-', '')
+    const convName = conversations.find((c) => c.id === conversationId)?.contact?.name || 'Lead'
+    setThreadMeta((prev) => ({ ...prev, [conversationId]: { ...prev[conversationId], loading: true } }))
+    try {
+      const res = await api.get(`/api/sms/conversations/${leadID}?page=${page}`)
+      const msgs = Array.isArray(res.data?.messages) ? res.data.messages : []
+      const mapped = msgs.map((m) => ({
+        id: m._id,
+        sender: m.status === 'received' ? convName : 'You',
+        direction: m.status === 'received' ? 'inbound' : 'outbound',
+        content: m.message,
+        timestamp: m.createdAt,
+        channel: 'SMS',
+      }))
+      setThreadMessages((prev) => ({
+        ...prev,
+        [conversationId]: page === 1 ? mapped : [...mapped, ...(prev[conversationId] || [])],
+      }))
+      setThreadMeta((prev) => ({
+        ...prev,
+        [conversationId]: { page, hasMore: res.data?.hasMore ?? false, loading: false },
+      }))
+    } catch {
+      setThreadMeta((prev) => ({ ...prev, [conversationId]: { ...prev[conversationId], loading: false } }))
+    }
+  }, [conversations])
+
   const handleSelectConversation = (conversationId) => {
     setSelectedConversation(conversationId)
     setConversations((prev) => prev.map((conv) => (conv.id === conversationId ? { ...conv, unread: 0 } : conv)))
-    // Hide contact list on mobile when conversation is selected
     setShowContactList(false)
+    if (conversationId.startsWith('lead-')) {
+      fetchLeadMessages(conversationId, 1)
+    }
   }
+
+  const loadMoreMessages = useCallback(() => {
+    if (!selectedConversation?.startsWith('lead-')) return
+    const meta = threadMeta[selectedConversation]
+    if (!meta?.hasMore || meta?.loading) return
+    fetchLeadMessages(selectedConversation, meta.page + 1)
+  }, [selectedConversation, threadMeta, fetchLeadMessages])
+
+  useEffect(() => {
+    if (!selectedConversation && displayedConversations.length > 0) {
+      const firstId = displayedConversations[0].id
+      setSelectedConversation(firstId)
+      if (firstId.startsWith('lead-')) fetchLeadMessages(firstId, 1)
+    }
+  }, [displayedConversations, selectedConversation, fetchLeadMessages])
 
   if (loading) {
     return (
@@ -455,6 +570,9 @@ function InboxPageContent() {
             showDetails={showDetails}
             onSendMessage={handleSendMessage}
             onBackClick={() => setShowContactList(true)}
+            onLoadMore={loadMoreMessages}
+            hasMore={threadMeta[selectedConversation]?.hasMore ?? false}
+            loadingMore={threadMeta[selectedConversation]?.loading ?? false}
           />
         </div>
 

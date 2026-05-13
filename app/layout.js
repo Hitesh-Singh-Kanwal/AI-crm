@@ -10,23 +10,13 @@ export const metadata = {
   description: 'Multi-branch CRM system for dance academy management',
 }
 
-const themeInitScript = `
-(function(){
-  try {
-    var t = localStorage.getItem('theme');
-    var dark = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    document.documentElement.classList.toggle('dark', dark);
-  } catch (e) {}
-})();
-`
+
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <Script id="theme-init" strategy="beforeInteractive">
-          {themeInitScript}
-        </Script>
+        <Script src="/theme-init.js" strategy="beforeInteractive" />
         <Providers>
           {children}
         </Providers>

@@ -1,40 +1,31 @@
 'use client'
 
 import { useState, createContext, useContext, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 
 const DropdownContext = createContext()
-
-function findScrollParent(el) {
-  let node = el?.parentElement
-  while (node) {
-    const style = window.getComputedStyle(node)
-    const overflowY = style.overflowY
-    const isScrollable = (overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight
-    if (isScrollable) return node
-    node = node.parentElement
-  }
-  return null
-}
 
 function DropdownMenu({ children }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const triggerRef = useRef(null)
+  const contentRef = useRef(null)
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) {
+      const insideTrigger = ref.current?.contains(event.target)
+      const insideContent = contentRef.current?.contains(event.target)
+      if (!insideTrigger && !insideContent) {
         setOpen(false)
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   return (
-    <DropdownContext.Provider value={{ open, setOpen, triggerRef }}>
+    <DropdownContext.Provider value={{ open, setOpen, triggerRef, contentRef }}>
       <div ref={ref} className="relative inline-block">
         {children}
       </div>
@@ -61,67 +52,70 @@ function DropdownMenuTrigger({ children, asChild }) {
 }
 
 function DropdownMenuContent({ className, align = 'end', children }) {
-  const { open, setOpen, triggerRef } = useContext(DropdownContext)
-  const contentRef = useRef(null)
-  const [side, setSide] = useState('bottom')
-
-  const alignments = {
-    start: 'left-0',
-    center: 'left-1/2 -translate-x-1/2',
-    end: 'right-0',
-  }
+  const { open, setOpen, triggerRef, contentRef } = useContext(DropdownContext)
+  const [pos, setPos] = useState(null) // { top, left, minWidth }
 
   useEffect(() => {
     if (!open) {
-      // Reset so next open re-evaluates from default
-      setSide('bottom')
+      setPos(null)
       return
     }
 
     const raf = requestAnimationFrame(() => {
-      const el = contentRef.current
       const triggerEl = triggerRef?.current
-      if (!el || !triggerEl) return
+      const contentEl = contentRef.current
+      if (!triggerEl || !contentEl) return
 
-      const rect = el.getBoundingClientRect()
       const triggerRect = triggerEl.getBoundingClientRect()
+      const contentRect = contentEl.getBoundingClientRect()
+      const vh = window.innerHeight
+      const vw = window.innerWidth
+      const gap = 4
 
-      const scrollParent = findScrollParent(triggerEl)
-      const bounds = scrollParent
-        ? scrollParent.getBoundingClientRect()
-        : { top: 0, bottom: (window.innerHeight || document.documentElement.clientHeight) }
+      // Vertical: prefer below, flip above if not enough space
+      let top
+      const spaceBelow = vh - triggerRect.bottom
+      const spaceAbove = triggerRect.top
+      if (spaceBelow >= contentRect.height + gap || spaceBelow >= spaceAbove) {
+        top = triggerRect.bottom + gap
+      } else {
+        top = triggerRect.top - contentRect.height - gap
+      }
+      top = Math.max(gap, Math.min(top, vh - contentRect.height - gap))
 
-      const padding = 8
-      const spaceBelow = bounds.bottom - triggerRect.bottom
-      const spaceAbove = triggerRect.top - bounds.top
+      // Horizontal: align per prop, clamp to viewport
+      let left
+      if (align === 'end') {
+        left = triggerRect.right - contentRect.width
+      } else if (align === 'center') {
+        left = triggerRect.left + triggerRect.width / 2 - contentRect.width / 2
+      } else {
+        left = triggerRect.left
+      }
+      left = Math.max(gap, Math.min(left, vw - contentRect.width - gap))
 
-      const needsFlip = spaceBelow < rect.height + padding && spaceAbove > spaceBelow
-      setSide(needsFlip ? 'top' : 'bottom')
+      setPos({ top, left })
     })
 
     return () => cancelAnimationFrame(raf)
-  }, [open, children, triggerRef])
-
-  const sideClass =
-    side === 'top'
-      ? 'bottom-full mb-2 mt-0 origin-bottom'
-      : 'top-full mt-2 origin-top'
+  }, [open, align, triggerRef])
 
   if (!open) return null
 
-  return (
+  const content = (
     <div
       ref={contentRef}
+      style={pos ? { top: pos.top, left: pos.left } : { visibility: 'hidden', top: 0, left: 0 }}
       className={cn(
-        'absolute z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-scale-in',
-        alignments[align],
-        sideClass,
+        'fixed z-[9999] min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-scale-in',
         className
       )}
     >
       <div onClick={() => setOpen(false)}>{children}</div>
     </div>
   )
+
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : null
 }
 
 function DropdownMenuItem({ className, ...props }) {
@@ -152,5 +146,3 @@ export {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 }
-
-

@@ -178,7 +178,36 @@
 
 /* FullCalendar overrides */
 .calendar-shell .fc {
-  height: 100%;
+  height: auto;
+}
+
+/* No fixed max height: grid grows so late-evening appointments stay in view (page scrolls). */
+.calendar-shell .fc .fc-view-harness,
+.calendar-shell .fc .fc-scroller-harness,
+.calendar-shell .fc .fc-scroller,
+.calendar-shell .fc .fc-scrollgrid,
+.calendar-shell .fc .fc-scrollgrid-section-body {
+  max-height: none !important;
+}
+
+.calendar-shell {
+  overflow: visible;
+  /* Minimum height per slot in week time grid; --cal-time-slot-min-height is set from page (scales with slot size, 30m = base). */
+  --cal-time-slot-min-height: 52px;
+}
+
+.calendar-shell .fc td.fc-timegrid-slot-lane {
+  min-height: var(--cal-time-slot-min-height, 52px) !important;
+}
+
+.calendar-shell .fc .fc-timegrid-slot-label {
+  min-height: var(--cal-time-slot-min-height, 52px) !important;
+}
+
+.calendar-shell .fc .fc-timegrid-slot-label-frame,
+.calendar-shell .fc .fc-timegrid-slot-label-cushion,
+.calendar-shell .fc .fc-scrollgrid-shrink-cushion {
+  min-height: var(--cal-time-slot-min-height, 52px) !important;
 }
 
 .calendar-shell .fc .fc-toolbar {
@@ -205,11 +234,31 @@
 
 .calendar-shell .fc .fc-event {
   border-radius: 6px;
+  overflow: visible !important;
+}
+
+/* Let renderEventContent own all visual styling */
+.calendar-shell .fc .fc-event .fc-event-main {
+  padding: 0;
+  overflow: visible !important;
+  height: 100%;
+}
+
+.calendar-shell .fc .fc-timegrid-event .fc-event-main {
+  padding: 0;
+}
+
+/* Hover lift on events */
+.calendar-shell .fc .fc-event:hover {
+  transform: scale(1.01);
+  box-shadow: 0 4px 12px hsl(var(--foreground) / 0.12);
+  z-index: 10;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
 /* FullCalendar dark/light consistency for week/month views */
 .calendar-shell .fc-theme-standard {
-  --fc-border-color: hsl(var(--border) / 0.6);
+  --fc-border-color: hsl(var(--border) / 0.85);
   --fc-page-bg-color: hsl(var(--background));
   --fc-neutral-bg-color: hsl(var(--muted) / 0.4);
 }
@@ -218,7 +267,7 @@
 .calendar-shell .fc-theme-standard td,
 .calendar-shell .fc .fc-scrollgrid,
 .calendar-shell .fc .fc-scrollgrid-section > * {
-  border-color: hsl(var(--border) / 0.6) !important;
+  border-color: hsl(var(--border) / 0.85) !important;
 }
 
 .calendar-shell .fc .fc-col-header-cell,
@@ -241,9 +290,31 @@
   background: hsl(var(--muted) / 0.35);
 }
 
+/* Grid lines: solid major hour lines, dashed minor half-hour lines */
+.calendar-shell .fc .fc-timegrid-slot {
+  border-top: 1px solid hsl(var(--border) / 0.85) !important;
+}
+
 .calendar-shell .fc .fc-timegrid-slot-minor {
-  border-top-style: solid;
-  border-top-color: hsl(var(--border) / 0.7);
+  border-top-style: dashed !important;
+  border-top-color: hsl(var(--border) / 0.5) !important;
+}
+
+/* Vertical column grid lines within the time body */
+.calendar-shell .fc .fc-timegrid-col {
+  border-right: 1px solid hsl(var(--border) / 0.85) !important;
+}
+
+/* Month view day cell grid lines */
+.calendar-shell .fc .fc-daygrid-day {
+  border: 1px solid hsl(var(--border) / 0.85) !important;
+}
+
+/* Cursor pointer on time slots to hint clickability */
+.calendar-shell .fc .fc-timegrid-slot:hover,
+.calendar-shell .fc .fc-daygrid-day:hover {
+  background: hsl(var(--muted) / 0.3) !important;
+  cursor: pointer;
 }
 
 .calendar-shell .fc .fc-popover {
@@ -255,6 +326,18 @@
 .calendar-shell .fc .fc-popover .fc-popover-header {
   background: hsl(var(--muted) / 0.6);
   color: hsl(var(--foreground));
+}
+
+/* Prevent FullCalendar from dimming events when popover is open or event is selected */
+.calendar-shell .fc .fc-event-mirror,
+.calendar-shell .fc .fc-event.fc-event-dragging {
+  opacity: 0.85;
+}
+.calendar-shell .fc .fc-highlight {
+  opacity: 0.15;
+}
+.calendar-shell .fc .fc-event {
+  opacity: 1 !important;
 }
 
 /* Scrollbar Styling */
@@ -435,6 +518,68 @@
     .global-loader-ambient {
       opacity: 0.65;
       transform: translate(-50%, -50%) scale(1);
+    }
+  }
+
+  /* Sheet slide-in animation */
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slide-in-left {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slide-in-top {
+    from {
+      transform: translateY(-100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slide-in-bottom {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out;
+  }
+
+  .animate-slide-in-left {
+    animation: slide-in-left 0.3s ease-out;
+  }
+
+  .animate-slide-in-top {
+    animation: slide-in-top 0.3s ease-out;
+  }
+
+  .animate-slide-in-bottom {
+    animation: slide-in-bottom 0.3s ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-slide-in-right,
+    .animate-slide-in-left,
+    .animate-slide-in-top,
+    .animate-slide-in-bottom {
+      animation: none !important;
     }
   }
 }

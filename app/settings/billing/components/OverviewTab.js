@@ -1,82 +1,80 @@
-import { CalendarClock } from 'lucide-react'
-import { formatDate, formatMoney } from './billingData'
+import { formatDate } from './billingData'
+import LoadingSpinner from '@/components/shared/LoadingSpinner'
+
+function paymentTypeBadge(type) {
+  return {
+    package_purchase: { label: 'Package Sale', cls: 'bg-blue-500/10 text-blue-600' },
+    credit_topup: { label: 'Credit Top-up', cls: 'bg-violet-500/10 text-violet-600' },
+    refund: { label: 'Refund', cls: 'bg-rose-500/10 text-rose-600' },
+  }[type] ?? { label: type, cls: 'bg-muted text-muted-foreground' }
+}
 
 export default function OverviewTab({
-  mrr,
-  activeCustomers,
-  pastDueCustomers,
-  aiUsageTotal,
-  highUsageCustomers,
-  upcomingRenewals,
+  totalCollected,
+  outstanding,
+  activePackageCount,
+  recentPayments,
+  loading,
 }) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
   return (
     <>
-      <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">Monthly Recurring Revenue</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{formatMoney(mrr)}</p>
+          <p className="text-xs text-muted-foreground">Collected This Month</p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-600">${totalCollected.toFixed(2)}</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">Active Customers</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{activeCustomers}</p>
+          <p className="text-xs text-muted-foreground">Outstanding Balance</p>
+          <p className={`mt-1 text-2xl font-semibold ${outstanding > 0 ? 'text-rose-600' : 'text-foreground'}`}>
+            ${outstanding.toFixed(2)}
+          </p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">Past Due Accounts</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{pastDueCustomers}</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">AI Calls This Cycle</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{aiUsageTotal.toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground">Active Packages</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{activePackageCount}</p>
         </div>
       </section>
 
-      <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-foreground">Usage Risk Watchlist</h2>
-          <p className="text-xs text-muted-foreground mt-1">Studios close to AI call quota</p>
+      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-foreground">Recent Payments</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">Last 5 transactions</p>
+        {recentPayments.length === 0 ? (
+          <div className="mt-3 rounded-xl border border-dashed border-border bg-background p-6 text-sm text-muted-foreground">
+            No payment records yet.
+          </div>
+        ) : (
           <div className="mt-3 space-y-2">
-            {highUsageCustomers.map((item) => {
-              const usagePct = Math.round((item.aiCallsUsed / item.aiCallsLimit) * 100)
+            {recentPayments.map((p) => {
+              const badge = paymentTypeBadge(p.type)
               return (
-                <div key={item.id} className="rounded-xl border border-border bg-background p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-foreground">{item.studioName}</p>
-                    <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">{usagePct}% used</span>
+                <div key={p._id} className="flex items-center justify-between rounded-xl border border-border bg-background px-3 py-2.5">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.cls}`}>
+                      {badge.label}
+                    </span>
+                    <span className="text-[13px] text-muted-foreground truncate">
+                      {p.customerID?.name ?? '—'}
+                    </span>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {item.aiCallsUsed.toLocaleString()} / {item.aiCallsLimit.toLocaleString()} calls
-                  </p>
+                  <div className="flex items-center gap-4 shrink-0">
+                    <span className={`text-[13px] font-semibold ${p.type === 'refund' ? 'text-rose-600' : 'text-foreground'}`}>
+                      {p.type === 'refund' ? '-' : ''}${Number(p.amount).toFixed(2)}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">{formatDate(p.createdAt)}</span>
+                  </div>
                 </div>
               )
             })}
-            {highUsageCustomers.length === 0 && (
-              <div className="rounded-xl border border-dashed border-border bg-background p-6 text-sm text-muted-foreground">
-                No accounts above 80% usage.
-              </div>
-            )}
           </div>
-        </div>
-
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <CalendarClock className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">Upcoming Renewals</h2>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">Next studios to bill in this cycle</p>
-          <div className="mt-3 space-y-2">
-            {upcomingRenewals.map((item) => (
-              <div key={item.id} className="rounded-xl border border-border bg-background p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-foreground">{item.studioName}</p>
-                  <span className="text-xs text-muted-foreground">{formatDate(item.nextBillingDate)}</span>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {item.plan} • {formatMoney(item.monthlyAmount)} • {item.paymentMethod}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
       </section>
     </>
   )

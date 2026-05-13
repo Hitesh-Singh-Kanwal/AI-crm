@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Mail, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -14,15 +14,49 @@ export default function ConversationView({
   conversation,
   messages,
   onToggleDetails,
-  showDetails,
   onSendMessage,
   onBackClick,
+  onLoadMore,
+  hasMore,
+  loadingMore,
 }) {
   const [activeTab, setActiveTab] = useState('All')
+  const scrollRef = useRef(null)
+  const prevScrollHeightRef = useRef(0)
+  const isLoadingMoreRef = useRef(false)
 
+  // Reset on conversation change and scroll to bottom
   useEffect(() => {
     setActiveTab('All')
+    prevScrollHeightRef.current = 0
+    isLoadingMoreRef.current = false
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [conversation?.id])
+
+  // After messages update: scroll to bottom on initial load, restore position on load-more
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    if (isLoadingMoreRef.current) {
+      const diff = el.scrollHeight - prevScrollHeightRef.current
+      if (diff > 0) el.scrollTop = diff
+      isLoadingMoreRef.current = false
+    } else {
+      el.scrollTop = el.scrollHeight
+    }
+    prevScrollHeightRef.current = el.scrollHeight
+  }, [messages])
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (!el || !hasMore || loadingMore) return
+    if (el.scrollTop < 50) {
+      isLoadingMoreRef.current = true
+      prevScrollHeightRef.current = el.scrollHeight
+      onLoadMore?.()
+    }
+  }, [hasMore, loadingMore, onLoadMore])
   if (!conversation) {
     return (
       <div className="flex-1 flex items-center justify-center bg-card rounded-2xl border border-border shadow-md">
@@ -79,7 +113,10 @@ export default function ConversationView({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide py-3 px-4 bg-muted/40">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar-hide py-3 px-4 bg-muted/40">
+        {loadingMore && (
+          <div className="text-center text-xs text-muted-foreground py-2">Loading older messages…</div>
+        )}
         {(() => {
           const tabChannelMap = { 'E-mail': 'Email', 'SMS': 'SMS', 'Call': 'Call' }
           const filtered = activeTab === 'All' ? messages : messages.filter((m) => m.channel === tabChannelMap[activeTab])
