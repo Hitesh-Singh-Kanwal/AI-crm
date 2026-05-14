@@ -871,13 +871,16 @@ function AppointmentTimedEventRows({ event }) {
       ? `${sessionsRemaining}/${totalSessions}`
       : null;
 
+  // For group events show the event title; for others show the first customer name
+  const primaryLabel = eventType === "lesson" ? (event.title || null) : firstCustomer;
+
   return (
     <>
-      {firstCustomer && (
+      {primaryLabel && (
         <div
           className={`text-[10px] font-bold text-foreground leading-tight truncate shrink-0 ${cancelled ? "line-through" : ""}`}
         >
-          {firstCustomer}
+          {primaryLabel}
         </div>
       )}
       {showTime && teacherLine && (
@@ -2061,15 +2064,6 @@ export default function CalendarPage() {
                 }}
               />
 
-              <div className="w-px h-6 bg-border shrink-0" />
-
-              <Link
-                href="/settings/setup"
-                title="Calendar Setup"
-                className="h-8 w-8 rounded-full border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-              >
-                <Settings2 className="h-4 w-4" />
-              </Link>
 
               <button
                 type="button"
@@ -2228,6 +2222,7 @@ export default function CalendarPage() {
                   fetchCalendarEvents();
                   setSelectedEvent(null);
                 }}
+                onRosterChanged={fetchCalendarEvents}
               />
             </div>
           </div>

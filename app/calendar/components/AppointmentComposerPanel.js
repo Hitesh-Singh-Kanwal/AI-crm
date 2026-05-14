@@ -97,7 +97,7 @@ const TAB_TYPE_MAP = {
 
 const TAB_SAVE_LABEL = {
   Appointment: "Book Appointment",
-  "Group Class": "Add to Class",
+  "Group Class": "Create Group Event",
   "To Do": "Save To Do",
 };
 
@@ -1391,34 +1391,40 @@ function GroupClassFields({
   form,
   setField,
   instructorOptions,
-  groupCustomerOptions,
-  lessonOptions,
-  lessonMap,
-  allServices,
   schedulingCodeOptions,
   lessonDuration,
-  packageOptions,
-  suggestedAmount,
-  onNewCustomer,
 }) {
   return (
     <div className="space-y-4">
-      <GroupWhoSection
-        form={form}
-        setField={setField}
-        instructorOptions={instructorOptions}
-        customerOptions={groupCustomerOptions}
-        packageOptions={packageOptions}
-        onNewCustomer={onNewCustomer}
-      />
-      <GroupDetailsBlock
-        form={form}
-        setField={setField}
-        lessonOptions={lessonOptions}
-        lessonMap={lessonMap}
-        allServices={allServices}
-        schedulingCodeOptions={schedulingCodeOptions}
-      />
+      <div className="space-y-3">
+        <SectionDivider label="Event" />
+        <div>
+          <FieldLabel>Event Name</FieldLabel>
+          <StyledInput
+            value={form.title}
+            onChange={(v) => setField("title", v)}
+            placeholder="e.g. Monday Jazz Group…"
+          />
+        </div>
+        <div>
+          <FieldLabel>Instructor</FieldLabel>
+          <SearchableSelect
+            value={form.instructor_id}
+            onChange={(v) => setField("instructor_id", v)}
+            options={instructorOptions}
+            placeholder="Select instructor…"
+          />
+        </div>
+        <div>
+          <FieldLabel>Service Code</FieldLabel>
+          <StyledSelect
+            value={form.service_id}
+            onChange={(v) => setField("service_id", v)}
+            options={schedulingCodeOptions}
+            placeholder="Select service…"
+          />
+        </div>
+      </div>
       <WhenSection
         form={form}
         setField={setField}
@@ -1426,9 +1432,13 @@ function GroupClassFields({
         lessonDuration={lessonDuration}
       />
       <div className="space-y-3">
-        <SectionDivider label="Notes & Payment" />
+        <SectionDivider label="Notes" />
         <NotesBlock form={form} setField={setField} />
-        <PaymentBlock form={form} setField={setField} suggestedAmount={suggestedAmount} />
+      </div>
+      <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2.5">
+        <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+          Students are added after the event is created — click the event on the calendar to enroll students.
+        </p>
       </div>
     </div>
   );
@@ -1789,9 +1799,7 @@ export default function AppointmentComposerPanel({
       teacherID: form.instructor_id || undefined,
       customerIDs:
         activeTab === "Group Class"
-          ? form.customer_ids.length
-            ? form.customer_ids
-            : undefined
+          ? undefined
           : form.customer_id
             ? [form.customer_id]
             : undefined,
@@ -1856,21 +1864,6 @@ export default function AppointmentComposerPanel({
     const firstFailure = results.find((r) => !r.success);
 
     if (!firstFailure) {
-      if (
-        activeTab === "Group Class" &&
-        form.group_sell_package &&
-        form.group_package_id &&
-        form.customer_ids.length
-      ) {
-        await Promise.all(
-          form.customer_ids.map((cid) =>
-            api.post("/api/customer-package", {
-              customerID: cid,
-              packageID: form.group_package_id,
-            }),
-          ),
-        );
-      }
       onCreated?.();
       onClose();
     } else {
@@ -1963,7 +1956,15 @@ export default function AppointmentComposerPanel({
     if (activeTab === "Appointment")
       return <AppointmentFields {...sharedProps} />;
     if (activeTab === "Group Class")
-      return <GroupClassFields {...sharedProps} groupCustomerOptions={groupCustomerOptions} />;
+      return (
+        <GroupClassFields
+          form={form}
+          setField={setField}
+          instructorOptions={instructorOptions}
+          schedulingCodeOptions={schedulingCodeOptions}
+          lessonDuration={lessonDuration}
+        />
+      );
     if (activeTab === "To Do")
       return (
         <ToDoFields

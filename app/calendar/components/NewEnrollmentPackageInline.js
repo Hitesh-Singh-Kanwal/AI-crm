@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import api from "@/lib/api";
 
 const PAYMENT_METHODS = ["cash", "card", "online", "cheque", "other"];
 
@@ -17,6 +18,97 @@ const BLANK_FORM = {
   billing: { method: "cash", numberOfInstallments: 3, frequency: "monthly", startDate: "" },
 };
 
+function blankService() {
+  return {
+    _key: String(Date.now() + Math.random()),
+    serviceCode: "",
+    serviceName: "",
+    color: "#6366f1",
+    numberOfSessions: 0,
+    pricePerSession: 0,
+    finalAmount: 0,
+  };
+}
+
+// ─── Service picker dropdown ───────────────────────────────────────────────────
+
+function ServicePicker({ catalogServices, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQuery(""); }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const filtered = query.trim()
+    ? catalogServices.filter((s) =>
+        (s.serviceName || s.serviceCode || "").toLowerCase().includes(query.toLowerCase()),
+      )
+    : catalogServices;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 h-7 px-2 rounded border border-dashed border-border bg-background text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+      >
+        <Plus className="h-3 w-3" /> Add Service
+      </button>
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+4px)] z-50 w-56 rounded-xl border border-border bg-popover shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-border">
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search catalog…"
+              className="h-7 w-full rounded-md border border-border bg-muted/30 px-2.5 text-[11px] text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/50"
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto py-1">
+            <button
+              type="button"
+              onClick={() => { onSelect(null); setOpen(false); setQuery(""); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground hover:bg-muted/40 transition-colors italic"
+            >
+              + Blank service
+            </button>
+            {filtered.map((s) => (
+              <button
+                key={String(s._id)}
+                type="button"
+                onClick={() => { onSelect(s); setOpen(false); setQuery(""); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-foreground hover:bg-muted/40 transition-colors"
+              >
+                {s.color && (
+                  <span className="h-2 w-2 rounded-full shrink-0" style={{ background: s.color }} />
+                )}
+                <span className="truncate">{s.serviceName}</span>
+                {s.serviceCode && (
+                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{s.serviceCode}</span>
+                )}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="px-3 py-2 text-[11px] text-muted-foreground">No results</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
+
 export default function NewEnrollmentPackageInline({
   teacherOptions = [],
   packageTemplates = [],
@@ -28,6 +120,13 @@ export default function NewEnrollmentPackageInline({
   const [form, setForm] = useState(BLANK_FORM);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [catalogServices, setCatalogServices] = useState([]);
+
+  useEffect(() => {
+    api.get("/api/calendar-service?limit=200").then((res) => {
+      if (res.success && Array.isArray(res.data)) setCatalogServices(res.data);
+    });
+  }, []);
 
   const selectedPkg = useMemo(
     () => packageTemplates.find((p) => String(p._id) === String(form.packageID)),
@@ -48,9 +147,10 @@ export default function NewEnrollmentPackageInline({
       discountAmount: pkg?.discountAmount || 0,
       billingType: pkg?.billingType || "one_time",
       services: filtered.map((s) => ({
+        _key: String(s._id || s.serviceCode || Math.random()),
         serviceCode: s.serviceCode || "",
         serviceName: s.serviceName || "",
-        color: s.color || "",
+        color: s.color || "#6366f1",
         numberOfSessions: Number(s.numberOfSessions || 0),
         pricePerSession: Number(s.pricePerSession || 0),
         finalAmount: Number((Number(s.numberOfSessions || 0) * Number(s.pricePerSession || 0)).toFixed(2)),
@@ -58,16 +158,35 @@ export default function NewEnrollmentPackageInline({
     }));
   }
 
-  function updateSvc(i, field, value) {
+  function updateSvc(key, field, value) {
     setForm((prev) => {
-      const services = prev.services.map((s, idx) => {
-        if (idx !== i) return s;
+      const services = prev.services.map((s) => {
+        if (s._key !== key) return s;
         const next = { ...s, [field]: value };
         next.finalAmount = Number((Number(next.numberOfSessions || 0) * Number(next.pricePerSession || 0)).toFixed(2));
         return next;
       });
       return { ...prev, services };
     });
+  }
+
+  function addService(catalogSvc) {
+    const svc = catalogSvc
+      ? {
+          _key: String(Date.now() + Math.random()),
+          serviceCode: catalogSvc.serviceCode || "",
+          serviceName: catalogSvc.serviceName || "",
+          color: catalogSvc.color || "#6366f1",
+          numberOfSessions: 0,
+          pricePerSession: Number(catalogSvc.price || 0),
+          finalAmount: 0,
+        }
+      : blankService();
+    setForm((prev) => ({ ...prev, services: [...prev.services, svc] }));
+  }
+
+  function removeService(key) {
+    setForm((prev) => ({ ...prev, services: prev.services.filter((s) => s._key !== key) }));
   }
 
   const subtotal = form.services.reduce((sum, s) => sum + (Number(s.finalAmount) || 0), 0);
@@ -94,11 +213,7 @@ export default function NewEnrollmentPackageInline({
         index: i + 1,
         amount,
         isLast,
-        date: d.toLocaleDateString("en-AU", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }),
+        date: d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }),
       });
       if (form.billing.frequency === "weekly") {
         d = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -113,8 +228,8 @@ export default function NewEnrollmentPackageInline({
   }, [form.billingType, form.billing.numberOfInstallments, form.billing.frequency, form.billing.startDate, subtotal, discount]);
 
   async function handleSubmit() {
-    if (!form.teacherID || !form.packageID) {
-      setError("Teacher and package are required.");
+    if (!form.packageID) {
+      setError("Please select a package.");
       return;
     }
     if (form.billingType === "payment_plan") {
@@ -140,163 +255,278 @@ export default function NewEnrollmentPackageInline({
       <div className="flex-1 min-h-0 overflow-y-auto mt-3 pr-1 space-y-3">
         <div className="space-y-3 pb-1">
           <div className="space-y-2">
-          <label className="text-[11px] font-medium text-muted-foreground">Teacher</label>
-          <div className="relative">
-            <select value={form.teacherID} onChange={(e) => setForm((p) => ({ ...p, teacherID: e.target.value }))}
-              className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px]">
-              <option value="">Select teacher…</option>
-              {teacherOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          </div>
-
-          <label className="text-[11px] font-medium text-muted-foreground">Label (optional)</label>
-          <input value={form.label} onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}
-            placeholder="e.g. Term 1 2026, Trial…" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px]" />
-
-          <label className="text-[11px] font-medium text-muted-foreground">Package</label>
-          <div className="relative">
-            <select value={form.packageID} onChange={(e) => handlePkgChange(e.target.value)}
-              className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px]">
-              <option value="">Select package…</option>
-              {packageTemplates.map((p) => <option key={p._id} value={p._id}>{p.packageName}</option>)}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          </div>
-          {selectedPkg && (
-            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
-              <p className="text-[12px] font-medium text-foreground">{selectedPkg.packageName}</p>
-              {selectedPkg.description && (
-                <p className="text-[11px] text-muted-foreground">{selectedPkg.description}</p>
-              )}
-              <p className="text-[11px] text-muted-foreground">
-                {(selectedPkg.services?.length ?? 0)} service
-                {(selectedPkg.services?.length ?? 0) !== 1 ? "s" : ""}
-                {" · "}
-                {selectedPkg.totalDays > 0 ? `${selectedPkg.totalDays} days validity` : "No expiry"}
-              </p>
-            </div>
-          )}
-          <input type="date" value={form.purchaseDate} onChange={(e) => setForm((p) => ({ ...p, purchaseDate: e.target.value }))}
-            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px]" />
-          </div>
-
-          <div className="space-y-3">
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-[12px]">
-              <thead><tr className="bg-muted/40 border-b border-border"><th className="px-2 py-1.5 text-left">Service</th><th className="px-2 py-1.5">Color</th><th className="px-2 py-1.5">Sessions</th><th className="px-2 py-1.5">Price</th><th className="px-2 py-1.5 text-right">Subtotal</th></tr></thead>
-              <tbody>
-                {form.services.map((s, i) => (
-                  <tr key={`${s.serviceCode}-${i}`} className={i > 0 ? "border-t border-border" : ""}>
-                    <td className="px-2 py-1.5">{s.serviceName}</td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="color"
-                        value={s.color || "#6366f1"}
-                        onChange={(e) => updateSvc(i, "color", e.target.value)}
-                        className="h-7 w-9 rounded border border-border cursor-pointer p-0.5 bg-background"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5"><input type="number" min="0" value={s.numberOfSessions} onChange={(e) => updateSvc(i, "numberOfSessions", e.target.value)} className="h-7 w-16 rounded border border-border px-2" /></td>
-                    <td className="px-2 py-1.5"><input type="number" min="0" step="0.01" value={s.pricePerSession} onChange={(e) => updateSvc(i, "pricePerSession", e.target.value)} className="h-7 w-20 rounded border border-border px-2" /></td>
-                    <td className="px-2 py-1.5 text-right font-semibold">${Number(s.finalAmount).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-border bg-muted/30">
-                  <td colSpan={4} className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">Subtotal</td>
-                  <td className="px-2 py-1.5 text-right font-semibold">${subtotal.toFixed(2)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-          <div className="rounded-lg border border-border bg-muted/20 p-2.5 space-y-2">
-            <p className="text-[11px] font-medium text-muted-foreground uppercase">Package Discount</p>
-            <div className="flex items-center gap-2">
-              <select value={form.discountType} onChange={(e) => setForm((p) => ({ ...p, discountType: e.target.value, discountAmount: 0 }))}
-                className="h-8 rounded border border-border bg-background px-2 text-[12px]">
-                <option value="none">No discount</option>
-                <option value="percentage">Percentage (%)</option>
-                <option value="fixed">Fixed ($)</option>
+            <label className="text-[11px] font-medium text-muted-foreground">Teacher</label>
+            <div className="relative">
+              <select
+                value={form.teacherID}
+                onChange={(e) => setForm((p) => ({ ...p, teacherID: e.target.value }))}
+                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px]"
+              >
+                <option value="">Select teacher…</option>
+                {teacherOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
-              {form.discountType !== "none" && <input type="number" min="0" step="0.01" value={form.discountAmount} onChange={(e) => setForm((p) => ({ ...p, discountAmount: e.target.value }))} className="h-8 w-24 rounded border border-border bg-background px-2 text-[12px]" />}
-              <span className="ml-auto text-[12px] font-medium text-amber-600">{discount > 0 ? `-$${discount.toFixed(2)}` : ""}</span>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             </div>
-            <div className="flex justify-between text-[12px]"><span className="text-muted-foreground">Total</span><span className="font-bold">${total.toFixed(2)}</span></div>
-          </div>
+
+            <label className="text-[11px] font-medium text-muted-foreground">Label (optional)</label>
+            <input
+              value={form.label}
+              onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}
+              placeholder="e.g. Term 1 2026, Trial…"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px]"
+            />
+
+            <label className="text-[11px] font-medium text-muted-foreground">Package</label>
+            <div className="relative">
+              <select
+                value={form.packageID}
+                onChange={(e) => handlePkgChange(e.target.value)}
+                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px]"
+              >
+                <option value="">Select package…</option>
+                {packageTemplates.map((p) => <option key={p._id} value={p._id}>{p.packageName}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            </div>
+            {selectedPkg && (
+              <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
+                <p className="text-[12px] font-medium text-foreground">{selectedPkg.packageName}</p>
+                {selectedPkg.description && (
+                  <p className="text-[11px] text-muted-foreground">{selectedPkg.description}</p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  {(selectedPkg.services?.length ?? 0)} service
+                  {(selectedPkg.services?.length ?? 0) !== 1 ? "s" : ""}
+                  {" · "}
+                  {selectedPkg.totalDays > 0 ? `${selectedPkg.totalDays} days validity` : "No expiry"}
+                </p>
+              </div>
+            )}
+            <input
+              type="date"
+              value={form.purchaseDate}
+              onChange={(e) => setForm((p) => ({ ...p, purchaseDate: e.target.value }))}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px]"
+            />
           </div>
 
+          {/* ── Services table ── */}
           <div className="space-y-2">
-          <p className="text-[11px] font-medium text-muted-foreground uppercase">Billing Type</p>
-          <div className="grid grid-cols-3 gap-2">
-            {["one_time", "payment_plan", "flexible"].map((v) => (
-              <button key={v} type="button" onClick={() => setForm((p) => ({ ...p, billingType: v }))}
-                className={`rounded-lg border p-2 text-[11px] ${form.billingType === v ? "border-primary bg-primary/5" : "border-border bg-background"}`}>
-                {v === "one_time" ? "One-time" : v === "payment_plan" ? "Payment Plan" : "Flexible"}
-              </button>
-            ))}
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="bg-muted/40 border-b border-border">
+                    <th className="px-2 py-1.5 text-left">Service</th>
+                    <th className="px-2 py-1.5">Color</th>
+                    <th className="px-2 py-1.5">Sessions</th>
+                    <th className="px-2 py-1.5">Price</th>
+                    <th className="px-2 py-1.5 text-right">Subtotal</th>
+                    <th className="px-2 py-1.5 w-6" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {form.services.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-3 text-center text-[11px] text-muted-foreground italic">
+                        No services — add one below
+                      </td>
+                    </tr>
+                  )}
+                  {form.services.map((s) => (
+                    <tr key={s._key} className="border-t border-border first:border-0">
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="text"
+                          value={s.serviceName}
+                          onChange={(e) => updateSvc(s._key, "serviceName", e.target.value)}
+                          placeholder="Service name"
+                          className="h-7 w-full rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="color"
+                          value={s.color || "#6366f1"}
+                          onChange={(e) => updateSvc(s._key, "color", e.target.value)}
+                          className="h-7 w-9 rounded border border-border cursor-pointer p-0.5 bg-background"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          value={s.numberOfSessions}
+                          onChange={(e) => updateSvc(s._key, "numberOfSessions", e.target.value)}
+                          className="h-7 w-16 rounded border border-border px-2 outline-none focus:border-primary"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={s.pricePerSession}
+                          onChange={(e) => updateSvc(s._key, "pricePerSession", e.target.value)}
+                          className="h-7 w-20 rounded border border-border px-2 outline-none focus:border-primary"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-semibold">
+                        ${Number(s.finalAmount).toFixed(2)}
+                      </td>
+                      <td className="px-2 py-1.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeService(s._key)}
+                          className="text-muted-foreground hover:text-destructive transition-colors"
+                          aria-label="Remove service"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-border bg-muted/30">
+                    <td colSpan={4} className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">Subtotal</td>
+                    <td className="px-2 py-1.5 text-right font-semibold">${subtotal.toFixed(2)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Add service button */}
+            <ServicePicker catalogServices={catalogServices} onSelect={addService} />
+
+            {/* Discount */}
+            <div className="rounded-lg border border-border bg-muted/20 p-2.5 space-y-2">
+              <p className="text-[11px] font-medium text-muted-foreground uppercase">Package Discount</p>
+              <div className="flex items-center gap-2">
+                <select
+                  value={form.discountType}
+                  onChange={(e) => setForm((p) => ({ ...p, discountType: e.target.value, discountAmount: 0 }))}
+                  className="h-8 rounded border border-border bg-background px-2 text-[12px]"
+                >
+                  <option value="none">No discount</option>
+                  <option value="percentage">Percentage (%)</option>
+                  <option value="fixed">Fixed ($)</option>
+                </select>
+                {form.discountType !== "none" && (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.discountAmount}
+                    onChange={(e) => setForm((p) => ({ ...p, discountAmount: e.target.value }))}
+                    className="h-8 w-24 rounded border border-border bg-background px-2 text-[12px]"
+                  />
+                )}
+                <span className="ml-auto text-[12px] font-medium text-amber-600">
+                  {discount > 0 ? `-$${discount.toFixed(2)}` : ""}
+                </span>
+              </div>
+              <div className="flex justify-between text-[12px]">
+                <span className="text-muted-foreground">Total</span>
+                <span className="font-bold">${total.toFixed(2)}</span>
+              </div>
+            </div>
           </div>
-          {form.billingType === "one_time" && (
-            <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-              <div className="flex items-center justify-between border-t border-border pt-2">
-                <p className="text-[12px] text-muted-foreground">Payable Balance</p>
-                <p className="text-[14px] font-bold text-foreground">${total.toFixed(2)}</p>
-              </div>
-              <p className="text-[11px] font-medium text-muted-foreground">Payment Method</p>
-              <div className="relative">
-                <select value={form.billing.method} onChange={(e) => setForm((p) => ({ ...p, billing: { ...p.billing, method: e.target.value } }))}
-                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize">
-                  {PAYMENT_METHODS.map((m) => <option key={m} value={m} className="capitalize">{m}</option>)}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              </div>
+
+          {/* ── Billing type ── */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium text-muted-foreground uppercase">Billing Type</p>
+            <div className="grid grid-cols-3 gap-2">
+              {["one_time", "payment_plan", "flexible"].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setForm((p) => ({ ...p, billingType: v }))}
+                  className={`rounded-lg border p-2 text-[11px] ${form.billingType === v ? "border-primary bg-primary/5" : "border-border bg-background"}`}
+                >
+                  {v === "one_time" ? "One-time" : v === "payment_plan" ? "Payment Plan" : "Flexible"}
+                </button>
+              ))}
             </div>
-          )}
-          {form.billingType === "payment_plan" && (
-            <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-2">
-                <input type="number" min="2" value={form.billing.numberOfInstallments} onChange={(e) => setForm((p) => ({ ...p, billing: { ...p.billing, numberOfInstallments: e.target.value } }))} className="h-9 rounded-lg border border-border px-3 text-[12px]" />
-                <select value={form.billing.frequency} onChange={(e) => setForm((p) => ({ ...p, billing: { ...p.billing, frequency: e.target.value } }))}
-                  className="h-9 rounded-lg border border-border px-3 text-[12px]">
-                  <option value="weekly">Weekly</option><option value="biweekly">Fortnightly</option><option value="monthly">Monthly</option>
-                </select>
-                <input type="date" value={form.billing.startDate} onChange={(e) => setForm((p) => ({ ...p, billing: { ...p.billing, startDate: e.target.value } }))} className="h-9 rounded-lg border border-border px-3 text-[12px]" />
-              </div>
-              {installments.length > 0 && (
-                <div className="rounded-lg border border-border bg-muted/20 p-2.5">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-[11px] font-medium text-muted-foreground uppercase">Schedule Preview</p>
-                    {discount > 0 && <span className="text-[11px] text-amber-600">Discount on last payment</span>}
-                  </div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
-                    {installments.map((inst) => (
-                      <div key={inst.index} className="flex items-center justify-between border-b border-border/40 pb-1 last:border-0">
-                        <span className="text-[11px] text-muted-foreground">
-                          Payment {inst.index} · {inst.date}
-                          {inst.isLast && discount > 0 ? ` (-$${discount.toFixed(2)})` : ""}
-                        </span>
-                        <span className="text-[11px] font-medium text-foreground">${inst.amount.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
-                    <p className="text-[11px] text-muted-foreground">Payable Balance</p>
-                    <p className="text-[12px] font-bold text-foreground">${total.toFixed(2)}</p>
-                  </div>
+            {form.billingType === "one_time" && (
+              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+                <div className="flex items-center justify-between border-t border-border pt-2">
+                  <p className="text-[12px] text-muted-foreground">Payable Balance</p>
+                  <p className="text-[14px] font-bold text-foreground">${total.toFixed(2)}</p>
                 </div>
-              )}
-            </div>
-          )}
-          {form.billingType === "flexible" && (
-            <div className="rounded-lg border border-border bg-muted/20 p-3">
-              <p className="text-[11px] text-muted-foreground">No schedule set. Payments can be recorded manually at any time.</p>
-              <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
-                <p className="text-[11px] text-muted-foreground">Payable Balance</p>
-                <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
+                <p className="text-[11px] font-medium text-muted-foreground">Payment Method</p>
+                <div className="relative">
+                  <select
+                    value={form.billing.method}
+                    onChange={(e) => setForm((p) => ({ ...p, billing: { ...p.billing, method: e.target.value } }))}
+                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
+                  >
+                    {PAYMENT_METHODS.map((m) => <option key={m} value={m} className="capitalize">{m}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                </div>
               </div>
-            </div>
-          )}
+            )}
+            {form.billingType === "payment_plan" && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="number"
+                    min="2"
+                    value={form.billing.numberOfInstallments}
+                    onChange={(e) => setForm((p) => ({ ...p, billing: { ...p.billing, numberOfInstallments: e.target.value } }))}
+                    className="h-9 rounded-lg border border-border px-3 text-[12px]"
+                  />
+                  <select
+                    value={form.billing.frequency}
+                    onChange={(e) => setForm((p) => ({ ...p, billing: { ...p.billing, frequency: e.target.value } }))}
+                    className="h-9 rounded-lg border border-border px-3 text-[12px]"
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="biweekly">Fortnightly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                  <input
+                    type="date"
+                    value={form.billing.startDate}
+                    onChange={(e) => setForm((p) => ({ ...p, billing: { ...p.billing, startDate: e.target.value } }))}
+                    className="h-9 rounded-lg border border-border px-3 text-[12px]"
+                  />
+                </div>
+                {installments.length > 0 && (
+                  <div className="rounded-lg border border-border bg-muted/20 p-2.5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase">Schedule Preview</p>
+                      {discount > 0 && <span className="text-[11px] text-amber-600">Discount on last payment</span>}
+                    </div>
+                    <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                      {installments.map((inst) => (
+                        <div key={inst.index} className="flex items-center justify-between border-b border-border/40 pb-1 last:border-0">
+                          <span className="text-[11px] text-muted-foreground">
+                            Payment {inst.index} · {inst.date}
+                            {inst.isLast && discount > 0 ? ` (-$${discount.toFixed(2)})` : ""}
+                          </span>
+                          <span className="text-[11px] font-medium text-foreground">${inst.amount.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
+                      <p className="text-[11px] text-muted-foreground">Payable Balance</p>
+                      <p className="text-[12px] font-bold text-foreground">${total.toFixed(2)}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {form.billingType === "flexible" && (
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <p className="text-[11px] text-muted-foreground">No schedule set. Payments can be recorded manually at any time.</p>
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
+                  <p className="text-[11px] text-muted-foreground">Payable Balance</p>
+                  <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -304,10 +534,18 @@ export default function NewEnrollmentPackageInline({
       {error && <p className="text-[11px] text-destructive mt-2">{error}</p>}
 
       <div className="flex justify-between gap-2 pt-2 mt-auto border-t border-border/60">
-        <button type="button" className="h-8 px-3 rounded-lg border border-border text-[11px]" onClick={onCancel}>Cancel</button>
-        <button type="button" className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60" onClick={handleSubmit} disabled={loading || !form.teacherID || !form.packageID}>{loading ? "Creating…" : "Create Enrollment & Package"}</button>
+        <button type="button" className="h-8 px-3 rounded-lg border border-border text-[11px]" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
+          onClick={handleSubmit}
+          disabled={loading || !form.packageID}
+        >
+          {loading ? "Creating…" : "Create Enrollment & Package"}
+        </button>
       </div>
     </div>
   );
 }
-
