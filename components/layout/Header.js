@@ -243,12 +243,15 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
   const isSms = pathname?.startsWith('/marketing/sms-builder')
   const isEmails = pathname?.startsWith('/marketing/email-builder')
   const isAICalling = pathname?.startsWith('/ai-automation/ai-calling')
+  const isAIMessaging = pathname?.startsWith('/ai-automation/ai-messaging')
   const isWorkflows = pathname?.startsWith('/ai-automation/workflows')
   const inboxFilter = (isInbox && searchParams?.get('filter')) || 'all'
   const formsView = isForms ? (searchParams?.get('view') || 'templates') : null
   const smsView = isSms ? (searchParams?.get('view') || 'templates') : null
   const emailsView = isEmails ? (searchParams?.get('view') || 'templates') : null
   const aiCallingView = isAICalling ? (searchParams?.get('view') || 'scripts') : null
+  const rawMessagingView = searchParams?.get('view')
+  const aiMessagingView = isAIMessaging ? (rawMessagingView === 'prompt' ? 'prompt' : 'embeddings') : null
   const workflowsView = isWorkflows ? (searchParams?.get('view') || 'active') : null
 
   useEffect(() => {
@@ -399,6 +402,13 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
     router.push(`/ai-automation/ai-calling?${params.toString()}`)
   }
 
+  const setAIMessagingView = (value) => {
+    if (!isAIMessaging) return
+    const params = new URLSearchParams(searchParams?.toString() || '')
+    params.set('view', value)
+    router.push(`/ai-automation/ai-messaging?${params.toString()}`)
+  }
+
   const setWorkflowsView = (value) => {
     if (!isWorkflows) return
     const params = new URLSearchParams(searchParams?.toString() || '')
@@ -536,6 +546,30 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
                       onClick={() => setAICallingView(value)}
                       className={cn(
                         'text-sm font-medium transition-colors duration-200 whitespace-nowrap',
+                        isActive ? 'text-[var(--studio-primary)]' : 'text-muted-foreground'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : isAIMessaging ? (
+            <div className="flex h-[44px] items-center">
+              <div className="flex w-max items-center gap-5 rounded-full bg-muted px-4 py-2 sm:gap-8 sm:px-6">
+                {[
+                  { value: 'embeddings', label: 'Embeddings' },
+                  { value: 'prompt', label: 'Prompt' },
+                ].map(({ value, label }) => {
+                  const isActive = aiMessagingView === value
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setAIMessagingView(value)}
+                      className={cn(
+                        'whitespace-nowrap text-sm font-medium transition-colors duration-200',
                         isActive ? 'text-[var(--studio-primary)]' : 'text-muted-foreground'
                       )}
                     >

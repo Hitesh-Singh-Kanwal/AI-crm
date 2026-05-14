@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Trash2, CheckCircle, Lock, Search } from 'lucide-react'
-import MainLayout from '@/components/layout/MainLayout'
+import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
-import { useToast } from '@/components/ui/toast'
+import { useToast, toast as pushToast } from '@/components/ui/toast'
 import {
   Dialog,
   DialogContent,
@@ -45,7 +46,10 @@ function PromptDialog({ open, onClose, prompt, onRefresh }) {
         : await api.post('/api/sms-prompt', { name: form.name.trim(), prompt: form.prompt.trim() })
 
       if (result.success) {
-        toast.success({ title: isEdit ? 'Updated' : 'Created', message: `Prompt ${isEdit ? 'updated' : 'created'} successfully` })
+        toast.success({
+          title: isEdit ? 'Updated' : 'Created',
+          message: `Prompt ${isEdit ? 'updated' : 'created'} successfully`,
+        })
         onRefresh?.()
         onClose?.()
       } else {
@@ -69,7 +73,7 @@ function PromptDialog({ open, onClose, prompt, onRefresh }) {
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Name *</label>
+            <label className="mb-1 block text-sm font-medium">Name *</label>
             <Input
               value={form.name}
               onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
@@ -77,18 +81,20 @@ function PromptDialog({ open, onClose, prompt, onRefresh }) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Prompt *</label>
-            <textarea
+            <label className="mb-1 block text-sm font-medium">Prompt *</label>
+            <Textarea
               value={form.prompt}
               onChange={(e) => setForm((p) => ({ ...p, prompt: e.target.value }))}
               rows={16}
               placeholder="Enter the full system prompt…"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-background text-sm resize-y font-mono"
+              className="min-h-[200px] resize-y font-mono text-sm"
             />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
           <Button onClick={save} disabled={loading} variant="gradient">
             {loading ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Prompt'}
           </Button>
@@ -111,22 +117,24 @@ function ViewDialog({ open, onClose, prompt }) {
           <DialogDescription>Full prompt content</DialogDescription>
         </DialogHeader>
         <div className="py-4">
-          <pre className="text-sm text-foreground whitespace-pre-wrap font-mono bg-muted/40 border border-border rounded-lg p-4 h-[60vh] overflow-y-auto">
+          <pre className="h-[60vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-4 font-mono text-sm text-foreground">
             {prompt.prompt}
           </pre>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
-export default function AiSmsPage() {
+export default function SmsPromptTab({ activeView = 'embeddings' }) {
   const toast = useToast()
   const [prompts, setPrompts] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [activatingId, setActivatingId] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -141,15 +149,18 @@ export default function AiSmsPage() {
     try {
       const result = await api.get('/api/sms-prompt')
       if (result.success) setPrompts(result.data || [])
-      else toast.error({ title: 'Error', message: result.error || 'Failed to load prompts' })
+      else pushToast.error('Error', { description: result.error || 'Failed to load prompts' })
     } catch {
-      toast.error({ title: 'Error', message: 'Unable to load prompts' })
+      pushToast.error('Error', { description: 'Unable to load prompts' })
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    if (activeView !== 'prompt') return
+    load()
+  }, [activeView, load])
 
   const handleActivate = async (p) => {
     if (p.isActive) return
@@ -187,17 +198,15 @@ export default function AiSmsPage() {
     }
   }
 
-  const filtered = prompts.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filtered = prompts.filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
 
   return (
-    <MainLayout title="AI SMS" subtitle="">
-      <div className="max-w-[1204px] mx-auto min-h-full flex flex-col">
+    <TabsContent value="prompt" className="mt-6 flex-1 min-h-0 flex flex-col gap-6 outline-none">
+      <div className="mx-auto flex min-h-full w-full max-w-[1204px] flex-col">
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-semibold text-foreground tracking-tight">AI SMS Prompts</h1>
-            <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <h2 className="text-2xl font-semibold tracking-tight text-foreground">AI SMS prompts</h2>
+            <span className="inline-flex items-center rounded-md border border-border bg-background px-2 py-0.5 text-xs font-medium text-brand">
               {prompts.length} prompts
             </span>
           </div>
@@ -206,44 +215,44 @@ export default function AiSmsPage() {
           </p>
         </div>
 
-        <div className="flex items-center justify-between gap-3 mb-6">
-          <div className="relative w-[220px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:w-[220px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search prompts…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 rounded-lg bg-background text-sm"
+              className="h-9 rounded-lg bg-background pl-9 text-sm"
             />
           </div>
           <Button
-            className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2"
-            onClick={() => { setEditingPrompt(null); setDialogOpen(true) }}
+            variant="gradient"
+            className="h-9 shrink-0 gap-2 rounded-lg px-4 text-sm font-medium"
+            onClick={() => {
+              setEditingPrompt(null)
+              setDialogOpen(true)
+            }}
           >
-            <Plus className="h-4 w-4" /> New Prompt
+            <Plus className="h-4 w-4" /> New prompt
           </Button>
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
-            Loading prompts…
-          </div>
+          <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">Loading prompts…</div>
         ) : filtered.length === 0 ? (
-          <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
-            No prompts found.
-          </div>
+          <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">No prompts found.</div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {filtered.map((p) => (
               <div
                 key={p._id}
                 className={cn(
-                  'rounded-xl border bg-card p-5 flex items-start justify-between gap-4',
+                  'flex flex-col gap-4 rounded-xl border bg-card p-5 sm:flex-row sm:items-start sm:justify-between',
                   p.isActive ? 'border-brand/40 bg-brand/5' : 'border-border'
                 )}
               >
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="mt-0.5">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 shrink-0">
                     {p.isActive ? (
                       <CheckCircle className="h-5 w-5 text-brand" />
                     ) : (
@@ -251,26 +260,26 @@ export default function AiSmsPage() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold text-foreground">{p.name}</span>
                       {p.isLocked && (
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
                           <Lock className="h-3 w-3" /> Locked
                         </span>
                       )}
                       {p.isActive && (
-                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-brand/10 text-brand">
+                        <span className="inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
                           Active
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <p className="mt-0.5 text-xs text-muted-foreground">
                       Created {new Date(p.createdAt).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -280,8 +289,10 @@ export default function AiSmsPage() {
                       setViewLoading(true)
                       try {
                         const result = await api.get(`/api/sms-prompt/${p._id}`)
-                        if (result.success) { setViewPrompt(result.data); setViewOpen(true) }
-                        else toast.error({ title: 'Error', message: 'Unable to load prompt' })
+                        if (result.success) {
+                          setViewPrompt(result.data)
+                          setViewOpen(true)
+                        } else toast.error({ title: 'Error', message: 'Unable to load prompt' })
                       } finally {
                         setViewLoading(false)
                       }
@@ -293,11 +304,13 @@ export default function AiSmsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 text-xs gap-1"
+                      className="h-8 gap-1 text-xs"
                       onClick={async () => {
                         const result = await api.get(`/api/sms-prompt/${p._id}`)
-                        if (result.success) { setEditingPrompt(result.data); setDialogOpen(true) }
-                        else toast.error({ title: 'Error', message: 'Unable to load prompt' })
+                        if (result.success) {
+                          setEditingPrompt(result.data)
+                          setDialogOpen(true)
+                        } else toast.error({ title: 'Error', message: 'Unable to load prompt' })
                       }}
                     >
                       <Pencil className="h-3 w-3" /> Edit
@@ -306,18 +319,19 @@ export default function AiSmsPage() {
                   {!p.isActive && (
                     <Button
                       size="sm"
-                      className="h-8 text-xs bg-brand hover:bg-brand-dark text-brand-foreground"
+                      variant="gradient"
+                      className="h-8 text-xs"
                       onClick={() => handleActivate(p)}
                       disabled={activatingId === p._id}
                     >
-                      {activatingId === p._id ? 'Activating…' : 'Set Active'}
+                      {activatingId === p._id ? 'Activating…' : 'Set active'}
                     </Button>
                   )}
                   {!p.isLocked && !p.isActive && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 text-xs text-red-600 hover:text-red-700 hover:border-red-300"
+                      className="h-8 text-red-600 hover:border-red-300 hover:text-red-700 dark:text-red-400"
                       onClick={() => handleDelete(p)}
                       disabled={deletingId === p._id}
                     >
@@ -331,18 +345,9 @@ export default function AiSmsPage() {
         )}
       </div>
 
-      <PromptDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        prompt={editingPrompt}
-        onRefresh={load}
-      />
+      <PromptDialog open={dialogOpen} onClose={() => setDialogOpen(false)} prompt={editingPrompt} onRefresh={load} />
 
-      <ViewDialog
-        open={viewOpen}
-        onClose={() => setViewOpen(false)}
-        prompt={viewPrompt}
-      />
-    </MainLayout>
+      <ViewDialog open={viewOpen} onClose={() => setViewOpen(false)} prompt={viewPrompt} />
+    </TabsContent>
   )
 }
