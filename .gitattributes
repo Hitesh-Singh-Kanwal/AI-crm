@@ -1,2 +1,0 @@
-# patch-package diffs include CRLF when the upstream file uses CRLF; do not normalize line endings
-patches/*.patch -text
