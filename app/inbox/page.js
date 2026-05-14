@@ -205,7 +205,7 @@ function InboxPageContent() {
     setError(null)
     try {
       const [smsResult, emailResult] = await Promise.all([
-        api.get('/api/sms/conversations'),
+        api.get('/api/smsHistory/conversations'),
         api.get('/api/emailHistory?limit=200'),
       ])
 
@@ -463,7 +463,7 @@ function InboxPageContent() {
     const convName = conversations.find((c) => c.id === conversationId)?.contact?.name || 'Lead'
     setThreadMeta((prev) => ({ ...prev, [conversationId]: { ...prev[conversationId], loading: true } }))
     try {
-      const res = await api.get(`/api/sms/conversations/${leadID}?page=${page}`)
+      const res = await api.get(`/api/smsHistory/conversations/${leadID}?page=${page}`)
       const msgs = Array.isArray(res.data?.messages) ? res.data.messages : []
       const mapped = msgs.map((m) => ({
         id: m._id,

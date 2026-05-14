@@ -25,16 +25,8 @@ const navItems = [
     ],
   },
   { name: 'Leads', href: '/leads', iconSrc: '/figma/sidebar/leads.svg', iconSize: 20, labelStyle: 'regular' },
-  {
-    name: 'Calendar',
-    href: '/calendar',
-    iconSrc: '/figma/sidebar/calendar.svg',
-    iconSize: 20,
-    labelStyle: 'regular',
-    children: [
-      { name: 'Calendar', href: '/calendar' },
-    ],
-  },
+  { name: 'Customers', href: '/settings/users-roles/customers', iconSrc: '/figma/sidebar/customers.svg', iconSize: 20, labelStyle: 'regular' },
+  { name: 'Calendar', href: '/calendar', iconSrc: '/figma/sidebar/calendar.svg', iconSize: 20, labelStyle: 'regular' },
   {
     name: 'Marketing',
     href: '/marketing/form-builder',
@@ -58,12 +50,12 @@ const navItems = [
     children: [
       { name: 'Make Calls', href: '/ai-automation/make-calls' },
       { name: 'AI Calling', href: '/ai-automation/ai-calling' },
+      { name: 'AI Messaging', href: '/ai-automation/ai-messaging' },
       { name: 'Workflows', href: '/ai-automation/workflows' },
       { name: 'AI Calls Data', href: '/ai-automation/ai-calling-data' },
       { name: 'Training', href: '/ai-automation/training' },
     ],
   },
-  { name: 'Workflow', href: '/workflow', iconSrc: '/figma/sidebar/ai-automation.svg', iconSize: 20, labelStyle: 'regular' },
   {
     name: 'Settings',
     href: '/settings/studio',
@@ -72,7 +64,6 @@ const navItems = [
     labelStyle: 'regular',
     children: [
       { name: 'Studio', href: '/settings/studio' },
-      { name: 'Users & Roles', href: '/settings/users-roles' },
       { name: 'Setup', href: '/settings/setup' },
       { name: 'Integrations', href: '/settings/integrations' },
       { name: 'Billing', href: '/settings/billing' },

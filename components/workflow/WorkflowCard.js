@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Eye, Trash2, Workflow } from 'lucide-react'
 import { flattenWorkflowSteps } from '@/lib/workflow-normalize'
 
-export default function WorkflowCard({ workflow, onDelete }) {
+export default function WorkflowCard({ workflow, onDelete, detailPathBase = '/ai-automation/workflows' }) {
   const id = workflow?._id || workflow?.id
   const flatSteps = flattenWorkflowSteps(workflow?.steps)
   const stepsCount = flatSteps.length || workflow?.stepsCount || 0
@@ -33,7 +33,7 @@ export default function WorkflowCard({ workflow, onDelete }) {
 
         <div className="mt-auto grid grid-cols-2 gap-3 pt-4">
           <Link
-            href={`/workflow/${id}`}
+            href={`${detailPathBase}/${id}`}
             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-border bg-background text-[12px] font-medium text-muted-foreground hover:bg-muted/50"
           >
             <Eye className="h-3.5 w-3.5" />

@@ -243,13 +243,14 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
   const isSms = pathname?.startsWith('/marketing/sms-builder')
   const isEmails = pathname?.startsWith('/marketing/email-builder')
   const isAICalling = pathname?.startsWith('/ai-automation/ai-calling')
-  const isWorkflows = pathname?.startsWith('/ai-automation/workflows')
+  const isAIMessaging = pathname?.startsWith('/ai-automation/ai-messaging')
   const inboxFilter = (isInbox && searchParams?.get('filter')) || 'all'
   const formsView = isForms ? (searchParams?.get('view') || 'templates') : null
   const smsView = isSms ? (searchParams?.get('view') || 'templates') : null
   const emailsView = isEmails ? (searchParams?.get('view') || 'templates') : null
   const aiCallingView = isAICalling ? (searchParams?.get('view') || 'scripts') : null
-  const workflowsView = isWorkflows ? (searchParams?.get('view') || 'active') : null
+  const rawMessagingView = searchParams?.get('view')
+  const aiMessagingView = isAIMessaging ? (rawMessagingView === 'prompt' ? 'prompt' : 'embeddings') : null
 
   useEffect(() => {
     if (!createEnrollmentOpen) return
@@ -399,11 +400,11 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
     router.push(`/ai-automation/ai-calling?${params.toString()}`)
   }
 
-  const setWorkflowsView = (value) => {
-    if (!isWorkflows) return
+  const setAIMessagingView = (value) => {
+    if (!isAIMessaging) return
     const params = new URLSearchParams(searchParams?.toString() || '')
     params.set('view', value)
-    router.push(`/ai-automation/workflows?${params.toString()}`)
+    router.push(`/ai-automation/ai-messaging?${params.toString()}`)
   }
 
   return (
@@ -545,22 +546,21 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
                 })}
               </div>
             </div>
-          ) : isWorkflows ? (
-            <div className="flex items-center h-[44px]">
-              <div className="flex w-max items-center gap-5 sm:gap-8 rounded-full bg-muted px-4 sm:px-6 py-2">
+          ) : isAIMessaging ? (
+            <div className="flex h-[44px] items-center">
+              <div className="flex w-max items-center gap-5 rounded-full bg-muted px-4 py-2 sm:gap-8 sm:px-6">
                 {[
-                  { value: 'active', label: 'Active (3)' },
-                  { value: 'paused', label: 'Paused (1)' },
-                  { value: 'drafts', label: 'Drafts (0)' },
-                  { value: 'analytics', label: 'Analytics' },
+                  { value: 'embeddings', label: 'Embeddings' },
+                  { value: 'prompt', label: 'Prompt' },
                 ].map(({ value, label }) => {
-                  const isActive = workflowsView === value
+                  const isActive = aiMessagingView === value
                   return (
                     <button
                       key={value}
-                      onClick={() => setWorkflowsView(value)}
+                      type="button"
+                      onClick={() => setAIMessagingView(value)}
                       className={cn(
-                        'text-sm font-medium transition-colors duration-200 whitespace-nowrap',
+                        'whitespace-nowrap text-sm font-medium transition-colors duration-200',
                         isActive ? 'text-[var(--studio-primary)]' : 'text-muted-foreground'
                       )}
                     >

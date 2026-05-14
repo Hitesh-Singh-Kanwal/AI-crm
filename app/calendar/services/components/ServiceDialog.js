@@ -17,6 +17,12 @@ import api from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import LocationSelector from "@/components/shared/LocationSelector";
 
+const SERVICE_TYPES = [
+  { value: "private", label: "Private" },
+  { value: "group", label: "Group" },
+  { value: "todo", label: "Todo" },
+];
+
 const EMPTY_FORM = {
   serviceName: "",
   serviceCode: "",
@@ -24,8 +30,8 @@ const EMPTY_FORM = {
   description: "",
   color: "",
   price: "",
+  type: "private",
   isChargeable: false,
-  isGroup: false,
   isSundry: false,
   countOnCalendar: true,
   isActive: true,
@@ -102,7 +108,7 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
         locationID: service.locationID?._id || service.locationID || "",
         description: service.description || "",
         isChargeable: service.isChargeable ?? false,
-        isGroup: service.isGroup ?? false,
+        type: service.type || "private",
         isSundry: service.isSundry ?? false,
         countOnCalendar: service.countOnCalendar ?? true,
         isActive: service.isActive ?? true,
@@ -155,8 +161,8 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
         description: form.description.trim() || undefined,
         color: form.color || undefined,
         price: form.price !== "" ? Number(form.price) : undefined,
+        type: form.type,
         isChargeable: form.isChargeable,
-        isGroup: form.isGroup,
         isSundry: form.isSundry,
         countOnCalendar: form.countOnCalendar,
         isActive: form.isActive,
@@ -262,9 +268,25 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-4 pt-2 border-t border-border">
+            <div className="flex flex-col gap-1.5">
+              <Label>Service Type</Label>
+              <div className="flex items-center gap-3 h-9">
+                {SERVICE_TYPES.map((t) => (
+                  <label key={t.value} className="flex items-center gap-1.5 cursor-pointer text-sm">
+                    <input
+                      type="radio"
+                      checked={form.type === t.value}
+                      onChange={() => set("type", t.value)}
+                      className="accent-brand"
+                    />
+                    {t.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border">
               <RadioGroup label="Is Chargeable?" value={form.isChargeable} onChange={(v) => set("isChargeable", v)} />
-              <RadioGroup label="Is Group?" value={form.isGroup} onChange={(v) => set("isGroup", v)} />
               <RadioGroup label="Is Sundry?" value={form.isSundry} onChange={(v) => set("isSundry", v)} />
               <RadioGroup label="Count on Calendar?" value={form.countOnCalendar} onChange={(v) => set("countOnCalendar", v)} />
             </div>

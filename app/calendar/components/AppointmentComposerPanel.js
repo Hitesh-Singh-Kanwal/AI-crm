@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -30,6 +30,51 @@ function addMinutes(timeStr, minutesToAdd) {
   const total = h * 60 + m + (Number(minutesToAdd) || 0);
   const clamped = Math.max(0, Math.min(total, 23 * 60 + 59));
   return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
+}
+
+/** `/api/calendar` expects `start`/`end`, not `date`. Local calendar day bounds (ISO). */
+function localCalendarDayQueryRange(dateStr) {
+  const [y, mo, d] = String(dateStr).split("-").map(Number);
+  if (!y || !mo || !d) return null;
+  const dayStart = new Date(y, mo - 1, d, 0, 0, 0, 0);
+  const dayEndInclusive = new Date(y, mo - 1, d, 23, 59, 59, 999);
+  const dayEndExclusive = dayStart.getTime() + 86400000;
+  return {
+    startISO: dayStart.toISOString(),
+    endISO: dayEndInclusive.toISOString(),
+    dayStartMs: dayStart.getTime(),
+    dayEndExclusiveMs: dayEndExclusive,
+  };
+}
+
+/** Clip booking [evStart,evEnd) to this local day → minutes from midnight [start,end). */
+function clipIntervalToLocalDay(evStart, evEnd, dayStartMs, dayEndExclusiveMs) {
+  const s = Math.max(evStart.getTime(), dayStartMs);
+  const e = Math.min(evEnd.getTime(), dayEndExclusiveMs);
+  if (e <= s) return null;
+  return {
+    start: Math.max(0, Math.floor((s - dayStartMs) / 60000)),
+    end: Math.min(24 * 60, Math.ceil((e - dayStartMs) / 60000)),
+  };
+}
+
+/** Cancelled lessons free the slot for new bookings */
+function statusBlocksAvailability(status) {
+  if (status === "cancelled_no_charge" || status === "cancelled_charged") return false;
+  return true;
+}
+
+function mergeMinuteIntervals(intervals) {
+  if (!intervals.length) return [];
+  const sorted = [...intervals].sort((a, b) => a.start - b.start);
+  const out = [{ ...sorted[0] }];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = out[out.length - 1];
+    const cur = sorted[i];
+    if (cur.start < prev.end) prev.end = Math.max(prev.end, cur.end);
+    else out.push({ ...cur });
+  }
+  return out;
 }
 
 function ordinalLabel(n) {
@@ -189,14 +234,113 @@ function Toggle({ checked, onChange }) {
   );
 }
 
+// ─── SearchableSelect ─────────────────────────────────────────────────────────
+
+function SearchableSelect({ value, onChange, options = [], placeholder, disabled }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const selected = options.find((o) => o.value === value);
+  const filtered = query.trim()
+    ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
+    : options;
+
+  useEffect(() => {
+    if (!open) { setQuery(""); return; }
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [open]);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        className="h-9 w-full flex items-center justify-between rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+      >
+        <span className={selected ? "text-foreground" : "text-muted-foreground/50"}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-background shadow-lg overflow-hidden">
+          <div className="p-1.5 border-b border-border">
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              className="h-7 w-full rounded-md border border-border bg-muted/30 px-2.5 text-[11px] text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/50"
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-[11px] text-muted-foreground">No results</p>
+            ) : (
+              filtered.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => { onChange?.(opt.value); setOpen(false); }}
+                  className={[
+                    "w-full text-left px-3 py-1.5 text-[12px] hover:bg-muted/50 transition-colors",
+                    opt.value === value ? "bg-brand/10 text-brand font-medium" : "text-foreground",
+                  ].join(" ")}
+                >
+                  {opt.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── MultiSelect ──────────────────────────────────────────────────────────────
 
 function MultiSelect({ values = [], onChange, options = [], placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
+
   const selected = new Set(values);
   const available = options.filter((o) => !selected.has(o.value));
   const selectedOptions = options.filter((o) => selected.has(o.value));
+  const filtered = query.trim()
+    ? available.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
+    : available;
+
+  useEffect(() => {
+    if (!open) { setQuery(""); return; }
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [open]);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
   return (
-    <div className="rounded-lg border border-border bg-background focus-within:border-primary transition-colors">
+    <div ref={containerRef} className="relative rounded-lg border border-border bg-background focus-within:border-primary transition-colors">
       {selectedOptions.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-2.5 pt-2">
           {selectedOptions.map((opt) => (
@@ -207,9 +351,7 @@ function MultiSelect({ values = [], onChange, options = [], placeholder }) {
               {opt.label}
               <button
                 type="button"
-                onClick={() =>
-                  onChange?.(values.filter((v) => v !== opt.value))
-                }
+                onClick={() => onChange?.(values.filter((v) => v !== opt.value))}
                 className="ml-0.5 leading-none hover:text-brand/70"
               >
                 ×
@@ -218,26 +360,49 @@ function MultiSelect({ values = [], onChange, options = [], placeholder }) {
           ))}
         </div>
       )}
-      <div className="relative">
-        <select
-          value=""
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v && !selected.has(v)) onChange?.([...values, v]);
-          }}
-          className="h-9 w-full appearance-none bg-transparent px-3 pr-8 text-[12px] text-foreground outline-none"
-        >
-          <option value="">
-            {available.length === 0 ? "All selected" : placeholder}
-          </option>
-          {available.map((opt, i) => (
-            <option key={opt.value != null ? opt.value : i} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="h-9 w-full flex items-center justify-between px-3 pr-8 text-[12px] outline-none relative"
+      >
+        <span className="text-muted-foreground/50">
+          {available.length === 0 ? "All selected" : placeholder}
+        </span>
         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-      </div>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-background shadow-lg overflow-hidden">
+          <div className="p-1.5 border-b border-border">
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              className="h-7 w-full rounded-md border border-border bg-muted/30 px-2.5 text-[11px] text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/50"
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-[11px] text-muted-foreground">
+                {available.length === 0 ? "All selected" : "No results"}
+              </p>
+            ) : (
+              filtered.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => { onChange?.([...values, opt.value]); setQuery(""); }}
+                  className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-muted/50 transition-colors"
+                >
+                  {opt.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -360,8 +525,14 @@ function EnrollmentServiceSelector({
     (e) => String(e._id) === selectedEnrollmentId,
   );
   const cp = selectedEnrollment?.package ?? null; // embedded package
+  // `allServices` here is the tab-scoped catalog (private vs group); only list
+  // package lines that match those service codes.
   const enrollmentServices =
-    cp?.services?.filter((s) => s.sessionsRemaining > 0) ?? [];
+    cp?.services?.filter(
+      (s) =>
+        s.sessionsRemaining > 0 &&
+        allServices.some((cat) => cat.serviceCode === s.serviceCode),
+    ) ?? [];
 
   return (
     <div className="space-y-2">
@@ -500,7 +671,7 @@ function WhoSection({
 
       <div>
         <FieldLabel>Instructor</FieldLabel>
-        <StyledSelect
+        <SearchableSelect
           value={form.instructor_id}
           onChange={(v) => setField("instructor_id", v)}
           options={instructorOptions}
@@ -510,7 +681,7 @@ function WhoSection({
 
       <div>
         <FieldLabel>Student</FieldLabel>
-        <StyledSelect
+        <SearchableSelect
           value={form.customer_id}
           onChange={(v) => {
             setField("customer_id", v);
@@ -583,7 +754,7 @@ function GroupWhoSection({
       <SectionDivider label="Who" />
       <div>
         <FieldLabel>Instructor</FieldLabel>
-        <StyledSelect
+        <SearchableSelect
           value={form.instructor_id}
           onChange={(v) => setField("instructor_id", v)}
           options={instructorOptions}
@@ -773,55 +944,80 @@ function AvailabilityPicker({
   selectedSlots,
   onToggleSlot,
 }) {
-  const [busySlots, setBusySlots] = useState([]);
+  /** Merged busy intervals for `date`, minutes from local midnight */
+  const [busyIntervalsMin, setBusyIntervalsMin] = useState([]);
+  const [blockingEventCount, setBlockingEventCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!instructorId || !date) {
-      setBusySlots([]);
+    const range = localCalendarDayQueryRange(date);
+    if (!instructorId || !range) {
+      setBusyIntervalsMin([]);
+      setBlockingEventCount(0);
       return;
     }
     setLoading(true);
+    const qs = new URLSearchParams({
+      teacherID: String(instructorId),
+      /* Widen start by 1d so lessons that began yesterday but end today are returned */
+      start: new Date(range.dayStartMs - 86400000).toISOString(),
+      end: range.endISO,
+      limit: "500",
+    });
     api
-      .get(`/api/calendar?teacherID=${instructorId}&date=${date}&limit=200`)
+      .get(`/api/calendar?${qs.toString()}`)
       .then((res) => {
-        if (res.success && Array.isArray(res.data)) {
-          setBusySlots(
-            res.data
-              .map((ev) => ({
-                start: ev.startDateTime ? new Date(ev.startDateTime) : null,
-                end: ev.endDateTime ? new Date(ev.endDateTime) : null,
-              }))
-              .filter((s) => s.start && s.end),
-          );
-        } else {
-          setBusySlots([]);
+        if (!res.success || !Array.isArray(res.data)) {
+          setBusyIntervalsMin([]);
+          setBlockingEventCount(0);
+          return;
         }
+        const intervals = [];
+        let blocking = 0;
+        for (const ev of res.data) {
+          if (!statusBlocksAvailability(ev.status)) continue;
+          const st = ev.startDateTime ? new Date(ev.startDateTime) : null;
+          const en = ev.endDateTime ? new Date(ev.endDateTime) : null;
+          if (!st || !en || !(en > st)) continue;
+          const clipped = clipIntervalToLocalDay(st, en, range.dayStartMs, range.dayEndExclusiveMs);
+          if (clipped && clipped.end > clipped.start) {
+            intervals.push(clipped);
+            blocking += 1;
+          }
+        }
+        setBlockingEventCount(blocking);
+        setBusyIntervalsMin(mergeMinuteIntervals(intervals));
       })
-      .catch(() => setBusySlots([]))
+      .catch(() => {
+        setBusyIntervalsMin([]);
+        setBlockingEventCount(0);
+      })
       .finally(() => setLoading(false));
   }, [instructorId, date]);
 
-  const { availableSlots, bookedCount } = useMemo(() => {
+  const availableSlots = useMemo(() => {
     const dur = Math.max(15, Number(duration) || 50);
-    const DAY_START = 7 * 60;
-    const DAY_END = 21 * 60;
-    const busy = busySlots.map((s) => ({
-      start: s.start.getHours() * 60 + s.start.getMinutes(),
-      end: s.end.getHours() * 60 + s.end.getMinutes(),
-    }));
+    const DAY_START_MIN = 7 * 60;
+    const DAY_END_MIN = 21 * 60;
+    /** Offer every aligned start within the day; step finer than lesson length */
+    const GRID_STEP_MIN = 15;
+
     const slots = [];
-    for (let t = DAY_START; t + dur <= DAY_END; t += dur) {
+    for (let t = DAY_START_MIN; t + dur <= DAY_END_MIN; t += GRID_STEP_MIN) {
       const slotEnd = t + dur;
-      if (busy.some((b) => t < b.end && slotEnd > b.start)) continue;
+      if (
+        busyIntervalsMin.some((b) => t < b.end && slotEnd > b.start)
+      ) {
+        continue;
+      }
       const hh = String(Math.floor(t / 60)).padStart(2, "0");
       const mm = String(t % 60).padStart(2, "0");
       const eh = String(Math.floor(slotEnd / 60)).padStart(2, "0");
       const em = String(slotEnd % 60).padStart(2, "0");
       slots.push({ start: `${hh}:${mm}`, end: `${eh}:${em}` });
     }
-    return { availableSlots: slots, bookedCount: busySlots.length };
-  }, [busySlots, duration]);
+    return slots;
+  }, [busyIntervalsMin, duration]);
 
   if (!instructorId || !date) return null;
 
@@ -838,7 +1034,7 @@ function AvailabilityPicker({
         </span>
         {!loading && (
           <span className="text-[10px] text-muted-foreground">
-            {availableSlots.length} free · {bookedCount} booked
+            {availableSlots.length} free · {blockingEventCount} booked
           </span>
         )}
       </div>
@@ -1195,13 +1391,14 @@ function GroupClassFields({
   form,
   setField,
   instructorOptions,
-  customerOptions,
+  groupCustomerOptions,
   lessonOptions,
   lessonMap,
   allServices,
   schedulingCodeOptions,
   lessonDuration,
   packageOptions,
+  suggestedAmount,
   onNewCustomer,
 }) {
   return (
@@ -1210,7 +1407,7 @@ function GroupClassFields({
         form={form}
         setField={setField}
         instructorOptions={instructorOptions}
-        customerOptions={customerOptions}
+        customerOptions={groupCustomerOptions}
         packageOptions={packageOptions}
         onNewCustomer={onNewCustomer}
       />
@@ -1229,8 +1426,9 @@ function GroupClassFields({
         lessonDuration={lessonDuration}
       />
       <div className="space-y-3">
-        <SectionDivider label="Notes" />
+        <SectionDivider label="Notes & Payment" />
         <NotesBlock form={form} setField={setField} />
+        <PaymentBlock form={form} setField={setField} suggestedAmount={suggestedAmount} />
       </div>
     </div>
   );
@@ -1275,7 +1473,7 @@ function ToDoFields({
         </div>
         <div>
           <FieldLabel>Assigned To</FieldLabel>
-          <StyledSelect
+          <SearchableSelect
             value={form.instructor_id}
             onChange={(v) => setField("instructor_id", v)}
             options={instructorOptions}
@@ -1308,17 +1506,7 @@ export default function AppointmentComposerPanel({
   initialDuration,
 }) {
   const [activeTab, setActiveTab] = useState("Appointment");
-  const [form, setForm] = useState(() => ({
-    ...EMPTY_FORM,
-    date: initialDate || "",
-    start_time: initialTime || "",
-    end_time: initialTime
-      ? initialDuration
-        ? addMinutes(initialTime, initialDuration)
-        : bumpHour(initialTime)
-      : "",
-  }));
-
+  const [form, setForm] = useState({ ...EMPTY_FORM });
   const [instructorOptions, setInstructorOptions] = useState([]);
   const [customerOptions, setCustomerOptions] = useState([]);
   const [lessonOptions, setLessonOptions] = useState([]);
@@ -1327,10 +1515,29 @@ export default function AppointmentComposerPanel({
   const [allServices, setAllServices] = useState([]);
   const [packageOptions, setPackageOptions] = useState([]);
   const [packageTemplates, setPackageTemplates] = useState([]);
-  const [enrollments, setEnrollments] = useState({}); // customerId → enrollment[]
+  const [allEnrollmentsForGroupFilter, setAllEnrollmentsForGroupFilter] = useState([]);
+  const [enrollments, setEnrollments] = useState({});
   const [showEnrollmentWizard, setShowEnrollmentWizard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setActiveTab("Appointment");
+    setShowEnrollmentWizard(false);
+    setError(null);
+    setForm({
+      ...EMPTY_FORM,
+      date: initialDate || "",
+      start_time: initialTime || "",
+      end_time: initialTime
+        ? initialDuration
+          ? addMinutes(initialTime, initialDuration)
+          : bumpHour(initialTime)
+        : "",
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const setField = (key, value) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -1354,13 +1561,14 @@ export default function AppointmentComposerPanel({
   useEffect(() => {
     async function load() {
       try {
-        const [usersRes, customersRes, lessonsRes, packagesRes, servicesRes] =
+        const [usersRes, customersRes, lessonsRes, packagesRes, servicesRes, customerPkgRes] =
           await Promise.all([
             api.get("/api/teacher?limit=200&status=active"),
             api.get("/api/customer?limit=200"),
             api.get("/api/lesson?limit=200"),
             api.get("/api/package?limit=200"),
             api.get("/api/calendar-service?limit=200"),
+            api.get("/api/customer-package?limit=500"),
           ]);
 
         if (usersRes.success && Array.isArray(usersRes.data))
@@ -1378,6 +1586,11 @@ export default function AppointmentComposerPanel({
               label: c.name || c.email || String(c._id),
             })),
           );
+
+        // Store raw enrollments for later cross-referencing once calendarServices are loaded
+        if (customerPkgRes.success && Array.isArray(customerPkgRes.data)) {
+          setAllEnrollmentsForGroupFilter(customerPkgRes.data);
+        }
 
         if (lessonsRes.success && Array.isArray(lessonsRes.data)) {
           const map = {};
@@ -1429,14 +1642,26 @@ export default function AppointmentComposerPanel({
       .catch(() => {});
   }, [form.customer_id]);
 
-  const schedulingCodeOptions = useMemo(
-    () =>
-      allServices.map((s) => ({
+  const SERVICE_TYPE_MAP = {
+    Appointment: "private",
+    "Group Class": "group",
+    "To Do": "todo",
+  };
+
+  const schedulingCodeOptions = useMemo(() => {
+    const typeFilter = SERVICE_TYPE_MAP[activeTab];
+    return allServices
+      .filter((s) => {
+        if (activeTab === "Appointment")
+          return !s.type || s.type === "private";
+        return !typeFilter || s.type === typeFilter;
+      })
+      .map((s) => ({
         value: String(s._id),
         label: s.serviceCode || s.serviceName,
-      })),
-    [allServices],
-  );
+      }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allServices, activeTab]);
 
   const suggestedAmount = useMemo(() => {
     if (!form.service_id) return null;
@@ -1572,7 +1797,7 @@ export default function AppointmentComposerPanel({
             : undefined,
       lessonID: form.lesson_id || undefined,
       calendarServiceID: form.service_id || undefined,
-      enrollmentID: form.enrollment_id || undefined,
+      enrollmentID: activeTab === "Group Class" ? undefined : form.enrollment_id || undefined,
       packageID: packageTemplateId || undefined,
       color: form.event_color || undefined,
       notes:
@@ -1654,6 +1879,48 @@ export default function AppointmentComposerPanel({
     setIsSaving(false);
   };
 
+  const privateServices = useMemo(
+    () =>
+      allServices.filter((s) => !s.type || s.type === "private"),
+    [allServices],
+  );
+
+  const groupServices = useMemo(
+    () => allServices.filter((s) => s.type === "group"),
+    [allServices],
+  );
+
+  // Build a set of serviceCodes that have type=group in the catalog
+  const groupServiceCodes = useMemo(
+    () => new Set(allServices.filter((s) => s.type === "group").map((s) => s.serviceCode)),
+    [allServices],
+  );
+
+  // Customers who have at least one active enrollment containing a group service
+  const groupCustomerOptions = useMemo(() => {
+    if (!groupServiceCodes.size || !allEnrollmentsForGroupFilter.length) return customerOptions;
+    const ids = new Set();
+    allEnrollmentsForGroupFilter.forEach((enrollment) => {
+      const services = enrollment.package?.services ?? [];
+      if (services.some((s) => groupServiceCodes.has(s.serviceCode))) {
+        const cid = enrollment.customerID?._id ?? enrollment.customerID;
+        if (cid) ids.add(String(cid));
+      }
+    });
+    return customerOptions.filter((c) => ids.has(c.value));
+  }, [allEnrollmentsForGroupFilter, groupServiceCodes, customerOptions]);
+
+  const tabCatalogServices = useMemo(() => {
+    if (activeTab === "Appointment") return privateServices;
+    if (activeTab === "Group Class") return groupServices;
+    return allServices;
+  }, [activeTab, privateServices, groupServices, allServices]);
+
+  const wizardAllowedServiceCodes = useMemo(
+    () => new Set(tabCatalogServices.map((s) => s.serviceCode).filter(Boolean)),
+    [tabCatalogServices],
+  );
+
   const sharedProps = {
     form,
     setField,
@@ -1661,7 +1928,7 @@ export default function AppointmentComposerPanel({
     customerOptions,
     lessonOptions,
     lessonMap,
-    allServices,
+    allServices: tabCatalogServices,
     schedulingCodeOptions,
     lessonDuration,
     suggestedAmount,
@@ -1678,6 +1945,7 @@ export default function AppointmentComposerPanel({
         <NewEnrollmentPackageInline
           teacherOptions={instructorOptions}
           packageTemplates={packageTemplates}
+          allowedServiceCodes={wizardAllowedServiceCodes}
           onCancel={() => setShowEnrollmentWizard(false)}
           onSubmit={async (payload) => {
             const createdId = await handleNewEnrollment(form.customer_id, payload);
@@ -1695,7 +1963,7 @@ export default function AppointmentComposerPanel({
     if (activeTab === "Appointment")
       return <AppointmentFields {...sharedProps} />;
     if (activeTab === "Group Class")
-      return <GroupClassFields {...sharedProps} />;
+      return <GroupClassFields {...sharedProps} groupCustomerOptions={groupCustomerOptions} />;
     if (activeTab === "To Do")
       return (
         <ToDoFields

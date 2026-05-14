@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Plus, ChevronDown, SlidersHorizontal, Phone, Mail, MessageSquare, MoreHorizontal, X } from 'lucide-react'
+import { Search, Plus, ChevronDown, SlidersHorizontal, Phone, Mail, MessageSquare, MoreHorizontal, X, UserCheck } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -60,6 +60,7 @@ export default function LeadsPage() {
   const [bookingStatusFilter, setBookingStatusFilter] = useState('')
   const [escalatedOnly, setEscalatedOnly] = useState(false)
   const [sort, setSort] = useState('createdDesc')
+  const [convertingId, setConvertingId] = useState(null)
 
   const totalPages = Math.max(1, Math.ceil((totalCount || 0) / ROWS_PER_PAGE))
 
@@ -151,6 +152,31 @@ export default function LeadsPage() {
     setDialogInitialLeadId(id)
     setDialogViewOnly(true)
     setDialogOpen(true)
+  }
+
+  const handleConvertToCustomer = async (lead) => {
+    if (lead.convertedCustomerID) {
+      toast.info('Already a customer', { description: `${lead.name} has already been converted to a customer.` })
+      return
+    }
+    const confirmed = window.confirm(`Convert "${lead.name}" to a customer? This will create a Customer record and set the lead stage to Actualized.`)
+    if (!confirmed) return
+
+    setConvertingId(lead._id)
+    try {
+      const result = await api.post(`/api/lead/${lead._id}/convert-to-customer`, {})
+      if (result.success) {
+        toast.success('Converted', { description: `${lead.name} has been converted to a customer.` })
+        loadLeads(currentPage, searchQuery, { stage: stageFilter, bookingStatus: bookingStatusFilter, isEscalated: escalatedOnly })
+      } else {
+        toast.error('Conversion failed', { description: result.error || 'Unable to convert lead' })
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('Error', { description: 'Unexpected error during conversion' })
+    } finally {
+      setConvertingId(null)
+    }
   }
 
   const handleDeleteLead = async (id) => {
@@ -350,9 +376,10 @@ export default function LeadsPage() {
                 return (
                 <TableRow
                   key={lead._id}
-                  className="border-b border-border hover:bg-muted/30 transition-colors"
+                  className="border-b border-border hover:bg-muted/30 transition-colors cursor-pointer"
+                  onClick={() => openViewDialog(lead._id)}
                 >
-                  <TableCell className="py-3 pl-4 pr-0">
+                  <TableCell className="py-3 pl-4 pr-0" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedIds.includes(lead._id)}
                       onClick={() => toggleOne(lead._id)}
@@ -420,7 +447,7 @@ export default function LeadsPage() {
                       Last: {lastActiveLabel}
                     </p>
                   </TableCell>
-                  <TableCell className="py-3 pr-4 pl-0">
+                  <TableCell className="py-3 pr-4 pl-0" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
@@ -434,6 +461,14 @@ export default function LeadsPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => openViewDialog(lead._id)}>View</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => openEditDialog(lead._id)}>Edit</DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleConvertToCustomer(lead)}
+                          disabled={!!lead.convertedCustomerID || convertingId === lead._id}
+                          className="flex items-center gap-2"
+                        >
+                          <UserCheck className="h-3.5 w-3.5" />
+                          {lead.convertedCustomerID ? 'Already a Customer' : convertingId === lead._id ? 'Converting…' : 'Convert to Customer'}
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-red-600"
                           onClick={() => handleDeleteLead(lead._id)}

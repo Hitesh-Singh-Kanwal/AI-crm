@@ -504,7 +504,7 @@ export default function PackageEditPage() {
                         <td className="py-2 px-3">
                           <Input
                             placeholder="Service name"
-                            value={svc.serviceName}
+                            value={svc.serviceName ?? ""}
                             onChange={(e) => updateService(idx, 'serviceName', e.target.value)}
                             className="h-8 text-sm w-full"
                           />
@@ -528,7 +528,7 @@ export default function PackageEditPage() {
                         <td className="py-2 px-3">
                           <Input
                             placeholder="Details"
-                            value={svc.serviceDetails}
+                            value={svc.serviceDetails ?? ""}
                             onChange={(e) => updateService(idx, 'serviceDetails', e.target.value)}
                             className="h-8 text-sm w-full"
                           />
@@ -538,7 +538,7 @@ export default function PackageEditPage() {
                             type="number"
                             min="0"
                             placeholder="0"
-                            value={svc.numberOfSessions}
+                            value={svc.numberOfSessions ?? ""}
                             onChange={(e) => updateService(idx, 'numberOfSessions', e.target.value)}
                             className="h-8 text-sm w-full"
                           />
@@ -551,7 +551,7 @@ export default function PackageEditPage() {
                               min="0"
                               step="0.01"
                               placeholder="0.00"
-                              value={svc.pricePerSession}
+                              value={svc.pricePerSession ?? ""}
                               onChange={(e) => updateService(idx, 'pricePerSession', e.target.value)}
                               className="h-8 text-sm pl-5 w-full"
                             />
@@ -564,7 +564,7 @@ export default function PackageEditPage() {
                         </td>
                         <td className="py-2 px-3">
                           <select
-                            value={svc.discountType}
+                            value={svc.discountType ?? "none"}
                             onChange={(e) => updateService(idx, 'discountType', e.target.value)}
                             className="h-8 rounded-md border border-border bg-background text-sm px-2 focus:outline-none focus:ring-2 focus:ring-brand/30 w-full"
                           >
@@ -579,7 +579,7 @@ export default function PackageEditPage() {
                             min="0"
                             step="0.01"
                             placeholder="0"
-                            value={svc.discountAmount}
+                            value={svc.discountAmount ?? ""}
                             disabled={svc.discountType === 'none'}
                             onChange={(e) => updateService(idx, 'discountAmount', e.target.value)}
                             className="h-8 text-sm w-full disabled:opacity-40"

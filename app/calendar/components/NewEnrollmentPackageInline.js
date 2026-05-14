@@ -20,6 +20,8 @@ const BLANK_FORM = {
 export default function NewEnrollmentPackageInline({
   teacherOptions = [],
   packageTemplates = [],
+  /** When set, only package lines whose `serviceCode` is in this set are included. */
+  allowedServiceCodes,
   onCancel,
   onSubmit,
 }) {
@@ -34,13 +36,18 @@ export default function NewEnrollmentPackageInline({
 
   function handlePkgChange(pkgId) {
     const pkg = packageTemplates.find((p) => String(p._id) === String(pkgId));
+    const raw = pkg?.services || [];
+    const filtered =
+      allowedServiceCodes == null
+        ? raw
+        : raw.filter((s) => allowedServiceCodes.has(s.serviceCode));
     setForm((prev) => ({
       ...prev,
       packageID: pkgId,
       discountType: pkg?.discountType || "none",
       discountAmount: pkg?.discountAmount || 0,
       billingType: pkg?.billingType || "one_time",
-      services: (pkg?.services || []).map((s) => ({
+      services: filtered.map((s) => ({
         serviceCode: s.serviceCode || "",
         serviceName: s.serviceName || "",
         color: s.color || "",
