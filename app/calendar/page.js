@@ -290,19 +290,59 @@ function SmallRoundedButton({ children, onClick, active }) {
   );
 }
 
+/** True while a native time input inside `root` is focused (picker UI lives outside the DOM subtree). */
+function isNativeTimePickerActive(rootRef) {
+  const ae = document.activeElement;
+  return (
+    ae instanceof HTMLInputElement &&
+    ae.type === "time" &&
+    Boolean(rootRef.current?.contains(ae))
+  );
+}
+
+/** Close when any scrollable ancestor scrolls (e.g. layout main); keep open if scroll is inside the dropdown root. */
+function useCloseOnOuterScroll(open, setOpen, rootRef) {
+  useEffect(() => {
+    if (!open) return;
+    const onScroll = (e) => {
+      const t = e.target;
+      if (t instanceof Node && rootRef.current?.contains(t)) return;
+      if (isNativeTimePickerActive(rootRef)) return;
+      setOpen(false);
+    };
+    window.addEventListener("scroll", onScroll, true);
+    return () => window.removeEventListener("scroll", onScroll, true);
+  }, [open, setOpen, rootRef]);
+}
+
+/** Like View Options: mousedown outside closes. Skips when native `type="time"` picker is open (clicks hit outside the root). */
+function useCloseOnClickOutside(open, setOpen, rootRef) {
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      const path =
+        typeof e.composedPath === "function" && e.composedPath().length > 0
+          ? e.composedPath()
+          : [e.target];
+      const inside = path.some(
+        (n) => n instanceof Node && rootRef.current && rootRef.current.contains(n),
+      );
+      if (inside) return;
+      if (isNativeTimePickerActive(rootRef)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open, setOpen, rootRef]);
+}
+
 function ViewOptionsDropdown({ compactHours, setCompactHours, hideEmptySlots, setHideEmptySlots, goToToday }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const hasActive = compactHours || hideEmptySlots;
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  useCloseOnOuterScroll(open, setOpen, ref);
+  useCloseOnClickOutside(open, setOpen, ref);
 
   return (
     <div ref={ref} className="relative">
@@ -1334,6 +1374,10 @@ function SlotSizePicker({ value, startMins, onApply }) {
   const [open, setOpen] = useState(false);
   const [startTime, setStartTime] = useState("06:00");
   const [pendingMins, setPendingMins] = useState(value);
+  const rootRef = useRef(null);
+
+  useCloseOnOuterScroll(open, setOpen, rootRef);
+  useCloseOnClickOutside(open, setOpen, rootRef);
 
   useEffect(() => {
     if (!open) return;
@@ -1357,12 +1401,7 @@ function SlotSizePicker({ value, startMins, onApply }) {
   }
 
   return (
-    <div
-      className="relative"
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
-      }}
-    >
+    <div ref={rootRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -1379,10 +1418,7 @@ function SlotSizePicker({ value, startMins, onApply }) {
       </button>
 
       {open && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-border bg-popover shadow-lg p-3 z-50 space-y-3"
-        >
+        <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-border bg-popover shadow-lg p-3 z-50 space-y-3">
           <div>
             <p className="text-[11px] font-semibold text-foreground mb-1.5">Slot Size</p>
             <div className="flex flex-wrap gap-1.5">
@@ -1463,9 +1499,14 @@ const STATUS_DOT = {
 
 function StatusFilterDropdown({ value, onChange }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
   const current = STATUS_FILTER_OPTIONS.find((o) => o.value === value) ?? STATUS_FILTER_OPTIONS[0];
+
+  useCloseOnOuterScroll(open, setOpen, rootRef);
+
   return (
     <div
+      ref={rootRef}
       className="relative"
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
@@ -1606,11 +1647,14 @@ function TeacherFilterDropdown({ instructors, value, onChange }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef(null);
+  const rootRef = useRef(null);
   const current = value ? instructors.find((i) => i.key === value) : null;
 
   const filtered = query.trim()
     ? instructors.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()))
     : instructors;
+
+  useCloseOnOuterScroll(open, setOpen, rootRef);
 
   useEffect(() => {
     if (!open) { setQuery(""); return; }
@@ -1619,6 +1663,7 @@ function TeacherFilterDropdown({ instructors, value, onChange }) {
 
   return (
     <div
+      ref={rootRef}
       className="relative"
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
@@ -1931,9 +1976,13 @@ export default function CalendarPage() {
   }, [viewMode]);
 
   return (
-    <MainLayout title="Calendar" subtitle="">
+    <MainLayout
+      title="Calendar"
+      subtitle=""
+      mainClassName="pt-0 sm:pt-0"
+    >
       <div className="w-full min-h-0">
-        <div className="bg-background rounded-[24px_0px_24px_24px] w-full flex flex-col">
+        <div className="bg-background rounded-[24px_0px_24px_24px] w-full flex flex-col pt-3 sm:pt-4">
           <div className="shrink-0 px-6 py-1.5 flex items-center justify-between gap-3 border-b border-border/50">
             <div className="flex items-center gap-2">
               <ViewOptionsDropdown

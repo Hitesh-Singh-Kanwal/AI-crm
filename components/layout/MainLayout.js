@@ -6,8 +6,9 @@ import { isAuthenticated } from '@/lib/auth'
 import { canAccessRoute, getDefaultRedirect } from '@/lib/permissions'
 import Sidebar from './Sidebar'
 import Header from './Header'
+import { cn } from '@/lib/utils'
 
-export default function MainLayout({ children, title, subtitle }) {
+export default function MainLayout({ children, title, subtitle, mainClassName }) {
   const router = useRouter()
   const pathname = usePathname()
   const [branchVersion, setBranchVersion] = useState(0)
@@ -59,7 +60,10 @@ export default function MainLayout({ children, title, subtitle }) {
           />
         </Suspense>
         <main
-          className="flex-1 min-h-0 overflow-y-auto scrollbar-hide bg-background px-3 py-3 sm:px-4 sm:py-4 lg:px-2"
+          className={cn(
+            'flex-1 min-h-0 overflow-y-auto scrollbar-hide bg-background px-3 py-3 sm:px-4 sm:py-4 lg:px-2',
+            mainClassName,
+          )}
           key={branchVersion}
         >
           {children}
