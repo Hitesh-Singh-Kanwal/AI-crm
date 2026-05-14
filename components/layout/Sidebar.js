@@ -58,6 +58,7 @@ const navItems = [
     children: [
       { name: 'Make Calls', href: '/ai-automation/make-calls' },
       { name: 'AI Calling', href: '/ai-automation/ai-calling' },
+      { name: 'AI Messaging', href: '/ai-automation/ai-messaging' },
       { name: 'Workflows', href: '/ai-automation/workflows' },
       { name: 'AI Calls Data', href: '/ai-automation/ai-calling-data' },
       { name: 'Training', href: '/ai-automation/training' },
