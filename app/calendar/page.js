@@ -1313,18 +1313,14 @@ function TutorDayCalendar({
 
           {nowOffset !== null && (
             <div
-              className="pointer-events-none absolute left-0 right-0 z-30"
+              className="pointer-events-none absolute inset-x-0 z-30 flex items-center gap-1.5 pl-1.5 pr-2"
               style={{ top: nowOffset }}
             >
-              <div className="relative flex items-center">
-                <div className="absolute -left-[86px] flex h-5 w-[86px] items-center justify-end pr-2">
-                  <div className="rounded bg-brand px-1.5 py-0.5 text-[9px] font-bold text-brand-foreground shadow-sm">
-                    {formatTime(now)}
-                  </div>
-                </div>
-                <div className="h-px flex-1 bg-brand" />
-                <div className="h-2 w-2 rounded-full bg-brand" />
+              <div className="shrink-0 rounded bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground shadow-sm whitespace-nowrap">
+                {formatTime(now)}
               </div>
+              <div className="h-px min-w-0 flex-1 bg-brand" />
+              <div className="h-2 w-2 shrink-0 rounded-full bg-brand" />
             </div>
           )}
         </div>

@@ -244,7 +244,6 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
   const isEmails = pathname?.startsWith('/marketing/email-builder')
   const isAICalling = pathname?.startsWith('/ai-automation/ai-calling')
   const isAIMessaging = pathname?.startsWith('/ai-automation/ai-messaging')
-  const isWorkflows = pathname?.startsWith('/ai-automation/workflows')
   const inboxFilter = (isInbox && searchParams?.get('filter')) || 'all'
   const formsView = isForms ? (searchParams?.get('view') || 'templates') : null
   const smsView = isSms ? (searchParams?.get('view') || 'templates') : null
@@ -252,7 +251,6 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
   const aiCallingView = isAICalling ? (searchParams?.get('view') || 'scripts') : null
   const rawMessagingView = searchParams?.get('view')
   const aiMessagingView = isAIMessaging ? (rawMessagingView === 'prompt' ? 'prompt' : 'embeddings') : null
-  const workflowsView = isWorkflows ? (searchParams?.get('view') || 'active') : null
 
   useEffect(() => {
     if (!createEnrollmentOpen) return
@@ -409,13 +407,6 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
     router.push(`/ai-automation/ai-messaging?${params.toString()}`)
   }
 
-  const setWorkflowsView = (value) => {
-    if (!isWorkflows) return
-    const params = new URLSearchParams(searchParams?.toString() || '')
-    params.set('view', value)
-    router.push(`/ai-automation/workflows?${params.toString()}`)
-  }
-
   return (
     <>
     <header className="sticky top-0 z-30 border-b py-3 border-border bg-background">
@@ -570,31 +561,6 @@ export default function Header({ title, subtitle, onMenuClick, mobileMenuOpen = 
                       onClick={() => setAIMessagingView(value)}
                       className={cn(
                         'whitespace-nowrap text-sm font-medium transition-colors duration-200',
-                        isActive ? 'text-[var(--studio-primary)]' : 'text-muted-foreground'
-                      )}
-                    >
-                      {label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          ) : isWorkflows ? (
-            <div className="flex items-center h-[44px]">
-              <div className="flex w-max items-center gap-5 sm:gap-8 rounded-full bg-muted px-4 sm:px-6 py-2">
-                {[
-                  { value: 'active', label: 'Active (3)' },
-                  { value: 'paused', label: 'Paused (1)' },
-                  { value: 'drafts', label: 'Drafts (0)' },
-                  { value: 'analytics', label: 'Analytics' },
-                ].map(({ value, label }) => {
-                  const isActive = workflowsView === value
-                  return (
-                    <button
-                      key={value}
-                      onClick={() => setWorkflowsView(value)}
-                      className={cn(
-                        'text-sm font-medium transition-colors duration-200 whitespace-nowrap',
                         isActive ? 'text-[var(--studio-primary)]' : 'text-muted-foreground'
                       )}
                     >

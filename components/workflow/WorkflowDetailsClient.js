@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -59,7 +60,8 @@ function normalizeWorkflowForPatch(workflow) {
   }
 }
 
-export default function WorkflowDetailsClient({ id }) {
+export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/workflows' }) {
+  const router = useRouter()
   const [workflow, setWorkflow] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -140,7 +142,7 @@ export default function WorkflowDetailsClient({ id }) {
     setDeleting(true)
     const res = await api.delete(`/api/workflow/${id}`)
     if (res?.success) {
-      window.location.href = '/workflow'
+      router.push(listHref)
     } else {
       setError(res?.error || 'Failed to delete workflow.')
       setDeleting(false)
@@ -152,7 +154,7 @@ export default function WorkflowDetailsClient({ id }) {
       <div className="mx-auto w-full max-w-4xl space-y-4">
         <div className="flex items-center justify-between gap-3">
           <Link
-            href="/workflow"
+            href={listHref}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-[13px] font-medium text-foreground hover:bg-muted/40"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -223,7 +225,7 @@ export default function WorkflowDetailsClient({ id }) {
                 <div>
                   <h3 className="text-[18px] font-bold text-foreground">Edit Workflow</h3>
                   <p className="text-[12px] text-muted-foreground">
-                    This will call <span className="font-mono">PATCH /api/workflow/{id}</span>
+                    Update fields below, then save changes.
                   </p>
                 </div>
                 <button
