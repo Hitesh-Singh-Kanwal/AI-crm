@@ -9,9 +9,16 @@ import ContactDetails from '@/app/inbox/components/ContactDetails'
 import NewConversationDialog from '@/app/inbox/components/NewConversationDialog'
 import BatchSendDialog from '@/app/inbox/components/BatchSendDialog'
 import { useInboxHeader } from '@/contexts/InboxHeaderContext'
-import { cn } from '@/lib/utils'
+import { cn, getContactDisplayName } from '@/lib/utils'
 import api from '@/lib/api'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import { useToast } from '@/components/ui/toast'
+import {
+  buildLeadRecipient,
+  buildSendOneEmailPayload,
+  mapEmailHistoryRecord,
+  validateEmailSendInput,
+} from '@/lib/emailSend'
 
 function buildInboxData(smsRecords, emailRecords) {
   const conversations = []
@@ -57,33 +64,27 @@ function buildInboxData(smsRecords, emailRecords) {
 
   for (const rec of emailRecords) {
     const lead = rec.leadID
-    const key = lead?._id ? `lead-${lead._id}` : `email-${String(rec.email).replace(/\W/g, '_')}`
+    const email = rec.to || rec.email || lead?.email || ''
+    const key = lead?._id ? `lead-${lead._id}` : `email-${String(email).replace(/\W/g, '_')}`
     if (!contactGroups[key]) {
       contactGroups[key] = {
         contact: {
-          id: lead?._id || rec.email,
-          name: lead?.name || rec.email,
+          id: lead?._id || email,
+          name: lead?.name || email,
           type: 'Lead',
-          stage: '',
+          stage: lead?.stage || '',
           nextVisit: '',
-          phoneNumber: '',
-          email: rec.email || '',
+          phoneNumber: lead?.phoneNumber || '',
+          email,
         },
         messages: [],
       }
     } else {
-      if (rec.email && !contactGroups[key].contact.email) {
-        contactGroups[key].contact.email = rec.email
+      if (email && !contactGroups[key].contact.email) {
+        contactGroups[key].contact.email = email
       }
     }
-    contactGroups[key].messages.push({
-      id: rec._id,
-      sender: 'You',
-      direction: 'outbound',
-      content: rec.body,
-      timestamp: rec.createdAt,
-      channel: 'Email',
-    })
+    contactGroups[key].messages.push(mapEmailHistoryRecord(rec))
   }
 
   for (const [convId, group] of Object.entries(contactGroups)) {
@@ -91,7 +92,7 @@ function buildInboxData(smsRecords, emailRecords) {
     const latest = sortedMessages[sortedMessages.length - 1]
     conversations.push({
       id: convId,
-      contact: group.contact,
+      contact: { ...group.contact, name: getContactDisplayName(group.contact) },
       lastMessage: latest.content,
       timestamp: latest.timestamp,
       unread: 0,
@@ -114,11 +115,18 @@ function normalizeContactType(type) {
   return type
 }
 
+function mergeThreadByTimestamp(smsMessages = [], emailMessages = []) {
+  return [...smsMessages, ...emailMessages].sort(
+    (a, b) => new Date(a.timestamp) - new Date(b.timestamp),
+  )
+}
+
 function InboxPageContent() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const isTalkToAssistant = pathname === '/inbox/talk-to-assistant'
   const { setInboxTeachersCount } = useInboxHeader()
+  const toast = useToast()
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [showDetails, setShowDetails] = useState(true)
   const [showContactList, setShowContactList] = useState(true)
@@ -133,6 +141,7 @@ function InboxPageContent() {
   const [newConvOpen, setNewConvOpen] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
   const [selectedLeadData, setSelectedLeadData] = useState(null)
+  const [emailSending, setEmailSending] = useState(false)
   const selectedConversationRef = useRef(null)
 
   const upsertConversationAndAppendMessage = useCallback((payload) => {
@@ -146,6 +155,7 @@ function InboxPageContent() {
       sender: 'You',
       direction: 'outbound',
       content,
+      subject: effectiveChannel === 'Email' ? subject : undefined,
       timestamp,
       channel: effectiveChannel,
     }
@@ -185,7 +195,7 @@ function InboxPageContent() {
         convId,
         contact: {
           id: lead._id,
-          name: lead.name,
+          name: getContactDisplayName(lead),
           type: 'Lead',
           stage: '',
           nextVisit: '',
@@ -220,7 +230,15 @@ function InboxPageContent() {
         // messages not loaded yet for non-top leads — undefined signals "not fetched"
         return {
           id: convId,
-          contact: { id: conv.leadID, name: conv.name, type: 'Lead', stage: '', nextVisit: '', phoneNumber: '', email: '' },
+          contact: {
+            id: conv.leadID,
+            name: getContactDisplayName({ name: conv.name, phoneNumber: conv.phoneNumber, email: conv.email }),
+            type: 'Lead',
+            stage: '',
+            nextVisit: '',
+            phoneNumber: conv.phoneNumber || '',
+            email: conv.email || '',
+          },
           lastMessage: conv.lastMessage,
           timestamp: conv.lastMessageAt,
           unread: 0,
@@ -268,7 +286,9 @@ function InboxPageContent() {
   const displayedConversations = useMemo(() => {
     const list = filteredConversations.filter((conv) => {
       const matchesChannel = selectedChannel === 'All' || conv.channel === selectedChannel
-      const matchesSearch = conv.contact.name.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesSearch = getContactDisplayName(conv.contact)
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase())
       const matchesType = contactFilter === 'All' || normalizeContactType(conv.contact.type) === contactFilter
       return matchesChannel && matchesSearch && matchesType
     })
@@ -303,7 +323,27 @@ function InboxPageContent() {
     }
     let cancelled = false
     api.get(`/api/lead/${leadId}`).then((res) => {
-      if (!cancelled) setSelectedLeadData(res.data || null)
+      if (cancelled) return
+      const lead = res.data || null
+      setSelectedLeadData(lead)
+      if (lead?.email || lead?.phoneNumber) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === selectedConversation
+              ? {
+                  ...c,
+                  contact: {
+                    ...c.contact,
+                    email: lead.email || c.contact.email,
+                    phoneNumber: lead.phoneNumber || c.contact.phoneNumber,
+                    stage: lead.stage || c.contact.stage,
+                    name: lead.name || c.contact.name,
+                  },
+                }
+              : c,
+          ),
+        )
+      }
     }).catch(() => {
       if (!cancelled) setSelectedLeadData(null)
     })
@@ -316,6 +356,13 @@ function InboxPageContent() {
     : null
 
   const conversationMessages = selectedConversation ? threadMessages[selectedConversation] || [] : []
+
+  const revertOptimisticMessage = (convId, messageId) => {
+    setThreadMessages((prev) => ({
+      ...prev,
+      [convId]: (prev[convId] || []).filter((m) => m.id !== messageId),
+    }))
+  }
 
   const handleSendMessage = async ({ content, subject, channel, scheduleNow = true, scheduleDate = null }) => {
     const convId = selectedConversationRef.current || selectedConversation
@@ -332,15 +379,32 @@ function InboxPageContent() {
     const fallbackContact = convFromUI?.contact || { id: convId, name: 'New conversation', type: 'Lead' }
     const effectiveChannel = channel || convFromUI?.channel || 'SMS'
 
-    // Optimistic update
+    if (effectiveChannel === 'Email') {
+      const leadRecipient = buildLeadRecipient(fallbackContact, selectedLeadData)
+      const validationError = validateEmailSendInput({
+        lead: leadRecipient,
+        subject,
+        content,
+        scheduleNow,
+        scheduleDate,
+      })
+      if (validationError) {
+        toast.error({ title: 'Cannot send email', message: validationError })
+        return
+      }
+    }
+
+    const messageId = `${Date.now()}`
     const newMessage = {
-      id: `${Date.now()}`,
+      id: messageId,
       sender: 'You',
       direction: 'outbound',
       content: content.trim(),
+      subject: effectiveChannel === 'Email' ? (subject || '').trim() : undefined,
       timestamp: new Date().toISOString(),
       channel: effectiveChannel,
     }
+
     setThreadMessages((prev) => ({
       ...prev,
       [convId]: [...(prev[convId] || []), newMessage],
@@ -360,11 +424,9 @@ function InboxPageContent() {
         ? prev.map((c) => (c.id === convId ? { ...c, ...nextRow } : c))
         : [nextRow, ...prev]
 
-      // Keep newest conversations at the top, like the initial fetch does.
       return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     })
 
-    // Send via Talk to Assistant endpoint or existing scheduler endpoints
     try {
       if (isTalkToAssistant) {
         const assistantResult = await api.post('/api/sms/incoming_sms', {
@@ -415,16 +477,37 @@ function InboxPageContent() {
           scheduleDate,
         })
       } else if (effectiveChannel === 'Email') {
-        await api.post('/api/email/send-one', {
-          lead: { _id: fallbackContact.id, email: fallbackContact.email || fallbackContact.name },
-          subject: subject || '(no subject)',
-          body: content.trim(),
+        setEmailSending(true)
+        const leadRecipient = buildLeadRecipient(fallbackContact, selectedLeadData)
+        const payload = buildSendOneEmailPayload({
+          lead: leadRecipient,
+          subject,
+          content,
           scheduleNow,
           scheduleDate,
+        })
+        const result = await api.post('/api/email/send-one', payload)
+        if (!result.success) {
+          revertOptimisticMessage(convId, messageId)
+          toast.error({
+            title: 'Email not sent',
+            message: result.error || 'Could not schedule email.',
+          })
+          return
+        }
+        toast.success({
+          title: scheduleNow ? 'Email scheduled' : 'Email scheduled for later',
+          message: result.message || 'Email scheduled successfully',
         })
       }
     } catch (e) {
       console.error('Failed to queue message:', e)
+      if (effectiveChannel === 'Email') {
+        revertOptimisticMessage(convId, messageId)
+        toast.error({ title: 'Email not sent', message: 'Something went wrong. Please try again.' })
+      }
+    } finally {
+      if (effectiveChannel === 'Email') setEmailSending(false)
     }
   }
 
@@ -442,7 +525,15 @@ function InboxPageContent() {
       if (prev.find((c) => c.id === convId)) return prev
       return [{
         id: convId,
-        contact: { id: lead._id, name: lead.name, type: 'Lead', stage: '', nextVisit: '', phoneNumber: lead.phoneNumber, email: lead.email },
+        contact: {
+          id: lead._id,
+          name: getContactDisplayName(lead),
+          type: 'Lead',
+          stage: '',
+          nextVisit: '',
+          phoneNumber: lead.phoneNumber,
+          email: lead.email,
+        },
         lastMessage: '',
         timestamp: new Date().toISOString(),
         unread: 0,
@@ -457,6 +548,25 @@ function InboxPageContent() {
     setContactFilter('All')
     setShowContactList(false)
   }
+
+  const fetchLeadEmailHistory = useCallback(async (conversationId) => {
+    const leadID = conversationId.replace('lead-', '')
+    try {
+      const res = await api.get(`/api/emailHistory?leadID=${leadID}&limit=100`)
+      const records = Array.isArray(res.data) ? res.data : []
+      const emailMsgs = records.map(mapEmailHistoryRecord).reverse()
+      setThreadMessages((prev) => {
+        const existing = prev[conversationId] || []
+        const smsOnly = existing.filter((m) => m.channel === 'SMS')
+        return {
+          ...prev,
+          [conversationId]: mergeThreadByTimestamp(smsOnly, emailMsgs),
+        }
+      })
+    } catch (e) {
+      console.error('Failed to load email history:', e)
+    }
+  }, [])
 
   const fetchLeadMessages = useCallback(async (conversationId, page = 1) => {
     const leadID = conversationId.replace('lead-', '')
@@ -473,18 +583,25 @@ function InboxPageContent() {
         timestamp: m.createdAt,
         channel: 'SMS',
       }))
-      setThreadMessages((prev) => ({
-        ...prev,
-        [conversationId]: page === 1 ? mapped : [...mapped, ...(prev[conversationId] || [])],
-      }))
+      setThreadMessages((prev) => {
+        const existingEmail = (prev[conversationId] || []).filter((m) => m.channel === 'Email')
+        const smsSlice = page === 1 ? mapped : [...mapped, ...(prev[conversationId] || []).filter((m) => m.channel === 'SMS')]
+        return {
+          ...prev,
+          [conversationId]: mergeThreadByTimestamp(smsSlice, existingEmail),
+        }
+      })
       setThreadMeta((prev) => ({
         ...prev,
         [conversationId]: { page, hasMore: res.data?.hasMore ?? false, loading: false },
       }))
+      if (page === 1) {
+        fetchLeadEmailHistory(conversationId)
+      }
     } catch {
       setThreadMeta((prev) => ({ ...prev, [conversationId]: { ...prev[conversationId], loading: false } }))
     }
-  }, [conversations])
+  }, [conversations, fetchLeadEmailHistory])
 
   const handleSelectConversation = (conversationId) => {
     setSelectedConversation(conversationId)
@@ -573,6 +690,13 @@ function InboxPageContent() {
             onLoadMore={loadMoreMessages}
             hasMore={threadMeta[selectedConversation]?.hasMore ?? false}
             loadingMore={threadMeta[selectedConversation]?.loading ?? false}
+            leadData={selectedLeadData}
+            emailSending={emailSending}
+            onEmailTabActive={() => {
+              if (selectedConversation?.startsWith('lead-')) {
+                fetchLeadEmailHistory(selectedConversation)
+              }
+            }}
           />
         </div>
 
