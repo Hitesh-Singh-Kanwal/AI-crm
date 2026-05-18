@@ -16,7 +16,12 @@ import { useToast } from '@/components/ui/toast'
 import {
   buildLeadRecipient,
   buildSendOneEmailPayload,
+  dedupeThreadMessages,
+  emailsForConversation,
+  htmlToPlainText,
+  indexEmailHistoryRecords,
   mapEmailHistoryRecord,
+  normalizeEmailAddress,
   validateEmailSendInput,
 } from '@/lib/emailSend'
 
@@ -90,10 +95,14 @@ function buildInboxData(smsRecords, emailRecords) {
   for (const [convId, group] of Object.entries(contactGroups)) {
     const sortedMessages = [...group.messages].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
     const latest = sortedMessages[sortedMessages.length - 1]
+    const lastPreview =
+      latest.channel === 'Email'
+        ? latest.subject || htmlToPlainText(latest.content) || latest.content
+        : latest.content
     conversations.push({
       id: convId,
       contact: { ...group.contact, name: getContactDisplayName(group.contact) },
-      lastMessage: latest.content,
+      lastMessage: lastPreview,
       timestamp: latest.timestamp,
       unread: 0,
       channel: latest.channel,
@@ -248,15 +257,40 @@ function InboxPageContent() {
 
       // Build email conversations from history
       const { conversations: emailConvs, threadMessages: emailThreads } = buildInboxData([], emailRecords)
+      const emailIndex = indexEmailHistoryRecords(emailRecords)
 
-      // Only add email threads for leads that have no SMS conversation
       const smsLeadIds = new Set(smsConversations.map((c) => c.id))
+
+      // Pre-load email history for SMS lead threads (by leadID + matching email address)
+      for (const smsConv of smsConversations) {
+        const emailMsgs = emailsForConversation(
+          smsConv.id,
+          smsConv.contact.email,
+          emailIndex,
+        )
+        if (emailMsgs.length > 0) {
+          threads[smsConv.id] = emailMsgs
+          if (!smsConv.contact.email) {
+            smsConv.contact.email = emailMsgs[emailMsgs.length - 1].recipientEmail || ''
+          }
+        }
+      }
+
+      // Email-only threads (no SMS conversation for that key)
       for (const [key, msgs] of Object.entries(emailThreads)) {
         if (!smsLeadIds.has(key)) threads[key] = msgs
       }
 
-      // Deduplicate by id — SMS entry wins, email fills in missing leads
-      const uniqueEmailConvs = emailConvs.filter((c) => !smsLeadIds.has(c.id))
+      // Deduplicate by id — SMS entry wins; hide email-only row if same address exists on SMS lead
+      const smsEmails = new Set(
+        smsConversations.map((c) => normalizeEmailAddress(c.contact.email)).filter(Boolean),
+      )
+      const uniqueEmailConvs = emailConvs.filter((c) => {
+        if (smsLeadIds.has(c.id)) return false
+        const addr = normalizeEmailAddress(c.contact.email)
+        if (addr && smsEmails.has(addr) && c.id.startsWith('email-')) return false
+        return true
+      })
       const allConversations = [...smsConversations, ...uniqueEmailConvs]
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
 
@@ -549,12 +583,39 @@ function InboxPageContent() {
     setShowContactList(false)
   }
 
-  const fetchLeadEmailHistory = useCallback(async (conversationId) => {
-    const leadID = conversationId.replace('lead-', '')
+  const filterRecordsByRecipient = (records, contactEmail) => {
+    const normalized = normalizeEmailAddress(contactEmail)
+    if (!normalized) return records
+    return records.filter(
+      (r) => normalizeEmailAddress(r.to || r.email || r.leadID?.email) === normalized,
+    )
+  }
+
+  const fetchConversationEmailHistory = useCallback(async (conversationId) => {
+    const conv = conversations.find((c) => c.id === conversationId)
+    const contactEmail = conv?.contact?.email || ''
+
     try {
-      const res = await api.get(`/api/emailHistory?leadID=${leadID}&limit=100`)
-      const records = Array.isArray(res.data) ? res.data : []
-      const emailMsgs = records.map(mapEmailHistoryRecord).reverse()
+      let records = []
+      const allRes = await api.get('/api/emailHistory?limit=200')
+      const allRecords = Array.isArray(allRes.data) ? allRes.data : []
+
+      if (conversationId.startsWith('lead-')) {
+        const leadID = conversationId.replace('lead-', '')
+        const byLeadRes = await api.get(`/api/emailHistory?leadID=${leadID}&limit=200`)
+        const leadRecords = Array.isArray(byLeadRes.data) ? byLeadRes.data : []
+        const byEmail = filterRecordsByRecipient(allRecords, contactEmail)
+        const seen = new Set()
+        records = [...leadRecords, ...byEmail].filter((r) => {
+          if (seen.has(r._id)) return false
+          seen.add(r._id)
+          return true
+        })
+      } else if (conversationId.startsWith('email-') && contactEmail) {
+        records = filterRecordsByRecipient(allRecords, contactEmail)
+      }
+
+      const emailMsgs = records.map(mapEmailHistoryRecord)
       setThreadMessages((prev) => {
         const existing = prev[conversationId] || []
         const smsOnly = existing.filter((m) => m.channel === 'SMS')
@@ -566,7 +627,7 @@ function InboxPageContent() {
     } catch (e) {
       console.error('Failed to load email history:', e)
     }
-  }, [])
+  }, [conversations])
 
   const fetchLeadMessages = useCallback(async (conversationId, page = 1) => {
     const leadID = conversationId.replace('lead-', '')
@@ -596,12 +657,15 @@ function InboxPageContent() {
         [conversationId]: { page, hasMore: res.data?.hasMore ?? false, loading: false },
       }))
       if (page === 1) {
-        fetchLeadEmailHistory(conversationId)
+        fetchConversationEmailHistory(conversationId)
       }
     } catch {
       setThreadMeta((prev) => ({ ...prev, [conversationId]: { ...prev[conversationId], loading: false } }))
+      if (page === 1) {
+        fetchConversationEmailHistory(conversationId)
+      }
     }
-  }, [conversations, fetchLeadEmailHistory])
+  }, [conversations, fetchConversationEmailHistory])
 
   const handleSelectConversation = (conversationId) => {
     setSelectedConversation(conversationId)
@@ -609,6 +673,8 @@ function InboxPageContent() {
     setShowContactList(false)
     if (conversationId.startsWith('lead-')) {
       fetchLeadMessages(conversationId, 1)
+    } else if (conversationId.startsWith('email-')) {
+      fetchConversationEmailHistory(conversationId)
     }
   }
 
@@ -624,8 +690,9 @@ function InboxPageContent() {
       const firstId = displayedConversations[0].id
       setSelectedConversation(firstId)
       if (firstId.startsWith('lead-')) fetchLeadMessages(firstId, 1)
+      else if (firstId.startsWith('email-')) fetchConversationEmailHistory(firstId)
     }
-  }, [displayedConversations, selectedConversation, fetchLeadMessages])
+  }, [displayedConversations, selectedConversation, fetchLeadMessages, fetchConversationEmailHistory])
 
   if (loading) {
     return (
@@ -693,8 +760,11 @@ function InboxPageContent() {
             leadData={selectedLeadData}
             emailSending={emailSending}
             onEmailTabActive={() => {
-              if (selectedConversation?.startsWith('lead-')) {
-                fetchLeadEmailHistory(selectedConversation)
+              if (
+                selectedConversation?.startsWith('lead-') ||
+                selectedConversation?.startsWith('email-')
+              ) {
+                fetchConversationEmailHistory(selectedConversation)
               }
             }}
           />

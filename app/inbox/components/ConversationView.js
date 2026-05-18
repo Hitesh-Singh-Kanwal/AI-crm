@@ -181,17 +181,27 @@ export default function ConversationView({
                           isInbound ? '[&_a]:text-[color:var(--studio-primary)]' : '[&_a]:text-white [&_a]:underline'
                         )}
                       >
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm, remarkBreaks]}
-                          skipHtml
-                          components={{
-                            a: ({ node, ...props }) => (
-                              <a {...props} target="_blank" rel="noreferrer noopener" />
-                            ),
-                          }}
-                        >
-                          {String(message.content || '')}
-                        </ReactMarkdown>
+                        {message.channel === 'Email' && message.contentHtml ? (
+                          <div
+                            className={cn(
+                              'break-words [&_p]:m-0 [&_p+p]:mt-2',
+                              isInbound ? 'text-foreground' : 'text-white',
+                            )}
+                            dangerouslySetInnerHTML={{ __html: message.contentHtml }}
+                          />
+                        ) : (
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkBreaks]}
+                            skipHtml
+                            components={{
+                              a: ({ node, ...props }) => (
+                                <a {...props} target="_blank" rel="noreferrer noopener" />
+                              ),
+                            }}
+                          >
+                            {String(message.content || '')}
+                          </ReactMarkdown>
+                        )}
                       </div>
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">{formatDateTime(message.timestamp)}</div>
@@ -212,27 +222,27 @@ export default function ConversationView({
         })()}
       </div>
 
-      {/* Message Input - no separating line, white input box */}
-      <div className="pt-1 pb-1 px-2 bg-muted/40 border-t border-border">
+      {/* Composer */}
+      <div className="flex-shrink-0">
         {activeTab === 'Call' ? (
-          <p className="text-sm text-muted-foreground text-center py-4">Calls cannot be sent from the inbox.</p>
+          <div className="px-4 py-6 text-center border-t border-border bg-card/80">
+            <p className="text-sm text-muted-foreground">Calls cannot be sent from the inbox.</p>
+          </div>
         ) : activeTab === 'E-mail' || (activeTab === 'All' && conversation.channel === 'Email') ? (
           contactEmail ? (
             <EmailMessageInput
               onSendMessage={onSendMessage}
-              leadPreview={leadPreview}
               sending={emailSending}
             />
           ) : (
-            <p className="text-sm text-destructive text-center py-4">
-              This contact has no email on file. Add an email to send messages.
-            </p>
+            <div className="px-4 py-6 text-center border-t border-border bg-card/80">
+              <p className="text-sm text-destructive">
+                This contact has no email on file. Add an email to send messages.
+              </p>
+            </div>
           )
         ) : (
-          <MessageInput
-            onSendMessage={onSendMessage}
-            channel={activeTab === 'All' ? conversation.channel : activeTab}
-          />
+          <MessageInput onSendMessage={onSendMessage} channel="SMS" />
         )}
       </div>
     </main>
