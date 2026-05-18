@@ -1028,8 +1028,6 @@ const BLANK_ADD_FORM = {
   packageID: "",
   purchaseDate: "",
   services: [],
-  discountType: "none",
-  discountAmount: 0,
   billingType: "one_time",
   billing: {
     method: "cash",
@@ -1127,16 +1125,24 @@ function PackagesTab({ customerID }) {
     setAddForm((f) => ({
       ...f,
       packageID: pkgId,
-      discountType: pkg?.discountType || "none",
-      discountAmount: pkg?.discountAmount || 0,
-      services: (pkg?.services || []).map((s) => ({
-        serviceCode: s.serviceCode || "",
-        serviceName: s.serviceName || "",
-        color: s.color || "",
-        numberOfSessions: s.numberOfSessions || 0,
-        pricePerSession: s.pricePerSession || 0,
-        finalAmount: (s.numberOfSessions || 0) * (s.pricePerSession || 0),
-      })),
+      services: (pkg?.services || []).map((s) => {
+        const gross = (s.numberOfSessions || 0) * (s.pricePerSession || 0);
+        const discountType = s.discountType || "none";
+        const discountAmount = Number(s.discountAmount || 0);
+        let finalAmount = gross;
+        if (discountType === "percentage") finalAmount = Math.max(0, gross - (gross * discountAmount) / 100);
+        else if (discountType === "fixed") finalAmount = Math.max(0, gross - discountAmount);
+        return {
+          serviceCode: s.serviceCode || "",
+          serviceName: s.serviceName || "",
+          color: s.color || "",
+          numberOfSessions: s.numberOfSessions || 0,
+          pricePerSession: s.pricePerSession || 0,
+          discountType,
+          discountAmount,
+          finalAmount: parseFloat(finalAmount.toFixed(2)),
+        };
+      }),
     }));
   }
 
@@ -1145,9 +1151,12 @@ function PackagesTab({ customerID }) {
       const svcs = f.services.map((s, idx) => {
         if (idx !== i) return s;
         const updated = { ...s, [field]: val };
-        const price = Number(updated.pricePerSession) || 0;
-        const sessions = Number(updated.numberOfSessions) || 0;
-        updated.finalAmount = parseFloat((price * sessions).toFixed(2));
+        const gross = (Number(updated.pricePerSession) || 0) * (Number(updated.numberOfSessions) || 0);
+        const discAmt = Number(updated.discountAmount) || 0;
+        let finalAmount = gross;
+        if (updated.discountType === "percentage") finalAmount = Math.max(0, gross - (gross * discAmt) / 100);
+        else if (updated.discountType === "fixed") finalAmount = Math.max(0, gross - discAmt);
+        updated.finalAmount = parseFloat(finalAmount.toFixed(2));
         return updated;
       });
       return { ...f, services: svcs };
@@ -1158,34 +1167,24 @@ function PackagesTab({ customerID }) {
     setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }));
   }
 
-  const rawTotal = addForm.services.reduce(
-    (s, svc) => s + (Number(svc.finalAmount) || 0),
-    0,
-  );
-  const pkgDiscountApplied = (() => {
-    if (addForm.discountType === "percentage")
-      return Math.min(
-        rawTotal,
-        (rawTotal * (Number(addForm.discountAmount) || 0)) / 100,
-      );
-    if (addForm.discountType === "fixed")
-      return Math.min(rawTotal, Number(addForm.discountAmount) || 0);
-    return 0;
-  })();
-  const totalAmount = Math.max(0, rawTotal - pkgDiscountApplied);
+  const totalAmount = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0);
+  const totalDiscount = addForm.services.reduce((s, svc) => {
+    const gross = (Number(svc.pricePerSession) || 0) * (Number(svc.numberOfSessions) || 0);
+    return s + Math.max(0, gross - (Number(svc.finalAmount) || 0));
+  }, 0);
 
   function getInstallments() {
     const { numberOfInstallments, frequency, startDate } = addForm.billing;
     if (!startDate || !numberOfInstallments) return [];
     const n = Number(numberOfInstallments);
     if (!n || n < 1) return [];
-    const baseAmt = parseFloat((rawTotal / n).toFixed(2));
+    const baseAmt = parseFloat((totalAmount / n).toFixed(2));
     const result = [];
     let d = new Date(startDate);
     for (let i = 0; i < n; i++) {
       const isLast = i === n - 1;
       const amount = isLast
-        ? Math.max(0, parseFloat((baseAmt - pkgDiscountApplied).toFixed(2)))
+        ? Math.max(0, parseFloat((totalAmount - baseAmt * (n - 1)).toFixed(2)))
         : baseAmt;
       result.push({
         date: d.toLocaleDateString("en-AU", {
@@ -1224,14 +1223,14 @@ function PackagesTab({ customerID }) {
       customerID,
       packageID: addForm.packageID,
       enrollmentID: addForm.enrollmentID,
-      discountType: addForm.discountType,
-      discountAmount: Number(addForm.discountAmount),
       services: addForm.services.map((s) => ({
         serviceCode: s.serviceCode,
         serviceName: s.serviceName,
         color: s.color,
         numberOfSessions: Number(s.numberOfSessions),
         pricePerSession: Number(s.pricePerSession),
+        discountType: s.discountType || "none",
+        discountAmount: Number(s.discountAmount || 0),
         finalAmount: Number(s.finalAmount),
       })),
       billingType: addForm.billingType,
@@ -1861,17 +1860,8 @@ function PackagesTab({ customerID }) {
                 <table className="w-full text-[12px]">
                   <thead>
                     <tr className="bg-muted/40 border-b border-border">
-                      {[
-                        "Service",
-                        "Color",
-                        "Sessions",
-                        "Price / Session",
-                        "Subtotal",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap"
-                        >
+                      {["Service", "Color", "Sessions", "Price / Session", "Discount", "Total"].map((h) => (
+                        <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap">
                           {h}
                         </th>
                       ))}
@@ -1879,10 +1869,7 @@ function PackagesTab({ customerID }) {
                   </thead>
                   <tbody>
                     {addForm.services.map((svc, i) => (
-                      <tr
-                        key={i}
-                        className={i > 0 ? "border-t border-border" : ""}
-                      >
+                      <tr key={i} className={i > 0 ? "border-t border-border" : ""}>
                         <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">
                           {svc.serviceName}
                         </td>
@@ -1890,9 +1877,7 @@ function PackagesTab({ customerID }) {
                           <input
                             type="color"
                             value={svc.color || "#6366f1"}
-                            onChange={(e) =>
-                              updateSvc(i, "color", e.target.value)
-                            }
+                            onChange={(e) => updateSvc(i, "color", e.target.value)}
                             className="h-7 w-9 rounded border border-border cursor-pointer p-0.5 bg-background"
                           />
                         </td>
@@ -1901,27 +1886,44 @@ function PackagesTab({ customerID }) {
                             type="number"
                             min="0"
                             value={svc.numberOfSessions}
-                            onChange={(e) =>
-                              updateSvc(i, "numberOfSessions", e.target.value)
-                            }
+                            onChange={(e) => updateSvc(i, "numberOfSessions", e.target.value)}
                             className="h-7 w-16 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
                           />
                         </td>
                         <td className="px-3 py-2">
                           <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
-                              $
-                            </span>
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
                             <input
                               type="number"
                               min="0"
                               step="0.01"
                               value={svc.pricePerSession}
-                              onChange={(e) =>
-                                updateSvc(i, "pricePerSession", e.target.value)
-                              }
+                              onChange={(e) => updateSvc(i, "pricePerSession", e.target.value)}
                               className="h-7 w-20 rounded border border-border bg-background pl-5 pr-2 text-[12px] outline-none focus:border-primary"
                             />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={svc.discountType}
+                              onChange={(e) => updateSvc(i, "discountType", e.target.value)}
+                              className="h-7 rounded border border-border bg-background px-1 text-[11px] outline-none focus:border-primary"
+                            >
+                              <option value="none">—</option>
+                              <option value="percentage">%</option>
+                              <option value="fixed">$</option>
+                            </select>
+                            {svc.discountType !== "none" && (
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={svc.discountAmount}
+                                onChange={(e) => updateSvc(i, "discountAmount", e.target.value)}
+                                className="h-7 w-16 rounded border border-border bg-background px-2 text-[11px] outline-none focus:border-primary"
+                              />
+                            )}
                           </div>
                         </td>
                         <td className="px-3 py-2 font-semibold text-foreground whitespace-nowrap">
@@ -1931,76 +1933,18 @@ function PackagesTab({ customerID }) {
                     ))}
                   </tbody>
                   <tfoot>
+                    {totalDiscount > 0 && (
+                      <tr className="border-t border-border bg-muted/20">
+                        <td colSpan={5} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Discount</td>
+                        <td className="px-3 py-2 text-[11px] font-medium text-amber-600">-${totalDiscount.toFixed(2)}</td>
+                      </tr>
+                    )}
                     <tr className="border-t border-border bg-muted/30">
-                      <td
-                        colSpan={4}
-                        className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right"
-                      >
-                        Subtotal
-                      </td>
-                      <td className="px-3 py-2 text-[12px] font-semibold text-foreground">
-                        ${rawTotal.toFixed(2)}
-                      </td>
+                      <td colSpan={5} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Total</td>
+                      <td className="px-3 py-2 text-[12px] font-semibold text-foreground">${totalAmount.toFixed(2)}</td>
                     </tr>
                   </tfoot>
                 </table>
-              </div>
-
-              {/* Package-level discount */}
-              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                  Package Discount
-                </p>
-                <div className="flex items-center gap-3">
-                  <select
-                    value={addForm.discountType}
-                    onChange={(e) =>
-                      setAddForm((f) => ({
-                        ...f,
-                        discountType: e.target.value,
-                        discountAmount: 0,
-                      }))
-                    }
-                    className="h-8 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
-                  >
-                    <option value="none">No discount</option>
-                    <option value="percentage">Percentage (%)</option>
-                    <option value="fixed">Fixed ($)</option>
-                  </select>
-                  {addForm.discountType !== "none" && (
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
-                        {addForm.discountType === "percentage" ? "%" : "$"}
-                      </span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={addForm.discountAmount}
-                        onChange={(e) =>
-                          setAddForm((f) => ({
-                            ...f,
-                            discountAmount: e.target.value,
-                          }))
-                        }
-                        className="h-8 w-24 rounded border border-border bg-background pl-6 pr-2 text-[12px] outline-none focus:border-primary"
-                      />
-                    </div>
-                  )}
-                  {pkgDiscountApplied > 0 && (
-                    <span className="text-[12px] text-amber-600 font-medium ml-auto">
-                      -${pkgDiscountApplied.toFixed(2)}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between border-t border-border pt-2">
-                  <p className="text-[12px] font-medium text-muted-foreground">
-                    Total
-                  </p>
-                  <p className="text-[14px] font-bold text-foreground">
-                    ${totalAmount.toFixed(2)}
-                  </p>
-                </div>
               </div>
 
               <div className="flex justify-between gap-2 pt-1">
@@ -2146,7 +2090,7 @@ function PackagesTab({ customerID }) {
                           className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
                         >
                           <option value="weekly">Weekly</option>
-                          <option value="biweekly">Fortnightly</option>
+                          <option value="biweekly">Biweekly</option>
                           <option value="monthly">Monthly</option>
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -2258,8 +2202,6 @@ const BLANK_ENR_FORM = {
   packageID: "",
   purchaseDate: "",
   services: [],
-  discountType: "none",
-  discountAmount: 0,
   billingType: "one_time",
   billing: {
     method: "cash",
@@ -2375,16 +2317,24 @@ function EnrollmentsTab({ customerID, statusFilter }) {
     setAddForm((f) => ({
       ...f,
       packageID: pkgId,
-      discountType: pkg?.discountType || "none",
-      discountAmount: pkg?.discountAmount || 0,
-      services: (pkg?.services || []).map((s) => ({
-        serviceCode: s.serviceCode || "",
-        serviceName: s.serviceName || "",
-        color: s.color || "",
-        numberOfSessions: s.numberOfSessions || 0,
-        pricePerSession: s.pricePerSession || 0,
-        finalAmount: (s.numberOfSessions || 0) * (s.pricePerSession || 0),
-      })),
+      services: (pkg?.services || []).map((s) => {
+        const gross = (s.numberOfSessions || 0) * (s.pricePerSession || 0);
+        const discountType = s.discountType || "none";
+        const discountAmount = Number(s.discountAmount || 0);
+        let finalAmount = gross;
+        if (discountType === "percentage") finalAmount = Math.max(0, gross - (gross * discountAmount) / 100);
+        else if (discountType === "fixed") finalAmount = Math.max(0, gross - discountAmount);
+        return {
+          serviceCode: s.serviceCode || "",
+          serviceName: s.serviceName || "",
+          color: s.color || "",
+          numberOfSessions: s.numberOfSessions || 0,
+          pricePerSession: s.pricePerSession || 0,
+          discountType,
+          discountAmount,
+          finalAmount: parseFloat(finalAmount.toFixed(2)),
+        };
+      }),
     }));
   }
 
@@ -2393,9 +2343,12 @@ function EnrollmentsTab({ customerID, statusFilter }) {
       const svcs = f.services.map((s, idx) => {
         if (idx !== i) return s;
         const updated = { ...s, [field]: val };
-        const price = Number(updated.pricePerSession) || 0;
-        const sessions = Number(updated.numberOfSessions) || 0;
-        updated.finalAmount = parseFloat((price * sessions).toFixed(2));
+        const gross = (Number(updated.pricePerSession) || 0) * (Number(updated.numberOfSessions) || 0);
+        const discAmt = Number(updated.discountAmount) || 0;
+        let finalAmount = gross;
+        if (updated.discountType === "percentage") finalAmount = Math.max(0, gross - (gross * discAmt) / 100);
+        else if (updated.discountType === "fixed") finalAmount = Math.max(0, gross - discAmt);
+        updated.finalAmount = parseFloat(finalAmount.toFixed(2));
         return updated;
       });
       return { ...f, services: svcs };
@@ -2413,6 +2366,8 @@ function EnrollmentsTab({ customerID, statusFilter }) {
           color: "",
           numberOfSessions: 0,
           pricePerSession: 0,
+          discountType: "none",
+          discountAmount: 0,
           finalAmount: 0,
         },
       ],
@@ -2430,34 +2385,24 @@ function EnrollmentsTab({ customerID, statusFilter }) {
     setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }));
   }
 
-  const enrRawTotal = addForm.services.reduce(
-    (s, svc) => s + (Number(svc.finalAmount) || 0),
-    0,
-  );
-  const enrDiscountApplied = (() => {
-    if (addForm.discountType === "percentage")
-      return Math.min(
-        enrRawTotal,
-        (enrRawTotal * (Number(addForm.discountAmount) || 0)) / 100,
-      );
-    if (addForm.discountType === "fixed")
-      return Math.min(enrRawTotal, Number(addForm.discountAmount) || 0);
-    return 0;
-  })();
-  const enrTotalAmount = Math.max(0, enrRawTotal - enrDiscountApplied);
+  const enrTotalAmount = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0);
+  const enrTotalDiscount = addForm.services.reduce((s, svc) => {
+    const gross = (Number(svc.pricePerSession) || 0) * (Number(svc.numberOfSessions) || 0);
+    return s + Math.max(0, gross - (Number(svc.finalAmount) || 0));
+  }, 0);
 
   function getEnrInstallments() {
     const { numberOfInstallments, frequency, startDate } = addForm.billing;
     if (!startDate || !numberOfInstallments) return [];
     const n = Number(numberOfInstallments);
     if (!n || n < 1) return [];
-    const baseAmt = parseFloat((enrRawTotal / n).toFixed(2));
+    const baseAmt = parseFloat((enrTotalAmount / n).toFixed(2));
     const result = [];
     let d = new Date(startDate);
     for (let i = 0; i < n; i++) {
       const isLast = i === n - 1;
       const amount = isLast
-        ? Math.max(0, parseFloat((baseAmt - enrDiscountApplied).toFixed(2)))
+        ? Math.max(0, parseFloat((enrTotalAmount - baseAmt * (n - 1)).toFixed(2)))
         : baseAmt;
       result.push({
         date: d.toLocaleDateString("en-AU", {
@@ -2530,14 +2475,14 @@ function EnrollmentsTab({ customerID, statusFilter }) {
       customerID,
       packageID: addForm.packageID,
       enrollmentID: targetEnrollmentID,
-      discountType: addForm.discountType,
-      discountAmount: Number(addForm.discountAmount),
       services: addForm.services.map((s) => ({
         serviceCode: s.serviceCode,
         serviceName: s.serviceName,
         color: s.color,
         numberOfSessions: Number(s.numberOfSessions),
         pricePerSession: Number(s.pricePerSession),
+        discountType: s.discountType || "none",
+        discountAmount: Number(s.discountAmount || 0),
         finalAmount: Number(s.finalAmount),
       })),
       billingType: addForm.billingType,
@@ -3021,27 +2966,17 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                                                     ${svcTotal.toFixed(2)}
                                                   </span>
                                                 </div>
-                                                {cp.discountType &&
-                                                  cp.discountType !== "none" &&
-                                                  Number(cp.discountApplied) >
-                                                    0 && (
+                                                {(() => {
+                                                  const svcDiscount = Math.max(0, svcTotal - (Number(svc.finalAmount) || 0));
+                                                  return svcDiscount > 0 ? (
                                                     <div className="flex justify-between items-center gap-4 pt-1 border-t border-border/50">
-                                                      <span className="text-[12px] text-muted-foreground">
-                                                        Discount (
-                                                        {cp.discountType ===
-                                                        "percentage"
-                                                          ? `${cp.discountAmount}%`
-                                                          : `$${Number(cp.discountAmount).toFixed(2)} off`}
-                                                        )
-                                                      </span>
+                                                      <span className="text-[12px] text-muted-foreground">Discount</span>
                                                       <span className="text-[12px] font-semibold text-amber-500">
-                                                        -$
-                                                        {Number(
-                                                          cp.discountApplied,
-                                                        ).toFixed(2)}
+                                                        -${svcDiscount.toFixed(2)}
                                                       </span>
                                                     </div>
-                                                  )}
+                                                  ) : null;
+                                                })()}
                                               </div>
                                             </div>
                                             {/* Sessions */}
@@ -3178,17 +3113,13 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                                     </span>
                                     <span />
                                     <div className="text-right">
-                                      {cp.discountApplied > 0 ? (
+                                      {Number(cp.totalDiscount) > 0 ? (
                                         <>
                                           <span className="text-[11px] text-muted-foreground line-through block">
                                             ${totalServicePrice.toFixed(2)}
                                           </span>
                                           <span className="text-[13px] font-bold text-emerald-600">
-                                            $
-                                            {(
-                                              totalServicePrice -
-                                              Number(cp.discountApplied)
-                                            ).toFixed(2)}
+                                            ${(totalServicePrice - Number(cp.totalDiscount)).toFixed(2)}
                                           </span>
                                         </>
                                       ) : (
@@ -3524,18 +3455,8 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                   <table className="w-full text-[13px]">
                     <thead>
                       <tr className="bg-muted/40 border-b border-border">
-                        {[
-                          "Service",
-                          "Color",
-                          "Sessions",
-                          "Price / Session",
-                          "Subtotal",
-                          "",
-                        ].map((h, i) => (
-                          <th
-                            key={i}
-                            className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground whitespace-nowrap"
-                          >
+                        {["Service", "Color", "Sessions", "Price / Session", "Discount", "Total", ""].map((h, i) => (
+                          <th key={i} className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground whitespace-nowrap">
                             {h}
                           </th>
                         ))}
@@ -3543,17 +3464,12 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                     </thead>
                     <tbody>
                       {addForm.services.map((svc, i) => (
-                        <tr
-                          key={i}
-                          className={i > 0 ? "border-t border-border" : ""}
-                        >
+                        <tr key={i} className={i > 0 ? "border-t border-border" : ""}>
                           <td className="px-4 py-3">
                             <input
                               type="text"
                               value={svc.serviceName}
-                              onChange={(e) =>
-                                updateEnrSvc(i, "serviceName", e.target.value)
-                              }
+                              onChange={(e) => updateEnrSvc(i, "serviceName", e.target.value)}
                               placeholder="Service name"
                               className="h-9 w-48 rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
                             />
@@ -3562,9 +3478,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                             <input
                               type="color"
                               value={svc.color || "#6366f1"}
-                              onChange={(e) =>
-                                updateEnrSvc(i, "color", e.target.value)
-                              }
+                              onChange={(e) => updateEnrSvc(i, "color", e.target.value)}
                               className="h-9 w-10 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
                             />
                           </td>
@@ -3573,35 +3487,44 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                               type="number"
                               min="0"
                               value={svc.numberOfSessions}
-                              onChange={(e) =>
-                                updateEnrSvc(
-                                  i,
-                                  "numberOfSessions",
-                                  e.target.value,
-                                )
-                              }
+                              onChange={(e) => updateEnrSvc(i, "numberOfSessions", e.target.value)}
                               className="h-9 w-20 rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
                             />
                           </td>
                           <td className="px-4 py-3">
                             <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
-                                $
-                              </span>
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">$</span>
                               <input
                                 type="number"
                                 min="0"
                                 step="0.01"
                                 value={svc.pricePerSession}
-                                onChange={(e) =>
-                                  updateEnrSvc(
-                                    i,
-                                    "pricePerSession",
-                                    e.target.value,
-                                  )
-                                }
+                                onChange={(e) => updateEnrSvc(i, "pricePerSession", e.target.value)}
                                 className="h-9 w-24 rounded-lg border border-border bg-background pl-6 pr-3 text-[13px] outline-none focus:border-primary"
                               />
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              <select
+                                value={svc.discountType}
+                                onChange={(e) => updateEnrSvc(i, "discountType", e.target.value)}
+                                className="h-9 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
+                              >
+                                <option value="none">—</option>
+                                <option value="percentage">%</option>
+                                <option value="fixed">$</option>
+                              </select>
+                              {svc.discountType !== "none" && (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={svc.discountAmount}
+                                  onChange={(e) => updateEnrSvc(i, "discountAmount", e.target.value)}
+                                  className="h-9 w-20 rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                                />
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-[14px] font-semibold text-foreground whitespace-nowrap">
@@ -3620,16 +3543,16 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                       ))}
                     </tbody>
                     <tfoot>
+                      {enrTotalDiscount > 0 && (
+                        <tr className="border-t border-border bg-muted/20">
+                          <td colSpan={5} className="px-4 py-2 text-[12px] font-medium text-muted-foreground text-right">Discount</td>
+                          <td className="px-4 py-2 text-[12px] font-medium text-amber-600">-${enrTotalDiscount.toFixed(2)}</td>
+                          <td />
+                        </tr>
+                      )}
                       <tr className="border-t border-border bg-muted/30">
-                        <td
-                          colSpan={4}
-                          className="px-4 py-3 text-[12px] font-medium text-muted-foreground text-right"
-                        >
-                          Subtotal
-                        </td>
-                        <td className="px-4 py-3 text-[14px] font-semibold text-foreground">
-                          ${enrRawTotal.toFixed(2)}
-                        </td>
+                        <td colSpan={5} className="px-4 py-3 text-[12px] font-medium text-muted-foreground text-right">Total</td>
+                        <td className="px-4 py-3 text-[14px] font-semibold text-foreground">${enrTotalAmount.toFixed(2)}</td>
                         <td />
                       </tr>
                     </tfoot>
@@ -3642,65 +3565,6 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                 >
                   <Plus className="h-3.5 w-3.5" /> Add service
                 </button>
-              </div>
-            )}
-
-            {/* ── Discount ── */}
-            {addForm.services.length > 0 && (
-              <div className="rounded-xl border border-border bg-muted/20 p-5 space-y-4">
-                <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">
-                  Package Discount
-                </p>
-                <div className="flex items-center gap-4">
-                  <select
-                    value={addForm.discountType}
-                    onChange={(e) =>
-                      setAddForm((f) => ({
-                        ...f,
-                        discountType: e.target.value,
-                        discountAmount: 0,
-                      }))
-                    }
-                    className="h-10 rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                  >
-                    <option value="none">No discount</option>
-                    <option value="percentage">Percentage (%)</option>
-                    <option value="fixed">Fixed ($)</option>
-                  </select>
-                  {addForm.discountType !== "none" && (
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
-                        {addForm.discountType === "percentage" ? "%" : "$"}
-                      </span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={addForm.discountAmount}
-                        onChange={(e) =>
-                          setAddForm((f) => ({
-                            ...f,
-                            discountAmount: e.target.value,
-                          }))
-                        }
-                        className="h-10 w-28 rounded-lg border border-border bg-background pl-7 pr-3 text-[13px] outline-none focus:border-primary"
-                      />
-                    </div>
-                  )}
-                  {enrDiscountApplied > 0 && (
-                    <span className="text-[13px] text-amber-600 font-medium ml-auto">
-                      -${enrDiscountApplied.toFixed(2)}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between border-t border-border pt-3">
-                  <p className="text-[13px] font-medium text-muted-foreground">
-                    Total
-                  </p>
-                  <p className="text-[18px] font-bold text-foreground">
-                    ${enrTotalAmount.toFixed(2)}
-                  </p>
-                </div>
               </div>
             )}
 
@@ -3805,7 +3669,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                             className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary"
                           >
                             <option value="weekly">Weekly</option>
-                            <option value="biweekly">Fortnightly</option>
+                            <option value="biweekly">Biweekly</option>
                             <option value="monthly">Monthly</option>
                           </select>
                           <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -4843,8 +4707,8 @@ function ContractsTab({ customerID }) {
       <ContractFormSheet open={sheetOpen} onClose={() => setSheetOpen(false)} customerId={customerID} contract={editingContract} onSaved={load} />
 
       {/* View contract dialog */}
-      <Dialog open={Boolean(viewingContract)} onOpenChange={(v) => { if (!v) setViewingContract(null); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={Boolean(viewingContract)} onClose={() => setViewingContract(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" onClose={() => setViewingContract(null)}>
           <DialogHeader>
             <DialogTitle>{viewingContract?.title}</DialogTitle>
           </DialogHeader>
