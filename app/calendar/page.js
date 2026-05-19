@@ -228,18 +228,31 @@ function transformAppointments(appointments, colorMap) {
 
     const serviceCode = appt.calendarServiceID?.serviceCode || "";
 
-    // Find sessions remaining from the first package charge record
+    // Find sessions remaining from the first package/enrollment charge record
     let sessionsRemaining = null;
     let totalSessions = null;
     if (Array.isArray(appt.charges) && appt.charges.length > 0) {
-      const pkgCharge = appt.charges.find((c) => c.method === "package" && c.customerPackageID);
-      if (pkgCharge?.customerPackageID?.services) {
-        const svc = pkgCharge.customerPackageID.services.find(
-          (s) => s.serviceCode === pkgCharge.serviceCode,
-        );
-        if (svc) {
-          sessionsRemaining = svc.sessionsRemaining ?? null;
-          totalSessions = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
+      const pkgCharge = appt.charges.find((c) => c.method === "package");
+      if (pkgCharge) {
+        // Try customerPackageID first
+        if (pkgCharge?.customerPackageID?.services) {
+          const svc = pkgCharge.customerPackageID.services.find(
+            (s) => s.serviceCode === pkgCharge.serviceCode,
+          );
+          if (svc) {
+            sessionsRemaining = svc.sessionsRemaining ?? null;
+            totalSessions = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
+          }
+        }
+        // Fall back to enrollmentID
+        if (sessionsRemaining === null && pkgCharge?.enrollmentID?.package?.services) {
+          const svc = pkgCharge.enrollmentID.package.services.find(
+            (s) => s.serviceCode === pkgCharge.serviceCode,
+          );
+          if (svc) {
+            sessionsRemaining = svc.sessionsRemaining ?? null;
+            totalSessions = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
+          }
         }
       }
     }
@@ -786,6 +799,16 @@ function showEventTooltip(e, props) {
       }
       packageName = cpkg.packageName || "Package";
       if (cpkg.expiryDate) packageExpiry = new Date(cpkg.expiryDate).toLocaleDateString("en-AU");
+    }
+    // Fall back to enrollmentID if customerPackageID didn't resolve sessions
+    if (sessionsRemaining === null && pkgCharge?.enrollmentID?.package?.services) {
+      const svcEntry = pkgCharge.enrollmentID.package.services.find(
+        (s) => s.serviceCode === serviceCode,
+      );
+      if (svcEntry) {
+        sessionsRemaining = svcEntry.sessionsRemaining ?? sessionsRemaining;
+        totalSessions = (svcEntry.sessionsUsed ?? 0) + (svcEntry.sessionsRemaining ?? 0) || totalSessions;
+      }
     }
   }
 
