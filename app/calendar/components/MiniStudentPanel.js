@@ -1091,7 +1091,11 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                       $
                       {serviceCharges
                         .reduce(
-                          (sum, e) => sum + (e.calendarServiceID?.price ?? 0),
+                          (sum, e) =>
+                            sum +
+                            (e.charges ?? [])
+                              .filter((c) => String(c.customerID) === String(customerId))
+                              .reduce((s, c) => s + (c.amount ?? 0), 0),
                           0,
                         )
                         .toFixed(2)}
