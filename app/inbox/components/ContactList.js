@@ -1,7 +1,7 @@
 import { Search, Send, SlidersHorizontal, Users } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { cn, getInitials, formatDateTime } from '@/lib/utils'
+import { cn, getInitials, formatDateTime, getContactDisplayName } from '@/lib/utils'
 
 export default function ContactList({
   conversations,
@@ -101,13 +101,13 @@ export default function ContactList({
                   <div className={cn('w-2.5 h-2.5 rounded-full', conv.unread ? 'bg-[color:var(--studio-primary)]' : 'bg-transparent')} />
                   <Avatar className="h-10 w-10 flex-shrink-0">
                     <AvatarFallback className="bg-[color:var(--studio-primary)] text-white font-semibold">
-                      {getInitials(conv.contact.name)}
+                      {getInitials(getContactDisplayName(conv.contact))}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <p className={cn('text-sm font-medium truncate', isActive ? 'text-[color:var(--studio-primary)]' : 'text-foreground')}>
-                        {conv.contact.name}
+                        {getContactDisplayName(conv.contact)}
                       </p>
                       <span className="text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(conv.timestamp)}</span>
                     </div>

@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Mail, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { getInitials, formatDateTime } from '@/lib/utils'
+import { getInitials, formatDateTime, getContactDisplayName } from '@/lib/utils'
 import MessageInput from './MessageInput'
+import EmailMessageInput from './EmailMessageInput'
 import ConversationChannelTabs from './ConversationChannelTabs'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
@@ -19,11 +20,17 @@ export default function ConversationView({
   onLoadMore,
   hasMore,
   loadingMore,
+  leadData = null,
+  emailSending = false,
+  onEmailTabActive,
 }) {
   const [activeTab, setActiveTab] = useState('All')
   const scrollRef = useRef(null)
   const prevScrollHeightRef = useRef(0)
   const isLoadingMoreRef = useRef(false)
+
+  const leadPreview = leadData || conversation?.contact || null
+  const contactEmail = leadPreview?.email || conversation?.contact?.email || ''
 
   // Reset on conversation change and scroll to bottom
   useEffect(() => {
@@ -33,6 +40,10 @@ export default function ConversationView({
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [conversation?.id])
+
+  useEffect(() => {
+    if (activeTab === 'E-mail') onEmailTabActive?.()
+  }, [activeTab, onEmailTabActive])
 
   // After messages update: scroll to bottom on initial load, restore position on load-more
   useEffect(() => {
@@ -83,13 +94,13 @@ export default function ConversationView({
             <div className="relative">
               <Avatar className="h-10 w-10">
                 <AvatarFallback className="bg-[color:var(--studio-primary)] text-white font-semibold text-sm">
-                  {getInitials(conversation.contact.name)}
+                  {getInitials(getContactDisplayName(conversation.contact))}
                 </AvatarFallback>
               </Avatar>
               <span className="absolute right-0 bottom-0 w-2.5 h-2.5 rounded-full ring-2 ring-card bg-emerald-500 dark:bg-emerald-400" />
             </div>
             <div className="min-w-0">
-              <h4 className="text-sm font-semibold text-foreground truncate">{conversation.contact.name}</h4>
+              <h4 className="text-sm font-semibold text-foreground truncate">{getContactDisplayName(conversation.contact)}</h4>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">{conversation.contact.type}</span>
                 <span className="text-xs text-muted-foreground">•</span>
@@ -157,6 +168,11 @@ export default function ConversationView({
                         isInbound ? 'bg-card border border-border text-foreground' : 'bg-[color:var(--studio-primary)] text-white'
                       )}
                     >
+                      {message.channel === 'Email' && message.subject && (
+                        <p className={cn('text-xs font-semibold mb-1.5', isInbound ? 'text-foreground' : 'text-white/90')}>
+                          {message.subject}
+                        </p>
+                      )}
                       <div
                         className={cn(
                           'text-sm leading-relaxed',
@@ -200,10 +216,22 @@ export default function ConversationView({
       <div className="pt-1 pb-1 px-2 bg-muted/40 border-t border-border">
         {activeTab === 'Call' ? (
           <p className="text-sm text-muted-foreground text-center py-4">Calls cannot be sent from the inbox.</p>
+        ) : activeTab === 'E-mail' || (activeTab === 'All' && conversation.channel === 'Email') ? (
+          contactEmail ? (
+            <EmailMessageInput
+              onSendMessage={onSendMessage}
+              leadPreview={leadPreview}
+              sending={emailSending}
+            />
+          ) : (
+            <p className="text-sm text-destructive text-center py-4">
+              This contact has no email on file. Add an email to send messages.
+            </p>
+          )
         ) : (
           <MessageInput
             onSendMessage={onSendMessage}
-            channel={activeTab === 'All' ? conversation.channel : activeTab === 'E-mail' ? 'Email' : activeTab}
+            channel={activeTab === 'All' ? conversation.channel : activeTab}
           />
         )}
       </div>

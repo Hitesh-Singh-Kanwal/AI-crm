@@ -42,12 +42,29 @@ const FULL_START_HOUR = 6;
 const FULL_END_HOUR = 24;
 const COMPACT_START_HOUR = 9;
 const COMPACT_END_HOUR = 19;
-/** Minimum px per time-slot row (day view + week timeGrid). Keeps gaps readable for 30/60/90 min slots. */
+/** Fixed px height for every time-slot row (day + week), regardless of slot duration (30/45/60/90m). */
 const TIME_SLOT_ROW_MIN_HEIGHT_PX = 60;
-const SLOT_GRID_BASE_MINS = 30;
 const DAY_LEFT_RAIL_WIDTH = 86;
-/** Day-view events size by real duration; only enforce a thin px floor (do not use slot row height — that made 30m lessons fill a 90m row). */
-const MIN_DAY_TIMED_EVENT_HEIGHT_PX = 22;
+/** Fixed display height for all timed booking cards (private + group); fits title, teacher, time, badges. */
+const TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX = 72;
+
+function getEventDurationMins(event) {
+  if (!event?.end || !event?.start) return 0;
+  return Math.max(
+    0,
+    Math.round((new Date(event.end) - new Date(event.start)) / 60000),
+  );
+}
+
+function applyTimedEventHarnessHeight(harness) {
+  if (!harness) return;
+  const h = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
+  const eventEl = harness.querySelector(".fc-event");
+  if (!eventEl) return;
+  eventEl.style.minHeight = `${h}px`;
+  eventEl.style.height = `${h}px`;
+  eventEl.style.maxHeight = `${h}px`;
+}
 
 function addDays(date, days) {
   const next = new Date(date);
@@ -105,6 +122,27 @@ function formatHeaderLabel(date, mode) {
 function snapSlotStartMinutes(startMins, slotMins) {
   const step = Math.max(1, slotMins);
   return Math.floor(Math.max(0, startMins) / step) * step;
+}
+
+/** First slot row at or on/after `targetMins`, stepping from `alignMins` by `stepMins`. */
+function firstSlotOnGridAtOrAfter(targetMins, alignMins, stepMins) {
+  const step = Math.max(1, stepMins);
+  const align = Math.max(0, alignMins);
+  const target = Math.max(0, targetMins);
+  if (target <= align) return align;
+  const delta = target - align;
+  return align + Math.ceil(delta / step) * step;
+}
+
+/** True when a timed event overlaps [rangeStartMins, rangeEndMins) on the same local day. */
+function timedEventOverlapsMinuteRange(event, rangeStartMins, rangeEndMins) {
+  if (!event?.start || !event?.end) return false;
+  const s = new Date(event.start);
+  const en = new Date(event.end);
+  const startMins = s.getHours() * 60 + s.getMinutes();
+  const endMins = en.getHours() * 60 + en.getMinutes();
+  const endDay = en.getDate() !== s.getDate() ? 24 * 60 : endMins;
+  return startMins < rangeEndMins && endDay > rangeStartMins;
 }
 
 /** FullCalendar slotMinTime / slotMaxTime (day boundary clamp). */
@@ -230,6 +268,7 @@ function transformAppointments(appointments, colorMap) {
         sessionsRemaining,
         totalSessions,
         paymentCollected,
+        studentCount: Array.isArray(appt.customerIDs) ? appt.customerIDs.length : 0,
         // Inject effectiveStatus into raw so EventDetailPanel sees the correct status
         raw: { ...appt, effectiveStatus },
       },
@@ -409,6 +448,20 @@ const STATUS_STYLES = {
   no_show_no_charge:  { bg: "bg-orange-100 dark:bg-orange-950/60",text: "text-orange-600 dark:text-orange-400",label: "No Show" },
   no_show_charged:    { bg: "bg-orange-100 dark:bg-orange-950/60",text: "text-orange-700 dark:text-orange-300",label: "No Show – Charged" },
 };
+
+function PaymentStatusBadge({ collected }) {
+  return (
+    <span
+      className={`shrink-0 text-[8px] font-semibold rounded px-1 py-0.5 leading-none ${
+        collected
+          ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+          : "bg-red-500/15 text-red-600 dark:text-red-400"
+      }`}
+    >
+      {collected ? "Paid" : "Unpaid"}
+    </span>
+  );
+}
 
 function TypeBadge({ type }) {
   if (!type) return null;
@@ -813,7 +866,7 @@ function hideEventTooltip() {
   tip.style.display = "none";
 }
 
-/** Same rows as week-view timeGrid events: customer, service—teacher, time, sessions left, Paid/Unpaid, type. */
+/** Timed event card: title/customer, teacher, time, sessions, Paid/Unpaid, group student count. */
 function AppointmentTimedEventRows({ event }) {
   const ep = event.extendedProps || {};
   const {
@@ -825,15 +878,14 @@ function AppointmentTimedEventRows({ event }) {
     sessionsRemaining,
     totalSessions,
     paymentCollected,
+    studentCount: studentCountProp,
   } = ep;
   const cancelled =
     effectiveStatus === "cancelled_no_charge" ||
     effectiveStatus === "cancelled_charged";
 
-  const durationMins =
-    event.end && event.start
-      ? (new Date(event.end) - new Date(event.start)) / 60000
-      : 60;
+  const isGroupClass = eventType === "lesson";
+  const durationMins = getEventDurationMins(event) || 0;
 
   const fmt = (d) =>
     d
@@ -850,14 +902,12 @@ function AppointmentTimedEventRows({ event }) {
     startLabel && endLabel ? `${startLabel} – ${endLabel}` : startLabel;
 
   const durationLabel = (() => {
+    if (!durationMins) return "";
     if (durationMins < 60) return `${Math.round(durationMins)}m`;
     const h = Math.floor(durationMins / 60);
     const m = Math.round(durationMins % 60);
     return m ? `${h}h ${m}m` : `${h}h`;
   })();
-
-  const showTime = durationMins >= 30;
-  const showDetails = durationMins >= 45;
 
   const firstCustomer =
     Array.isArray(customerNames) && customerNames.length > 0
@@ -866,61 +916,58 @@ function AppointmentTimedEventRows({ event }) {
 
   const teacherLine = [serviceCode, tutorName].filter(Boolean).join(" — ");
 
+  const studentCount =
+    studentCountProp ??
+    (Array.isArray(customerNames) ? customerNames.length : 0) ??
+    (Array.isArray(ep.raw?.customerIDs) ? ep.raw.customerIDs.length : 0);
+
   const sessionsLabel =
     sessionsRemaining != null && totalSessions != null
       ? `${sessionsRemaining}/${totalSessions}`
       : null;
 
-  // For group events show the event title; for others show the first customer name
-  const primaryLabel = eventType === "lesson" ? (event.title || null) : firstCustomer;
+  const primaryLabel = isGroupClass
+    ? event.title || "Group class"
+    : firstCustomer;
 
   return (
-    <>
+    <div className="h-full min-h-0 flex flex-col gap-px overflow-hidden">
       {primaryLabel && (
         <div
-          className={`text-[10px] font-bold text-foreground leading-tight truncate shrink-0 ${cancelled ? "line-through" : ""}`}
+          className={`text-[10px] font-bold text-foreground leading-tight truncate shrink-0 ${cancelled ? "line-through text-muted-foreground" : ""}`}
         >
           {primaryLabel}
         </div>
       )}
-      {showTime && teacherLine && (
+      {teacherLine && (
         <div className="text-[9px] text-foreground/80 leading-tight truncate shrink-0 font-medium">
           {teacherLine}
         </div>
       )}
-      {showTime && (timeRange || durationLabel) && (
+      {(timeRange || durationLabel) && (
         <div className="text-[9px] text-muted-foreground leading-tight truncate shrink-0">
           {timeRange}
           {timeRange && durationLabel ? ` (${durationLabel})` : durationLabel}
         </div>
       )}
-      {showDetails && (
-        <div className="flex items-center gap-1.5 mt-auto pb-0.5 shrink-0 flex-wrap">
-          {sessionsLabel && (
-            <span className="text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
-              {sessionsLabel} left
-            </span>
-          )}
-          <span
-            className={`text-[8px] font-semibold rounded px-1 py-0.5 leading-none ${
-              paymentCollected
-                ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
-                : "bg-red-500/15 text-red-600 dark:text-red-400"
-            }`}
-          >
-            {paymentCollected ? "Paid" : "Unpaid"}
+      <div className="flex items-center gap-1 flex-wrap shrink-0 mt-auto min-w-0 pt-px">
+        <PaymentStatusBadge collected={paymentCollected} />
+        {isGroupClass && (
+          <span className="shrink-0 text-[8px] font-semibold text-foreground/80 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
+            {studentCount} student{studentCount === 1 ? "" : "s"}
           </span>
-          <TypeBadge type={eventType} />
-        </div>
-      )}
-      {!showDetails && (
-        <div className="flex items-center gap-1 shrink-0">
-          <TypeBadge type={eventType} />
-        </div>
-      )}
-    </>
+        )}
+        {!isGroupClass && sessionsLabel && (
+          <span className="shrink-0 text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
+            {sessionsLabel} left
+          </span>
+        )}
+        <TypeBadge type={eventType} />
+      </div>
+    </div>
   );
 }
+
 
 function renderEventContent(info) {
   const { effectiveStatus, color } = info.event.extendedProps || {};
@@ -944,7 +991,7 @@ function renderEventContent(info) {
 
   return (
     <div
-      className={`min-h-[100%] w-full overflow-visible rounded-[5px] flex flex-col relative ${cancelled ? "opacity-50" : ""} ${completed ? "opacity-80" : ""}`}
+      className={`h-full min-h-0 w-full overflow-hidden rounded-[5px] flex flex-col relative ${cancelled ? "opacity-50" : ""} ${completed ? "opacity-80" : ""}`}
       style={{
         borderLeft: `3px solid ${accentColor}`,
         backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
@@ -960,7 +1007,7 @@ function renderEventContent(info) {
           </svg>
         </span>
       )}
-      <div className="px-1.5 py-0.5 flex flex-col overflow-visible min-h-full gap-[1px]">
+      <div className="h-full min-h-0 flex flex-col overflow-hidden px-1.5 py-0.5 gap-[1px] box-border">
         <AppointmentTimedEventRows event={info.event} />
       </div>
     </div>
@@ -1043,7 +1090,9 @@ function deriveTutorsFromEvents(events, passedTutors) {
 }
 
 function TutorDayCalendar({
-  endHour,
+  visibleStartMins,
+  visibleEndHour,
+  visibleGridPhaseMins,
   focusDate,
   now,
   dayTimedEvents,
@@ -1055,12 +1104,16 @@ function TutorDayCalendar({
   customSlotMins = 30,
   slotAlignMins = 0,
 }) {
-  /** Same calendar-time density as 30-minute mode: px per minute is constant. */
-  const slotRowHeightPx = Math.max(
-    28,
-    Math.round((TIME_SLOT_ROW_MIN_HEIGHT_PX * customSlotMins) / SLOT_GRID_BASE_MINS),
+  const slotRowHeightPx = TIME_SLOT_ROW_MIN_HEIGHT_PX;
+  const gridPhaseMins =
+    visibleGridPhaseMins != null ? visibleGridPhaseMins : slotAlignMins;
+  const gridStartMins = firstSlotOnGridAtOrAfter(
+    visibleStartMins,
+    gridPhaseMins,
+    customSlotMins,
   );
-  const totalMins = Math.max(0, endHour * 60 - slotAlignMins);
+  const gridEndMins = Math.min(24 * 60, Math.max(0, visibleEndHour) * 60);
+  const totalMins = Math.max(0, gridEndMins - gridStartMins);
   const slotsCount = Math.max(0, Math.floor(totalMins / customSlotMins));
   const dayHeight = Math.max(slotRowHeightPx, slotsCount * slotRowHeightPx);
   /** Push first slot below sticky header overlap (labels use -translate-y-1/2 on the top line). */
@@ -1069,17 +1122,25 @@ function TutorDayCalendar({
 
   const effectiveTutors = tutors.slice(0, 5);
 
+  const visibleDayTimedEvents = useMemo(
+    () =>
+      dayTimedEvents.filter((event) =>
+        timedEventOverlapsMinuteRange(event, gridStartMins, gridEndMins),
+      ),
+    [dayTimedEvents, gridStartMins, gridEndMins],
+  );
+
   const byTutorTimed = useMemo(() => {
     const map = {};
     effectiveTutors.forEach((tutor) => {
-      const filtered = dayTimedEvents.filter((event) => {
+      const filtered = visibleDayTimedEvents.filter((event) => {
         const key = event.extendedProps?.tutorKey || "unknown";
         return key === tutor.key;
       });
       map[tutor.key] = layoutOverlappingEvents(filtered);
     });
     return map;
-  }, [dayTimedEvents, effectiveTutors]);
+  }, [visibleDayTimedEvents, effectiveTutors]);
 
   const byTutorAllDay = useMemo(() => {
     const map = {};
@@ -1108,10 +1169,11 @@ function TutorDayCalendar({
 
   const isToday = isSameDate(focusDate, now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const dayStartMins = slotAlignMins;
+  const dayStartMins = gridStartMins;
   const nowOffset =
-    isToday && nowMinutes >= dayStartMins && nowMinutes <= endHour * 60
-      ? gridPadTop + ((nowMinutes - dayStartMins) / customSlotMins) * slotRowHeightPx
+    isToday && nowMinutes >= gridStartMins && nowMinutes <= gridEndMins
+      ? gridPadTop +
+        ((nowMinutes - gridStartMins) / customSlotMins) * slotRowHeightPx
       : null;
 
   const focusDateLabel = focusDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -1125,8 +1187,9 @@ function TutorDayCalendar({
           </div>
           {effectiveTutors.map((tutor, idx) => {
             const todayCount =
-              (byTutorTimed[tutor.key]?.length ?? 0) +
-              (byTutorAllDay[tutor.key]?.length ?? 0);
+              dayTimedEvents.filter(
+                (e) => (e.extendedProps?.tutorKey || "unknown") === tutor.key,
+              ).length + (byTutorAllDay[tutor.key]?.length ?? 0);
             const weekCount = weekCountByTutor[tutor.key] ?? 0;
             return (
               <div
@@ -1228,7 +1291,7 @@ function TutorDayCalendar({
           {effectiveTutors.map((tutor, colIdx) => (
             <div
               key={`${tutor.key}-day-col`}
-              className="relative flex-1 group/col cursor-pointer"
+              className="relative flex-1 group/col cursor-pointer overflow-hidden"
               style={{
                 height: paddedDayHeight,
                 borderRight:
@@ -1272,21 +1335,14 @@ function TutorDayCalendar({
 
               {(byTutorTimed[tutor.key] || []).map((event) => {
                 const s = new Date(event.start);
-                const e = new Date(event.end);
-                const durationMins = Math.max(
-                  0,
-                  Math.round((e.getTime() - s.getTime()) / 60000),
-                );
-
                 const startMins = s.getHours() * 60 + s.getMinutes();
+                const displayStartMins = Math.max(startMins, gridStartMins);
 
                 const top =
                   gridPadTop +
-                  ((startMins - dayStartMins) / customSlotMins) * slotRowHeightPx;
-                const height = Math.max(
-                  MIN_DAY_TIMED_EVENT_HEIGHT_PX,
-                  (durationMins / customSlotMins) * slotRowHeightPx,
-                );
+                  ((displayStartMins - dayStartMins) / customSlotMins) *
+                    slotRowHeightPx;
+                const height = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
 
                 const widthPercent = 100 / (event.totalLanes || 1);
                 const leftPercent = (event.lane || 0) * widthPercent;
@@ -1770,24 +1826,12 @@ export default function CalendarPage() {
   const [customSlotMins, setCustomSlotMins] = useState(30);
   const [slotAlignMins, setSlotAlignMins] = useState(FULL_START_HOUR * 60);
 
-  const dayEndHour   = compactHours ? COMPACT_END_HOUR   : FULL_END_HOUR;
-
   // slotDuration string for FullCalendar (HH:MM:SS)
   const slotDurationStr = useMemo(() => {
     const h = Math.floor(customSlotMins / 60);
     const m = customSlotMins % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
   }, [customSlotMins]);
-
-  /** Match day view: px per 30 minutes of time is constant at every slot size (week time grid). */
-  const weekSlotLaneMinHeightPx = useMemo(
-    () =>
-      Math.max(
-        28,
-        Math.round((TIME_SLOT_ROW_MIN_HEIGHT_PX * customSlotMins) / SLOT_GRID_BASE_MINS),
-      ),
-    [customSlotMins],
-  );
 
   const rangeStart = useMemo(() => {
     const monthStart = new Date(
@@ -1853,46 +1897,86 @@ export default function CalendarPage() {
 
   const snappedGridStartMins = slotAlignMins;
 
-  // When hideEmptySlots is on, shrink the visible hour range to where events actually are
-  const { effectiveSlotMin, effectiveSlotMax, effectiveSlotMinStr, effectiveSlotMaxStr } = useMemo(() => {
-    if (!hideEmptySlots) {
+  /** Visible time range for day + week grids (Compact / Hide empty). */
+  const visibleWindow = useMemo(() => {
+    const baseStartMins = compactHours
+      ? COMPACT_START_HOUR * 60
+      : snappedGridStartMins;
+    const baseEndHour = compactHours ? COMPACT_END_HOUR : FULL_END_HOUR;
+    const baseEndMins = baseEndHour * 60;
+    const padMins = 60;
+
+    const gridPhaseMins = baseStartMins;
+
+    const finish = (startMins, endHour) => {
+      const clampedStart = Math.max(0, Math.min(startMins, 24 * 60));
+      const clampedEndHour = Math.max(
+        Math.ceil(clampedStart / 60) + 1,
+        Math.min(24, endHour),
+      );
       return {
-        effectiveSlotMin: Math.floor(snappedGridStartMins / 60),
-        effectiveSlotMax: dayEndHour,
-        effectiveSlotMinStr: minutesToFcTimeString(snappedGridStartMins),
-        effectiveSlotMaxStr: `${String(dayEndHour).padStart(2, "0")}:00:00`,
+        visibleStartMins: clampedStart,
+        visibleEndHour: clampedEndHour,
+        visibleGridPhaseMins: gridPhaseMins,
+        effectiveSlotMinStr: minutesToFcTimeString(clampedStart),
+        effectiveSlotMaxStr: minutesToFcTimeString(clampedEndHour * 60),
       };
-    }
-    const weekStart = startOfWeekSunday(focusDate);
-    const weekEnd = addDays(weekStart, 7);
-    const visible = filteredEvents.filter((e) => {
-      const s = new Date(e.start);
-      return !e.allDay && s >= weekStart && s < weekEnd;
-    });
-    if (visible.length === 0) {
-      return {
-        effectiveSlotMin: Math.floor(snappedGridStartMins / 60),
-        effectiveSlotMax: dayEndHour,
-        effectiveSlotMinStr: minutesToFcTimeString(snappedGridStartMins),
-        effectiveSlotMaxStr: `${String(dayEndHour).padStart(2, "0")}:00:00`,
-      };
-    }
-    let minH = 24, maxH = 0;
-    visible.forEach((e) => {
-      const s = new Date(e.start);
-      const end = new Date(e.end);
-      minH = Math.min(minH, s.getHours());
-      maxH = Math.max(maxH, end.getHours() + (end.getMinutes() > 0 ? 1 : 0));
-    });
-    const clampedMinH = Math.max(0, minH - 1);
-    const clampedMaxH = Math.min(24, maxH + 1);
-    return {
-      effectiveSlotMin: clampedMinH,
-      effectiveSlotMax: clampedMaxH,
-      effectiveSlotMinStr: `${String(clampedMinH).padStart(2, "0")}:00:00`,
-      effectiveSlotMaxStr: `${String(clampedMaxH).padStart(2, "0")}:00:00`,
     };
-  }, [hideEmptySlots, filteredEvents, focusDate, dayEndHour, snappedGridStartMins]);
+
+    if (!hideEmptySlots) {
+      return finish(baseStartMins, baseEndHour);
+    }
+
+    const timedForWindow =
+      viewMode === VIEW_MODE.DAY
+        ? filteredEvents.filter(
+            (e) =>
+              !e.allDay && isSameDate(new Date(e.start), focusDate),
+          )
+        : (() => {
+            const weekStart = startOfWeekSunday(focusDate);
+            const weekEnd = addDays(weekStart, 7);
+            return filteredEvents.filter((e) => {
+              const s = new Date(e.start);
+              return !e.allDay && s >= weekStart && s < weekEnd;
+            });
+          })();
+
+    if (timedForWindow.length === 0) {
+      return finish(baseStartMins, baseEndHour);
+    }
+
+    let minMins = 24 * 60;
+    let maxMins = 0;
+    timedForWindow.forEach((e) => {
+      const s = new Date(e.start);
+      const en = new Date(e.end);
+      minMins = Math.min(minMins, s.getHours() * 60 + s.getMinutes());
+      maxMins = Math.max(maxMins, en.getHours() * 60 + en.getMinutes());
+    });
+
+    const paddedStart = Math.max(baseStartMins, minMins - padMins);
+    const paddedEndMins = Math.min(baseEndMins, maxMins + padMins);
+    const snappedStart = firstSlotOnGridAtOrAfter(
+      paddedStart,
+      gridPhaseMins,
+      customSlotMins,
+    );
+    const endHour = Math.min(
+      baseEndHour,
+      Math.max(Math.ceil(snappedStart / 60) + 1, Math.ceil(paddedEndMins / 60)),
+    );
+
+    return finish(snappedStart, endHour);
+  }, [
+    compactHours,
+    hideEmptySlots,
+    filteredEvents,
+    focusDate,
+    viewMode,
+    snappedGridStartMins,
+    customSlotMins,
+  ]);
 
   const dayTimedEvents = useMemo(
     () =>
@@ -2081,8 +2165,10 @@ export default function CalendarPage() {
               <div className="flex-1 min-w-0">
                 {viewMode === VIEW_MODE.DAY ? (
                   <TutorDayCalendar
-                    key={`day-${customSlotMins}-${snappedGridStartMins}-${effectiveSlotMax}`}
-                    endHour={effectiveSlotMax}
+                    key={`day-${customSlotMins}-${snappedGridStartMins}-${visibleWindow.visibleStartMins}-${visibleWindow.visibleEndHour}`}
+                    visibleStartMins={visibleWindow.visibleStartMins}
+                    visibleEndHour={visibleWindow.visibleEndHour}
+                    visibleGridPhaseMins={visibleWindow.visibleGridPhaseMins}
                     focusDate={focusDate}
                     now={now}
                     dayTimedEvents={dayTimedEvents}
@@ -2114,12 +2200,13 @@ export default function CalendarPage() {
                   <div
                     className="rounded-[12px] border border-border bg-background calendar-shell"
                     style={{
-                      "--cal-time-slot-min-height": `${weekSlotLaneMinHeightPx}px`,
+                      "--cal-time-slot-min-height": `${TIME_SLOT_ROW_MIN_HEIGHT_PX}px`,
+                      "--cal-event-min-height": `${TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX}px`,
                     }}
                   >
                     {/* FullCalendar all-day row: was `allDaySlot` (default on); using false hides it */}
                     <FullCalendar
-                      key={`fc-${viewMode}-${customSlotMins}-${snappedGridStartMins}-${effectiveSlotMinStr}-${effectiveSlotMaxStr}`}
+                      key={`fc-${viewMode}-${customSlotMins}-${snappedGridStartMins}-${visibleWindow.effectiveSlotMinStr}-${visibleWindow.effectiveSlotMaxStr}`}
                       ref={calendarRef}
                       plugins={[
                         dayGridPlugin,
@@ -2132,8 +2219,8 @@ export default function CalendarPage() {
                       height="auto"
                       nowIndicator
                       allDaySlot={false}
-                      slotMinTime={effectiveSlotMinStr}
-                      slotMaxTime={effectiveSlotMaxStr}
+                      slotMinTime={visibleWindow.effectiveSlotMinStr}
+                      slotMaxTime={visibleWindow.effectiveSlotMaxStr}
                       slotDuration={slotDurationStr}
                       snapDuration={slotDurationStr}
                       slotLabelInterval={slotDurationStr}
@@ -2146,6 +2233,7 @@ export default function CalendarPage() {
                       stickyHeaderDates
                       dayMaxEvents={false}
                       eventMaxStack={10}
+                      eventMinHeight={TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX}
                       expandRows
                       events={filteredEvents}
                       editable={false}
@@ -2178,6 +2266,18 @@ export default function CalendarPage() {
                         const el = info.el;
                         const harness = el.closest(".fc-timegrid-event-harness") || el.parentElement;
                         const props = info.event.extendedProps || {};
+                        if (
+                          harness &&
+                          info.event.start &&
+                          info.event.end &&
+                          !info.event.allDay
+                        ) {
+                          applyTimedEventHarnessHeight(harness);
+                          const eventType = props.eventType || info.event.extendedProps?.eventType;
+                          if (eventType) {
+                            harness.dataset.eventType = eventType;
+                          }
+                        }
                         el.addEventListener("mouseenter", (e) => {
                           harness.style.zIndex = "100";
                           showEventTooltip(e, props);
@@ -2209,6 +2309,8 @@ export default function CalendarPage() {
                 initialDate={slotSelection?.date}
                 initialTime={slotSelection?.time}
                 initialDuration={customSlotMins}
+                initialSlotAlignMins={snappedGridStartMins}
+                initialDayEndHour={visibleWindow.visibleEndHour}
               />
               <EventDetailPanel
                 open={Boolean(selectedEvent) && !isAppointmentPanelOpen}

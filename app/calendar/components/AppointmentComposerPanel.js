@@ -937,10 +937,52 @@ function formatTime12h(time24) {
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+/**
+ * Same rhythm as the day grid: slotAlign + n × step, skipping overlaps by
+ * resuming at the end of the blocking booking.
+ */
+function enumerateAvailabilitySlotStarts(
+  slotAlignMins,
+  slotStepMins,
+  dayEndMin,
+  busyIntervals = [],
+  bookingDurMins,
+) {
+  const step = Math.max(15, Number(slotStepMins) || 30);
+  const bookingDur = Math.max(
+    15,
+    Number(bookingDurMins) > 0 ? Number(bookingDurMins) : step,
+  );
+  const windowStart = Math.max(0, Number(slotAlignMins) || 0);
+  const windowEnd = Math.min(24 * 60, Number(dayEndMin) || 21 * 60);
+  const busy = [...busyIntervals].sort((a, b) => a.start - b.start);
+
+  let t = windowStart;
+  const starts = [];
+
+  while (t + bookingDur <= windowEnd) {
+    const slotEnd = t + bookingDur;
+    const conflict = busy.find((b) => t < b.end && slotEnd > b.start);
+    if (conflict) {
+      if (conflict.end > t) {
+        t = conflict.end;
+        continue;
+      }
+    }
+    starts.push(t);
+    t += step;
+  }
+
+  return starts;
+}
+
 function AvailabilityPicker({
   instructorId,
   date,
   duration,
+  slotStepMins,
+  slotAlignMins,
+  dayEndMin,
   selectedSlots,
   onToggleSlot,
 }) {
@@ -996,20 +1038,23 @@ function AvailabilityPicker({
   }, [instructorId, date]);
 
   const availableSlots = useMemo(() => {
-    const dur = Math.max(15, Number(duration) || 50);
-    const DAY_START_MIN = 7 * 60;
-    const DAY_END_MIN = 21 * 60;
-    /** Offer every aligned start within the day; step finer than lesson length */
-    const GRID_STEP_MIN = 15;
+    const bookingDur = Math.max(15, Number(duration) || 50);
+    const stepMins = Math.max(
+      15,
+      Number(slotStepMins) > 0 ? Number(slotStepMins) : bookingDur,
+    );
+    const windowEnd = Number(dayEndMin) > 0 ? Number(dayEndMin) : 21 * 60;
+    const gridStarts = enumerateAvailabilitySlotStarts(
+      slotAlignMins,
+      stepMins,
+      windowEnd,
+      busyIntervalsMin,
+      bookingDur,
+    );
 
     const slots = [];
-    for (let t = DAY_START_MIN; t + dur <= DAY_END_MIN; t += GRID_STEP_MIN) {
-      const slotEnd = t + dur;
-      if (
-        busyIntervalsMin.some((b) => t < b.end && slotEnd > b.start)
-      ) {
-        continue;
-      }
+    for (const t of gridStarts) {
+      const slotEnd = t + bookingDur;
       const hh = String(Math.floor(t / 60)).padStart(2, "0");
       const mm = String(t % 60).padStart(2, "0");
       const eh = String(Math.floor(slotEnd / 60)).padStart(2, "0");
@@ -1017,7 +1062,7 @@ function AvailabilityPicker({
       slots.push({ start: `${hh}:${mm}`, end: `${eh}:${em}` });
     }
     return slots;
-  }, [busyIntervalsMin, duration]);
+  }, [busyIntervalsMin, duration, slotStepMins, slotAlignMins, dayEndMin]);
 
   if (!instructorId || !date) return null;
 
@@ -1025,7 +1070,10 @@ function AvailabilityPicker({
     <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-          Availability · {duration ? `${duration} min` : "50 min"}
+          Availability · every {slotStepMins || duration || 50} min
+          {duration && slotStepMins && Number(duration) !== Number(slotStepMins)
+            ? ` · ${duration} min booking`
+            : ""}
           {selectedSlots?.length > 1 && (
             <span className="ml-1.5 text-brand">
               ({selectedSlots.length} selected)
@@ -1193,6 +1241,9 @@ function WhenSection({
   setField,
   withRecurrence = false,
   lessonDuration,
+  slotStepMins,
+  slotAlignMins,
+  dayEndMin,
 }) {
   function handleToggleSlot(slot) {
     const current = form.selected_time_slots || [];
@@ -1221,6 +1272,9 @@ function WhenSection({
         instructorId={form.instructor_id}
         date={form.date}
         duration={lessonDuration}
+        slotStepMins={slotStepMins}
+        slotAlignMins={slotAlignMins}
+        dayEndMin={dayEndMin}
         selectedSlots={form.selected_time_slots}
         onToggleSlot={handleToggleSlot}
       />
@@ -1350,6 +1404,9 @@ function AppointmentFields({
   instructorOptions,
   customerOptions,
   lessonDuration,
+  slotStepMins,
+  slotAlignMins,
+  dayEndMin,
   suggestedAmount,
   onNewCustomer,
   onOpenEnrollmentWizard,
@@ -1373,6 +1430,9 @@ function AppointmentFields({
         setField={setField}
         withRecurrence
         lessonDuration={lessonDuration}
+        slotStepMins={slotStepMins}
+        slotAlignMins={slotAlignMins}
+        dayEndMin={dayEndMin}
       />
       <div className="space-y-3">
         <SectionDivider label="Notes & Payment" />
@@ -1393,6 +1453,9 @@ function GroupClassFields({
   instructorOptions,
   schedulingCodeOptions,
   lessonDuration,
+  slotStepMins,
+  slotAlignMins,
+  dayEndMin,
 }) {
   return (
     <div className="space-y-4">
@@ -1430,6 +1493,9 @@ function GroupClassFields({
         setField={setField}
         withRecurrence
         lessonDuration={lessonDuration}
+        slotStepMins={slotStepMins}
+        slotAlignMins={slotAlignMins}
+        dayEndMin={dayEndMin}
       />
       <div className="space-y-3">
         <SectionDivider label="Notes" />
@@ -1451,6 +1517,9 @@ function ToDoFields({
   lessonOptions,
   lessonMap,
   lessonDuration,
+  slotStepMins,
+  slotAlignMins,
+  dayEndMin,
 }) {
   function handleLessonChange(id) {
     setField("lesson_id", id);
@@ -1496,6 +1565,9 @@ function ToDoFields({
         setField={setField}
         withRecurrence
         lessonDuration={lessonDuration}
+        slotStepMins={slotStepMins}
+        slotAlignMins={slotAlignMins}
+        dayEndMin={dayEndMin}
       />
       <div className="space-y-3">
         <SectionDivider label="Notes" />
@@ -1514,6 +1586,8 @@ export default function AppointmentComposerPanel({
   initialDate,
   initialTime,
   initialDuration,
+  initialSlotAlignMins,
+  initialDayEndHour,
 }) {
   const [activeTab, setActiveTab] = useState("Appointment");
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -1914,6 +1988,11 @@ export default function AppointmentComposerPanel({
     [tabCatalogServices],
   );
 
+  const slotStepMins = initialDuration || 30;
+  const slotAlignMins =
+    initialSlotAlignMins != null ? initialSlotAlignMins : 6 * 60;
+  const dayEndMin = (initialDayEndHour ?? 21) * 60;
+
   const sharedProps = {
     form,
     setField,
@@ -1924,6 +2003,9 @@ export default function AppointmentComposerPanel({
     allServices: tabCatalogServices,
     schedulingCodeOptions,
     lessonDuration,
+    slotStepMins,
+    slotAlignMins,
+    dayEndMin,
     suggestedAmount,
     packageOptions,
     packageTemplates,
@@ -1963,6 +2045,9 @@ export default function AppointmentComposerPanel({
           instructorOptions={instructorOptions}
           schedulingCodeOptions={schedulingCodeOptions}
           lessonDuration={lessonDuration}
+          slotStepMins={slotStepMins}
+          slotAlignMins={slotAlignMins}
+          dayEndMin={dayEndMin}
         />
       );
     if (activeTab === "To Do")
@@ -1974,6 +2059,9 @@ export default function AppointmentComposerPanel({
           lessonOptions={lessonOptions}
           lessonMap={lessonMap}
           lessonDuration={lessonDuration}
+          slotStepMins={slotStepMins}
+          slotAlignMins={slotAlignMins}
+          dayEndMin={dayEndMin}
         />
       );
     return null;
