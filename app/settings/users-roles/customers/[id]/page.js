@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import api from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
@@ -2211,7 +2212,7 @@ const BLANK_ENR_FORM = {
   },
 };
 
-function EnrollmentsTab({ customerID, statusFilter }) {
+function EnrollmentsTab({ customerID, customerName = "", statusFilter }) {
   const [enrollments, setEnrollments] = useState([]);
   const [detailsMap, setDetailsMap] = useState({});
   const [plansMap, setPlansMap] = useState({});
@@ -2219,10 +2220,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
   const [loading, setLoading] = useState(true);
   const [selectedEnrId, setSelectedEnrId] = useState(null);
 
-  const [createLabel, setCreateLabel] = useState("");
-  const [createTeacherID, setCreateTeacherID] = useState("");
-  const [teachers, setTeachers] = useState([]);
-  const [creating, setCreating] = useState(false);
+  const [createEnrollmentOpen, setCreateEnrollmentOpen] = useState(false);
 
   const [addTargetEnrollment, setAddTargetEnrollment] = useState(null);
   const [addStep, setAddStep] = useState(1);
@@ -2249,13 +2247,11 @@ function EnrollmentsTab({ customerID, statusFilter }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [enrRes, allRes, teachersRes] = await Promise.all([
+    const [enrRes, allRes] = await Promise.all([
       api.get(`/api/enrollment?customerID=${customerID}`),
       api.get("/api/package?limit=200&isActive=true"),
-      api.get("/api/teacher?limit=200&status=active"),
     ]);
     if (allRes.success) setAllPkgs(allRes.data || []);
-    if (teachersRes.success) setTeachers(teachersRes.data || []);
     if (enrRes.success) {
       const list = enrRes.data || [];
       setEnrollments(list);
@@ -2296,12 +2292,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
   }, [load]);
 
   function openCreateAndAddFlow() {
-    setCreateLabel("");
-    setCreateTeacherID("");
-    setAddForm(BLANK_ENR_FORM);
-    setSelectedPkg(null);
-    setAddStep(1);
-    setAddTargetEnrollment({ isNew: true });
+    setCreateEnrollmentOpen(true);
   }
 
   function openAddPackage(enrollment) {
@@ -2425,7 +2416,6 @@ function EnrollmentsTab({ customerID, statusFilter }) {
   }
 
   async function handleEnrAdd() {
-    const isCreateAndAddFlow = Boolean(addTargetEnrollment?.isNew);
     if (addForm.billingType === "payment_plan") {
       const { numberOfInstallments, frequency, startDate } = addForm.billing;
       if (!numberOfInstallments || !frequency || !startDate) {
@@ -2433,43 +2423,10 @@ function EnrollmentsTab({ customerID, statusFilter }) {
         return;
       }
     }
-    if (isCreateAndAddFlow && !createTeacherID) {
-      toast.error("Please select a teacher.");
-      return;
-    }
     setAdding(true);
-    let targetEnrollmentID = addTargetEnrollment?._id
+    const targetEnrollmentID = addTargetEnrollment?._id
       ? String(addTargetEnrollment._id)
       : "";
-    if (isCreateAndAddFlow) {
-      setCreating(true);
-      const enrRes = await api.post("/api/enrollment", {
-        customerID,
-        label: createLabel.trim() || undefined,
-        teacherID: createTeacherID || undefined,
-      });
-      setCreating(false);
-      if (!enrRes.success) {
-        toast.error(enrRes.error || "Failed to create enrollment.");
-        setAdding(false);
-        return;
-      }
-      const createdPayload =
-        enrRes?.data && typeof enrRes.data === "object"
-          ? (enrRes.data.enrollment ?? enrRes.data)
-          : null;
-      const createdEnrollmentId =
-        createdPayload?._id ??
-        enrRes?.data?._id ??
-        createdPayload?.enrollmentID ??
-        null;
-      if (!createdEnrollmentId) {
-        toast.error("Enrollment created but no enrollment ID returned.");
-        setAdding(false);
-        return;
-      }
-      targetEnrollmentID = String(createdEnrollmentId);
-    }
 
     const payload = {
       customerID,
@@ -2502,14 +2459,8 @@ function EnrollmentsTab({ customerID, statusFilter }) {
     if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate;
     const res = await api.post("/api/customer-package/add", payload);
     if (res.success) {
-      toast.success(
-        isCreateAndAddFlow
-          ? "Enrollment and package created."
-          : "Package added.",
-      );
+      toast.success("Package added.");
       setAddTargetEnrollment(null);
-      setCreateLabel("");
-      setCreateTeacherID("");
       load();
     } else {
       toast.error(res.error || "Failed to add package.");
@@ -2539,7 +2490,6 @@ function EnrollmentsTab({ customerID, statusFilter }) {
     );
 
   const enrInstallments = getEnrInstallments();
-  const isCreateAndAddFlow = Boolean(addTargetEnrollment?.isNew);
 
   const filteredEnrollments = statusFilter
     ? enrollments.filter((e) => {
@@ -3359,61 +3309,33 @@ function EnrollmentsTab({ customerID, statusFilter }) {
         </DialogContent>
       </Dialog>
 
-      {/* New Enrollment / Add Package — side panel */}
+      <CreateEnrollmentSheet
+        open={createEnrollmentOpen}
+        onClose={() => setCreateEnrollmentOpen(false)}
+        customerID={customerID}
+        customerName={customerName}
+        onSuccess={() => {
+          toast.success("Enrollment and package created.");
+          load();
+        }}
+      />
+
+      {/* Add Package — side panel */}
       <Sheet
         open={Boolean(addTargetEnrollment)}
-        onClose={() => { setAddTargetEnrollment(null); setCreateLabel(""); setCreateTeacherID(""); }}
-        width="680px"
+        onClose={() => setAddTargetEnrollment(null)}
+        width="640px"
       >
         <SheetContent
-          onClose={() => { setAddTargetEnrollment(null); setCreateLabel(""); setCreateTeacherID(""); }}
+          onClose={() => setAddTargetEnrollment(null)}
           className="flex flex-col overflow-hidden p-0"
         >
           <div className="shrink-0 border-b border-border px-6 py-5">
-            <h2 className="text-[17px] font-bold text-foreground">
-              {isCreateAndAddFlow ? "New Enrollment & Package" : "Add Package"}
-            </h2>
+            <h2 className="text-[17px] font-bold text-foreground">Add Package</h2>
           </div>
           <div className="flex-1 overflow-y-auto px-6 py-5">
 
           <div className="space-y-6 mt-3">
-            {/* ── Enrollment details (new enrollment flow only) ── */}
-            {isCreateAndAddFlow && (
-              <div className="rounded-xl border border-border bg-muted/20 p-5 space-y-4">
-                <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">
-                  Enrollment Details
-                </p>
-                <div className="grid grid-cols-2 gap-5">
-                  <FormField label="Teacher" required>
-                    <div className="relative">
-                      <select
-                        value={createTeacherID}
-                        onChange={(e) => setCreateTeacherID(e.target.value)}
-                        className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary"
-                      >
-                        <option value="">Select teacher…</option>
-                        {teachers.map((t) => (
-                          <option key={t._id} value={t._id}>
-                            {t.name || t.email}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    </div>
-                  </FormField>
-                  <FormField label="Label (optional)">
-                    <input
-                      type="text"
-                      placeholder="e.g. Term 1 2026, Trial…"
-                      value={createLabel}
-                      onChange={(e) => setCreateLabel(e.target.value)}
-                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[14px] outline-none focus:border-primary"
-                    />
-                  </FormField>
-                </div>
-              </div>
-            )}
-
             {/* ── Package ── */}
             <div className="grid grid-cols-2 gap-5">
               <FormField label="Package" required>
@@ -3692,7 +3614,7 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                           <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
                             Schedule Preview
                           </p>
-                          {enrDiscountApplied > 0 && (
+                          {enrTotalDiscount > 0 && (
                             <span className="text-[12px] text-amber-600">
                               Discount on last payment
                             </span>
@@ -3706,9 +3628,9 @@ function EnrollmentsTab({ customerID, statusFilter }) {
                             >
                               <span className="text-[12px] text-muted-foreground">
                                 Payment {i + 1} · {inst.date}
-                                {inst.isLast && enrDiscountApplied > 0 && (
+                                {inst.isLast && enrTotalDiscount > 0 && (
                                   <span className="ml-1 text-amber-600">
-                                    (-${enrDiscountApplied.toFixed(2)})
+                                    (-${enrTotalDiscount.toFixed(2)})
                                   </span>
                                 )}
                               </span>
@@ -3755,18 +3677,10 @@ function EnrollmentsTab({ customerID, statusFilter }) {
               </Button>
               <Button
                 type="button"
-                disabled={adding || (isCreateAndAddFlow && !createTeacherID)}
+                disabled={adding}
                 onClick={handleEnrAdd}
               >
-                {adding || creating
-                  ? isCreateAndAddFlow
-                    ? "Creating…"
-                    : "Adding…"
-                  : isCreateAndAddFlow
-                    ? addForm.packageID
-                      ? "Create Enrollment & Package"
-                      : "Create Enrollment"
-                    : "Add Package"}
+                {adding ? "Adding…" : "Add Package"}
               </Button>
             </div>
           </div>
@@ -4331,11 +4245,16 @@ export default function CustomerDetailPage() {
             />
           )}
           {tab === "active-enrollments" && (
-            <EnrollmentsTab customerID={customer._id} statusFilter="active" />
+            <EnrollmentsTab
+              customerID={customer._id}
+              customerName={customer.name || customer.email || ""}
+              statusFilter="active"
+            />
           )}
           {tab === "completed-enrollments" && (
             <EnrollmentsTab
               customerID={customer._id}
+              customerName={customer.name || customer.email || ""}
               statusFilter="completed"
             />
           )}
