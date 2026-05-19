@@ -75,7 +75,7 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) })
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
-      const result = await api.get(`/api/emailBuilder?${params.toString()}`)
+      const result = await api.get(`/api/email/builder?${params.toString()}`)
       if (result.success) {
         const { list, total, totalPages: totalPagesFromApi } = extractEmailTemplatesPayload(result)
         const nextTotalPages = Math.max(1, totalPagesFromApi ?? Math.ceil(total / PAGE_SIZE))
@@ -116,7 +116,7 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
     if (!confirm(`Delete email template "${tpl.subject}"? This cannot be undone.`)) return
     setDeletingId(tpl._id)
     try {
-      const result = await api.delete(`/api/emailBuilder/${tpl._id}`)
+      const result = await api.delete(`/api/email/builder/${tpl._id}`)
       if (!result.success) {
         toast.error({ title: 'Delete failed', message: result.error || 'Could not delete email.' })
         return
@@ -138,7 +138,7 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
     if (!confirm(`Delete ${selectedIds.length} email templates? This cannot be undone.`)) return
     setBulkDeleting(true)
     try {
-      const result = await api.request('/api/emailBuilder/', {
+      const result = await api.request('/api/email/builder/', {
         method: 'DELETE',
         body: JSON.stringify({ ids: selectedIds }),
       })
@@ -165,7 +165,7 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
     const next = !tpl.isFavorite
     setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, isFavorite: next } : t))
     try {
-      const result = await api.patch(`/api/emailBuilder/${tpl._id}`, { isFavorite: next })
+      const result = await api.patch(`/api/email/builder/${tpl._id}`, { isFavorite: next })
       if (!result.success) setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, isFavorite: !next } : t))
     } catch (e) {
       setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, isFavorite: !next } : t))
@@ -180,7 +180,7 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
     const next = tpl.status === 'active' ? 'inactive' : 'active'
     setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, status: next } : t))
     try {
-      const result = await api.patch(`/api/emailBuilder/${tpl._id}`, { status: next })
+      const result = await api.patch(`/api/email/builder/${tpl._id}`, { status: next })
       if (!result.success) setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, status: tpl.status } : t))
     } catch (e) {
       setTemplates((prev) => prev.map((t) => t._id === tpl._id ? { ...t, status: tpl.status } : t))

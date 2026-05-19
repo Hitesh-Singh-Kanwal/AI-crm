@@ -22,7 +22,7 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
     setLoading(true)
     setError(null)
     try {
-      const result = await api.get(`/api/emailBuilder/${templateId}`)
+      const result = await api.get(`/api/email/builder/${templateId}`)
       if (!result.success) {
         setError(result.error || 'Could not load template')
         return
@@ -50,7 +50,7 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
     if (!templateId) return
     setSaving(true)
     try {
-      const result = await api.patch(`/api/emailBuilder/${templateId}`, { body: String(body || '') })
+      const result = await api.patch(`/api/email/builder/${templateId}`, { body: String(body || '') })
       if (!result.success) {
         toast.error({ title: 'Update failed', message: result.error || 'Could not update email.' })
         return

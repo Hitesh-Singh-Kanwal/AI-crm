@@ -19,7 +19,7 @@ export default function EmailTemplatePreviewDialog({ open, onClose, templateId }
     setLoading(true)
     setError(null)
     try {
-      const result = await api.get(`/api/emailBuilder/${templateId}`)
+      const result = await api.get(`/api/email/builder/${templateId}`)
       if (!result.success) {
         setError(result.error || 'Could not load template')
         return

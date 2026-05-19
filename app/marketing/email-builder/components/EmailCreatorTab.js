@@ -39,7 +39,7 @@ export default function EmailCreatorTab({ onCreated }) {
         body: String(body || ''),
         htmlBody: String(htmlBody || ''),
       }
-      const result = await api.post('/api/emailBuilder/', payload)
+      const result = await api.post('/api/email/builder/', payload)
       if (!result.success) {
         toast.error({ title: 'Create failed', message: result.error || 'Could not create email.' })
         return

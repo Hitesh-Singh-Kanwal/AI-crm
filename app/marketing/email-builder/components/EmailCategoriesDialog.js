@@ -30,7 +30,7 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
     setLoading(true)
     setError(null)
     try {
-      const result = await api.get('/api/emailBuilder/category')
+      const result = await api.get('/api/email/builder/category')
       const list = result.data?.categories ?? result.data
       if (result.success && Array.isArray(list)) {
         setCategories(list)
@@ -54,7 +54,7 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
     if (!name) return
     setSaving(true)
     try {
-      const result = await api.post('/api/emailBuilder/category', { name })
+      const result = await api.post('/api/email/builder/category', { name })
       if (!result.success) {
         toast.error({ title: 'Create failed', message: result.error || 'Could not create category.' })
         return
@@ -86,7 +86,7 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
     if (!editingId || !name) return
     setSaving(true)
     try {
-      const result = await api.patch(`/api/emailBuilder/category/${editingId}`, { name })
+      const result = await api.patch(`/api/email/builder/category/${editingId}`, { name })
       if (!result.success) {
         toast.error({ title: 'Update failed', message: result.error || 'Could not update category.' })
         return
@@ -108,7 +108,7 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
     if (!confirm(`Delete category "${cat.name}"? This may affect templates.`)) return
     setDeletingId(cat._id)
     try {
-      const result = await api.delete(`/api/emailBuilder/category/${cat._id}`)
+      const result = await api.delete(`/api/email/builder/category/${cat._id}`)
       if (!result.success) {
         toast.error({ title: 'Delete failed', message: result.error || 'Could not delete category.' })
         return

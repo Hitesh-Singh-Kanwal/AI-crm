@@ -285,7 +285,7 @@ export default function EmailBuilderTab({ onCreated }) {
   )
 
   const fetchCategories = useCallback(async () => {
-    const result = await api.get('/api/emailBuilder/category')
+    const result = await api.get('/api/email/builder/category')
     const list = result.data?.categories ?? result.data
     if (result.success && Array.isArray(list)) {
       setCategories(list)
@@ -389,7 +389,7 @@ export default function EmailBuilderTab({ onCreated }) {
         body: templateDescription.trim(),
         htmlBody,
       }
-      const result = await api.post('/api/emailBuilder/', payload)
+      const result = await api.post('/api/email/builder/', payload)
       if (!result.success) {
         toast.error({ title: 'Create failed', message: result.error || 'Could not create email template.' })
         return
