@@ -474,6 +474,18 @@ export default function PackageEditPage() {
             </Button>
           </div>
 
+          {(() => {
+            const chargeableInPkg = services.filter((s) => {
+              const cs = calendarServices.find((c) => c.serviceCode === s.serviceCode);
+              return cs?.isChargeable === true;
+            });
+            return chargeableInPkg.length > 1 ? (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-800">
+                <span className="font-semibold">Pay Per Session unavailable:</span> This package has {chargeableInPkg.length} chargeable services ({chargeableInPkg.map((s) => s.serviceCode).join(", ")}). Only one chargeable service is allowed per package for Pay Per Session billing.
+              </div>
+            ) : null;
+          })()}
+
           {services.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
               No services yet. Click "Add Service" to get started.
@@ -499,6 +511,8 @@ export default function PackageEditPage() {
                 <tbody>
                   {services.map((svc, idx) => {
                     const { total, finalAmount } = computeAmounts(svc)
+                    const catalogSvcMatch = calendarServices.find((c) => c.serviceCode === svc.serviceCode)
+                    const isChargeable = catalogSvcMatch?.isChargeable ?? true
                     return (
                       <tr key={svc._id} className="border-b border-border/60 hover:bg-muted/20">
                         <td className="py-2 px-3">
@@ -551,9 +565,10 @@ export default function PackageEditPage() {
                               min="0"
                               step="0.01"
                               placeholder="0.00"
-                              value={svc.pricePerSession ?? ""}
+                              value={isChargeable ? (svc.pricePerSession ?? "") : 0}
+                              disabled={!isChargeable}
                               onChange={(e) => updateService(idx, 'pricePerSession', e.target.value)}
-                              className="h-8 text-sm pl-5 w-full"
+                              className="h-8 text-sm pl-5 w-full disabled:opacity-40 disabled:cursor-not-allowed"
                             />
                           </div>
                         </td>
@@ -564,9 +579,10 @@ export default function PackageEditPage() {
                         </td>
                         <td className="py-2 px-3">
                           <select
-                            value={svc.discountType ?? "none"}
+                            value={isChargeable ? (svc.discountType ?? "none") : "none"}
+                            disabled={!isChargeable}
                             onChange={(e) => updateService(idx, 'discountType', e.target.value)}
-                            className="h-8 rounded-md border border-border bg-background text-sm px-2 focus:outline-none focus:ring-2 focus:ring-brand/30 w-full"
+                            className="h-8 rounded-md border border-border bg-background text-sm px-2 focus:outline-none focus:ring-2 focus:ring-brand/30 w-full disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             {DISCOUNT_TYPES.map((d) => (
                               <option key={d.value} value={d.value}>{d.label}</option>
@@ -580,9 +596,9 @@ export default function PackageEditPage() {
                             step="0.01"
                             placeholder="0"
                             value={svc.discountAmount ?? ""}
-                            disabled={svc.discountType === 'none'}
+                            disabled={!isChargeable || svc.discountType === 'none'}
                             onChange={(e) => updateService(idx, 'discountAmount', e.target.value)}
-                            className="h-8 text-sm w-full disabled:opacity-40"
+                            className="h-8 text-sm w-full disabled:opacity-40 disabled:cursor-not-allowed"
                           />
                         </td>
                         <td className="py-2 px-3">

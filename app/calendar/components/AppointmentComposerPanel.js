@@ -136,6 +136,7 @@ const EMPTY_FORM = {
   payment_collected: false,
   payment_amount: "",
   payment_method: "",
+  session_payment_method: "",
   group_sell_package: false,
   group_package_id: "",
 };
@@ -670,16 +671,6 @@ function WhoSection({
       <SectionDivider label="Who" />
 
       <div>
-        <FieldLabel>Instructor</FieldLabel>
-        <SearchableSelect
-          value={form.instructor_id}
-          onChange={(v) => setField("instructor_id", v)}
-          options={instructorOptions}
-          placeholder="Select instructor…"
-        />
-      </div>
-
-      <div>
         <FieldLabel>Student</FieldLabel>
         <SearchableSelect
           value={form.customer_id}
@@ -724,6 +715,7 @@ function WhoSection({
           onEnrollmentSelect={(v) => {
             setField("enrollment_id", v);
             setField("service_id", "");
+            setField("session_payment_method", "");
           }}
           onServiceSelect={(serviceId, color) => {
             setField("service_id", serviceId);
@@ -734,6 +726,16 @@ function WhoSection({
           onOpenEnrollmentWizard={onOpenEnrollmentWizard}
         />
       )}
+
+      <div>
+        <FieldLabel>Instructor</FieldLabel>
+        <SearchableSelect
+          value={form.instructor_id}
+          onChange={(v) => setField("instructor_id", v)}
+          options={instructorOptions}
+          placeholder="Select instructor…"
+        />
+      </div>
     </div>
   );
 }
@@ -1413,6 +1415,22 @@ function AppointmentFields({
   enrollments,
   allServices,
 }) {
+  const customerEnrollments = enrollments[form.customer_id] || [];
+  const selectedEnr = customerEnrollments.find((e) => String(e._id) === form.enrollment_id);
+  const isPayPerSession = selectedEnr?.package?.billingType === "pay_per_session";
+  const selectedCatalogSvc = allServices.find((s) => String(s._id) === form.service_id);
+  const isChargeableService = selectedCatalogSvc?.isChargeable === true;
+  const showSessionPayment = isPayPerSession && isChargeableService;
+
+  const enrollmentSvc = selectedEnr?.package?.services?.find(
+    (s) => s.serviceCode === selectedCatalogSvc?.serviceCode,
+  );
+  const rawPricePerSession = enrollmentSvc?.pricePerSession ?? 0;
+  const effectivePricePerSession = (enrollmentSvc?.sessionsTotal ?? 0) > 0
+    ? (enrollmentSvc?.finalAmount ?? 0) / enrollmentSvc.sessionsTotal
+    : rawPricePerSession;
+  const hasDiscount = effectivePricePerSession < rawPricePerSession && rawPricePerSession > 0;
+
   return (
     <div className="space-y-4">
       <WhoSection
@@ -1437,11 +1455,54 @@ function AppointmentFields({
       <div className="space-y-3">
         <SectionDivider label="Notes & Payment" />
         <NotesBlock form={form} setField={setField} />
-        <PaymentBlock
-          form={form}
-          setField={setField}
-          suggestedAmount={suggestedAmount}
-        />
+        {showSessionPayment ? (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 space-y-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-400">
+                  Session Payment
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Charged at booking · pay per session
+                </p>
+              </div>
+              {effectivePricePerSession > 0 && (
+                <div className="text-right shrink-0">
+                  {hasDiscount && (
+                    <p className="text-[10px] text-muted-foreground line-through">
+                      ${rawPricePerSession.toFixed(2)}
+                    </p>
+                  )}
+                  <p className="text-[15px] font-bold text-emerald-700 dark:text-emerald-400">
+                    ${effectivePricePerSession.toFixed(2)}
+                  </p>
+                </div>
+              )}
+            </div>
+            <div>
+              <FieldLabel>Payment Method</FieldLabel>
+              <div className="relative">
+                <select
+                  value={form.session_payment_method}
+                  onChange={(e) => setField("session_payment_method", e.target.value)}
+                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-emerald-500 transition-colors"
+                >
+                  <option value="">Select method…</option>
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <PaymentBlock
+            form={form}
+            setField={setField}
+            suggestedAmount={suggestedAmount}
+          />
+        )}
       </div>
     </div>
   );
@@ -1853,8 +1914,9 @@ export default function AppointmentComposerPanel({
     setError(null);
     setIsSaving(true);
 
-    // Derive Package template ID from selected enrollment's CustomerPackage
+    // Derive Package template ID and check billing type from selected enrollment
     let packageTemplateId;
+    let selectedBillingType = null;
     if (form.enrollment_id && form.customer_id) {
       const customerEnrollments = enrollments[form.customer_id] || [];
       const selectedEnr = customerEnrollments.find(
@@ -1862,6 +1924,15 @@ export default function AppointmentComposerPanel({
       );
       const cp = selectedEnr?.packageID;
       packageTemplateId = cp?.packageID?._id || cp?.packageID || undefined;
+      selectedBillingType = selectedEnr?.package?.billingType ?? null;
+    }
+
+    // Validate: pay_per_session requires a payment method when booking a chargeable service
+    const isChargeableSelected = tabCatalogServices?.find?.((s) => String(s._id) === form.service_id)?.isChargeable === true;
+    if (selectedBillingType === "pay_per_session" && isChargeableSelected && !form.session_payment_method) {
+      setError("Select a payment method for this pay-per-session booking.");
+      setIsSaving(false);
+      return;
     }
 
     const basePayload = {
@@ -1904,6 +1975,9 @@ export default function AppointmentComposerPanel({
             method: form.payment_method || undefined,
             collected: true,
           }
+        : undefined,
+      billing: form.session_payment_method
+        ? { method: form.session_payment_method }
         : undefined,
     };
 

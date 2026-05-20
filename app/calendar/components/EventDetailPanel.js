@@ -749,13 +749,22 @@ export default function EventDetailPanel({
                   <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
                     {event.chargeApplied ? (
                       <>
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                        <span className="text-[11px] text-emerald-600 font-medium">
-                          {event.chargeMethod === "package" && "Session deducted from package"}
-                          {event.chargeMethod === "credits" && `$${Number(event.calendarServiceID.price).toFixed(2)} deducted from credits`}
-                          {event.chargeMethod === "mixed" && "Charged via package + credits"}
-                          {event.chargeMethod === "none" && "Charged"}
-                        </span>
+                        {event.chargeMethod === "package" && event.packageBillingType !== "pay_per_session" ? (
+                          <>
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+                            <span className="text-[11px] text-blue-500 font-medium">Covered by package</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                            <span className="text-[11px] text-emerald-600 font-medium">
+                              {event.chargeMethod === "package" && "Paid · Per session"}
+                              {event.chargeMethod === "credits" && `$${Number(event.calendarServiceID.price).toFixed(2)} deducted from credits`}
+                              {event.chargeMethod === "mixed" && "Charged via package + credits"}
+                              {event.chargeMethod === "none" && "Charged"}
+                            </span>
+                          </>
+                        )}
                       </>
                     ) : (
                       <>
@@ -931,8 +940,8 @@ export default function EventDetailPanel({
           </div>
         ) : (
           <>
-            {/* Quick record-payment button — only shown when no payment is on file */}
-            {!event.payment?.collected && (
+            {/* Quick record-payment button — hidden for pay_per_session (auto-charged at booking) */}
+            {!event.payment?.collected && event.packageBillingType !== "pay_per_session" && (
               <button
                 type="button"
                 onClick={() => setIsEditing(true)}

@@ -234,15 +234,19 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
     const pkg = catalogPackages.find((p) => p._id === pkgId);
     setSellForm((f) => ({ ...f, packageID: pkgId }));
     setSellServices(
-      (pkg?.services || []).map((s) => ({
-        serviceCode: s.serviceCode || "",
-        serviceName: s.serviceName || "",
-        numberOfSessions: s.numberOfSessions || 0,
-        pricePerSession: s.pricePerSession || 0,
-        discountType: s.discountType || "none",
-        discountAmount: s.discountAmount || 0,
-        finalAmount: s.finalAmount || 0,
-      })),
+      (pkg?.services || []).map((s) => {
+        const isChargeable = s.isChargeable ?? true;
+        return {
+          serviceCode: s.serviceCode || "",
+          serviceName: s.serviceName || "",
+          numberOfSessions: s.numberOfSessions || 0,
+          pricePerSession: isChargeable ? (s.pricePerSession || 0) : 0,
+          discountType: isChargeable ? (s.discountType || "none") : "none",
+          discountAmount: isChargeable ? (s.discountAmount || 0) : 0,
+          finalAmount: isChargeable ? (s.finalAmount || 0) : 0,
+          isChargeable,
+        };
+      }),
     );
   }
 
@@ -887,9 +891,11 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                                         <div className="relative w-14 ml-1">
                                           <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">$</span>
                                           <input
-                                            type="number" min="0" step="0.01" value={svc.pricePerSession}
+                                            type="number" min="0" step="0.01"
+                                            value={svc.isChargeable === false ? 0 : svc.pricePerSession}
+                                            disabled={svc.isChargeable === false}
                                             onChange={(e) => updateSellSvc(i, "pricePerSession", e.target.value)}
-                                            className="w-full h-6 pl-3.5 pr-1 rounded border border-border bg-muted/20 text-[10px] outline-none focus:border-primary"
+                                            className={`w-full h-6 pl-3.5 pr-1 rounded border text-[10px] outline-none ${svc.isChargeable === false ? "border-border bg-muted/40 text-muted-foreground cursor-not-allowed" : "border-border bg-muted/20 focus:border-primary"}`}
                                           />
                                         </div>
                                         <p className="w-14 text-right text-[10px] font-semibold text-foreground">${Number(svc.finalAmount).toFixed(2)}</p>

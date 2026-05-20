@@ -150,7 +150,9 @@ export default function CreateEnrollmentSheet({
                 frequency: payload.billing?.frequency,
                 startDate: payload.billing?.startDate,
               }
-            : {},
+            : payload.billingType === 'pay_per_session'
+              ? {}
+              : {},
       ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
     })
 

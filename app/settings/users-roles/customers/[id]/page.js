@@ -388,11 +388,6 @@ const TABS = [
     label: "Active Enrollments",
     Icon: ClipboardList,
   },
-  {
-    id: "completed-enrollments",
-    label: "Completed Enrollments",
-    Icon: ClipboardList,
-  },
   { id: "payments", label: "Payment History", Icon: Receipt },
   { id: "lessons", label: "Lessons", Icon: BookOpen },
   { id: "notes", label: "Notes", Icon: StickyNote },
@@ -407,7 +402,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [customerEvents, setCustomerEvents] = useState([]);
-  const [sessionStats, setSessionStats] = useState({ usedValue: 0, scheduledValue: 0, remainingValue: 0, usedCount: 0, scheduledCount: 0, remainingCount: 0 });
+  const [sessionStats, setSessionStats] = useState({ usedValue: 0, scheduledValue: 0, remainingValue: 0, usedCount: 0, scheduledCount: 0, remainingCount: 0, totalCount: 0 });
   const toast = useToast();
 
   useEffect(() => {
@@ -441,7 +436,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
       const list = enrRes.data || [];
       if (!list.length) return;
       const detResults = await Promise.all(list.map((e) => api.get(`/api/customer-package/${e._id}/details`)));
-      let usedCount = 0, remainingCount = 0;
+      let usedCount = 0, remainingCount = 0, totalCount = 0;
       let usedValue = 0, remainingValue = 0;
       detResults.forEach((res) => {
         if (!res.success) return;
@@ -453,6 +448,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
           const remaining = svc.sessionsRemaining ?? Math.max(0, (svc.sessionsTotal ?? 0) - used - sched);
           usedCount += used;
           remainingCount += remaining;
+          totalCount += svc.sessionsTotal ?? 0;
           usedValue += used * price;
           remainingValue += remaining * price;
         });
@@ -461,7 +457,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
       const now = new Date();
       const scheduledCount = customerEvents.filter((ev) => new Date(ev.startDateTime) > now).length;
       const scheduledValue = 0; // price per scheduled session not reliably available without per-event charge lookup
-      setSessionStats({ usedValue, scheduledValue, remainingValue, usedCount, scheduledCount, remainingCount });
+      setSessionStats({ usedValue, scheduledValue, remainingValue, usedCount, scheduledCount, remainingCount, totalCount });
     });
   }, [customer?._id, customerEvents]);
 
@@ -524,31 +520,38 @@ function ProfileTab({ customer, locations, onUpdated }) {
   return (
     <div className="space-y-6">
       {/* Quick stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          {
-            label: "Credits Balance",
-            value: `$${(customer.credits ?? 0).toFixed(2)}`,
-            accent: "text-emerald-500",
-          },
-          { label: "Notes", value: customer.notes?.length ?? 0 },
           { label: "Member Since", value: formatDate(customer.createdAt) },
           { label: `Used (${sessionStats.usedCount} sess)`, value: `$${sessionStats.usedValue.toFixed(2)}`, accent: "text-blue-500" },
           { label: "Scheduled Events", value: sessionStats.scheduledCount, accent: "text-violet-500" },
-          { label: `Remaining (${sessionStats.remainingCount} sess)`, value: `$${sessionStats.remainingValue.toFixed(2)}`, accent: "text-emerald-500" },
         ].map(({ label, value, accent }) => (
           <div
             key={label}
             className="rounded-xl border border-border bg-card px-4 py-3"
           >
             <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-            <p
-              className={`text-[15px] font-semibold ${accent ?? "text-foreground"}`}
-            >
-              {value}
-            </p>
+            <p className={`text-[15px] font-semibold ${accent ?? "text-foreground"}`}>{value}</p>
           </div>
         ))}
+        {/* Remaining sessions card */}
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="text-[11px] text-muted-foreground mb-1">Remaining Sessions</p>
+          <div className="flex items-baseline gap-1.5">
+            <p className="text-[15px] font-semibold text-emerald-500">{sessionStats.remainingCount}</p>
+            <p className="text-[12px] text-muted-foreground">/ {sessionStats.totalCount} sess</p>
+          </div>
+          <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all"
+              style={{ width: sessionStats.totalCount > 0 ? `${(sessionStats.usedCount / sessionStats.totalCount) * 100}%` : "0%" }}
+            />
+          </div>
+          <div className="flex items-center justify-between mt-1.5">
+            <p className="text-[10px] text-muted-foreground">{sessionStats.usedCount} used</p>
+            <p className="text-[13px] font-semibold text-emerald-500">${sessionStats.remainingValue.toFixed(2)}</p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1127,9 +1130,12 @@ function PackagesTab({ customerID }) {
       ...f,
       packageID: pkgId,
       services: (pkg?.services || []).map((s) => {
-        const gross = (s.numberOfSessions || 0) * (s.pricePerSession || 0);
-        const discountType = s.discountType || "none";
-        const discountAmount = Number(s.discountAmount || 0);
+        const isChargeable = s.isChargeable ?? true;
+        const pricePerSession = isChargeable ? (s.pricePerSession || 0) : 0;
+        const numberOfSessions = s.numberOfSessions || 0;
+        const gross = numberOfSessions * pricePerSession;
+        const discountType = isChargeable ? (s.discountType || "none") : "none";
+        const discountAmount = isChargeable ? Number(s.discountAmount || 0) : 0;
         let finalAmount = gross;
         if (discountType === "percentage") finalAmount = Math.max(0, gross - (gross * discountAmount) / 100);
         else if (discountType === "fixed") finalAmount = Math.max(0, gross - discountAmount);
@@ -1137,11 +1143,12 @@ function PackagesTab({ customerID }) {
           serviceCode: s.serviceCode || "",
           serviceName: s.serviceName || "",
           color: s.color || "",
-          numberOfSessions: s.numberOfSessions || 0,
-          pricePerSession: s.pricePerSession || 0,
+          numberOfSessions,
+          pricePerSession,
           discountType,
           discountAmount,
           finalAmount: parseFloat(finalAmount.toFixed(2)),
+          isChargeable,
         };
       }),
     }));
@@ -1898,9 +1905,10 @@ function PackagesTab({ customerID }) {
                               type="number"
                               min="0"
                               step="0.01"
-                              value={svc.pricePerSession}
+                              value={svc.isChargeable === false ? 0 : svc.pricePerSession}
+                              disabled={svc.isChargeable === false}
                               onChange={(e) => updateSvc(i, "pricePerSession", e.target.value)}
-                              className="h-7 w-20 rounded border border-border bg-background pl-5 pr-2 text-[12px] outline-none focus:border-primary"
+                              className={`h-7 w-20 rounded border pl-5 pr-2 text-[12px] outline-none ${svc.isChargeable === false ? "border-border bg-muted/30 text-muted-foreground cursor-not-allowed" : "border-border bg-background focus:border-primary"}`}
                             />
                           </div>
                         </td>
@@ -2212,7 +2220,8 @@ const BLANK_ENR_FORM = {
   },
 };
 
-function EnrollmentsTab({ customerID, customerName = "", statusFilter }) {
+function EnrollmentsTab({ customerID, customerName = "" }) {
+  const [statusFilter, setStatusFilter] = useState("active");
   const [enrollments, setEnrollments] = useState([]);
   const [detailsMap, setDetailsMap] = useState({});
   const [plansMap, setPlansMap] = useState({});
@@ -2506,6 +2515,18 @@ function EnrollmentsTab({ customerID, customerName = "", statusFilter }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+        <div className="relative">
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setSelectedEnrId(null); }}
+            className="h-8 rounded-lg border border-border bg-background pl-3 pr-8 text-[12px] font-medium text-foreground outline-none focus:border-primary appearance-none cursor-pointer"
+          >
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        </div>
         {filteredEnrollments.length > 0 ? (
           <div className="relative">
             <select
@@ -2528,6 +2549,7 @@ function EnrollmentsTab({ customerID, customerName = "", statusFilter }) {
         ) : (
           <p className="text-[13px] text-muted-foreground">0 enrollments</p>
         )}
+        </div>
         {isActiveTab && (
           <Button
             size="sm"
@@ -3906,6 +3928,7 @@ function eventStatusLabel(status) {
 function LessonsTab({ customer }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
     if (!customer?._id) return;
@@ -3941,33 +3964,71 @@ function LessonsTab({ customer }) {
     );
   }
 
+  const filteredEvents = events.filter((ev) => {
+    if (statusFilter === "all") return true;
+    const status = deriveEventStatus(ev);
+    const isPaid =
+      (ev.chargeMethod === "package" && ev.packageBillingType === "pay_per_session") ||
+      ev.chargeMethod === "credits" ||
+      ev.chargeMethod === "mixed" ||
+      ev.payment?.collected;
+    const isCancelledNoCharge = status === "cancelled_no_charge" || status === "no_show_no_charge";
+    if (statusFilter === "scheduled") return status === "scheduled";
+    if (statusFilter === "completed") return status === "completed";
+    if (statusFilter === "cancelled") return status === "cancelled" || isCancelledNoCharge;
+    if (statusFilter === "paid") return isPaid && !isCancelledNoCharge;
+    if (statusFilter === "unpaid") return !isPaid && !isCancelledNoCharge;
+    return true;
+  });
+
   return (
     <div className="space-y-4">
-      <p className="text-[13px] text-muted-foreground">
-        {events.length} event{events.length !== 1 ? "s" : ""}
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-muted-foreground">
+          {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}{statusFilter !== "all" ? ` · filtered` : ""}
+        </p>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="h-8 rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
+        >
+          <option value="all">All</option>
+          <option value="scheduled">Scheduled</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="paid">Paid</option>
+          <option value="unpaid">Unpaid</option>
+        </select>
+      </div>
 
-      {events.length === 0 ? (
+      {filteredEvents.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          No events found for this customer.
+          No events found{statusFilter !== "all" ? ` for status "${statusFilter}"` : ""}.
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
-          {events.map((ev, i) => {
+          {filteredEvents.map((ev, i) => {
             const status = deriveEventStatus(ev);
             const date = new Date(ev.startDateTime);
             const end = ev.endDateTime ? new Date(ev.endDateTime) : null;
             const instructor = ev.teacherID?.name;
             const label = ev.title || ev.calendarServiceID?.name || "Event";
             const serviceCode = ev.calendarServiceID?.serviceCode ?? ev.type ?? "";
-            const isPaid = ev.chargeMethod === "package" || ev.chargeMethod === "credits" || ev.chargeMethod === "mixed" || ev.payment?.collected;
+            const isPaid =
+              (ev.chargeMethod === "package" && ev.packageBillingType === "pay_per_session") ||
+              ev.chargeMethod === "credits" ||
+              ev.chargeMethod === "mixed" ||
+              ev.payment?.collected;
+            const isCoveredByPackage = ev.chargeMethod === "package" && ev.packageBillingType !== "pay_per_session";
             const isCancelledNoCharge = status === "cancelled_no_charge" || status === "no_show_no_charge";
-            const paymentLabel = isCancelledNoCharge ? "No Charge" : isPaid ? "Paid" : "Unpaid";
+            const paymentLabel = isCancelledNoCharge ? "No Charge" : isPaid ? "Paid" : isCoveredByPackage ? "Covered" : "Unpaid";
             const paymentClass = isCancelledNoCharge
               ? "bg-muted text-muted-foreground"
               : isPaid
                 ? "bg-emerald-500/10 text-emerald-600"
-                : "bg-rose-500/10 text-rose-600";
+                : isCoveredByPackage
+                  ? "bg-blue-500/10 text-blue-600"
+                  : "bg-rose-500/10 text-rose-600";
             return (
               <div
                 key={ev._id ?? i}
@@ -4208,11 +4269,6 @@ export default function CustomerDetailPage() {
               </p>
             </div>
           </div>
-          <div className="shrink-0">
-            <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-[13px] font-semibold text-primary">
-              ${(customer.credits ?? 0).toFixed(2)} credits
-            </span>
-          </div>
         </div>
 
         {/* Tabs */}
@@ -4248,14 +4304,6 @@ export default function CustomerDetailPage() {
             <EnrollmentsTab
               customerID={customer._id}
               customerName={customer.name || customer.email || ""}
-              statusFilter="active"
-            />
-          )}
-          {tab === "completed-enrollments" && (
-            <EnrollmentsTab
-              customerID={customer._id}
-              customerName={customer.name || customer.email || ""}
-              statusFilter="completed"
             />
           )}
           {tab === "payments" && <PaymentsTab customerID={customer._id} />}

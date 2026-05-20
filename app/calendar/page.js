@@ -257,7 +257,13 @@ function transformAppointments(appointments, colorMap) {
       }
     }
 
-    const paymentCollected = appt.payment?.collected || appt.chargeMethod === "package" || appt.chargeMethod === "credits" || appt.chargeMethod === "mixed";
+    const _isActuallyPaid =
+      appt.payment?.collected ||
+      (appt.chargeMethod === "package" && appt.packageBillingType === "pay_per_session") ||
+      appt.chargeMethod === "credits" ||
+      appt.chargeMethod === "mixed";
+    const _isCoveredByPackage = appt.chargeMethod === "package" && appt.packageBillingType !== "pay_per_session";
+    const paymentCollected = _isActuallyPaid ? "paid" : _isCoveredByPackage ? "covered" : "unpaid";
 
     return {
       id: String(appt._id || appt.id),
@@ -463,15 +469,16 @@ const STATUS_STYLES = {
 };
 
 function PaymentStatusBadge({ collected }) {
+  // collected: "paid" | "covered" | "unpaid"
+  const cfg = {
+    paid:    { cls: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400", label: "Paid" },
+    covered: { cls: "bg-blue-500/15 text-blue-600 dark:text-blue-400",          label: "Covered" },
+    unpaid:  { cls: "bg-red-500/15 text-red-600 dark:text-red-400",             label: "Unpaid" },
+  };
+  const { cls, label } = cfg[collected] ?? cfg.unpaid;
   return (
-    <span
-      className={`shrink-0 text-[8px] font-semibold rounded px-1 py-0.5 leading-none ${
-        collected
-          ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
-          : "bg-red-500/15 text-red-600 dark:text-red-400"
-      }`}
-    >
-      {collected ? "Paid" : "Unpaid"}
+    <span className={`shrink-0 text-[8px] font-semibold rounded px-1 py-0.5 leading-none ${cls}`}>
+      {label}
     </span>
   );
 }
@@ -823,17 +830,24 @@ function showEventTooltip(e, props) {
   const statusLabel = status.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 
   const chargeMethod = raw.chargeMethod;
+  const packageBillingType = raw.packageBillingType;
   const paymentLabel = chargeMethod === "package"
-    ? "Charged from package"
+    ? packageBillingType === "pay_per_session"
+      ? "Per session · Package"
+      : "Covered by package"
     : chargeMethod === "credits"
     ? "Charged from credits"
     : raw.payment?.collected
     ? `Collected (${raw.payment.method || ""})`
     : null;
 
-  const isPaid = chargeMethod === "package" || chargeMethod === "credits" || chargeMethod === "mixed" || raw.payment?.collected;
-  const paymentStatus = isPaid ? "Paid" : "Unpaid";
-  const paymentStatusColor = isPaid ? "#22c55e" : "#ef4444";
+  const isPaid =
+    (chargeMethod === "package" && packageBillingType === "pay_per_session") ||
+    chargeMethod === "credits" ||
+    chargeMethod === "mixed" ||
+    raw.payment?.collected;
+  const paymentStatus = isPaid ? "Paid" : chargeMethod === "package" ? "Covered" : "Unpaid";
+  const paymentStatusColor = isPaid ? "#22c55e" : chargeMethod === "package" ? "#3b82f6" : "#ef4444";
 
   const divider = `<div style="border-top:1px solid hsl(var(--border));margin:6px 0"></div>`;
 

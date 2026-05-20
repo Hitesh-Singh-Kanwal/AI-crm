@@ -20,7 +20,6 @@ const BLANK_FORM = {
     startDate: "",
     installmentMode: "count",
     installmentAmount: "",
-    discountTiming: "now",
   },
 };
 
@@ -184,15 +183,17 @@ export default function NewEnrollmentPackageInline({
       packageID: pkgId,
       billingType: pkg?.billingType || "one_time",
       services: filtered.map((s) => {
+        const isChargeable = s.isChargeable ?? true;
         const svc = {
           _key: String(s._id || s.serviceCode || Math.random()),
           serviceCode: s.serviceCode || "",
           serviceName: s.serviceName || "",
           color: s.color || "#6366f1",
           numberOfSessions: Number(s.numberOfSessions || 0),
-          pricePerSession: Number(s.pricePerSession || 0),
-          discountType: s.discountType || "none",
-          discountAmount: Number(s.discountAmount || 0),
+          pricePerSession: isChargeable ? Number(s.pricePerSession || 0) : 0,
+          discountType: isChargeable ? (s.discountType || "none") : "none",
+          discountAmount: isChargeable ? Number(s.discountAmount || 0) : 0,
+          isChargeable,
         };
         return { ...svc, finalAmount: Number(calcFinalAmount(svc).toFixed(2)) };
       }),
@@ -219,10 +220,11 @@ export default function NewEnrollmentPackageInline({
           serviceName: catalogSvc.serviceName || "",
           color: catalogSvc.color || "#6366f1",
           numberOfSessions: 0,
-          pricePerSession: Number(catalogSvc.price || 0),
+          pricePerSession: catalogSvc.isChargeable !== false ? Number(catalogSvc.price || 0) : 0,
           discountType: "none",
           discountAmount: 0,
           finalAmount: 0,
+          isChargeable: catalogSvc.isChargeable ?? true,
         }
       : blankService();
     svc.finalAmount = Number(calcFinalAmount(svc).toFixed(2));
@@ -246,39 +248,32 @@ export default function NewEnrollmentPackageInline({
     return sum + Math.max(0, gross - (Number(s.finalAmount) || 0));
   }, 0);
 
+  const chargeableServices = form.services.filter((s) => s.isChargeable !== false);
+  const canPayPerSession = chargeableServices.length === 1;
+
   const installments = useMemo(() => {
     if (form.billingType !== "payment_plan") return [];
     const { installmentMode, numberOfInstallments, installmentAmount, frequency, startDate } = form.billing;
     if (!startDate) return [];
 
-    const gross = total + totalDiscount;
-    const discountLater = form.billing.discountTiming === "later" && totalDiscount > 0;
-
     let n, baseAmt;
     if (installmentMode === "amount") {
       const amt = Number(installmentAmount || 0);
       if (!amt || amt <= 0) return [];
-      n = Math.ceil((discountLater ? gross : total) / amt);
+      n = Math.ceil(total / amt);
       if (!n) return [];
       baseAmt = amt;
     } else {
       n = Number(numberOfInstallments || 0);
       if (!n) return [];
-      baseAmt = Number(((discountLater ? gross : total) / n).toFixed(2));
+      baseAmt = Number((total / n).toFixed(2));
     }
 
     let d = new Date(startDate);
     const rows = [];
-    let remaining = total;
     for (let i = 0; i < n; i++) {
       const isLast = i === n - 1;
-      let amount;
-      if (discountLater) {
-        amount = Number(Math.min(baseAmt, remaining).toFixed(2));
-        remaining = Number((remaining - amount).toFixed(2));
-      } else {
-        amount = isLast ? Number((total - baseAmt * (n - 1)).toFixed(2)) : baseAmt;
-      }
+      const amount = isLast ? Number((total - baseAmt * (n - 1)).toFixed(2)) : baseAmt;
       rows.push({
         index: i + 1,
         amount,
@@ -298,8 +293,6 @@ export default function NewEnrollmentPackageInline({
     form.billing.frequency,
     form.billing.startDate,
     total,
-    totalDiscount,
-    form.billing.discountTiming,
   ]);
 
   async function handleSubmit() {
@@ -485,21 +478,23 @@ export default function NewEnrollmentPackageInline({
                           type="number"
                           min="0"
                           step="0.01"
-                          value={s.pricePerSession}
+                          value={s.isChargeable === false ? 0 : s.pricePerSession}
+                          disabled={s.isChargeable === false}
                           onChange={(e) =>
                             updateSvc(s._key, "pricePerSession", e.target.value)
                           }
-                          className="h-7 w-20 rounded border border-border px-2 outline-none focus:border-primary"
+                          className={`h-7 w-20 rounded border px-2 outline-none ${s.isChargeable === false ? "border-border bg-muted/30 text-muted-foreground cursor-not-allowed" : "border-border focus:border-primary"}`}
                         />
                       </td>
                       <td className="px-2 py-1.5">
                         <div className="flex items-center gap-1">
                           <select
                             value={s.discountType}
+                            disabled={s.isChargeable === false}
                             onChange={(e) =>
                               updateSvc(s._key, "discountType", e.target.value)
                             }
-                            className="h-7 rounded border border-border bg-background px-1 text-[11px] outline-none focus:border-primary"
+                            className={`h-7 rounded border border-border px-1 text-[11px] outline-none ${s.isChargeable === false ? "bg-muted/30 text-muted-foreground cursor-not-allowed" : "bg-background focus:border-primary"}`}
                           >
                             <option value="none">—</option>
                             <option value="percentage">%</option>
@@ -582,22 +577,37 @@ export default function NewEnrollmentPackageInline({
             <p className="text-[11px] font-medium text-muted-foreground uppercase">
               Billing Type
             </p>
-            <div className="grid grid-cols-3 gap-2">
-              {["one_time", "payment_plan", "flexible"].map((v) => (
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { v: "one_time", label: "One-time" },
+                { v: "payment_plan", label: "Payment Plan" },
+                { v: "flexible", label: "Flexible" },
+                { v: "pay_per_session", label: "Pay Per Session", disabled: !canPayPerSession },
+              ].map(({ v, label, disabled }) => (
                 <button
                   key={v}
                   type="button"
-                  onClick={() => setForm((p) => ({ ...p, billingType: v }))}
-                  className={`rounded-lg border p-2 text-[11px] ${form.billingType === v ? "border-primary bg-primary/5" : "border-border bg-background"}`}
+                  disabled={disabled}
+                  onClick={() => !disabled && setForm((p) => ({ ...p, billingType: v }))}
+                  title={disabled && v === "pay_per_session" ? "Requires exactly one chargeable service in the package" : undefined}
+                  className={`rounded-lg border p-2 text-[11px] transition-colors ${
+                    form.billingType === v
+                      ? "border-primary bg-primary/5 font-medium"
+                      : disabled
+                        ? "border-border bg-muted/20 text-muted-foreground cursor-not-allowed opacity-50"
+                        : "border-border bg-background hover:border-primary/50"
+                  }`}
                 >
-                  {v === "one_time"
-                    ? "One-time"
-                    : v === "payment_plan"
-                      ? "Payment Plan"
-                      : "Flexible"}
+                  {label}
                 </button>
               ))}
             </div>
+            {!canPayPerSession && form.services.length > 0 && (
+              <p className="text-[10px] text-muted-foreground">
+                Pay Per Session requires exactly 1 chargeable service.{" "}
+                {chargeableServices.length === 0 ? "No chargeable services in this package." : `This package has ${chargeableServices.length} chargeable services.`}
+              </p>
+            )}
             {form.billingType === "one_time" && (
               <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
                 <div className="flex items-center justify-between border-t border-border pt-2">
@@ -705,24 +715,6 @@ export default function NewEnrollmentPackageInline({
                     className="h-9 rounded-lg border border-border px-3 text-[12px]"
                   />
                 </div>
-                {totalDiscount > 0 && (
-                  <div className="flex gap-1.5">
-                    {["now", "later"].map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => setForm((p) => ({ ...p, billing: { ...p.billing, discountTiming: v } }))}
-                        className={`flex-1 h-8 rounded-lg border text-[11px] font-medium transition-colors ${
-                          form.billing.discountTiming === v
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-border text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {v === "now" ? "Discount Now" : "Discount Later"}
-                      </button>
-                    ))}
-                  </div>
-                )}
                 {installments.length > 0 && (
                   <div className="rounded-lg border border-border bg-muted/20 p-2.5">
                     <div className="flex items-center justify-between mb-1.5">
@@ -775,6 +767,40 @@ export default function NewEnrollmentPackageInline({
                   </p>
                   <p className="text-[13px] font-bold text-foreground">
                     ${total.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            )}
+            {form.billingType === "pay_per_session" && (
+              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+                <p className="text-[11px] text-muted-foreground">
+                  No upfront payment. A payment is recorded automatically each time a session is booked for the chargeable service.
+                </p>
+                {chargeableServices.map((s) => {
+                  const sessions = Number(s.numberOfSessions || 0);
+                  const effectivePerSession = sessions > 0 ? Number(s.finalAmount || 0) / sessions : Number(s.pricePerSession || 0);
+                  const hasDiscount = s.discountType !== "none" && Number(s.discountAmount || 0) > 0;
+                  return (
+                    <div key={s.serviceCode} className="flex items-center justify-between pt-2 border-t border-border">
+                      <div>
+                        <p className="text-[11px] font-medium text-foreground">{s.serviceName || s.serviceCode}</p>
+                        <p className="text-[10px] text-muted-foreground">{sessions} sessions</p>
+                      </div>
+                      <div className="text-right">
+                        {hasDiscount && (
+                          <p className="text-[10px] text-muted-foreground line-through">${Number(s.pricePerSession || 0).toFixed(2)}</p>
+                        )}
+                        <p className="text-[12px] font-bold text-foreground">
+                          ${effectivePerSession.toFixed(2)}<span className="text-[10px] font-normal text-muted-foreground"> / session</span>
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                  <p className="text-[11px] text-muted-foreground">Total (if all sessions booked)</p>
+                  <p className="text-[13px] font-bold text-foreground">
+                    ${chargeableServices.reduce((sum, s) => sum + Number(s.finalAmount || 0), 0).toFixed(2)}
                   </p>
                 </div>
               </div>
