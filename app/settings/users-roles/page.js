@@ -26,13 +26,14 @@ export default function UsersRolesPage() {
           <h3 className="text-sm font-semibold text-foreground">Teachers</h3>
           <p className="mt-1 text-xs text-muted-foreground">Manage instructors and their specialties.</p>
         </Link>
-        <Link
+        {/* Customers — available from main sidebar */}
+        {/* <Link
           href="/settings/users-roles/customers"
           className="rounded-2xl border border-border bg-card p-5 shadow-sm hover:bg-muted/30 transition-colors"
         >
           <h3 className="text-sm font-semibold text-foreground">Customers</h3>
           <p className="mt-1 text-xs text-muted-foreground">Manage your studio's students and clients.</p>
-        </Link>
+        </Link> */}
       </div>
     </MainLayout>
   )
