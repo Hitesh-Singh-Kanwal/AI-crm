@@ -7,7 +7,7 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import MainLayout from "@/components/layout/MainLayout";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ChevronDown, Settings2 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, ChevronDown, Settings2 } from "lucide-react";
 import AppointmentComposerPanel from "./components/AppointmentComposerPanel";
 import EventDetailPanel from "./components/EventDetailPanel";
 import api from "@/lib/api";
@@ -40,13 +40,17 @@ const FULLCALENDAR_VIEW = {
 const FULL_START_HOUR = 6;
 /** Exclusive end of visible grid (24 = through end of day; 23:00 events need room). */
 const FULL_END_HOUR = 24;
-const COMPACT_START_HOUR = 9;
-const COMPACT_END_HOUR = 19;
+/** Default grid slot duration (day + week views, new bookings). */
+const DEFAULT_SLOT_MINS = 50;
 /** Fixed px height for every time-slot row (day + week), regardless of slot duration (30/45/60/90m). */
 const TIME_SLOT_ROW_MIN_HEIGHT_PX = 60;
 const DAY_LEFT_RAIL_WIDTH = 86;
 /** Fixed display height for all timed booking cards (private + group); fits title, teacher, time, badges. */
-const TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX = 72;
+const TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX = 60;
+/** Vertical gap when stacking overlapping bookings (day view + FullCalendar week). */
+const TIMED_EVENT_CARD_STACK_GAP_PX = 2;
+const BOOKING_CARD_SHELL_CLASS =
+  "booking-card-shell h-full w-full min-h-0 min-w-0 overflow-hidden rounded-[5px] flex flex-col box-border";
 
 function getEventDurationMins(event) {
   if (!event?.end || !event?.start) return 0;
@@ -56,14 +60,26 @@ function getEventDurationMins(event) {
   );
 }
 
-function applyTimedEventHarnessHeight(harness) {
+/** Force fixed booking card size on FullCalendar harness (week + month). */
+function applyTimedEventCardLayout(harness) {
   if (!harness) return;
   const h = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
+  harness.style.setProperty("height", `${h}px`, "important");
+  harness.style.setProperty("min-height", `${h}px`, "important");
+  harness.style.setProperty("max-height", `${h}px`, "important");
+  harness.style.setProperty("bottom", "auto", "important");
+  harness.style.setProperty("left", "0", "important");
+  harness.style.setProperty("right", "0", "important");
+  harness.style.setProperty("width", "100%", "important");
+  harness.style.setProperty("margin-left", "0", "important");
+  harness.style.setProperty("margin-right", "0", "important");
+
   const eventEl = harness.querySelector(".fc-event");
   if (!eventEl) return;
-  eventEl.style.minHeight = `${h}px`;
-  eventEl.style.height = `${h}px`;
-  eventEl.style.maxHeight = `${h}px`;
+  eventEl.style.setProperty("width", "100%", "important");
+  eventEl.style.setProperty("min-height", `${h}px`, "important");
+  eventEl.style.setProperty("height", `${h}px`, "important");
+  eventEl.style.setProperty("max-height", `${h}px`, "important");
 }
 
 function addDays(date, days) {
@@ -388,10 +404,160 @@ function useCloseOnClickOutside(open, setOpen, rootRef) {
   }, [open, setOpen, rootRef]);
 }
 
-function ViewOptionsDropdown({ compactHours, setCompactHours, hideEmptySlots, setHideEmptySlots, goToToday }) {
+const WEEKDAY_LABELS_SHORT = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+function buildMonthPickerCells(viewMonth) {
+  const month = viewMonth.getMonth();
+  const start = startOfWeekSunday(new Date(viewMonth.getFullYear(), month, 1));
+  return Array.from({ length: 42 }, (_, i) => {
+    const date = addDays(start, i);
+    return { date, inMonth: date.getMonth() === month };
+  });
+}
+
+function CalendarDatePicker({ focusDate, label, onSelectDate }) {
+  const [open, setOpen] = useState(false);
+  const [viewMonth, setViewMonth] = useState(
+    () => new Date(focusDate.getFullYear(), focusDate.getMonth(), 1),
+  );
+  const ref = useRef(null);
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  useCloseOnOuterScroll(open, setOpen, ref);
+  useCloseOnClickOutside(open, setOpen, ref);
+
+  useEffect(() => {
+    if (open) {
+      setViewMonth(new Date(focusDate.getFullYear(), focusDate.getMonth(), 1));
+    }
+  }, [open, focusDate]);
+
+  const cells = useMemo(() => buildMonthPickerCells(viewMonth), [viewMonth]);
+
+  const monthTitle = viewMonth.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+
+  const shiftMonth = (delta) => {
+    setViewMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+  };
+
+  return (
+    <div ref={ref} className="relative min-w-[160px]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={[
+          "w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded-lg text-[13px] font-semibold transition-colors",
+          open
+            ? "text-[var(--studio-primary)] bg-[color-mix(in_srgb,var(--studio-primary)_12%,transparent)]"
+            : "text-foreground hover:bg-muted/50",
+        ].join(" ")}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label="Pick a date"
+      >
+        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate">{label}</span>
+        <ChevronDown
+          className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Choose day"
+          className="absolute left-1/2 -translate-x-1/2 top-[calc(100%+6px)] z-50 w-[252px] rounded-xl border border-border bg-popover p-3 shadow-lg"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <button
+              type="button"
+              aria-label="Previous month"
+              onClick={() => shiftMonth(-1)}
+              className="h-7 w-7 rounded-lg border border-border grid place-items-center hover:bg-muted/60 transition-colors"
+            >
+              <ChevronLeft className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+            <span className="text-[12px] font-bold text-foreground">{monthTitle}</span>
+            <button
+              type="button"
+              aria-label="Next month"
+              onClick={() => shiftMonth(1)}
+              className="h-7 w-7 rounded-lg border border-border grid place-items-center hover:bg-muted/60 transition-colors"
+            >
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-0.5 mb-1">
+            {WEEKDAY_LABELS_SHORT.map((wd) => (
+              <div
+                key={wd}
+                className="text-center text-[9px] font-semibold text-muted-foreground py-0.5"
+              >
+                {wd}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-0.5">
+            {cells.map(({ date, inMonth }) => {
+              const selected = isSameDate(date, focusDate);
+              const isToday = isSameDate(date, today);
+              return (
+                <button
+                  key={date.toISOString()}
+                  type="button"
+                  onClick={() => {
+                    onSelectDate(new Date(date));
+                    setOpen(false);
+                  }}
+                  className={[
+                    "h-8 w-full rounded-md text-[11px] font-medium transition-colors",
+                    !inMonth && "text-muted-foreground/40",
+                    inMonth && !selected && "text-foreground hover:bg-muted/60",
+                    selected &&
+                      "bg-[var(--studio-primary)] text-[rgb(var(--studio-on-primary-rgb))] font-bold",
+                    isToday &&
+                      !selected &&
+                      "ring-1 ring-[var(--studio-primary)] ring-inset",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {date.getDate()}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              onSelectDate(new Date());
+              setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+              setOpen(false);
+            }}
+            className="mt-2 w-full py-1.5 text-[11px] font-semibold text-[var(--studio-primary)] hover:bg-muted/50 rounded-lg transition-colors"
+          >
+            Today
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ViewOptionsDropdown({ hideEmptySlots, setHideEmptySlots, goToToday }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const hasActive = compactHours || hideEmptySlots;
+  const hasActive = hideEmptySlots;
 
   useCloseOnOuterScroll(open, setOpen, ref);
   useCloseOnClickOutside(open, setOpen, ref);
@@ -423,14 +589,6 @@ function ViewOptionsDropdown({ compactHours, setCompactHours, hideEmptySlots, se
             Today
           </button>
           <div className="h-px bg-border mx-2 my-1" />
-          <button
-            type="button"
-            onClick={() => setCompactHours((v) => !v)}
-            className="w-full px-4 py-2 text-left text-[12px] font-medium flex items-center justify-between hover:bg-muted/60 transition-colors"
-          >
-            <span className={compactHours ? "text-[var(--studio-primary)]" : "text-foreground"}>Compact</span>
-            {compactHours && <span className="h-1.5 w-1.5 rounded-full bg-[var(--studio-primary)]" />}
-          </button>
           <button
             type="button"
             onClick={() => setHideEmptySlots((v) => !v)}
@@ -1014,7 +1172,7 @@ function renderEventContent(info) {
 
   return (
     <div
-      className={`h-full min-h-0 w-full overflow-hidden rounded-[5px] flex flex-col relative ${cancelled ? "opacity-50" : ""} ${completed ? "opacity-80" : ""}`}
+      className={`${BOOKING_CARD_SHELL_CLASS} relative ${cancelled ? "opacity-50" : ""} ${completed ? "opacity-80" : ""}`}
       style={{
         borderLeft: `3px solid ${accentColor}`,
         backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
@@ -1124,7 +1282,7 @@ function TutorDayCalendar({
   allEvents,
   onEventClick,
   onSlotClick,
-  customSlotMins = 30,
+  customSlotMins = DEFAULT_SLOT_MINS,
   slotAlignMins = 0,
 }) {
   const slotRowHeightPx = TIME_SLOT_ROW_MIN_HEIGHT_PX;
@@ -1338,6 +1496,10 @@ function TutorDayCalendar({
                 onSlotClick?.({
                   date: focusDate.toISOString().slice(0, 10),
                   time: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
+                  instructorId:
+                    tutor.key && tutor.key !== UNASSIGNED_KEY
+                      ? tutor.key
+                      : undefined,
                 });
               }}
             >
@@ -1361,14 +1523,14 @@ function TutorDayCalendar({
                 const startMins = s.getHours() * 60 + s.getMinutes();
                 const displayStartMins = Math.max(startMins, gridStartMins);
 
+                const height = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
+                const stackOffset =
+                  (event.lane || 0) * (height + TIMED_EVENT_CARD_STACK_GAP_PX);
                 const top =
                   gridPadTop +
                   ((displayStartMins - dayStartMins) / customSlotMins) *
-                    slotRowHeightPx;
-                const height = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
-
-                const widthPercent = 100 / (event.totalLanes || 1);
-                const leftPercent = (event.lane || 0) * widthPercent;
+                    slotRowHeightPx +
+                  stackOffset;
 
                 const accentColor =
                   event.extendedProps?.color || "var(--studio-primary)";
@@ -1384,15 +1546,16 @@ function TutorDayCalendar({
                       e.stopPropagation();
                       onEventClick?.(event.extendedProps?.raw);
                     }}
-                    className={`absolute cursor-pointer transition-all duration-150 rounded-[5px] group/event flex flex-col overflow-hidden ${
+                    className={`absolute cursor-pointer transition-all duration-150 group/event ${BOOKING_CARD_SHELL_CLASS} ${
                       isCancelledEvent ? "opacity-50" : ""
                     } ${isCompletedEvent ? "opacity-80" : ""}`}
                     style={{
                       top,
                       height,
                       maxHeight: height,
-                      left: `calc(${leftPercent}% + 2px)`,
-                      width: `calc(${widthPercent}% - 4px)`,
+                      minHeight: height,
+                      left: "2px",
+                      width: "calc(100% - 4px)",
                       borderLeft: `3px solid ${accentColor}`,
                       backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
                       boxShadow: "0 1px 3px hsl(var(--foreground)/0.06)",
@@ -1471,7 +1634,7 @@ function SlotSizePicker({ value, startMins, onApply }) {
   }, [open, value, startMins]);
 
   const isActive =
-    value !== 30 ||
+    value !== DEFAULT_SLOT_MINS ||
     (startMins != null && startMins !== FULL_START_HOUR * 60);
 
   function handleApply() {
@@ -1535,7 +1698,7 @@ function SlotSizePicker({ value, startMins, onApply }) {
             <button
               type="button"
               onClick={() => {
-                const resetMins = 30;
+                const resetMins = DEFAULT_SLOT_MINS;
                 const snapped = snapSlotStartMinutes(FULL_START_HOUR * 60, resetMins);
                 setStartTime("06:00");
                 setPendingMins(resetMins);
@@ -1844,9 +2007,8 @@ export default function CalendarPage() {
   const [selectedTeacherId, setSelectedTeacherId] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [slotSelection, setSlotSelection] = useState(null);
-  const [compactHours, setCompactHours] = useState(false);
   const [hideEmptySlots, setHideEmptySlots] = useState(false);
-  const [customSlotMins, setCustomSlotMins] = useState(30);
+  const [customSlotMins, setCustomSlotMins] = useState(DEFAULT_SLOT_MINS);
   const [slotAlignMins, setSlotAlignMins] = useState(FULL_START_HOUR * 60);
 
   // slotDuration string for FullCalendar (HH:MM:SS)
@@ -1920,12 +2082,10 @@ export default function CalendarPage() {
 
   const snappedGridStartMins = slotAlignMins;
 
-  /** Visible time range for day + week grids (Compact / Hide empty). */
+  /** Visible time range for day + week grids (Hide empty). */
   const visibleWindow = useMemo(() => {
-    const baseStartMins = compactHours
-      ? COMPACT_START_HOUR * 60
-      : snappedGridStartMins;
-    const baseEndHour = compactHours ? COMPACT_END_HOUR : FULL_END_HOUR;
+    const baseStartMins = snappedGridStartMins;
+    const baseEndHour = FULL_END_HOUR;
     const baseEndMins = baseEndHour * 60;
     const padMins = 60;
 
@@ -1992,7 +2152,6 @@ export default function CalendarPage() {
 
     return finish(snappedStart, endHour);
   }, [
-    compactHours,
     hideEmptySlots,
     filteredEvents,
     focusDate,
@@ -2043,16 +2202,21 @@ export default function CalendarPage() {
     setFocusDate(new Date(date ?? calApi.getDate()));
   };
 
+  const navigateToDate = (date) => {
+    const d = new Date(date);
+    setFocusDate(d);
+    if (viewMode === VIEW_MODE.WEEK || viewMode === VIEW_MODE.MONTH) {
+      const calApi = getCalendarApi();
+      if (calApi) calApi.gotoDate(d);
+    }
+  };
+
   const goToToday = () => {
-    if (viewMode === VIEW_MODE.DAY || viewMode === VIEW_MODE.LIST) {
+    if (viewMode === VIEW_MODE.LIST) {
       setFocusDate(new Date());
       return;
     }
-
-    const calApi = getCalendarApi();
-    if (!calApi) return;
-    calApi.today();
-    syncDateFromApi();
+    navigateToDate(new Date());
   };
 
   const shiftView = (direction) => {
@@ -2096,8 +2260,6 @@ export default function CalendarPage() {
           <div className="shrink-0 px-6 py-1.5 flex items-center justify-between gap-3 border-b border-border/50">
             <div className="flex items-center gap-2">
               <ViewOptionsDropdown
-                compactHours={compactHours}
-                setCompactHours={setCompactHours}
                 hideEmptySlots={hideEmptySlots}
                 setHideEmptySlots={setHideEmptySlots}
                 goToToday={goToToday}
@@ -2106,9 +2268,17 @@ export default function CalendarPage() {
                 <IconCircleButton ariaLabel="Previous" onClick={() => shiftView(-1)}>
                   <ChevronLeft className="h-4 w-4 text-muted-foreground" />
                 </IconCircleButton>
-                <div className="text-[13px] font-semibold text-foreground min-w-[160px] text-center">
-                  {headerLabel}
-                </div>
+                {viewMode === VIEW_MODE.LIST ? (
+                  <div className="text-[13px] font-semibold text-foreground min-w-[160px] text-center">
+                    {headerLabel}
+                  </div>
+                ) : (
+                  <CalendarDatePicker
+                    focusDate={focusDate}
+                    label={headerLabel}
+                    onSelectDate={navigateToDate}
+                  />
+                )}
                 <IconCircleButton ariaLabel="Next" onClick={() => shiftView(1)}>
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 </IconCircleButton>
@@ -2202,8 +2372,8 @@ export default function CalendarPage() {
                       setSelectedEvent(raw);
                       setIsAppointmentPanelOpen(false);
                     }}
-                    onSlotClick={({ date, time }) => {
-                      setSlotSelection({ date, time });
+                    onSlotClick={({ date, time, instructorId }) => {
+                      setSlotSelection({ date, time, instructorId });
                       setSelectedEvent(null);
                       setIsAppointmentPanelOpen(true);
                     }}
@@ -2263,6 +2433,7 @@ export default function CalendarPage() {
                       selectable
                       navLinks
                       eventOverlap
+                      slotEventOverlap={false}
                       datesSet={(arg) => {
                         setViewMode(mapViewTypeToMode(arg.view.type));
                         setFocusDate(new Date(arg.view.calendar.getDate()));
@@ -2287,15 +2458,13 @@ export default function CalendarPage() {
                       eventContent={renderEventContent}
                       eventDidMount={(info) => {
                         const el = info.el;
-                        const harness = el.closest(".fc-timegrid-event-harness") || el.parentElement;
+                        const harness =
+                          el.closest(".fc-timegrid-event-harness") ||
+                          el.closest(".fc-daygrid-event-harness") ||
+                          el.parentElement;
                         const props = info.event.extendedProps || {};
-                        if (
-                          harness &&
-                          info.event.start &&
-                          info.event.end &&
-                          !info.event.allDay
-                        ) {
-                          applyTimedEventHarnessHeight(harness);
+                        if (harness && info.event.start && !info.event.allDay) {
+                          applyTimedEventCardLayout(harness);
                           const eventType = props.eventType || info.event.extendedProps?.eventType;
                           if (eventType) {
                             harness.dataset.eventType = eventType;
@@ -2311,6 +2480,7 @@ export default function CalendarPage() {
                           hideEventTooltip();
                         });
                       }}
+                      displayEventTime={false}
                       views={{
                         dayGridMonth: { dayMaxEventRows: 3 },
                         timeGridWeek: {
@@ -2331,6 +2501,7 @@ export default function CalendarPage() {
                 onCreated={fetchCalendarEvents}
                 initialDate={slotSelection?.date}
                 initialTime={slotSelection?.time}
+                initialInstructorId={slotSelection?.instructorId}
                 initialDuration={customSlotMins}
                 initialSlotAlignMins={snappedGridStartMins}
                 initialDayEndHour={visibleWindow.visibleEndHour}

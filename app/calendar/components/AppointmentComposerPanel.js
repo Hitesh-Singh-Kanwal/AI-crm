@@ -1585,6 +1585,7 @@ export default function AppointmentComposerPanel({
   onCreated,
   initialDate,
   initialTime,
+  initialInstructorId,
   initialDuration,
   initialSlotAlignMins,
   initialDayEndHour,
@@ -1619,9 +1620,9 @@ export default function AppointmentComposerPanel({
           ? addMinutes(initialTime, initialDuration)
           : bumpHour(initialTime)
         : "",
+      instructor_id: initialInstructorId ? String(initialInstructorId) : "",
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, initialDate, initialTime, initialInstructorId, initialDuration]);
 
   const setField = (key, value) =>
     setForm((prev) => ({ ...prev, [key]: value }));

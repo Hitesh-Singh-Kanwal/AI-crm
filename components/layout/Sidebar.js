@@ -64,6 +64,7 @@ const navItems = [
     labelStyle: 'regular',
     children: [
       { name: 'Studio', href: '/settings/studio' },
+      { name: 'Users & Roles', href: '/settings/users-roles' },
       { name: 'Setup', href: '/settings/setup' },
       { name: 'Integrations', href: '/settings/integrations' },
       { name: 'Billing', href: '/settings/billing' },
@@ -243,7 +244,10 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
               const isActive =
                 item.href === '/'
                   ? pathname === '/'
-                  : item.href && (pathname === item.href || pathname.startsWith(`${item.href}/`))
+                  : item.name === 'Settings'
+                    ? pathname.startsWith('/settings')
+                    : item.href &&
+                      (pathname === item.href || pathname.startsWith(`${item.href}/`))
 
               const labelClass =
                 item.labelStyle === 'bold'
@@ -402,7 +406,9 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
               {item.children
                 .filter((child) => (child.href ? canAccessRoute(child.href) : true))
                 .map((child) => {
-                  const isChildActive = pathname === child.href
+                  const isChildActive =
+                    pathname === child.href ||
+                    pathname.startsWith(`${child.href}/`)
                   return (
                     <Link
                       key={child.href}
