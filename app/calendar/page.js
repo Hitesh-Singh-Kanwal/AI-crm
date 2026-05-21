@@ -1315,7 +1315,7 @@ function TutorDayCalendar({
   const gridPadTop = Math.max(12, Math.ceil(slotRowHeightPx / 2));
   const paddedDayHeight = dayHeight + gridPadTop;
 
-  const effectiveTutors = tutors.slice(0, 5);
+  const effectiveTutors = tutors;
 
   const visibleDayTimedEvents = useMemo(
     () =>
@@ -2015,6 +2015,7 @@ export default function CalendarPage() {
 
   const [events, setEvents] = useState([]);
   const [instructors, setInstructors] = useState([]);
+  const allTeachersRef = useRef([]);
   const [allServices, setAllServices] = useState([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -2053,9 +2054,26 @@ export default function CalendarPage() {
     const result = await api.get(`/api/calendar?${params}`);
     if (result.success && Array.isArray(result.data)) {
       const derived = deriveInstructors(result.data);
-      const colorMap = buildColorMap(derived);
+      // If active teachers have been fetched, use that as the source of truth
+      // and filter out any event-derived teachers who are no longer active
+      const activeTeachers = allTeachersRef.current;
+      let merged;
+      if (activeTeachers.length > 0) {
+        const activeIds = new Set(activeTeachers.map((t) => t.key));
+        // Keep only active teachers, using event-derived color/data where available
+        const derivedMap = new Map(derived.map((i) => [i.key, i]));
+        merged = activeTeachers.map((t) => derivedMap.get(t.key) ?? t);
+        // Also keep event-derived teachers not yet in allTeachersRef (race condition safety)
+        derived.forEach((d) => {
+          if (!activeIds.has(d.key)) return; // skip inactive
+          if (!merged.find((m) => m.key === d.key)) merged.push(d);
+        });
+      } else {
+        merged = derived;
+      }
+      const colorMap = buildColorMap(merged);
       setEvents(transformAppointments(result.data, colorMap));
-      if (derived.length > 0) setInstructors(derived);
+      setInstructors(merged.length > 0 ? merged : derived);
     }
     setIsLoadingEvents(false);
   }, [rangeStart, rangeEnd]);
@@ -2067,6 +2085,33 @@ export default function CalendarPage() {
   useEffect(() => {
     api.get("/api/calendar-service?limit=200").then((res) => {
       if (res.success && Array.isArray(res.data)) setAllServices(res.data);
+    });
+  }, []);
+
+  // Fetch all teachers once so every teacher shows as a column even with no events
+  useEffect(() => {
+    api.get("/api/teacher?limit=200&status=active").then((res) => {
+      if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        const fetched = res.data.map((t, idx) => {
+          const parts = (t.name || "").trim().split(/\s+/);
+          const initials =
+            parts.length >= 2
+              ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+              : (t.name || "??").slice(0, 2).toUpperCase();
+          return {
+            key: String(t._id),
+            initials,
+            name: t.name || "",
+            color: CALENDAR_PALETTE[idx % CALENDAR_PALETTE.length],
+          };
+        });
+        allTeachersRef.current = fetched;
+        // Replace instructor list with only active teachers, preserving event-derived data
+        setInstructors((prev) => {
+          const prevMap = new Map(prev.map((i) => [i.key, i]));
+          return fetched.map((t) => prevMap.get(t.key) ?? t);
+        });
+      }
     });
   }, []);
 

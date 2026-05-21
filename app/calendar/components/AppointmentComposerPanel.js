@@ -1426,10 +1426,18 @@ function AppointmentFields({
     (s) => s.serviceCode === selectedCatalogSvc?.serviceCode,
   );
   const rawPricePerSession = enrollmentSvc?.pricePerSession ?? 0;
-  const effectivePricePerSession = (enrollmentSvc?.sessionsTotal ?? 0) > 0
-    ? (enrollmentSvc?.finalAmount ?? 0) / enrollmentSvc.sessionsTotal
-    : rawPricePerSession;
-  const hasDiscount = effectivePricePerSession < rawPricePerSession && rawPricePerSession > 0;
+  const finalAmount = enrollmentSvc?.finalAmount ?? 0;
+  const sessionsTotal = enrollmentSvc?.sessionsTotal ?? 0;
+  const sessionsRemaining = enrollmentSvc?.sessionsRemaining ?? sessionsTotal;
+  const totalDiscount = Math.max(0, rawPricePerSession * sessionsTotal - finalAmount);
+  const hasDiscount = totalDiscount > 0 && rawPricePerSession > 0;
+  // Discount spreads across last N sessions from the end — compute charge for current session
+  const sessionsUsedNow = sessionsTotal - sessionsRemaining + 1; // 1-indexed session number being booked
+  const posFromEnd = sessionsTotal - sessionsUsedNow + 1;
+  const discountAbsorbedAfter = posFromEnd > 1 ? Math.min(totalDiscount, rawPricePerSession * (posFromEnd - 1)) : 0;
+  const discountForThisSession = Math.min(totalDiscount, rawPricePerSession * posFromEnd) - discountAbsorbedAfter;
+  const thisSessionCharge = Math.max(0, rawPricePerSession - discountForThisSession);
+  const isLastSession = sessionsRemaining === 1;
 
   return (
     <div className="space-y-4">
@@ -1466,16 +1474,21 @@ function AppointmentFields({
                   Charged at booking · pay per session
                 </p>
               </div>
-              {effectivePricePerSession > 0 && (
+              {rawPricePerSession > 0 && (
                 <div className="text-right shrink-0">
-                  {hasDiscount && (
+                  {hasDiscount && thisSessionCharge < rawPricePerSession && (
                     <p className="text-[10px] text-muted-foreground line-through">
                       ${rawPricePerSession.toFixed(2)}
                     </p>
                   )}
                   <p className="text-[15px] font-bold text-emerald-700 dark:text-emerald-400">
-                    ${effectivePricePerSession.toFixed(2)}
+                    ${thisSessionCharge.toFixed(2)}
                   </p>
+                  {hasDiscount && thisSessionCharge === rawPricePerSession && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Discount on last session
+                    </p>
+                  )}
                 </div>
               )}
             </div>
