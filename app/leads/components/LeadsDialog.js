@@ -98,8 +98,8 @@ export default function LeadsDialog({
     if (viewOnly) return
     if (!editingLead) return
 
-    if (!editingLead.name || !editingLead.email || !editingLead.phoneNumber || !editingLead.location) {
-      toast.error({ title: 'Validation Error', message: 'Name, email, phone number, and location are required' })
+    if (!editingLead.name || !editingLead.email || !editingLead.phoneNumber) {
+      toast.error({ title: 'Validation Error', message: 'Name, email, and phone number are required' })
       return
     }
 
@@ -204,12 +204,15 @@ export default function LeadsDialog({
             <div>
               <label className="block text-sm font-medium mb-1">Location *</label>
               <LocationSelector
-                value={editingLead.locationID || editingLead.location || ''}
-                onChange={(id) => setEditingLead({ ...editingLead, locationID: id })}
-                onChangeObject={(loc) => setEditingLead((prev) => ({ ...prev, location: loc.name, locationID: loc._id }))}
-                placeholder="Select location"
+                value={Array.isArray(editingLead.locationID)
+                  ? editingLead.locationID
+                  : editingLead.locationID
+                    ? [editingLead.locationID]
+                    : []}
+                onChange={(ids) => setEditingLead((prev) => ({ ...prev, locationID: ids }))}
+                placeholder="Select location(s)"
                 showAllOption={false}
-                multiple={false}
+                multiple={true}
                 disabled={viewOnly}
                 className="mt-0.5"
               />

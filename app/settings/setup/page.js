@@ -23,7 +23,6 @@ const ROWS_PER_PAGE = 10
 
 const TABS = [
   { id: 'services', label: 'Services' },
-  { id: 'lessons', label: 'Lessons' },
   { id: 'packages', label: 'Packages' },
 ]
 
@@ -538,7 +537,7 @@ function SetupContent() {
           <h1 className="text-2xl font-semibold text-foreground tracking-tight">Setup</h1>
         </div>
         <p className="text-sm font-normal text-muted-foreground">
-          Configure your studio's services, lessons, and packages.
+          Configure your studio's services and packages.
         </p>
       </div>
 

@@ -17,7 +17,7 @@ import LocationSelector from '@/components/shared/LocationSelector'
 
 const EMPTY_FORM = {
   name: '',
-  locationID: '',
+  locationID: [],
   duration: '',
   unit: '',
   color: '#6366f1',
@@ -43,7 +43,13 @@ export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
     if (lesson) {
       setForm({
         name:              lesson.name || '',
-        locationID:        typeof lesson.locationID === 'object' ? (lesson.locationID?._id || '') : (lesson.locationID || ''),
+        locationID: Array.isArray(lesson.locationID)
+          ? lesson.locationID.map((l) => l?._id ?? l).filter(Boolean)
+          : lesson.locationID?._id
+            ? [lesson.locationID._id]
+            : lesson.locationID
+              ? [lesson.locationID]
+              : [],
         duration:          lesson.duration ?? '',
         unit:              lesson.unit ?? '',
         color:             lesson.color || '#6366f1',
@@ -64,8 +70,8 @@ export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.name || !form.locationID) {
-      toast.error('Missing fields', { description: 'Name and location are required.' })
+    if (!form.name) {
+      toast.error('Missing fields', { description: 'Name is required.' })
       return
     }
     setSaving(true)
@@ -118,7 +124,8 @@ export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
             <Label>Location</Label>
             <LocationSelector
               value={form.locationID}
-              onChange={(id) => set('locationID', id)}
+              onChange={(ids) => set('locationID', ids)}
+              multiple={true}
             />
           </div>
 

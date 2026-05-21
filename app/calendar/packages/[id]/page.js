@@ -199,7 +199,7 @@ export default function PackageEditPage() {
   }, [])
 
   const [packageName, setPackageName] = useState('')
-  const [locationID, setLocationID] = useState('')
+  const [locationID, setLocationID] = useState([])
   const [description, setDescription] = useState('')
   const [sortOrder, setSortOrder] = useState('')
   const [color, setColor] = useState(() => randomColor())
@@ -214,7 +214,15 @@ export default function PackageEditPage() {
       if (result.success) {
         const pkg = result.data
         setPackageName(pkg.packageName || '')
-        setLocationID(pkg.locationID?._id || pkg.locationID || '')
+        setLocationID(
+          Array.isArray(pkg.locationID)
+            ? pkg.locationID.map((l) => l?._id ?? l).filter(Boolean)
+            : pkg.locationID?._id
+              ? [pkg.locationID._id]
+              : pkg.locationID
+                ? [pkg.locationID]
+                : []
+        )
         setDescription(pkg.description || '')
         setSortOrder(pkg.sortOrder ?? '')
         setColor(pkg.color || randomColor())
@@ -358,14 +366,6 @@ export default function PackageEditPage() {
               </p>
             </div>
           </div>
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            className="h-9 px-5 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2"
-          >
-            <Save className="h-4 w-4" />
-            {saving ? 'Saving…' : isNew ? 'Create Package' : 'Save Changes'}
-          </Button>
         </div>
 
         {/* Tabs (only for existing packages) */}
@@ -407,7 +407,7 @@ export default function PackageEditPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Location</Label>
-              <LocationSelector value={locationID} onChange={setLocationID} />
+              <LocationSelector value={locationID} onChange={setLocationID} multiple={true} showAllOption={false} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="pkg-order">Sort Order</Label>
@@ -651,8 +651,8 @@ export default function PackageEditPage() {
           )}
 
           {/* Total Days + Active */}
-          <div className="mt-6 pt-4 border-t border-border flex items-center gap-10">
-            <div className="flex items-center gap-3">
+          <div className="mt-6 pt-4 border-t border-border space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <Label htmlFor="pkg-days" className="whitespace-nowrap text-sm">Total Days</Label>
               <Input
                 id="pkg-days"
@@ -661,35 +661,57 @@ export default function PackageEditPage() {
                 placeholder="0"
                 value={totalDays}
                 onChange={(e) => setTotalDays(e.target.value)}
-                className="h-8 w-[100px] text-sm"
+                className="h-8 w-[90px] text-sm"
               />
+              <div className="flex items-center gap-1.5">
+                {[
+                  { label: '1 month', days: 30 },
+                  { label: '3 months', days: 90 },
+                  { label: '6 months', days: 180 },
+                  { label: '1 year', days: 365 },
+                ].map(({ label, days }) => (
+                  <button
+                    key={days}
+                    type="button"
+                    onClick={() => setTotalDays(days)}
+                    className={cn(
+                      'h-7 px-2.5 rounded-full border text-[11px] font-medium transition-colors',
+                      Number(totalDays) === days
+                        ? 'bg-brand border-brand text-brand-foreground'
+                        : 'border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
               <Label className="text-sm">Active</Label>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-1.5 cursor-pointer text-sm">
-                  <input
-                    type="radio"
-                    name="pkg-active"
-                    checked={isActive === true}
-                    onChange={() => setIsActive(true)}
-                    className="accent-brand"
-                  />
+                  <input type="radio" name="pkg-active" checked={isActive === true} onChange={() => setIsActive(true)} className="accent-brand" />
                   Yes
                 </label>
                 <label className="flex items-center gap-1.5 cursor-pointer text-sm">
-                  <input
-                    type="radio"
-                    name="pkg-active"
-                    checked={isActive === false}
-                    onChange={() => setIsActive(false)}
-                    className="accent-brand"
-                  />
+                  <input type="radio" name="pkg-active" checked={isActive === false} onChange={() => setIsActive(false)} className="accent-brand" />
                   No
                 </label>
               </div>
             </div>
+          </div>
+
+          {/* Save button at bottom */}
+          <div className="mt-6 pt-4 border-t border-border flex justify-end">
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              className="h-9 px-6 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2"
+            >
+              <Save className="h-4 w-4" />
+              {saving ? 'Saving…' : isNew ? 'Create Package' : 'Save Changes'}
+            </Button>
           </div>
         </div>
         </> /* end details tab */}

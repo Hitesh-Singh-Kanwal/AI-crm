@@ -26,7 +26,7 @@ const SERVICE_TYPES = [
 const EMPTY_FORM = {
   serviceName: "",
   serviceCode: "",
-  locationID: "",
+  locationID: [],
   description: "",
   color: "",
   price: "",
@@ -105,7 +105,13 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
       setForm({
         serviceName: service.serviceName || "",
         serviceCode: service.serviceCode || "",
-        locationID: service.locationID?._id || service.locationID || "",
+        locationID: Array.isArray(service.locationID)
+          ? service.locationID.map((l) => l?._id ?? l).filter(Boolean)
+          : service.locationID?._id
+            ? [service.locationID._id]
+            : service.locationID
+              ? [service.locationID]
+              : [],
         description: service.description || "",
         isChargeable: service.isChargeable ?? false,
         type: service.type || "private",
@@ -220,7 +226,8 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
                 <Label>Location</Label>
                 <LocationSelector
                   value={form.locationID}
-                  onChange={(id) => set("locationID", id)}
+                  onChange={(ids) => set("locationID", ids)}
+                  multiple={true}
                 />
               </div>
               <StatusGroup value={form.isActive} onChange={(v) => set("isActive", v)} />
