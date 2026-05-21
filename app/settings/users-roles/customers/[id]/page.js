@@ -2807,12 +2807,12 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                 </span>
                                 {[
                                   "Price/Sess",
-                                  "Total",
                                   "Enrolled",
                                   "Used",
                                   "Scheduled",
                                   "Remaining",
-                                  "Credit Value",
+                                  "Credit Balance",
+                                  "Total",
                                 ].map((h) => (
                                   <span
                                     key={h}
@@ -2882,11 +2882,6 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                             : "—"}
                                         </span>
                                         <span className="text-[13px] font-semibold text-foreground text-right">
-                                          {svcTotal > 0
-                                            ? `$${svcTotal.toFixed(2)}`
-                                            : "—"}
-                                        </span>
-                                        <span className="text-[13px] font-semibold text-foreground text-right">
                                           {sessTotal}
                                         </span>
                                         <span
@@ -2905,9 +2900,14 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                           {sessRemaining}
                                         </span>
                                         <span
-                                          className={`text-[13px] font-semibold text-right ${svcCredit > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
+                                          className={`text-[13px] font-semibold text-right ${sessRemaining > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
                                         >
-                                          ${svcCredit.toFixed(2)}
+                                          {sessRemaining}
+                                        </span>
+                                        <span className="text-[13px] font-semibold text-foreground text-right">
+                                          {svcTotal > 0
+                                            ? `$${svcTotal.toFixed(2)}`
+                                            : "—"}
                                         </span>
                                       </div>
                                       {isExpanded && (
@@ -3058,12 +3058,12 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                     <span />
                                     <span />
                                     {[
-                                      "Total After Discount",
                                       "Enrolled",
                                       "Used",
                                       "Scheduled",
                                       "Remaining",
-                                      "Total",
+                                      "Credit Balance",
+                                      "Total After Discount",
                                     ].map((h) => (
                                       <span
                                         key={h}
@@ -3084,22 +3084,6 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                       Total
                                     </span>
                                     <span />
-                                    <div className="text-right">
-                                      {Number(cp.totalDiscount) > 0 ? (
-                                        <>
-                                          <span className="text-[11px] text-muted-foreground line-through block">
-                                            ${totalServicePrice.toFixed(2)}
-                                          </span>
-                                          <span className="text-[13px] font-bold text-emerald-600">
-                                            ${(totalServicePrice - Number(cp.totalDiscount)).toFixed(2)}
-                                          </span>
-                                        </>
-                                      ) : (
-                                        <span className="text-[13px] font-bold text-foreground">
-                                          ${totalServicePrice.toFixed(2)}
-                                        </span>
-                                      )}
-                                    </div>
                                     <span className="text-[13px] font-bold text-foreground text-right">
                                       {totalEnrolled}
                                     </span>
@@ -3119,10 +3103,26 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                       {totalRemaining}
                                     </span>
                                     <span
-                                      className={`text-[13px] font-bold text-right ${totalCredit > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
+                                      className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
                                     >
-                                      ${totalCredit.toFixed(2)}
+                                      {totalRemaining}
                                     </span>
+                                    <div className="text-right">
+                                      {Number(cp.totalDiscount) > 0 ? (
+                                        <>
+                                          <span className="text-[11px] text-muted-foreground line-through block">
+                                            ${totalServicePrice.toFixed(2)}
+                                          </span>
+                                          <span className="text-[13px] font-bold text-emerald-600">
+                                            ${(totalServicePrice - Number(cp.totalDiscount)).toFixed(2)}
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <span className="text-[13px] font-bold text-foreground">
+                                          ${totalServicePrice.toFixed(2)}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </>
                               )}
