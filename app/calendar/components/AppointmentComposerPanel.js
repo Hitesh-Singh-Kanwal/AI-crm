@@ -1431,10 +1431,12 @@ function AppointmentFields({
   const sessionsRemaining = enrollmentSvc?.sessionsRemaining ?? sessionsTotal;
   const totalDiscount = Math.max(0, rawPricePerSession * sessionsTotal - finalAmount);
   const hasDiscount = totalDiscount > 0 && rawPricePerSession > 0;
-  // Last session charge = remainder after all prior sessions at full price
-  const lastSessionCharge = hasDiscount
-    ? Math.max(0, finalAmount - rawPricePerSession * (sessionsTotal - 1))
-    : rawPricePerSession;
+  // Discount spreads across last N sessions from the end — compute charge for current session
+  const sessionsUsedNow = sessionsTotal - sessionsRemaining + 1; // 1-indexed session number being booked
+  const posFromEnd = sessionsTotal - sessionsUsedNow + 1;
+  const discountAbsorbedAfter = posFromEnd > 1 ? Math.min(totalDiscount, rawPricePerSession * (posFromEnd - 1)) : 0;
+  const discountForThisSession = Math.min(totalDiscount, rawPricePerSession * posFromEnd) - discountAbsorbedAfter;
+  const thisSessionCharge = Math.max(0, rawPricePerSession - discountForThisSession);
   const isLastSession = sessionsRemaining === 1;
 
   return (
@@ -1474,15 +1476,15 @@ function AppointmentFields({
               </div>
               {rawPricePerSession > 0 && (
                 <div className="text-right shrink-0">
-                  {isLastSession && hasDiscount && (
+                  {hasDiscount && thisSessionCharge < rawPricePerSession && (
                     <p className="text-[10px] text-muted-foreground line-through">
                       ${rawPricePerSession.toFixed(2)}
                     </p>
                   )}
                   <p className="text-[15px] font-bold text-emerald-700 dark:text-emerald-400">
-                    ${(isLastSession ? lastSessionCharge : rawPricePerSession).toFixed(2)}
+                    ${thisSessionCharge.toFixed(2)}
                   </p>
-                  {hasDiscount && !isLastSession && (
+                  {hasDiscount && thisSessionCharge === rawPricePerSession && (
                     <p className="text-[10px] text-muted-foreground mt-0.5">
                       Discount on last session
                     </p>
