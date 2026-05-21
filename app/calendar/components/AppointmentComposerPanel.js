@@ -1426,10 +1426,16 @@ function AppointmentFields({
     (s) => s.serviceCode === selectedCatalogSvc?.serviceCode,
   );
   const rawPricePerSession = enrollmentSvc?.pricePerSession ?? 0;
-  const effectivePricePerSession = (enrollmentSvc?.sessionsTotal ?? 0) > 0
-    ? (enrollmentSvc?.finalAmount ?? 0) / enrollmentSvc.sessionsTotal
+  const finalAmount = enrollmentSvc?.finalAmount ?? 0;
+  const sessionsTotal = enrollmentSvc?.sessionsTotal ?? 0;
+  const sessionsRemaining = enrollmentSvc?.sessionsRemaining ?? sessionsTotal;
+  const totalDiscount = Math.max(0, rawPricePerSession * sessionsTotal - finalAmount);
+  const hasDiscount = totalDiscount > 0 && rawPricePerSession > 0;
+  // Last session charge = remainder after all prior sessions at full price
+  const lastSessionCharge = hasDiscount
+    ? Math.max(0, finalAmount - rawPricePerSession * (sessionsTotal - 1))
     : rawPricePerSession;
-  const hasDiscount = effectivePricePerSession < rawPricePerSession && rawPricePerSession > 0;
+  const isLastSession = sessionsRemaining === 1;
 
   return (
     <div className="space-y-4">
@@ -1466,16 +1472,21 @@ function AppointmentFields({
                   Charged at booking · pay per session
                 </p>
               </div>
-              {effectivePricePerSession > 0 && (
+              {rawPricePerSession > 0 && (
                 <div className="text-right shrink-0">
-                  {hasDiscount && (
+                  {isLastSession && hasDiscount && (
                     <p className="text-[10px] text-muted-foreground line-through">
                       ${rawPricePerSession.toFixed(2)}
                     </p>
                   )}
                   <p className="text-[15px] font-bold text-emerald-700 dark:text-emerald-400">
-                    ${effectivePricePerSession.toFixed(2)}
+                    ${(isLastSession ? lastSessionCharge : rawPricePerSession).toFixed(2)}
                   </p>
+                  {hasDiscount && !isLastSession && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Discount on last session
+                    </p>
+                  )}
                 </div>
               )}
             </div>

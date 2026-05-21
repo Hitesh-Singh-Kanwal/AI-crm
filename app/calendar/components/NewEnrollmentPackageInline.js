@@ -778,22 +778,30 @@ export default function NewEnrollmentPackageInline({
                 </p>
                 {chargeableServices.map((s) => {
                   const sessions = Number(s.numberOfSessions || 0);
-                  const effectivePerSession = sessions > 0 ? Number(s.finalAmount || 0) / sessions : Number(s.pricePerSession || 0);
+                  const pricePerSession = Number(s.pricePerSession || 0);
+                  const finalAmount = Number(s.finalAmount || 0);
                   const hasDiscount = s.discountType !== "none" && Number(s.discountAmount || 0) > 0;
+                  const lastSessionCharge = hasDiscount && sessions > 0
+                    ? Math.max(0, finalAmount - pricePerSession * (sessions - 1))
+                    : pricePerSession;
                   return (
-                    <div key={s.serviceCode} className="flex items-center justify-between pt-2 border-t border-border">
-                      <div>
-                        <p className="text-[11px] font-medium text-foreground">{s.serviceName || s.serviceCode}</p>
-                        <p className="text-[10px] text-muted-foreground">{sessions} sessions</p>
+                    <div key={s.serviceCode} className="pt-2 border-t border-border space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[11px] font-medium text-foreground">{s.serviceName || s.serviceCode}</p>
+                          <p className="text-[10px] text-muted-foreground">{sessions} sessions</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[12px] font-bold text-foreground">
+                            ${pricePerSession.toFixed(2)}<span className="text-[10px] font-normal text-muted-foreground"> / session</span>
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        {hasDiscount && (
-                          <p className="text-[10px] text-muted-foreground line-through">${Number(s.pricePerSession || 0).toFixed(2)}</p>
-                        )}
-                        <p className="text-[12px] font-bold text-foreground">
-                          ${effectivePerSession.toFixed(2)}<span className="text-[10px] font-normal text-muted-foreground"> / session</span>
+                      {hasDiscount && (
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                          Last session charged at ${lastSessionCharge.toFixed(2)} (discount applied)
                         </p>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
