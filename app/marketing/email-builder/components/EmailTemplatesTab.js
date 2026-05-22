@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Mail, Plus, Search, Tags, Trash2, Pencil, Eye, Heart } from 'lucide-react'
+import { Mail, Plus, Search, Tags, Trash2, Pencil, Eye, Heart, Sparkles } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,34 +15,19 @@ import api from '@/lib/api'
 import EmailTemplateEditorDialog from './EmailTemplateEditorDialog'
 import EmailTemplatePreviewDialog from './EmailTemplatePreviewDialog'
 import EmailCategoriesDialog from './EmailCategoriesDialog'
+import EmailTemplateThumbnail from './EmailTemplateThumbnail'
+import {
+  extractEmailTemplatesPayload,
+  getTemplateCategoryName,
+} from '../emailBuilderApi'
 
 const PAGE_SIZE = 9
-
-function extractEmailTemplatesPayload(result) {
-  const payload = result?.data
-  const list = Array.isArray(payload?.emails)
-    ? payload.emails
-    : Array.isArray(payload?.data)
-    ? payload.data
-    : Array.isArray(payload?.data?.emails)
-    ? payload.data.emails
-    : Array.isArray(payload)
-    ? payload
-    : []
-  const pagination = payload?.pagination || payload?.data?.pagination || result?.pagination
-  return {
-    list: Array.isArray(list) ? list : [],
-    total: pagination?.total ?? (Array.isArray(list) ? list.length : 0),
-    totalPages: pagination?.totalPages ?? pagination?.pages,
-  }
-}
 
 export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onDataChanged }) {
   const toast = useToast()
   const [editingId, setEditingId] = useState(null)
   const [previewId, setPreviewId] = useState(null)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
-
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -59,6 +44,13 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
   const [heartAnimIds, setHeartAnimIds] = useState(new Set())
 
   const pageNumbers = useMemo(() => Array.from({ length: totalPages }, (_, i) => i + 1), [totalPages])
+
+  const displayTemplates = useMemo(() => {
+    return [...templates].sort((a, b) => {
+      if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1
+      return String(a.subject || '').localeCompare(String(b.subject || ''))
+    })
+  }, [templates])
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 300)
@@ -107,8 +99,10 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
   }
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === templates.length) setSelectedIds([])
-    else setSelectedIds(templates.map((t) => t._id).filter(Boolean))
+    const visibleIds = displayTemplates.map((t) => t._id).filter(Boolean)
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id))
+    if (allSelected) setSelectedIds((prev) => prev.filter((id) => !visibleIds.includes(id)))
+    else setSelectedIds((prev) => [...new Set([...prev, ...visibleIds])])
   }
 
   const deleteOne = async (tpl) => {
@@ -190,10 +184,15 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
   }
 
   return (
-    <TabsContent value="templates" className="mt-6 flex-1 min-h-0 flex flex-col gap-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">Manage email templates.</p>
-        <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2 shrink-0">
+    <TabsContent value="templates" className="mt-6 flex-1 min-h-0 flex flex-col gap-5">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <p className="text-sm text-muted-foreground">Create, organize, and manage reusable email templates.</p>
+          {!loading && totalCount > 0 && (
+            <p className="text-xs text-muted-foreground mt-1">{totalCount} templates</p>
+          )}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
           <Button variant="outline" className="w-full sm:w-auto" onClick={() => setCategoriesOpen(true)}>
             <Tags className="h-4 w-4 mr-2" />
             Categories
@@ -216,33 +215,39 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
       <EmailTemplateEditorDialog open={!!editingId} onClose={() => setEditingId(null)} templateId={editingId} onSaved={fetchTemplates} />
       <EmailTemplatePreviewDialog open={!!previewId} onClose={() => setPreviewId(null)} templateId={previewId} />
 
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="relative max-w-sm w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search templates…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name or description…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 rounded-lg"
+            />
+          </div>
+
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
-            className="w-full sm:w-auto"
+            size="sm"
             onClick={toggleSelectAll}
-            disabled={templates.length === 0 || loading}
+            disabled={displayTemplates.length === 0 || loading}
           >
-            {selectedIds.length === templates.length && templates.length > 0 ? 'Unselect all' : 'Select all'}
+            {displayTemplates.length > 0 && displayTemplates.every((t) => selectedIds.includes(t._id))
+              ? 'Unselect visible'
+              : 'Select visible'}
           </Button>
           <Button
             variant="ghost"
-            className="w-full sm:w-auto text-destructive hover:text-destructive hover:bg-destructive/10"
+            size="sm"
+            className="text-destructive hover:text-destructive hover:bg-destructive/10"
             onClick={bulkDelete}
             disabled={selectedIds.length === 0 || bulkDeleting}
           >
-            <Trash2 className="h-4 w-4 mr-2" />
+            <Trash2 className="h-4 w-4 mr-1.5" />
             {bulkDeleting ? 'Deleting…' : `Delete (${selectedIds.length})`}
           </Button>
         </div>
@@ -266,119 +271,155 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
       )}
 
       {!loading && !error && templates.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="py-12 text-center">
-            <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-              <Mail className="h-7 w-7 text-muted-foreground" />
+        <Card className="border-dashed rounded-2xl">
+          <CardContent className="py-14 text-center">
+            <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
+              <Mail className="h-8 w-8 text-muted-foreground" />
             </div>
-            <p className="font-medium text-muted-foreground">No email templates yet</p>
-            <p className="text-sm text-muted-foreground mt-1">Create one to reuse your email content.</p>
+            <p className="font-semibold text-foreground">No email templates yet</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+              Build your first template in the Email Builder, then reuse it across campaigns.
+            </p>
+            <Button variant="gradient" className="mt-6" onClick={onCreateNew}>
+              <Sparkles className="h-4 w-4 mr-2" />
+              Create your first template
+            </Button>
           </CardContent>
         </Card>
       )}
 
-      {!loading && !error && templates.length > 0 && (
+      {!loading && !error && displayTemplates.length > 0 && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {templates.map((tpl, index) => (
-              <Card
-                key={tpl._id}
-                className={cn(
-                  'group overflow-hidden border transition-all duration-200 animate-fade-in rounded-2xl',
-                  'border-border/80 hover:border-primary/40 hover:shadow-md bg-card',
-                  tpl.status === 'inactive' && 'opacity-60'
-                )}
-                style={{ animationDelay: `${index * 0.04}s` }}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.includes(tpl._id)}
-                          onChange={() => toggleSelected(tpl._id)}
-                          className="h-4 w-4"
-                        />
-                        <CardTitle className="text-base line-clamp-2">{tpl.subject || 'No subject'}</CardTitle>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2 line-clamp-3 whitespace-pre-wrap">
-                        {tpl.body || '—'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {/* Status toggle */}
-                      <Switch
-                        checked={tpl.status === 'active'}
-                        onChange={() => toggleStatus(tpl)}
-                        disabled={togglingIds.has(tpl._id)}
-                        title={tpl.status === 'active' ? 'Set inactive' : 'Set active'}
-                        className="disabled:opacity-40 scale-75"
-                      />
-                      {/* Favorite toggle */}
-                      <button
-                        type="button"
-                        onClick={() => toggleFavorite(tpl)}
-                        disabled={togglingIds.has(tpl._id)}
-                        title={tpl.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                        className={cn(
-                          'h-7 w-7 flex items-center justify-center rounded-full transition-all duration-200 disabled:opacity-40',
-                          tpl.isFavorite
-                            ? 'text-red-500 hover:bg-red-50'
-                            : 'text-muted-foreground hover:bg-muted hover:text-red-400'
-                        )}
-                      >
-                        <Heart
-                          className={cn(
-                            'h-4 w-4 transition-all duration-200',
-                            tpl.isFavorite && 'fill-current',
-                            heartAnimIds.has(tpl._id) && 'scale-125'
-                          )}
-                        />
-                      </button>
-                    </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {displayTemplates.map((tpl, index) => {
+              const categoryName = getTemplateCategoryName(tpl)
+              const isInactive = tpl.status === 'inactive'
+              return (
+                <Card
+                  key={tpl._id}
+                  className={cn(
+                    'group overflow-hidden border transition-all duration-200 rounded-2xl flex flex-col',
+                    'border-border/80 hover:border-primary/40 hover:shadow-lg bg-card',
+                    isInactive && 'opacity-75',
+                    tpl.isFavorite && 'ring-1 ring-red-200/60'
+                  )}
+                  style={{ animationDelay: `${index * 0.04}s` }}
+                >
+                  <div className="p-3 pb-0">
+                    <EmailTemplateThumbnail html={tpl.htmlBody} />
                   </div>
-                </CardHeader>
 
-                <CardContent className="space-y-3 pt-0">
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50">
-                    <Button
-                      variant="gradient"
-                      size="sm"
-                      className="text-xs flex-1"
-                      onClick={() => setPreviewId(tpl._id)}
-                      disabled={tpl.status === 'inactive'}
-                      title="Preview"
-                    >
-                      <Eye className="h-3.5 w-3.5 mr-1.5" />
-                      Preview
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs flex-1"
-                      onClick={() => setEditingId(tpl._id)}
-                      disabled={tpl.status === 'inactive'}
-                      title="Edit"
-                    >
-                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => deleteOne(tpl)}
-                      disabled={deletingId === tpl._id}
-                      title="Delete"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                      {deletingId === tpl._id ? 'Deleting…' : 'Delete'}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  <CardHeader className="pb-2 pt-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(tpl._id)}
+                            onChange={() => toggleSelected(tpl._id)}
+                            className="h-4 w-4 mt-1 shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div className="min-w-0">
+                            <CardTitle className="text-base line-clamp-2 leading-snug">
+                              {tpl.subject || 'Untitled template'}
+                            </CardTitle>
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              <Badge
+                                variant={isInactive ? 'secondary' : 'default'}
+                                className={cn(
+                                  'text-[10px] font-medium',
+                                  !isInactive && 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-0'
+                                )}
+                              >
+                                {isInactive ? 'Inactive' : 'Active'}
+                              </Badge>
+                              {categoryName ? (
+                                <Badge variant="outline" className="text-[10px] font-normal">
+                                  {categoryName}
+                                </Badge>
+                              ) : null}
+                              {tpl.isFavorite ? (
+                                <Badge variant="outline" className="text-[10px] text-red-600 border-red-200">
+                                  Favorite
+                                </Badge>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2 line-clamp-2 pl-6">
+                          {tpl.body || 'No description'}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-center gap-1 shrink-0">
+                        <Switch
+                          checked={!isInactive}
+                          onChange={() => toggleStatus(tpl)}
+                          disabled={togglingIds.has(tpl._id)}
+                          title={isInactive ? 'Activate' : 'Deactivate'}
+                          className="disabled:opacity-40 scale-75"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => toggleFavorite(tpl)}
+                          disabled={togglingIds.has(tpl._id)}
+                          title={tpl.isFavorite ? 'Remove favorite' : 'Add to favorites'}
+                          className={cn(
+                            'h-8 w-8 flex items-center justify-center rounded-full transition-all',
+                            tpl.isFavorite
+                              ? 'text-red-500 hover:bg-red-50'
+                              : 'text-muted-foreground hover:bg-muted hover:text-red-400'
+                          )}
+                        >
+                          <Heart
+                            className={cn(
+                              'h-4 w-4',
+                              tpl.isFavorite && 'fill-current',
+                              heartAnimIds.has(tpl._id) && 'scale-125 transition-transform'
+                            )}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="mt-auto pt-0 pb-3">
+                    <div className="flex items-center gap-2 px-3">
+                      <Button
+                        variant="gradient"
+                        size="sm"
+                        className="text-xs flex-1"
+                        onClick={() => setPreviewId(tpl._id)}
+                        title="Preview email"
+                      >
+                        <Eye className="h-3.5 w-3.5 mr-1.5" />
+                        Preview
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs flex-1"
+                        onClick={() => setEditingId(tpl._id)}
+                        title="Edit template"
+                      >
+                        <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => deleteOne(tpl)}
+                        disabled={deletingId === tpl._id}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
 
           <div className="flex flex-col gap-3 pt-2 mt-auto">
@@ -390,7 +431,7 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
                   onClick={() => setPage(n)}
                   disabled={loading || n === page}
                   className={cn(
-                    'inline-flex items-center justify-center h-8 min-w-8 px-2 rounded-md text-sm font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                    'inline-flex items-center justify-center h-8 min-w-8 px-2 rounded-md text-sm font-medium border transition-colors disabled:opacity-50',
                     n === page
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'bg-background border-border hover:bg-muted/40'
@@ -400,26 +441,26 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
                 </button>
               ))}
             </div>
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1 || loading}
-                className="h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Previous
-              </button>
-              <span className="text-sm text-muted-foreground">
-                Page {page} of {totalPages} ({totalCount} total)
+              </Button>
+              <span className="text-sm text-muted-foreground text-center">
+                Page {page} of {totalPages} · {totalCount} templates
               </span>
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages || loading}
-                className="h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Next
-              </button>
+              </Button>
             </div>
           </div>
         </>
@@ -427,4 +468,3 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
     </TabsContent>
   )
 }
-

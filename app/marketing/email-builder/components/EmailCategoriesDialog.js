@@ -1,14 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, Pencil } from 'lucide-react'
+import { FolderOpen, Plus, Trash2, Pencil, Tags } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent } from '@/components/ui/card'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
+import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { extractCategoriesList } from '../emailBuilderApi'
 
 export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
   const toast = useToast()
@@ -31,9 +32,8 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
     setError(null)
     try {
       const result = await api.get('/api/email/builder/category')
-      const list = result.data?.categories ?? result.data
-      if (result.success && Array.isArray(list)) {
-        setCategories(list)
+      if (result.success) {
+        setCategories(extractCategoriesList(result))
       } else {
         setError(result.error || 'Failed to load categories')
       }
@@ -105,7 +105,7 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
 
   const handleDelete = async (cat) => {
     if (!cat?._id) return
-    if (!confirm(`Delete category "${cat.name}"? This may affect templates.`)) return
+    if (!confirm(`Delete category "${cat.name}"? Templates using it may be affected.`)) return
     setDeletingId(cat._id)
     try {
       const result = await api.delete(`/api/email/builder/category/${cat._id}`)
@@ -126,56 +126,76 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="2xl">
-      <DialogContent className="max-h-[90vh] overflow-y-auto" onClose={onClose}>
-        <DialogHeader>
-          <DialogTitle>Email categories</DialogTitle>
+      <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col p-0" onClose={onClose}>
+        <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            <Tags className="h-5 w-5 text-muted-foreground" />
+            Email categories
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1 font-normal">
+            Organize templates into groups when creating emails in the builder.
+          </p>
         </DialogHeader>
 
-        <div className="mt-4 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div className="flex flex-col sm:flex-row gap-2 rounded-xl border bg-muted/30 p-3">
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="New category name"
+              placeholder="e.g. Welcome emails, Promotions…"
               disabled={saving}
+              className="bg-background"
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             />
-            <Button variant="gradient" onClick={handleCreate} disabled={saving || !newName.trim()}>
+            <Button variant="gradient" onClick={handleCreate} disabled={saving || !newName.trim()} className="shrink-0">
               <Plus className="h-4 w-4 mr-2" />
-              Add
+              Add category
             </Button>
           </div>
 
           {loading && (
-            <div className="flex justify-center py-10">
+            <div className="flex justify-center py-12">
               <LoadingSpinner size="md" text="Loading categories…" />
             </div>
           )}
 
           {error && !loading && (
-            <Card className="border-destructive/50 bg-destructive/5">
-              <CardContent className="py-6 text-center">
-                <p className="text-sm font-medium text-destructive">{error}</p>
-              </CardContent>
-            </Card>
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 py-6 text-center">
+              <p className="text-sm font-medium text-destructive">{error}</p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={fetchCategories}>
+                Retry
+              </Button>
+            </div>
           )}
 
-          {!loading && !error && (
-            <div className="space-y-2">
+          {!loading && !error && sorted.length === 0 && (
+            <div className="rounded-xl border border-dashed py-12 text-center">
+              <FolderOpen className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-50" />
+              <p className="text-sm font-medium">No categories yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Add one above to assign templates in the builder.</p>
+            </div>
+          )}
+
+          {!loading && !error && sorted.length > 0 && (
+            <ul className="space-y-2">
               {sorted.map((cat) => (
-                <div
+                <li
                   key={cat._id}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2"
+                  className={cn(
+                    'rounded-xl border bg-background px-3 py-2.5 transition-colors',
+                    editingId === cat._id && 'ring-2 ring-ring/30'
+                  )}
                 >
                   {editingId === cat._id ? (
-                    <div className="flex-1 flex flex-col sm:flex-row gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
                       <Input
                         value={editingName}
                         onChange={(e) => setEditingName(e.target.value)}
                         disabled={saving}
+                        autoFocus
                         onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
                       />
-                      <div className="flex items-center gap-2">
+                      <div className="flex gap-2 shrink-0">
                         <Button variant="gradient" size="sm" onClick={saveEdit} disabled={saving || !editingName.trim()}>
                           Save
                         </Button>
@@ -185,13 +205,15 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
                       </div>
                     </div>
                   ) : (
-                    <>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{cat.name || 'Unnamed category'}</p>
-                        <p className="text-xs text-muted-foreground truncate">{cat._id}</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <p className="text-sm font-medium truncate">{cat.name || 'Unnamed'}</p>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEdit(cat)} title="Edit">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEdit(cat)} title="Rename">
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
@@ -205,15 +227,18 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                    </>
+                    </div>
                   )}
-                </div>
+                </li>
               ))}
-              {sorted.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">No categories yet.</p>
-              )}
-            </div>
+            </ul>
           )}
+        </div>
+
+        <div className="shrink-0 px-6 py-4 border-t bg-muted/20 flex justify-end">
+          <Button variant="outline" onClick={onClose}>
+            Done
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
