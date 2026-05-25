@@ -10,22 +10,16 @@ import { Checkbox } from '@/components/ui/checkbox'
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { toast } from '@/components/ui/toast'
-import { useAiAutomationVoice } from '@/app/ai-automation/AiAutomationVoiceContext'
 import {
-  DEFAULT_ELEVENLABS_TTS_MODEL_ID,
   DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
-  ELEVENLABS_CONVAI_TTS_OPTIONS,
-  FALLBACK_CONVAI_LLM_OPTIONS,
+  VAPI_ELEVENLABS_VOICE_DEFAULTS,
   VAPI_ELEVENLABS_VOICE_MODEL_OPTIONS,
   VAPI_ELEVENLABS_SPEED_MAX,
   VAPI_ELEVENLABS_SPEED_MIN,
+  VAPI_LLM_OPTIONS,
   clampVapiElevenLabsSpeedForUi,
-  normalizeConvaiLlmApiPayload,
-  clampConvaiLlmTemperature,
-  orderConvaiLlmsForUi,
-  isNonV3ConvaiTtsModel,
-  CONVAI_TTS_VOICE_DEFAULTS,
-} from '@/lib/elevenlabsConvai'
+  clampVapiLlmTemperature,
+} from '@/lib/vapiVoice'
 
 const WIZARD_LEADS_PAGE_SIZE = 10
 const WIZARD_PERSONAS_PAGE_SIZE = 8
@@ -52,7 +46,6 @@ function getAssistantFileIds(assistant) {
 }
 
 export default function MakeCallsPage() {
-  const { isElevenLabs } = useAiAutomationVoice()
   const [wizardStep, setWizardStep] = useState(1) // 1: contacts, 2: persona, 3: script, 4: review
   const [launching, setLaunching] = useState(false)
 
@@ -93,17 +86,16 @@ export default function MakeCallsPage() {
   const [backgroundSound, setBackgroundSound] = useState(DEFAULT_ASSISTANT_OPTIONS.backgroundSound)
   const [endCallMessage, setEndCallMessage] = useState(DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
 
-  /** Manual flow only — ElevenLabs LLM / TTS tuning when not using a saved assistant */
-  const [manualLlmModel, setManualLlmModel] = useState('gpt-4o')
-  const [manualTemperature, setManualTemperature] = useState(0.75)
-  const [manualTtsModelId, setManualTtsModelId] = useState(DEFAULT_ELEVENLABS_TTS_MODEL_ID)
-  const [manualTtsStability, setManualTtsStability] = useState(CONVAI_TTS_VOICE_DEFAULTS.stability)
-  const [manualTtsSimilarity, setManualTtsSimilarity] = useState(CONVAI_TTS_VOICE_DEFAULTS.similarityBoost)
-  const [manualTtsSpeed, setManualTtsSpeed] = useState(CONVAI_TTS_VOICE_DEFAULTS.speed)
+  /** Manual flow only — Vapi LLM / voice tuning when not using a saved assistant */
+  const [manualLlmModel, setManualLlmModel] = useState('gpt-4o-mini')
+  const [manualTemperature, setManualTemperature] = useState(0.65)
+  const [manualTtsModelId, setManualTtsModelId] = useState(DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID)
+  const [manualTtsStability, setManualTtsStability] = useState(VAPI_ELEVENLABS_VOICE_DEFAULTS.stability)
+  const [manualTtsSimilarity, setManualTtsSimilarity] = useState(VAPI_ELEVENLABS_VOICE_DEFAULTS.similarityBoost)
+  const [manualTtsSpeed, setManualTtsSpeed] = useState(VAPI_ELEVENLABS_VOICE_DEFAULTS.speed)
   /** ElevenLabs via Vapi — expressiveness 0–1 (Vapi `voice.style`). */
   const [manualTtsStyle, setManualTtsStyle] = useState(0.35)
   const [manualTtsSpeakerBoost, setManualTtsSpeakerBoost] = useState(true)
-  const [convaiLlms, setConvaiLlms] = useState([])
 
   const wizardLeadsTotalPages = Math.max(
     1,
@@ -274,46 +266,14 @@ export default function MakeCallsPage() {
     loadKnowledgeFiles()
   }, [loadScripts, loadKnowledgeFiles])
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const r = await api.get('/api/ai-assistant/elevenlabs/convai-llms')
-        const rows = orderConvaiLlmsForUi(normalizeConvaiLlmApiPayload(r.data))
-        if (!cancelled && r.success && rows.length > 0) {
-          setConvaiLlms(rows)
-        } else if (!cancelled && r.success && rows.length === 0) {
-          console.warn('[make-calls] ConvAI LLM list empty:', r.message)
-        } else if (!cancelled && !r.success) {
-          if (isElevenLabs) {
-            toast.error('LLM list', {
-              description: r.error || 'Could not load ConvAI models from the server.',
-            })
-          }
-        }
-      } catch (e) {
-        if (!cancelled && isElevenLabs) {
-          console.error(e)
-          toast.error('LLM list', {
-            description: 'Network error loading ConvAI models.',
-          })
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [isElevenLabs])
-
   /** Vapi only accepts specific `voice.model` values and caps ElevenLabs `voice.speed` at 1.2. */
   useEffect(() => {
-    if (isElevenLabs) return
     const allowed = new Set(VAPI_ELEVENLABS_VOICE_MODEL_OPTIONS.map((o) => o.value))
     setManualTtsModelId((prev) =>
       allowed.has(String(prev || '').trim()) ? prev : DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID
     )
     setManualTtsSpeed((s) => clampVapiElevenLabsSpeedForUi(s))
-  }, [isElevenLabs])
+  }, [])
 
   const toggleWizardLead = (lead) => {
     const id = lead._id
@@ -352,25 +312,22 @@ export default function MakeCallsPage() {
     if (setupMode !== 'manual' || !selectedPersonaId) return
     const p = personas.find((x) => x._id === selectedPersonaId)
     if (!p) return
-    setManualTtsStability(Number(p.stability ?? CONVAI_TTS_VOICE_DEFAULTS.stability))
-    setManualTtsSimilarity(Number(p.similarityBoost ?? CONVAI_TTS_VOICE_DEFAULTS.similarityBoost))
-    const spd = CONVAI_TTS_VOICE_DEFAULTS.speed
-    setManualTtsSpeed(isElevenLabs ? spd : clampVapiElevenLabsSpeedForUi(spd))
-  }, [setupMode, selectedPersonaId, personas, isElevenLabs])
+    setManualTtsStability(Number(p.stability ?? VAPI_ELEVENLABS_VOICE_DEFAULTS.stability))
+    setManualTtsSimilarity(Number(p.similarityBoost ?? VAPI_ELEVENLABS_VOICE_DEFAULTS.similarityBoost))
+    setManualTtsSpeed(clampVapiElevenLabsSpeedForUi(p.speed))
+  }, [setupMode, selectedPersonaId, personas])
   const selectedScript = scripts.find((s) => s._id === selectedScriptId) || null
   const selectedKnowledgeFiles = knowledgeFiles.filter((f) =>
     selectedKnowledgeFileIds.includes(String(f.fileID || f._id || ''))
   )
   const manualLlmOptions = useMemo(() => {
-    const raw =
-      isElevenLabs && convaiLlms.length > 0 ? convaiLlms : FALLBACK_CONVAI_LLM_OPTIONS
-    const base = orderConvaiLlmsForUi(raw)
+    const base = VAPI_LLM_OPTIONS
     const has = base.some((o) => o.value === manualLlmModel)
     if (manualLlmModel && !has) {
       return [{ value: manualLlmModel, label: `${manualLlmModel} (saved)` }, ...base]
     }
     return base
-  }, [convaiLlms, manualLlmModel, isElevenLabs])
+  }, [manualLlmModel])
   const canContinue =
     (wizardStep === 1 && selectedLeads.length > 0) ||
     (wizardStep === 2 && (setupMode === 'assistant' ? !!selectedAssistant : !!selectedPersona)) ||
@@ -396,13 +353,13 @@ export default function MakeCallsPage() {
     setVoiceMessage(DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
     setBackgroundSound(DEFAULT_ASSISTANT_OPTIONS.backgroundSound)
     setEndCallMessage(DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
-    setManualLlmModel('gpt-4o')
-    setManualTemperature(0.75)
-    setManualTtsModelId(DEFAULT_ELEVENLABS_TTS_MODEL_ID)
-    setManualTtsStability(CONVAI_TTS_VOICE_DEFAULTS.stability)
-    setManualTtsSimilarity(CONVAI_TTS_VOICE_DEFAULTS.similarityBoost)
-    setManualTtsSpeed(CONVAI_TTS_VOICE_DEFAULTS.speed)
-    setManualTtsStyle(0.35)
+    setManualLlmModel('gpt-4o-mini')
+    setManualTemperature(0.65)
+    setManualTtsModelId(DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID)
+    setManualTtsStability(VAPI_ELEVENLABS_VOICE_DEFAULTS.stability)
+    setManualTtsSimilarity(VAPI_ELEVENLABS_VOICE_DEFAULTS.similarityBoost)
+    setManualTtsSpeed(VAPI_ELEVENLABS_VOICE_DEFAULTS.speed)
+    setManualTtsStyle(VAPI_ELEVENLABS_VOICE_DEFAULTS.style)
     setManualTtsSpeakerBoost(true)
   }
 
@@ -468,13 +425,11 @@ export default function MakeCallsPage() {
       setupMode === 'assistant' && selectedAssistant
         ? {
             assistantID: selectedAssistant.assistantID,
-            llmModel: isElevenLabs
-              ? selectedAssistant.llmModel || 'gpt-4o'
-              : selectedAssistant.llmModel || 'gpt-4o-mini',
-            temperature: clampConvaiLlmTemperature(
+            llmModel: selectedAssistant.llmModel || 'gpt-4o-mini',
+            temperature: clampVapiLlmTemperature(
               typeof selectedAssistant.temperature === 'number'
                 ? selectedAssistant.temperature
-                : 0.75
+                : 0.65
             ),
             backgroundSound: backgroundSound === 'office' ? 'office' : null,
             endCallMessage: String(endCallMessage || ''),
@@ -489,19 +444,17 @@ export default function MakeCallsPage() {
               similarityBoost: Number(selectedAssistant.persona?.similarityBoost ?? 0.45),
               stability: Number(selectedAssistant.persona?.stability ?? 0.2),
               voiceId: selectedAssistant.persona?.voiceId,
-              ...(isElevenLabs || selectedAssistant.persona?.provider === '11labs'
+              ...(selectedAssistant.persona?.provider === '11labs'
                 ? {
                     speed: (() => {
                       const raw = Number(
-                        selectedAssistant.persona?.speed ?? CONVAI_TTS_VOICE_DEFAULTS.speed
+                        selectedAssistant.persona?.speed ?? VAPI_ELEVENLABS_VOICE_DEFAULTS.speed
                       )
-                      return !isElevenLabs && selectedAssistant.persona?.provider === '11labs'
-                        ? clampVapiElevenLabsSpeedForUi(raw)
-                        : raw
+                      return clampVapiElevenLabsSpeedForUi(raw)
                     })(),
                   }
                 : {}),
-              ...(!isElevenLabs && selectedAssistant.persona?.provider === '11labs'
+              ...(selectedAssistant.persona?.provider === '11labs'
                 ? {
                     ...(typeof selectedAssistant.persona?.style === 'number'
                       ? { style: selectedAssistant.persona.style }
@@ -514,23 +467,16 @@ export default function MakeCallsPage() {
             },
             scriptData: { script: String(selectedAssistant.scriptData?.script || '') },
             voiceMessage: String(voiceMessage || ''),
-            ...(isElevenLabs
+            ...(selectedAssistant.persona?.provider === '11labs'
               ? {
                   ttsModelId:
-                    selectedAssistant.ttsModelId?.trim() || DEFAULT_ELEVENLABS_TTS_MODEL_ID,
+                    selectedAssistant.ttsModelId?.trim() ||
+                    DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
                 }
-              : selectedAssistant.persona?.provider === '11labs'
-                ? {
-                    ttsModelId:
-                      selectedAssistant.ttsModelId?.trim() ||
-                      DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
-                  }
-                : {}),
+              : {}),
           }
         : (() => {
-            const manualElNonV3 =
-              isElevenLabs && isNonV3ConvaiTtsModel(manualTtsModelId)
-            const vapiElevenLabs = !isElevenLabs && selectedPersona.provider === '11labs'
+            const vapiElevenLabs = selectedPersona.provider === '11labs'
             return {
             backgroundSound: backgroundSound === 'office' ? 'office' : null,
             endCallMessage: String(endCallMessage || ''),
@@ -543,44 +489,24 @@ export default function MakeCallsPage() {
             persona: {
               provider: selectedPersona.provider,
               voiceId: selectedPersona.voiceId,
-              ...(manualElNonV3
+              ...(vapiElevenLabs
                 ? {
                     stability: Number(manualTtsStability),
                     similarityBoost: Number(manualTtsSimilarity),
-                    speed: Number(manualTtsSpeed),
+                    speed: clampVapiElevenLabsSpeedForUi(Number(manualTtsSpeed)),
+                    style: Number(manualTtsStyle),
+                    useSpeakerBoost: manualTtsSpeakerBoost,
                   }
-                : isElevenLabs
-                  ? {
-                      stability: Number(selectedPersona.stability ?? 0.2),
-                      similarityBoost: Number(selectedPersona.similarityBoost ?? 0.45),
-                      speed: CONVAI_TTS_VOICE_DEFAULTS.speed,
-                    }
-                  : vapiElevenLabs
-                    ? {
-                        stability: Number(manualTtsStability),
-                        similarityBoost: Number(manualTtsSimilarity),
-                        speed: clampVapiElevenLabsSpeedForUi(Number(manualTtsSpeed)),
-                        style: Number(manualTtsStyle),
-                        useSpeakerBoost: manualTtsSpeakerBoost,
-                      }
-                    : {
-                        stability: Number(selectedPersona.stability ?? 0.2),
-                        similarityBoost: Number(selectedPersona.similarityBoost ?? 0.45),
-                      }),
+                : {
+                    stability: Number(selectedPersona.stability ?? 0.2),
+                    similarityBoost: Number(selectedPersona.similarityBoost ?? 0.45),
+                  }),
             },
             scriptData: { script: String(selectedScript.script || '') },
             voiceMessage: String(voiceMessage || ''),
-            ...(isElevenLabs
-              ? {
-                  llmModel: manualLlmModel,
-                  temperature: clampConvaiLlmTemperature(manualTemperature),
-                  ttsModelId: manualTtsModelId,
-                }
-              : {
-                  llmModel: manualLlmModel,
-                  temperature: clampConvaiLlmTemperature(manualTemperature),
-                  ...(vapiElevenLabs ? { ttsModelId: manualTtsModelId } : {}),
-                }),
+            llmModel: manualLlmModel,
+            temperature: clampVapiLlmTemperature(manualTemperature),
+            ...(vapiElevenLabs ? { ttsModelId: manualTtsModelId } : {}),
           }
           })()
 
@@ -1199,55 +1125,24 @@ export default function MakeCallsPage() {
                       <span className="font-medium text-foreground">Knowledge files:</span>{' '}
                       {getAssistantFileIds(selectedAssistant).join(', ') || 'No file'}
                     </p>
-                    {isElevenLabs ? (
-                      <>
-                        <p>
-                          <span className="font-medium text-foreground">LLM:</span>{' '}
-                          {selectedAssistant.llmModel || '—'}
-                        </p>
-                        <p>
-                          <span className="font-medium text-foreground">Temperature:</span>{' '}
-                          {typeof selectedAssistant.temperature === 'number'
-                            ? clampConvaiLlmTemperature(selectedAssistant.temperature)
-                            : '—'}
-                        </p>
-                        <p>
-                          <span className="font-medium text-foreground">TTS model family:</span>{' '}
-                          <span className="font-mono">
-                            {selectedAssistant.ttsModelId?.trim() ||
-                              DEFAULT_ELEVENLABS_TTS_MODEL_ID}
-                          </span>
-                        </p>
-                        <p className="text-[10px] pt-1 border-t border-border/60">
-                          Conversational v3 + audio tags: you can use tags like{' '}
-                          <span className="font-mono text-foreground">[laughs]</span>,{' '}
-                          <span className="font-mono text-foreground">[sighs]</span>,{' '}
-                          <span className="font-mono text-foreground">[pauses]</span> in the assistant
-                          script (edit under AI Calling).
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p>
-                          <span className="font-medium text-foreground">LLM (Vapi):</span>{' '}
-                          {selectedAssistant.llmModel || 'gpt-4o-mini'}
-                        </p>
-                        <p>
-                          <span className="font-medium text-foreground">Temperature:</span>{' '}
-                          {typeof selectedAssistant.temperature === 'number'
-                            ? clampConvaiLlmTemperature(selectedAssistant.temperature)
-                            : '—'}
-                        </p>
-                        {selectedAssistant.persona?.provider === '11labs' && (
-                          <p>
-                            <span className="font-medium text-foreground">ElevenLabs TTS (via Vapi):</span>{' '}
-                            <span className="font-mono">
-                              {selectedAssistant.ttsModelId?.trim() ||
-                                DEFAULT_ELEVENLABS_TTS_MODEL_ID}
-                            </span>
-                          </p>
-                        )}
-                      </>
+                    <p>
+                      <span className="font-medium text-foreground">LLM (Vapi):</span>{' '}
+                      {selectedAssistant.llmModel || 'gpt-4o-mini'}
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Temperature:</span>{' '}
+                      {typeof selectedAssistant.temperature === 'number'
+                        ? clampVapiLlmTemperature(selectedAssistant.temperature)
+                        : '—'}
+                    </p>
+                    {selectedAssistant.persona?.provider === '11labs' && (
+                      <p>
+                        <span className="font-medium text-foreground">ElevenLabs TTS (via Vapi):</span>{' '}
+                        <span className="font-mono">
+                          {selectedAssistant.ttsModelId?.trim() ||
+                            DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID}
+                        </span>
+                      </p>
                     )}
                   </div>
                 )}
@@ -1345,124 +1240,7 @@ export default function MakeCallsPage() {
                       </div>
                     </div>
 
-                    {setupMode !== 'assistant' && isElevenLabs && (
-                      <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
-                        <p className="text-xs font-medium text-foreground">ElevenLabs — model and voice</p>
-                        <p className="text-[11px] text-muted-foreground">
-                          These apply to this call run when no saved assistant is selected. LLM list comes
-                          from your ElevenLabs workspace; TTS family maps to{' '}
-                          <span className="font-mono text-foreground">conversation_config.tts.model_id</span>.
-                          Use audio tags in your script (e.g.{' '}
-                          <span className="font-mono text-foreground">[laughs]</span>,{' '}
-                          <span className="font-mono text-foreground">[sighs]</span>,{' '}
-                          <span className="font-mono text-foreground">[pauses]</span>) especially with v3
-                          Conversational.
-                        </p>
-                        <div>
-                          <label className="text-xs font-medium text-foreground mb-1 block">
-                            TTS model family
-                          </label>
-                          <select
-                            value={manualTtsModelId}
-                            onChange={(e) => setManualTtsModelId(e.target.value)}
-                            className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs font-mono"
-                          >
-                            {[
-                              ...(manualTtsModelId &&
-                              !ELEVENLABS_CONVAI_TTS_OPTIONS.some((o) => o.value === manualTtsModelId)
-                                ? [{ value: manualTtsModelId, label: `${manualTtsModelId} (custom)` }]
-                                : []),
-                              ...ELEVENLABS_CONVAI_TTS_OPTIONS,
-                            ]
-                              .filter(
-                                (o, i, arr) => arr.findIndex((x) => x.value === o.value) === i
-                              )
-                              .map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                        {isNonV3ConvaiTtsModel(manualTtsModelId) && (
-                          <div className="rounded-md border border-border/70 bg-background/60 p-2.5 space-y-2">
-                            <p className="text-[11px] font-medium text-foreground">Voice (Flash / Multilingual)</p>
-                            <div>
-                              <label className="text-[10px] text-muted-foreground block">
-                                Stability: {manualTtsStability.toFixed(2)}
-                              </label>
-                              <input
-                                type="range"
-                                min={0}
-                                max={1}
-                                step={0.05}
-                                value={manualTtsStability}
-                                onChange={(e) => setManualTtsStability(Number(e.target.value))}
-                                className="w-full h-2 accent-brand"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[10px] text-muted-foreground block">
-                                Similarity: {manualTtsSimilarity.toFixed(2)}
-                              </label>
-                              <input
-                                type="range"
-                                min={0}
-                                max={1}
-                                step={0.05}
-                                value={manualTtsSimilarity}
-                                onChange={(e) => setManualTtsSimilarity(Number(e.target.value))}
-                                className="w-full h-2 accent-brand"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[10px] text-muted-foreground block">
-                                Speed: {manualTtsSpeed.toFixed(2)}
-                              </label>
-                              <input
-                                type="range"
-                                min={0.5}
-                                max={1.5}
-                                step={0.05}
-                                value={manualTtsSpeed}
-                                onChange={(e) => setManualTtsSpeed(Number(e.target.value))}
-                                className="w-full h-2 accent-brand"
-                              />
-                            </div>
-                          </div>
-                        )}
-                        <div>
-                          <label className="text-xs font-medium text-foreground mb-1 block">LLM model</label>
-                          <select
-                            value={manualLlmModel}
-                            onChange={(e) => setManualLlmModel(e.target.value)}
-                            className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs font-mono"
-                          >
-                            {manualLlmOptions.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-xs font-medium text-foreground mb-1 block">
-                            Temperature (0–1): {manualTemperature.toFixed(2)}
-                          </label>
-                          <input
-                            type="range"
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={manualTemperature}
-                            onChange={(e) => setManualTemperature(Number(e.target.value))}
-                            className="w-full h-2 accent-brand"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {setupMode !== 'assistant' && !isElevenLabs && (
+                    {setupMode !== 'assistant' && (
                       <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
                         <p className="text-xs font-medium text-foreground">Vapi — LLM and voice</p>
                         <p className="text-[11px] text-muted-foreground">
@@ -1754,90 +1532,56 @@ export default function MakeCallsPage() {
                   <p className="text-[11px] text-muted-foreground">
                     <span className="font-medium text-foreground">End call message:</span> {endCallMessage || '—'}
                   </p>
-                  {isElevenLabs ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">LLM (Vapi):</span>{' '}
+                    {setupMode === 'assistant'
+                      ? selectedAssistant?.llmModel || 'gpt-4o-mini'
+                      : manualLlmModel}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">Temperature:</span>{' '}
+                    {setupMode === 'assistant'
+                      ? typeof selectedAssistant?.temperature === 'number'
+                        ? clampVapiLlmTemperature(selectedAssistant.temperature)
+                        : '—'
+                      : manualTemperature.toFixed(2)}
+                  </p>
+                  {(setupMode === 'assistant'
+                    ? selectedAssistant?.persona?.provider === '11labs'
+                    : selectedPersona?.provider === '11labs') && (
                     <>
                       <p className="text-[11px] text-muted-foreground">
-                        <span className="font-medium text-foreground">LLM:</span>{' '}
-                        {setupMode === 'assistant'
-                          ? selectedAssistant?.llmModel || '—'
-                          : manualLlmModel}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        <span className="font-medium text-foreground">Temperature:</span>{' '}
-                        {setupMode === 'assistant'
-                          ? typeof selectedAssistant?.temperature === 'number'
-                            ? clampConvaiLlmTemperature(selectedAssistant.temperature)
-                            : '—'
-                          : manualTemperature.toFixed(2)}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        <span className="font-medium text-foreground">TTS model family:</span>{' '}
+                        <span className="font-medium text-foreground">ElevenLabs TTS (via Vapi):</span>{' '}
                         <span className="font-mono">
                           {setupMode === 'assistant'
                             ? selectedAssistant?.ttsModelId?.trim() ||
-                              DEFAULT_ELEVENLABS_TTS_MODEL_ID
+                              DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID
                             : manualTtsModelId}
                         </span>
                       </p>
-                      <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/60">
-                        ElevenLabs v3: scripts can include tags like [laughs], [sighs], [pauses] for
-                        delivery.
-                      </p>
-                    </>
-                  ) : (
-                    <>
                       <p className="text-[11px] text-muted-foreground">
-                        <span className="font-medium text-foreground">LLM (Vapi):</span>{' '}
+                        <span className="font-medium text-foreground">Voice tuning:</span> stability{' '}
                         {setupMode === 'assistant'
-                          ? selectedAssistant?.llmModel || 'gpt-4o-mini'
-                          : manualLlmModel}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        <span className="font-medium text-foreground">Temperature:</span>{' '}
+                          ? Number(selectedAssistant?.persona?.stability ?? 0).toFixed(2)
+                          : manualTtsStability.toFixed(2)}
+                        , similarity{' '}
                         {setupMode === 'assistant'
-                          ? typeof selectedAssistant?.temperature === 'number'
-                            ? clampConvaiLlmTemperature(selectedAssistant.temperature)
-                            : '—'
-                          : manualTemperature.toFixed(2)}
+                          ? Number(selectedAssistant?.persona?.similarityBoost ?? 0).toFixed(2)
+                          : manualTtsSimilarity.toFixed(2)}
+                        , speed{' '}
+                        {setupMode === 'assistant'
+                          ? Number(
+                              selectedAssistant?.persona?.speed ??
+                                VAPI_ELEVENLABS_VOICE_DEFAULTS.speed
+                            ).toFixed(2)
+                          : manualTtsSpeed.toFixed(2)}
+                        {setupMode !== 'assistant' && (
+                          <>
+                            , style {manualTtsStyle.toFixed(2)}, speaker boost{' '}
+                            {manualTtsSpeakerBoost ? 'on' : 'off'}
+                          </>
+                        )}
                       </p>
-                      {(setupMode === 'assistant'
-                        ? selectedAssistant?.persona?.provider === '11labs'
-                        : selectedPersona?.provider === '11labs') && (
-                        <>
-                          <p className="text-[11px] text-muted-foreground">
-                            <span className="font-medium text-foreground">ElevenLabs TTS (via Vapi):</span>{' '}
-                            <span className="font-mono">
-                              {setupMode === 'assistant'
-                                ? selectedAssistant?.ttsModelId?.trim() ||
-                                  DEFAULT_ELEVENLABS_TTS_MODEL_ID
-                                : manualTtsModelId}
-                            </span>
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            <span className="font-medium text-foreground">Voice tuning:</span> stability{' '}
-                            {setupMode === 'assistant'
-                              ? Number(selectedAssistant?.persona?.stability ?? 0).toFixed(2)
-                              : manualTtsStability.toFixed(2)}
-                            , similarity{' '}
-                            {setupMode === 'assistant'
-                              ? Number(selectedAssistant?.persona?.similarityBoost ?? 0).toFixed(2)
-                              : manualTtsSimilarity.toFixed(2)}
-                            , speed{' '}
-                            {setupMode === 'assistant'
-                              ? Number(
-                                  selectedAssistant?.persona?.speed ??
-                                    CONVAI_TTS_VOICE_DEFAULTS.speed
-                                ).toFixed(2)
-                              : manualTtsSpeed.toFixed(2)}
-                            {setupMode !== 'assistant' && (
-                              <>
-                                , style {manualTtsStyle.toFixed(2)}, speaker boost{' '}
-                                {manualTtsSpeakerBoost ? 'on' : 'off'}
-                              </>
-                            )}
-                          </p>
-                        </>
-                      )}
                     </>
                   )}
                 </div>
