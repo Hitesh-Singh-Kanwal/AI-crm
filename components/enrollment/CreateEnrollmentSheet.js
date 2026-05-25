@@ -154,6 +154,15 @@ export default function CreateEnrollmentSheet({
               ? {}
               : {},
       ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
+      ...(payload.tip?.teacherID && payload.tip?.amount
+        ? {
+            tip: {
+              teacherID: payload.tip.teacherID,
+              amount: Number(payload.tip.amount),
+              method: payload.tip.method || 'cash',
+            },
+          }
+        : {}),
     })
 
     if (!addRes?.success) {

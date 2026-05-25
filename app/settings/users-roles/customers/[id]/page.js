@@ -2215,6 +2215,8 @@ const BLANK_ENR_FORM = {
   billing: {
     method: "cash",
     numberOfInstallments: 3,
+    installmentMode: "count",
+    installmentAmount: "",
     frequency: "monthly",
     startDate: "",
   },
@@ -2392,11 +2394,20 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
   }, 0);
 
   function getEnrInstallments() {
-    const { numberOfInstallments, frequency, startDate } = addForm.billing;
-    if (!startDate || !numberOfInstallments) return [];
-    const n = Number(numberOfInstallments);
-    if (!n || n < 1) return [];
-    const baseAmt = parseFloat((enrTotalAmount / n).toFixed(2));
+    const { installmentMode, numberOfInstallments, installmentAmount, frequency, startDate } = addForm.billing;
+    if (!startDate) return [];
+    let n, baseAmt;
+    if (installmentMode === "amount") {
+      const amt = Number(installmentAmount || 0);
+      if (!amt || amt <= 0) return [];
+      n = Math.ceil(enrTotalAmount / amt);
+      if (!n) return [];
+      baseAmt = amt;
+    } else {
+      n = Number(numberOfInstallments);
+      if (!n || n < 1) return [];
+      baseAmt = parseFloat((enrTotalAmount / n).toFixed(2));
+    }
     const result = [];
     let d = new Date(startDate);
     for (let i = 0; i < n; i++) {
@@ -2426,9 +2437,17 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
   async function handleEnrAdd() {
     if (addForm.billingType === "payment_plan") {
-      const { numberOfInstallments, frequency, startDate } = addForm.billing;
-      if (!numberOfInstallments || !frequency || !startDate) {
+      const { installmentMode, numberOfInstallments, installmentAmount, frequency, startDate } = addForm.billing;
+      if (!frequency || !startDate) {
         toast.error("Please fill all payment plan fields.");
+        return;
+      }
+      if (installmentMode === "amount" && !Number(installmentAmount)) {
+        toast.error("Please enter an installment amount.");
+        return;
+      }
+      if (installmentMode !== "amount" && !numberOfInstallments) {
+        toast.error("Please enter number of installments.");
         return;
       }
     }
@@ -2457,9 +2476,13 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
           ? { method: addForm.billing.method }
           : addForm.billingType === "payment_plan"
             ? {
-                numberOfInstallments: Number(
-                  addForm.billing.numberOfInstallments,
-                ),
+                installmentMode: addForm.billing.installmentMode || "count",
+                numberOfInstallments: addForm.billing.installmentMode === "amount"
+                  ? Math.ceil(enrTotalAmount / Number(addForm.billing.installmentAmount || 1))
+                  : Number(addForm.billing.numberOfInstallments),
+                installmentAmount: addForm.billing.installmentMode === "amount"
+                  ? Number(addForm.billing.installmentAmount)
+                  : undefined,
                 frequency: addForm.billing.frequency,
                 startDate: addForm.billing.startDate,
               }
@@ -3395,8 +3418,8 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                 <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground mb-3">
                   Services
                 </p>
-                <div className="rounded-xl border border-border overflow-hidden">
-                  <table className="w-full text-[13px]">
+                <div className="rounded-xl border border-border overflow-x-auto">
+                  <table className="min-w-full text-[13px]">
                     <thead>
                       <tr className="bg-muted/40 border-b border-border">
                         {["Service", "Color", "Sessions", "Price / Session", "Discount", "Total", ""].map((h, i) => (
@@ -3587,22 +3610,47 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
                 {addForm.billingType === "payment_plan" && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-3 gap-4">
-                      <FormField label="Installments" required>
-                        <input
-                          type="number"
-                          min="2"
-                          max="52"
-                          value={addForm.billing.numberOfInstallments}
-                          onChange={(e) =>
-                            setEnrBilling(
-                              "numberOfInstallments",
-                              e.target.value,
-                            )
-                          }
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[14px] outline-none focus:border-primary"
-                        />
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField label="Installment Mode" required>
+                        <div className="relative">
+                          <select
+                            value={addForm.billing.installmentMode ?? "count"}
+                            onChange={(e) => setEnrBilling("installmentMode", e.target.value)}
+                            className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary"
+                          >
+                            <option value="count">No. of Installments</option>
+                            <option value="amount">Installment Amount</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        </div>
                       </FormField>
+                      {addForm.billing.installmentMode === "amount" ? (
+                        <FormField label="Amount per Installment" required>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+                            <input
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              placeholder="e.g. 100"
+                              value={addForm.billing.installmentAmount ?? ""}
+                              onChange={(e) => setEnrBilling("installmentAmount", e.target.value)}
+                              className="h-10 w-full rounded-lg border border-border bg-background pl-7 pr-3 text-[14px] outline-none focus:border-primary"
+                            />
+                          </div>
+                        </FormField>
+                      ) : (
+                        <FormField label="Installments" required>
+                          <input
+                            type="number"
+                            min="2"
+                            max="52"
+                            value={addForm.billing.numberOfInstallments}
+                            onChange={(e) => setEnrBilling("numberOfInstallments", e.target.value)}
+                            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[14px] outline-none focus:border-primary"
+                          />
+                        </FormField>
+                      )}
                       <FormField label="Frequency" required>
                         <div className="relative">
                           <select
