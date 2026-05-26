@@ -53,6 +53,12 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
   const [collectedPayments, setCollectedPayments] = useState([]);
   const [serviceCharges, setServiceCharges] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [flexEnrollments, setFlexEnrollments] = useState([]);
+  const [allFlexEnrollments, setAllFlexEnrollments] = useState([]);
+  const [totalSessionsRemaining, setTotalSessionsRemaining] = useState(null);
+  const [flexPayForms, setFlexPayForms] = useState({});
+  const [upcomingPayments, setUpcomingPayments] = useState([]); // unified sorted list
+  const [planPayForms, setPlanPayForms] = useState({}); // planId_installmentIdx → { method, saving, error }
 
   const [msgMode, setMsgMode] = useState("sms"); // "sms" | "email"
   const [smsText, setSmsText] = useState("");
@@ -312,14 +318,128 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
     if (activeTab !== "payments") return;
     async function load() {
       setLoadingPayments(true);
-      const result = await api.get(`/api/calendar/customer/${customerId}`);
-      if (result.success && Array.isArray(result.data)) {
-        const sorted = [...result.data].sort(
+      const [calResult, enrResult, planResult] = await Promise.all([
+        api.get(`/api/calendar/customer/${customerId}`),
+        api.get(`/api/enrollment?customerID=${customerId}`),
+        api.get(`/api/payment-plan/customer/${customerId}`),
+      ]);
+
+      let calEvents = [];
+      if (calResult.success && Array.isArray(calResult.data)) {
+        calEvents = [...calResult.data].sort(
           (a, b) => new Date(b.startDateTime) - new Date(a.startDateTime),
         );
-        setCollectedPayments(sorted.filter((e) => e.payment?.collected));
-        setServiceCharges(sorted.filter((e) => e.chargeApplied));
+        setCollectedPayments(calEvents.filter((e) => e.payment?.collected));
+        setServiceCharges(calEvents.filter((e) => e.chargeApplied));
       }
+
+      let allEnr = [];
+      if (enrResult.success) {
+        allEnr = enrResult.data || [];
+        const allFlex = allEnr.filter((e) => e.package?.billingType === "flexible");
+        const due = allFlex.filter((e) => e.package?.paymentStatus !== "paid" && e.status === "active");
+        setAllFlexEnrollments(allFlex);
+        setFlexEnrollments(due);
+        const totalRemaining = allEnr
+          .filter((e) => e.status === "active" && e.package?.status === "active")
+          .reduce((sum, e) => {
+            const bt = e.package?.billingType;
+            if (bt === "flexible" || bt === "payment_plan") {
+              const collected = e.package?.amountCollected ?? 0;
+              const svc = (e.package?.services ?? []).find((s) => s.pricePerSession > 0);
+              const pps = svc?.pricePerSession ?? 0;
+              return sum + (pps > 0 ? collected / pps : 0);
+            }
+            return sum + (e.package?.services ?? []).reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0);
+          }, 0);
+        setTotalSessionsRemaining(totalRemaining);
+        const forms = {};
+        due.forEach((e) => {
+          const outstanding = Math.max(0, (e.package.dueAmount ?? e.package.totalPaid) - (e.package.amountCollected ?? 0));
+          forms[String(e._id)] = {
+            mode: null,
+            amount: outstanding.toFixed(2),
+            method: "cash",
+            dueDate: e.package.dueDate ? new Date(e.package.dueDate).toISOString().slice(0, 10) : "",
+            saving: false,
+            error: null,
+          };
+        });
+        setFlexPayForms(forms);
+      }
+
+      // Build unified upcoming payments list
+      const upcoming = [];
+      const now = new Date();
+
+      // Flexible — unpaid due amounts
+      allEnr
+        .filter((e) => e.package?.billingType === "flexible" && e.package?.paymentStatus !== "paid" && e.status === "active")
+        .forEach((e) => {
+          const outstanding = Math.max(0, (e.package.dueAmount ?? e.package.totalPaid) - (e.package.amountCollected ?? 0));
+          const chargeableService = (e.package.services ?? []).find((s) => s.pricePerSession > 0);
+          upcoming.push({
+            type: "flexible",
+            sortDate: e.package.dueDate ? new Date(e.package.dueDate) : new Date(8640000000000000),
+            enrollmentId: String(e._id),
+            packageName: e.package.packageName,
+            amount: outstanding,
+            dueDate: e.package.dueDate,
+            isOverdue: e.package.dueDate && new Date(e.package.dueDate) < now,
+            pricePerSession: chargeableService?.pricePerSession ?? 0,
+            sessionsRemaining: chargeableService?.sessionsRemaining ?? 0,
+          });
+        });
+
+      // Payment plan — pending installments
+      if (planResult.success) {
+        const plans = planResult.data || [];
+        const planForms = {};
+        plans.filter((p) => p.status === "active").forEach((plan) => {
+          (plan.installments || []).forEach((inst, idx) => {
+            if (inst.status !== "pending") return;
+            const dueDate = new Date(inst.dueDate);
+            upcoming.push({
+              type: "plan",
+              sortDate: dueDate,
+              planId: String(plan._id),
+              installmentIdx: idx,
+              plan,
+              packageName: plan.enrollmentID?.package?.packageName ?? "Package",
+              amount: inst.amount,
+              dueDate: inst.dueDate,
+              installmentNumber: idx + 1,
+              totalInstallments: plan.numberOfInstallments,
+              isOverdue: dueDate < now,
+            });
+            planForms[`${plan._id}_${idx}`] = { method: "cash", saving: false, error: null };
+          });
+        });
+        setPlanPayForms(planForms);
+      }
+
+      // Pay per session — upcoming scheduled sessions
+      calEvents
+        .filter((e) => {
+          const isUpcoming = new Date(e.startDateTime) >= now;
+          const isPps = e.chargeApplied && e.chargeMethod === "package";
+          return isUpcoming && isPps;
+        })
+        .forEach((e) => {
+          upcoming.push({
+            type: "session",
+            sortDate: new Date(e.startDateTime),
+            eventId: String(e._id),
+            title: e.title,
+            serviceName: e.calendarServiceID?.serviceName,
+            amount: e.calendarServiceID?.price ?? 0,
+            startDateTime: e.startDateTime,
+            isOverdue: false,
+          });
+        });
+
+      upcoming.sort((a, b) => a.sortDate - b.sortDate);
+      setUpcomingPayments(upcoming);
       setLoadingPayments(false);
     }
     load();
@@ -1095,16 +1215,18 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                     </p>
                     <p className="text-[15px] font-bold text-violet-500">
                       $
-                      {serviceCharges
-                        .reduce(
-                          (sum, e) =>
-                            sum +
-                            (e.charges ?? [])
-                              .filter((c) => String(c.customerID) === String(customerId))
-                              .reduce((s, c) => s + (c.amount ?? 0), 0),
-                          0,
-                        )
-                        .toFixed(2)}
+                      {allFlexEnrollments.length > 0
+                        ? "0.00"
+                        : serviceCharges
+                            .reduce(
+                              (sum, e) =>
+                                sum +
+                                (e.charges ?? [])
+                                  .filter((c) => String(c.customerID) === String(customerId))
+                                  .reduce((s, c) => s + (c.amount ?? 0), 0),
+                              0,
+                            )
+                            .toFixed(2)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border bg-muted/30 px-2 py-2">
@@ -1113,20 +1235,244 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                     </p>
                     <p className="text-[15px] font-bold text-emerald-500">
                       $
-                      {collectedPayments
-                        .reduce((sum, e) => sum + (e.payment?.amount ?? 0), 0)
-                        .toFixed(2)}
+                      {(
+                        collectedPayments.reduce((sum, e) => sum + (e.payment?.amount ?? 0), 0) +
+                        allFlexEnrollments.reduce((sum, e) => sum + (e.package?.amountCollected ?? 0), 0)
+                      ).toFixed(2)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border bg-muted/30 px-2 py-2">
-                    <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">
-                      Credits
+                    <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5 leading-tight">
+                      Credit Balance
                     </p>
-                    <p className="text-[15px] font-bold text-foreground">
-                      ${Number(customer.credits ?? 0).toFixed(2)}
+                    <p className="text-[15px] font-bold text-emerald-500">
+                      {totalSessionsRemaining != null
+                        ? Number.isInteger(totalSessionsRemaining)
+                          ? totalSessionsRemaining
+                          : totalSessionsRemaining.toFixed(2).replace(/\.?0+$/, "")
+                        : "—"}
                     </p>
                   </div>
                 </div>
+
+                {/* Upcoming payments — flexible, payment plan, pay-per-session */}
+                {!loadingPayments && upcomingPayments.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                      Upcoming Payments
+                    </p>
+                    {upcomingPayments.map((item) => {
+                      if (item.type === "flexible") {
+                        const f = flexPayForms[item.enrollmentId] ?? { mode: null, payType: "full", sessions: 1, amount: item.amount.toFixed(2), method: "cash", dueDate: item.dueDate ? new Date(item.dueDate).toISOString().slice(0, 10) : "", saving: false, error: null };
+                        const updateFlex = (patch) => setFlexPayForms((prev) => ({ ...prev, [item.enrollmentId]: { ...prev[item.enrollmentId], ...patch } }));
+                        const reloadAll = async () => {
+                          const [enrRes, planRes] = await Promise.all([api.get(`/api/enrollment?customerID=${customerId}`), api.get(`/api/payment-plan/customer/${customerId}`)]);
+                          const allEnr2 = enrRes.success ? enrRes.data || [] : [];
+                          const allFlex2 = allEnr2.filter((e2) => e2.package?.billingType === "flexible");
+                          const due2 = allFlex2.filter((e2) => e2.package?.paymentStatus !== "paid" && e2.status === "active");
+                          setAllFlexEnrollments(allFlex2);
+                          setFlexEnrollments(due2);
+                          setTotalSessionsRemaining(allEnr2.filter((e2) => e2.status === "active" && e2.package?.status === "active").reduce((sum, e2) => { const bt = e2.package?.billingType; if (bt === "flexible" || bt === "payment_plan") { const col = e2.package?.amountCollected ?? 0; const sv = (e2.package?.services ?? []).find((s) => s.pricePerSession > 0); return sum + (sv?.pricePerSession > 0 ? col / sv.pricePerSession : 0); } return sum + (e2.package?.services ?? []).reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0); }, 0));
+                          const newForms = {};
+                          due2.forEach((e2) => {
+                            const os = Math.max(0, (e2.package.dueAmount ?? e2.package.totalPaid) - (e2.package.amountCollected ?? 0));
+                            newForms[String(e2._id)] = { mode: null, amount: os.toFixed(2), method: "cash", dueDate: e2.package.dueDate ? new Date(e2.package.dueDate).toISOString().slice(0, 10) : "", saving: false, error: null };
+                          });
+                          setFlexPayForms(newForms);
+                          const now2 = new Date();
+                          const upcoming2 = [];
+                          due2.forEach((e2) => {
+                            const os = Math.max(0, (e2.package.dueAmount ?? e2.package.totalPaid) - (e2.package.amountCollected ?? 0));
+                            const cs2 = (e2.package.services ?? []).find((s) => s.pricePerSession > 0);
+                            upcoming2.push({ type: "flexible", sortDate: e2.package.dueDate ? new Date(e2.package.dueDate) : new Date(8640000000000000), enrollmentId: String(e2._id), packageName: e2.package.packageName, amount: os, dueDate: e2.package.dueDate, isOverdue: e2.package.dueDate && new Date(e2.package.dueDate) < now2, pricePerSession: cs2?.pricePerSession ?? 0, sessionsRemaining: cs2?.sessionsRemaining ?? 0 });
+                          });
+                          if (planRes.success) {
+                            const plans2 = planRes.data || [];
+                            const pf2 = {};
+                            plans2.filter((p) => p.status === "active").forEach((plan) => {
+                              (plan.installments || []).forEach((inst, idx) => {
+                                if (inst.status !== "pending") return;
+                                const dd = new Date(inst.dueDate);
+                                upcoming2.push({ type: "plan", sortDate: dd, planId: String(plan._id), installmentIdx: idx, plan, packageName: plan.enrollmentID?.package?.packageName ?? "Package", amount: inst.amount, dueDate: inst.dueDate, installmentNumber: idx + 1, totalInstallments: plan.numberOfInstallments, isOverdue: dd < now2 });
+                                pf2[`${plan._id}_${idx}`] = { method: "cash", saving: false, error: null, open: false };
+                              });
+                            });
+                            setPlanPayForms(pf2);
+                          }
+                          upcoming2.sort((a, b) => a.sortDate - b.sortDate);
+                          setUpcomingPayments(upcoming2);
+                        };
+                        return (
+                          <div key={`flex-${item.enrollmentId}`} className={`rounded-lg border ${item.isOverdue ? "border-rose-300 bg-rose-50/30 dark:bg-rose-900/10" : "border-amber-200 bg-amber-50/30 dark:bg-amber-900/10"} px-3 py-2.5 space-y-2`}>
+                            <div className="flex items-start justify-between gap-1.5">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="text-[12px] font-semibold text-foreground truncate">{item.packageName}</p>
+                                  <span className="text-[9px] bg-violet-500/10 text-violet-600 rounded-full px-1.5 py-0.5 font-medium">Flexible</span>
+                                  {item.isOverdue && <span className="text-[9px] font-bold text-rose-600 bg-rose-500/10 rounded-full px-1.5 py-0.5">Overdue</span>}
+                                </div>
+                                <div className="flex items-center gap-3 mt-0.5">
+                                  <span className="text-[11px] font-bold text-rose-600">${item.amount.toFixed(2)} due</span>
+                                  {item.dueDate && <span className={`text-[10px] ${item.isOverdue ? "text-rose-500" : "text-muted-foreground"}`}>{new Date(item.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>}
+                                </div>
+                              </div>
+                              {f.mode === null && (
+                                <div className="flex flex-col gap-1 shrink-0">
+                                  <button type="button" onClick={() => updateFlex({ mode: "pay" })} className="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold px-2 py-1">Pay Now</button>
+                                  <button type="button" onClick={() => updateFlex({ mode: "change-date" })} className="rounded-md border border-border bg-background hover:bg-muted text-[10px] font-medium px-2 py-1 text-foreground">Change Date</button>
+                                </div>
+                              )}
+                            </div>
+                            {f.error && <p className="text-[10px] text-rose-500">{f.error}</p>}
+                            {f.mode === "pay" && (() => {
+                              const pps = item.pricePerSession ?? 0;
+                              const sessionAmt = pps > 0 ? pps * Math.max(1, Number(f.sessions) || 1) : null;
+                              const payAmt = f.payType === "sessions" && sessionAmt != null ? sessionAmt : parseFloat(f.amount);
+                              return (
+                                <form onSubmit={async (e) => { e.preventDefault(); const num = payAmt; if (isNaN(num) || num <= 0) return; updateFlex({ saving: true, error: null }); const sessionCount = f.payType === "sessions" ? Math.max(1, Number(f.sessions) || 1) : 0;
+                                  const res = await api.post("/api/payment", { customerID: customerId, enrollmentID: item.enrollmentId, type: "package_purchase", amount: num, method: f.method, ...(sessionCount > 0 && { sessions: sessionCount }) }); if (res.success) { await reloadAll(); } else { updateFlex({ saving: false, error: res.error || "Payment failed." }); } }} className="space-y-2 pt-1.5 border-t border-border/40">
+                                  {/* Payment type selector */}
+                                  {pps > 0 && (
+                                    <div className="flex rounded-md border border-border overflow-hidden">
+                                      {[{ v: "full", label: "Full Balance" }, { v: "sessions", label: "By Sessions" }].map(({ v, label }) => (
+                                        <button key={v} type="button" onClick={() => updateFlex({ payType: v, sessions: 1 })}
+                                          className={`flex-1 h-7 text-[10px] font-medium transition-colors ${f.payType === v ? "bg-brand text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}>
+                                          {label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {f.payType === "sessions" && pps > 0 ? (
+                                    <div className="space-y-1.5">
+                                      <div className="flex items-center gap-2">
+                                        <div className="flex-1">
+                                          <label className="block text-[9px] text-muted-foreground mb-0.5">Sessions</label>
+                                          <input type="number" min="1" max={item.sessionsRemaining || 999} step="1" value={f.sessions}
+                                            onChange={(e) => updateFlex({ sessions: e.target.value })}
+                                            className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none focus:border-primary" />
+                                        </div>
+                                        <div className="flex-1">
+                                          <label className="block text-[9px] text-muted-foreground mb-0.5">Amount</label>
+                                          <div className="h-7 rounded-md border border-border bg-muted/30 px-2 flex items-center text-[11px] font-semibold text-foreground">
+                                            ${(pps * Math.max(1, Number(f.sessions) || 1)).toFixed(2)}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <p className="text-[9px] text-muted-foreground">${pps.toFixed(2)}/session · {item.sessionsRemaining} remaining</p>
+                                    </div>
+                                  ) : (
+                                    <div className="flex gap-1.5">
+                                      <div className="relative flex-1"><span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span><input type="number" min="0.01" step="0.01" value={f.amount} onChange={(e) => updateFlex({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background pl-5 pr-2 text-[11px] outline-none focus:border-primary" /></div>
+                                    </div>
+                                  )}
+                                  <div className="flex gap-1.5">
+                                    <select value={f.method} onChange={(e) => updateFlex({ method: e.target.value })} className="flex-1 h-7 rounded-md border border-border bg-background px-2 text-[11px] outline-none capitalize">{["cash","card","online","cheque","other"].map((m) => <option key={m} value={m}>{m}</option>)}</select>
+                                  </div>
+                                  <div className="flex gap-1.5">
+                                    <button type="button" onClick={() => updateFlex({ mode: null })} className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
+                                    <button type="submit" disabled={f.saving} className="flex-1 h-7 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold disabled:opacity-50">{f.saving ? "Saving…" : `Confirm $${isNaN(payAmt) ? "0.00" : payAmt.toFixed(2)}`}</button>
+                                  </div>
+                                </form>
+                              );
+                            })()}
+                            {f.mode === "change-date" && (
+                              <form onSubmit={async (e) => { e.preventDefault(); if (!f.dueDate) return; updateFlex({ saving: true, error: null }); const res = await api.patch(`/api/customer-package/${item.enrollmentId}/flexible-due`, { dueDate: f.dueDate }); if (res.success) { await reloadAll(); } else { updateFlex({ saving: false, error: res.error || "Failed to update." }); } }} className="space-y-1.5 pt-1.5 border-t border-border/40">
+                                <input type="date" value={f.dueDate} onChange={(e) => updateFlex({ dueDate: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
+                                <div className="flex gap-1.5">
+                                  <button type="button" onClick={() => updateFlex({ mode: null })} className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
+                                  <button type="submit" disabled={f.saving || !f.dueDate} className="flex-1 h-7 rounded-md bg-brand hover:opacity-90 text-white text-[10px] font-semibold disabled:opacity-50">{f.saving ? "Saving…" : "Update"}</button>
+                                </div>
+                              </form>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      if (item.type === "plan") {
+                        const fkey = `${item.planId}_${item.installmentIdx}`;
+                        const pf = planPayForms[fkey] ?? { method: "cash", saving: false, error: null, open: false };
+                        const updatePlan = (patch) => setPlanPayForms((prev) => ({ ...prev, [fkey]: { ...prev[fkey], ...patch } }));
+                        return (
+                          <div key={fkey} className={`rounded-lg border ${item.isOverdue ? "border-rose-300 bg-rose-50/30 dark:bg-rose-900/10" : "border-border bg-muted/20"} px-3 py-2.5 space-y-2`}>
+                            <div className="flex items-start justify-between gap-1.5">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="text-[12px] font-semibold text-foreground truncate">{item.packageName}</p>
+                                  <span className="text-[9px] bg-blue-500/10 text-blue-600 rounded-full px-1.5 py-0.5 font-medium">Payment {item.installmentNumber}/{item.totalInstallments}</span>
+                                  {item.isOverdue && <span className="text-[9px] font-bold text-rose-600 bg-rose-500/10 rounded-full px-1.5 py-0.5">Overdue</span>}
+                                </div>
+                                <div className="flex items-center gap-3 mt-0.5">
+                                  <span className="text-[11px] font-bold text-foreground">${Number(item.amount).toFixed(2)}</span>
+                                  <span className={`text-[10px] ${item.isOverdue ? "text-rose-500" : "text-muted-foreground"}`}>{new Date(item.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                                </div>
+                              </div>
+                              {!pf.open && <button type="button" onClick={() => updatePlan({ open: true })} className="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold px-2 py-1 shrink-0">Pay Now</button>}
+                            </div>
+                            {pf.error && <p className="text-[10px] text-rose-500">{pf.error}</p>}
+                            {pf.open && (
+                              <form onSubmit={async (e) => { e.preventDefault(); updatePlan({ saving: true, error: null }); const res = await api.post(`/api/payment-plan/${item.planId}/pay-installment`, { installmentIndex: item.installmentIdx, method: pf.method }); if (res.success) {
+                                  const [enrRes2, planRes2] = await Promise.all([api.get(`/api/enrollment?customerID=${customerId}`), api.get(`/api/payment-plan/customer/${customerId}`)]);
+                                  const allEnr3 = enrRes2.success ? enrRes2.data || [] : [];
+                                  const allFlex3 = allEnr3.filter((e3) => e3.package?.billingType === "flexible");
+                                  setAllFlexEnrollments(allFlex3);
+                                  setFlexEnrollments(allFlex3.filter((e3) => e3.package?.paymentStatus !== "paid" && e3.status === "active"));
+                                  setTotalSessionsRemaining(allEnr3.filter((e3) => e3.status === "active" && e3.package?.status === "active").reduce((sum, e3) => { const bt = e3.package?.billingType; if (bt === "flexible" || bt === "payment_plan") { const col = e3.package?.amountCollected ?? 0; const sv = (e3.package?.services ?? []).find((s) => s.pricePerSession > 0); return sum + (sv?.pricePerSession > 0 ? col / sv.pricePerSession : 0); } return sum + (e3.package?.services ?? []).reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0); }, 0));
+                                  const now3 = new Date();
+                                  const upcoming3 = [];
+                                  allFlex3.filter((e3) => e3.package?.paymentStatus !== "paid" && e3.status === "active").forEach((e3) => {
+                                    const os3 = Math.max(0, (e3.package.dueAmount ?? e3.package.totalPaid) - (e3.package.amountCollected ?? 0));
+                                    const cs3 = (e3.package.services ?? []).find((s) => s.pricePerSession > 0);
+                                    upcoming3.push({ type: "flexible", sortDate: e3.package.dueDate ? new Date(e3.package.dueDate) : new Date(8640000000000000), enrollmentId: String(e3._id), packageName: e3.package.packageName, amount: os3, dueDate: e3.package.dueDate, isOverdue: e3.package.dueDate && new Date(e3.package.dueDate) < now3, pricePerSession: cs3?.pricePerSession ?? 0, sessionsRemaining: cs3?.sessionsRemaining ?? 0 });
+                                  });
+                                  const pf3 = {};
+                                  if (planRes2.success) {
+                                    (planRes2.data || []).filter((p3) => p3.status === "active").forEach((plan3) => {
+                                      (plan3.installments || []).forEach((inst3, idx3) => {
+                                        if (inst3.status !== "pending") return;
+                                        const dd3 = new Date(inst3.dueDate);
+                                        upcoming3.push({ type: "plan", sortDate: dd3, planId: String(plan3._id), installmentIdx: idx3, plan: plan3, packageName: plan3.enrollmentID?.package?.packageName ?? "Package", amount: inst3.amount, dueDate: inst3.dueDate, installmentNumber: idx3 + 1, totalInstallments: plan3.numberOfInstallments, isOverdue: dd3 < now3 });
+                                        pf3[`${plan3._id}_${idx3}`] = { method: "cash", saving: false, error: null, open: false };
+                                      });
+                                    });
+                                  }
+                                  setPlanPayForms(pf3);
+                                  upcoming3.sort((a, b) => a.sortDate - b.sortDate);
+                                  setUpcomingPayments(upcoming3);
+                                } else { updatePlan({ saving: false, error: res.error || "Payment failed." }); } }} className="space-y-1.5 pt-1.5 border-t border-border/40">
+                                <select value={pf.method} onChange={(e) => updatePlan({ method: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none capitalize">{["cash","card","online","cheque","other"].map((m) => <option key={m} value={m}>{m}</option>)}</select>
+                                <div className="flex gap-1.5">
+                                  <button type="button" onClick={() => updatePlan({ open: false })} className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
+                                  <button type="submit" disabled={pf.saving} className="flex-1 h-7 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold disabled:opacity-50">{pf.saving ? "Saving…" : `Pay $${Number(item.amount).toFixed(2)}`}</button>
+                                </div>
+                              </form>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      if (item.type === "session") {
+                        return (
+                          <div key={`session-${item.eventId}`} className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                            <div className="flex items-start justify-between gap-1.5">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="text-[12px] font-semibold text-foreground truncate">{item.title || item.serviceName || "Session"}</p>
+                                  <span className="text-[9px] bg-emerald-500/10 text-emerald-600 rounded-full px-1.5 py-0.5 font-medium">Upcoming</span>
+                                </div>
+                                <div className="flex items-center gap-3 mt-0.5">
+                                  {item.amount > 0 && <span className="text-[11px] font-bold text-foreground">${Number(item.amount).toFixed(2)}</span>}
+                                  <span className="text-[10px] text-muted-foreground">{new Date(item.startDateTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · {new Date(item.startDateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })}
+                  </div>
+                )}
 
                 {loadingPayments ? (
                   <p className="text-[12px] text-muted-foreground animate-pulse">
@@ -1169,7 +1515,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                                   {evt.title}
                                 </p>
                                 <div className="flex items-center gap-1.5 shrink-0">
-                                  {evt.calendarServiceID?.price > 0 && (
+                                  {evt.calendarServiceID?.price > 0 && allFlexEnrollments.length === 0 && (
                                     <span className="text-[12px] font-bold text-violet-500">
                                       $
                                       {Number(

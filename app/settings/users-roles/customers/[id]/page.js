@@ -109,165 +109,6 @@ function FormField({ label, required, children }) {
   );
 }
 
-// ─── RecordPaymentDialog ─────────────────────────────────────────────────────
-
-function RecordPaymentDialog({
-  open,
-  onClose,
-  customerID,
-  enrollmentID,
-  outstanding,
-  onSuccess,
-}) {
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState("cash");
-  const [notes, setNotes] = useState("");
-  const [saving, setSaving] = useState(false);
-  const toast = useToast();
-
-  function reset() {
-    setAmount("");
-    setMethod("cash");
-    setNotes("");
-  }
-
-  const num = parseFloat(amount);
-  const isPartial =
-    outstanding != null && !isNaN(num) && num > 0 && num < outstanding;
-  const isFull = outstanding != null && !isNaN(num) && num >= outstanding;
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (isNaN(num) || num <= 0) return;
-    setSaving(true);
-    const res = await api.post("/api/payment", {
-      customerID,
-      enrollmentID,
-      type: "package_purchase",
-      amount: num,
-      method,
-      notes: notes.trim() || undefined,
-    });
-    if (res.success) {
-      toast.success(
-        isPartial ? "Partial payment recorded." : "Payment recorded.",
-      );
-      reset();
-      onSuccess();
-      onClose();
-    } else {
-      toast.error(res.error || "Failed to record payment.");
-    }
-    setSaving(false);
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) {
-          reset();
-          onClose();
-        }
-      }}
-    >
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Record Payment</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          {outstanding != null && (
-            <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
-              <span className="text-[12px] text-muted-foreground">
-                Outstanding
-              </span>
-              <span className="text-[13px] font-semibold text-rose-500">
-                ${Number(outstanding).toFixed(2)}
-              </span>
-            </div>
-          )}
-          <FormField label="Amount" required>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">
-                $
-              </span>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                className="h-9 w-full rounded-lg border border-border bg-background pl-7 pr-3 text-[13px] outline-none focus:border-primary"
-              />
-            </div>
-            {isPartial && (
-              <p className="text-[11px] text-amber-500 mt-1">
-                Partial payment — ${(outstanding - num).toFixed(2)} will remain
-                outstanding
-              </p>
-            )}
-            {isFull && (
-              <p className="text-[11px] text-emerald-500 mt-1">
-                Full payment — package will be marked as paid
-              </p>
-            )}
-          </FormField>
-          <FormField label="Method" required>
-            <div className="relative">
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
-              >
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m} className="capitalize">
-                    {m}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            </div>
-          </FormField>
-          <FormField label="Notes (optional)">
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Cash on arrival"
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-            />
-          </FormField>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                reset();
-                onClose();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={saving || !amount || isNaN(num) || num <= 0}
-            >
-              {saving
-                ? "Saving…"
-                : isPartial
-                  ? "Record Partial"
-                  : "Record Payment"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ─── IssueRefundDialog ───────────────────────────────────────────────────────
 
 function IssueRefundDialog({ open, onClose, payment, onSuccess }) {
@@ -1059,7 +900,6 @@ function PackagesTab({ customerID }) {
   // Cancel / pay / pay-installment
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
-  const [recordPaymentTarget, setRecordPaymentTarget] = useState(null);
   const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
   const toast = useToast();
 
@@ -1362,22 +1202,6 @@ function PackagesTab({ customerID }) {
                     >
                       {pkg.status}
                     </span>
-                    {pkg.status === "active" &&
-                      pkg.paymentStatus !== "paid" &&
-                      pkg.billingType !== "payment_plan" && (
-                        <Button
-                          size="sm"
-                          className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                          onClick={() =>
-                            setRecordPaymentTarget({
-                              _id: enr._id,
-                              outstanding,
-                            })
-                          }
-                        >
-                          <CreditCard className="h-3 w-3 mr-1" /> Pay
-                        </Button>
-                      )}
                     {pkg.status === "active" && (
                       <Button
                         variant="ghost"
@@ -1669,16 +1493,6 @@ function PackagesTab({ customerID }) {
           })}
         </div>
       )}
-
-      {/* Record Payment dialog */}
-      <RecordPaymentDialog
-        open={Boolean(recordPaymentTarget)}
-        onClose={() => setRecordPaymentTarget(null)}
-        customerID={customerID}
-        enrollmentID={recordPaymentTarget?._id}
-        outstanding={recordPaymentTarget?.outstanding}
-        onSuccess={load}
-      />
 
       {/* Pay installment dialog */}
       <PayInstallmentDialog
@@ -2241,7 +2055,6 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
-  const [recordPaymentTarget, setRecordPaymentTarget] = useState(null);
   const [payInstallTarget, setPayInstallTarget] = useState(null);
   const [expandedServices, setExpandedServices] = useState(new Set());
 
@@ -2698,22 +2511,6 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                         >
                           {cp.status}
                         </span>
-                        {cp.status === "active" &&
-                          cp.paymentStatus !== "paid" &&
-                          cp.billingType !== "payment_plan" && (
-                            <Button
-                              size="sm"
-                              className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                              onClick={() =>
-                                setRecordPaymentTarget({
-                                  enrollmentId: enr._id,
-                                  outstanding,
-                                })
-                              }
-                            >
-                              <CreditCard className="h-3 w-3 mr-1" /> Pay
-                            </Button>
-                          )}
                         {cp.status === "active" && (
                           <Button
                             variant="ghost"
@@ -2783,6 +2580,12 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                           totalRemaining = 0,
                           totalCredit = 0,
                           totalServicePrice = 0;
+                        const isDeferred = cp.billingType === "flexible" || cp.billingType === "payment_plan" || cp.billingType === "pay_per_session";
+                        // Sum of all chargeable service prices (used as denominator for proportion)
+                        const chargeableSvcPriceTotal = services.reduce(
+                          (s, sv) => s + (Number(sv.pricePerSession) > 0 ? (sv.sessionsTotal ?? 0) * Number(sv.pricePerSession) : 0),
+                          0,
+                        );
                         const rows = services.map((svc, i) => {
                           const sessTotal = svc.sessionsTotal ?? 0;
                           const sessUsed = svc.sessionsUsed ?? 0;
@@ -2790,14 +2593,21 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                           const sessRemaining =
                             svc.sessionsRemaining ??
                             Math.max(0, sessTotal - sessUsed - sessSched);
-                          const svcCredit =
-                            sessRemaining * (Number(svc.pricePerSession) || 0);
-                          const svcTotal =
-                            sessTotal * (Number(svc.pricePerSession) || 0);
+                          const pps = Number(svc.pricePerSession) || 0;
+                          const svcTotal = sessTotal * pps;
+                          // For deferred billing, credit = paid amount ÷ price-per-session (decimal)
+                          const svcCreditSessions = (() => {
+                            if (!isDeferred || pps <= 0) return sessRemaining;
+                            // Proportion by this service's share of total chargeable price
+                            const svcShare = chargeableSvcPriceTotal > 0 ? svcTotal / chargeableSvcPriceTotal : 1;
+                            const svcAmountPaid = (cp.amountCollected ?? 0) * svcShare;
+                            return svcAmountPaid / pps;
+                          })();
+                          const svcCredit = svcCreditSessions * pps;
                           totalEnrolled += sessTotal;
                           totalUsed += sessUsed;
                           totalSched += sessSched;
-                          totalRemaining += sessRemaining;
+                          totalRemaining += isDeferred ? svcCreditSessions : sessRemaining;
                           totalCredit += svcCredit;
                           totalServicePrice += svcTotal;
                           return {
@@ -2807,6 +2617,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                             sessUsed,
                             sessSched,
                             sessRemaining,
+                            svcCreditSessions,
                             svcCredit,
                             svcTotal,
                           };
@@ -2854,6 +2665,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                   sessUsed,
                                   sessSched,
                                   sessRemaining,
+                                  svcCreditSessions,
                                   svcCredit,
                                   svcTotal,
                                 }) => {
@@ -2923,14 +2735,21 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                           {sessRemaining}
                                         </span>
                                         <span
-                                          className={`text-[13px] font-semibold text-right ${sessRemaining > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
+                                          className={`text-[13px] font-semibold text-right ${svcCreditSessions > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
                                         >
-                                          {sessRemaining}
+                                          {isDeferred
+                                            ? svcCreditSessions.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1")
+                                            : svcCreditSessions}
                                         </span>
                                         <span className="text-[13px] font-semibold text-foreground text-right">
-                                          {svcTotal > 0
-                                            ? `$${svcTotal.toFixed(2)}`
-                                            : "—"}
+                                          {svcTotal > 0 ? (() => {
+                                            const discount = Number(cp.totalDiscount) || 0;
+                                            const svcDiscount = totalServicePrice > 0 ? (svcTotal / totalServicePrice) * discount : 0;
+                                            const svcNet = svcTotal - svcDiscount;
+                                            return discount > 0
+                                              ? <><span className="text-[11px] text-muted-foreground line-through block">${svcTotal.toFixed(2)}</span><span className="text-emerald-600">${svcNet.toFixed(2)}</span></>
+                                              : `$${svcTotal.toFixed(2)}`;
+                                          })() : "—"}
                                         </span>
                                       </div>
                                       {isExpanded && (
@@ -3072,31 +2891,6 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                               {rows.length > 1 && (
                                 <>
                                   <div
-                                    className="grid px-3 py-2 border-t-2 border-border bg-muted/60"
-                                    style={{
-                                      gridTemplateColumns:
-                                        "1fr 80px 80px 80px 80px 80px 80px 100px",
-                                    }}
-                                  >
-                                    <span />
-                                    <span />
-                                    {[
-                                      "Enrolled",
-                                      "Used",
-                                      "Scheduled",
-                                      "Remaining",
-                                      "Credit Balance",
-                                      "Total After Discount",
-                                    ].map((h) => (
-                                      <span
-                                        key={h}
-                                        className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-right"
-                                      >
-                                        {h}
-                                      </span>
-                                    ))}
-                                  </div>
-                                  <div
                                     className="grid items-center px-3 py-3 border-t border-border bg-muted/40"
                                     style={{
                                       gridTemplateColumns:
@@ -3123,12 +2917,12 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                     <span
                                       className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? "text-foreground" : "text-muted-foreground"}`}
                                     >
-                                      {totalRemaining}
+                                      {isDeferred ? totalRemaining.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1") : totalRemaining}
                                     </span>
                                     <span
                                       className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
                                     >
-                                      {totalRemaining}
+                                      {isDeferred ? totalRemaining.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1") : totalRemaining}
                                     </span>
                                     <div className="text-right">
                                       {Number(cp.totalDiscount) > 0 ? (
@@ -3296,16 +3090,6 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
           })}
         </div>
       ) : null}
-
-      {/* Record Payment dialog */}
-      <RecordPaymentDialog
-        open={Boolean(recordPaymentTarget)}
-        onClose={() => setRecordPaymentTarget(null)}
-        customerID={customerID}
-        enrollmentID={recordPaymentTarget?.enrollmentId}
-        outstanding={recordPaymentTarget?.outstanding}
-        onSuccess={load}
-      />
 
       {/* Pay installment dialog */}
       <PayInstallmentDialog
@@ -3763,23 +3547,168 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
 // ─── Payment History Tab ─────────────────────────────────────────────────────
 
+function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
+  const cp = enr.package;
+  const outstanding = Math.max(0, (cp.dueAmount ?? cp.totalPaid) - (cp.amountCollected ?? 0));
+  const isOverdue = cp.dueDate && new Date(cp.dueDate) < new Date();
+  const [mode, setMode] = useState(null); // "pay" | "change-date"
+  const [amount, setAmount] = useState(String(outstanding.toFixed(2)));
+  const [method, setMethod] = useState("cash");
+  const [newDueDate, setNewDueDate] = useState(
+    cp.dueDate ? new Date(cp.dueDate).toISOString().slice(0, 10) : "",
+  );
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+
+  async function handlePay(e) {
+    e.preventDefault();
+    const num = parseFloat(amount);
+    if (isNaN(num) || num <= 0) return;
+    setSaving(true);
+    const res = await api.post("/api/payment", {
+      customerID,
+      enrollmentID: enr._id,
+      type: "package_purchase",
+      amount: num,
+      method,
+    });
+    if (res.success) {
+      toast.success(num >= outstanding ? "Payment recorded." : "Partial payment recorded.");
+      setMode(null);
+      onSuccess();
+    } else {
+      toast.error(res.error || "Failed to record payment.");
+    }
+    setSaving(false);
+  }
+
+  async function handleChangeDate(e) {
+    e.preventDefault();
+    if (!newDueDate) return;
+    setSaving(true);
+    const res = await api.patch(`/api/customer-package/${enr._id}/flexible-due`, {
+      dueDate: newDueDate,
+    });
+    if (res.success) {
+      toast.success("Due date updated.");
+      setMode(null);
+      onSuccess();
+    } else {
+      toast.error(res.error || "Failed to update due date.");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className={`rounded-xl border ${isOverdue ? "border-rose-300 bg-rose-50/40 dark:bg-rose-900/10" : "border-amber-200 bg-amber-50/40 dark:bg-amber-900/10"} p-4 space-y-3`}>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-[13px] font-semibold text-foreground">{cp.packageName}</p>
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-500/10 text-violet-600">Flexible Billing</span>
+            {isOverdue && (
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-rose-500/10 text-rose-600">Overdue</span>
+            )}
+          </div>
+          <div className="mt-1.5 flex items-center gap-4 flex-wrap">
+            <div>
+              <span className="text-[11px] text-muted-foreground">Amount Due </span>
+              <span className="text-[13px] font-bold text-rose-600">${outstanding.toFixed(2)}</span>
+            </div>
+            {cp.dueDate && (
+              <div>
+                <span className="text-[11px] text-muted-foreground">Due Date </span>
+                <span className={`text-[12px] font-medium ${isOverdue ? "text-rose-600" : "text-foreground"}`}>
+                  {new Date(cp.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+        {mode === null && (
+          <div className="flex items-center gap-2 shrink-0">
+            <Button size="sm" className="h-7 px-3 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => setMode("pay")}>
+              Pay Now
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 px-3 text-[11px]" onClick={() => setMode("change-date")}>
+              Change Due Date
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {mode === "pay" && (
+        <form onSubmit={handlePay} className="flex items-end gap-2 flex-wrap pt-2 border-t border-border/50">
+          <div className="flex-1 min-w-[120px]">
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1">Amount</label>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">$</span>
+              <input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
+                className="h-8 w-full rounded-md border border-border bg-background pl-6 pr-2.5 text-[12px] outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-[100px]">
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1">Method</label>
+            <select value={method} onChange={(e) => setMethod(e.target.value)}
+              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary capitalize">
+              {["cash", "card", "online", "cheque", "other"].map((m) => (
+                <option key={m} value={m} className="capitalize">{m}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-1.5">
+            <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => setMode(null)}>Cancel</Button>
+            <Button type="submit" size="sm" className="h-8 px-3 text-[11px]" disabled={saving}>
+              {saving ? "Saving…" : "Confirm Payment"}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {mode === "change-date" && (
+        <form onSubmit={handleChangeDate} className="flex items-end gap-2 flex-wrap pt-2 border-t border-border/50">
+          <div className="flex-1 min-w-[160px]">
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1">New Due Date</label>
+            <input type="date" value={newDueDate} onChange={(e) => setNewDueDate(e.target.value)}
+              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary" />
+          </div>
+          <div className="flex gap-1.5">
+            <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => setMode(null)}>Cancel</Button>
+            <Button type="submit" size="sm" className="h-8 px-3 text-[11px]" disabled={saving || !newDueDate}>
+              {saving ? "Saving…" : "Update Date"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function PaymentsTab({ customerID }) {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [refundTarget, setRefundTarget] = useState(null);
+  const [flexEnrollments, setFlexEnrollments] = useState([]);
   const LIMIT = 20;
 
   const load = useCallback(
     async (p = 1) => {
       setLoading(true);
-      const res = await api.get(
-        `/api/payment/customer/${customerID}?page=${p}&limit=${LIMIT}`,
-      );
-      if (res.success) {
-        setPayments(res.data || []);
-        setTotal(res.meta?.total ?? res.data?.length ?? 0);
+      const [payRes, enrRes] = await Promise.all([
+        api.get(`/api/payment/customer/${customerID}?page=${p}&limit=${LIMIT}`),
+        api.get(`/api/enrollment?customerID=${customerID}`),
+      ]);
+      if (payRes.success) {
+        setPayments(payRes.data || []);
+        setTotal(payRes.meta?.total ?? payRes.data?.length ?? 0);
+      }
+      if (enrRes.success) {
+        const due = (enrRes.data || []).filter(
+          (e) => e.package?.billingType === "flexible" && e.package?.paymentStatus !== "paid" && e.status === "active",
+        );
+        setFlexEnrollments(due);
       }
       setLoading(false);
     },
@@ -3801,6 +3730,15 @@ function PaymentsTab({ customerID }) {
 
   return (
     <div className="space-y-4">
+      {flexEnrollments.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">Payments Due</p>
+          {flexEnrollments.map((enr) => (
+            <FlexiblePaymentDueCard key={enr._id} enr={enr} customerID={customerID} onSuccess={() => load(page)} />
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <p className="text-[13px] text-muted-foreground">
           {total} transaction{total !== 1 ? "s" : ""}
@@ -4018,6 +3956,7 @@ function LessonsTab({ customer }) {
     const isPaid =
       (ev.chargeMethod === "package" && ev.packageBillingType === "pay_per_session") ||
       ev.chargeMethod === "credits" ||
+      ev.chargeMethod === "direct" ||
       ev.chargeMethod === "mixed" ||
       ev.payment?.collected;
     const isCancelledNoCharge = status === "cancelled_no_charge" || status === "no_show_no_charge";
@@ -4065,18 +4004,16 @@ function LessonsTab({ customer }) {
             const isPaid =
               (ev.chargeMethod === "package" && ev.packageBillingType === "pay_per_session") ||
               ev.chargeMethod === "credits" ||
+              ev.chargeMethod === "direct" ||
               ev.chargeMethod === "mixed" ||
               ev.payment?.collected;
-            const isCoveredByPackage = ev.chargeMethod === "package" && ev.packageBillingType !== "pay_per_session";
             const isCancelledNoCharge = status === "cancelled_no_charge" || status === "no_show_no_charge";
-            const paymentLabel = isCancelledNoCharge ? "No Charge" : isPaid ? "Paid" : isCoveredByPackage ? "Covered" : "Unpaid";
+            const paymentLabel = isCancelledNoCharge ? "No Charge" : isPaid ? "Paid" : "Unpaid";
             const paymentClass = isCancelledNoCharge
               ? "bg-muted text-muted-foreground"
               : isPaid
                 ? "bg-emerald-500/10 text-emerald-600"
-                : isCoveredByPackage
-                  ? "bg-blue-500/10 text-blue-600"
-                  : "bg-rose-500/10 text-rose-600";
+                : "bg-rose-500/10 text-rose-600";
             return (
               <div
                 key={ev._id ?? i}

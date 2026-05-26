@@ -275,11 +275,11 @@ function transformAppointments(appointments, colorMap) {
 
     const _isActuallyPaid =
       appt.payment?.collected ||
-      (appt.chargeMethod === "package" && appt.packageBillingType === "pay_per_session") ||
+      (appt.chargeMethod === "package" && appt.packageBillingType !== "flexible") ||
       appt.chargeMethod === "credits" ||
+      appt.chargeMethod === "direct" ||
       appt.chargeMethod === "mixed";
-    const _isCoveredByPackage = appt.chargeMethod === "package" && appt.packageBillingType !== "pay_per_session";
-    const paymentCollected = _isActuallyPaid ? "paid" : _isCoveredByPackage ? "covered" : "unpaid";
+    const paymentCollected = _isActuallyPaid ? "paid" : "unpaid";
 
     return {
       id: String(appt._id || appt.id),
@@ -627,11 +627,9 @@ const STATUS_STYLES = {
 };
 
 function PaymentStatusBadge({ collected }) {
-  // collected: "paid" | "covered" | "unpaid"
   const cfg = {
-    paid:    { cls: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400", label: "Paid" },
-    covered: { cls: "bg-blue-500/15 text-blue-600 dark:text-blue-400",          label: "Covered" },
-    unpaid:  { cls: "bg-red-500/15 text-red-600 dark:text-red-400",             label: "Unpaid" },
+    paid:   { cls: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400", label: "Paid" },
+    unpaid: { cls: "bg-red-500/15 text-red-600 dark:text-red-400",             label: "Unpaid" },
   };
   const { cls, label } = cfg[collected] ?? cfg.unpaid;
   return (
@@ -992,20 +990,23 @@ function showEventTooltip(e, props) {
   const paymentLabel = chargeMethod === "package"
     ? packageBillingType === "pay_per_session"
       ? "Per session · Package"
-      : "Covered by package"
+      : "Package"
     : chargeMethod === "credits"
     ? "Charged from credits"
+    : chargeMethod === "direct"
+    ? "Direct payment"
     : raw.payment?.collected
     ? `Collected (${raw.payment.method || ""})`
     : null;
 
   const isPaid =
-    (chargeMethod === "package" && packageBillingType === "pay_per_session") ||
+    (chargeMethod === "package" && raw.packageBillingType !== "flexible") ||
     chargeMethod === "credits" ||
+    chargeMethod === "direct" ||
     chargeMethod === "mixed" ||
     raw.payment?.collected;
-  const paymentStatus = isPaid ? "Paid" : chargeMethod === "package" ? "Covered" : "Unpaid";
-  const paymentStatusColor = isPaid ? "#22c55e" : chargeMethod === "package" ? "#3b82f6" : "#ef4444";
+  const paymentStatus = isPaid ? "Paid" : "Unpaid";
+  const paymentStatusColor = isPaid ? "#22c55e" : "#ef4444";
 
   const divider = `<div style="border-top:1px solid hsl(var(--border));margin:6px 0"></div>`;
 

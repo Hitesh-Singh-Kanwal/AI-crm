@@ -20,6 +20,8 @@ const BLANK_FORM = {
     startDate: "",
     installmentMode: "count",
     installmentAmount: "",
+    dueDate: "",
+    dueAmount: "",
   },
   tip: {
     enabled: false,
@@ -767,18 +769,40 @@ export default function NewEnrollmentPackageInline({
               </div>
             )}
             {form.billingType === "flexible" && (
-              <div className="rounded-lg border border-border bg-muted/20 p-3">
+              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
                 <p className="text-[11px] text-muted-foreground">
-                  No schedule set. Payments can be recorded manually at any
-                  time.
+                  No schedule set. A due date is recorded and payment can be collected at any time.
                 </p>
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
-                  <p className="text-[11px] text-muted-foreground">
-                    Payable Balance
-                  </p>
-                  <p className="text-[13px] font-bold text-foreground">
-                    ${total.toFixed(2)}
-                  </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Date <span className="text-rose-500">*</span></label>
+                    <input
+                      type="date"
+                      value={form.billing.dueDate}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, billing: { ...p.billing, dueDate: e.target.value } }))
+                      }
+                      className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Amount</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder={total.toFixed(2)}
+                      value={form.billing.dueAmount}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, billing: { ...p.billing, dueAmount: e.target.value } }))
+                      }
+                      className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                  <p className="text-[11px] text-muted-foreground">Payable Balance</p>
+                  <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
                 </div>
               </div>
             )}

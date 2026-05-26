@@ -150,15 +150,19 @@ function toTimeInputValue(iso) {
 
 // ─── Group student roster (add / remove customers with group packages) ────────
 
-function GroupStudentRoster({ eventId, onRosterChanged }) {
+function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChanged }) {
   // Fetch everything from scratch so we always have the live server state
   const [enrolled, setEnrolled] = useState([]);
   const [allCustomers, setAllCustomers] = useState([]);
   const [groupCustomerIds, setGroupCustomerIds] = useState(new Set());
+  const [sessionMap, setSessionMap] = useState({}); // customerID -> sessionsRemaining
+  const [chargedIds, setChargedIds] = useState(new Set()); // customerIDs that have a charge record
   const [loadingRoster, setLoadingRoster] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(null);
+  const [payingId, setPayingId] = useState(null); // student currently showing the pay form
+  const [payForm, setPayForm] = useState({ amount: "", method: "cash" });
   const dropRef = useRef(null);
 
   // Fetch the event's current customerIDs then resolve each to a full customer object
@@ -168,6 +172,10 @@ function GroupStudentRoster({ eventId, onRosterChanged }) {
     const customerIds = (evRes.data?.customerIDs || [])
       .map((c) => (typeof c === "object" ? String(c._id) : String(c)))
       .filter(Boolean);
+    const charged = new Set(
+      (evRes.data?.charges || []).map((ch) => String(ch.customerID))
+    );
+    setChargedIds(charged);
     if (customerIds.length === 0) { setEnrolled([]); return; }
     const results = await Promise.all(customerIds.map((id) => api.get(`/api/customer/${id}`)));
     setEnrolled(results.filter((r) => r.success).map((r) => r.data));
@@ -187,14 +195,28 @@ function GroupStudentRoster({ eventId, onRosterChanged }) {
           .map((s) => s.serviceCode),
       );
       const ids = new Set();
+      const sMap = {};
       (pkgRes.success ? pkgRes.data : []).forEach((enrollment) => {
-        const services = enrollment.package?.services ?? [];
-        if (services.some((s) => groupCodes.has(s.serviceCode))) {
-          const cid = enrollment.customerID?._id ?? enrollment.customerID;
-          if (cid) ids.add(String(cid));
+        const pkgServices = enrollment.package?.services ?? [];
+        if (pkgServices.some((s) => groupCodes.has(s.serviceCode))) {
+          const cid = String(enrollment.customerID?._id ?? enrollment.customerID ?? "");
+          if (cid) ids.add(cid);
+        }
+        // Build sessions-remaining map for this event's service
+        if (serviceCode && enrollment.status === "active" && enrollment.package?.status === "active") {
+          const cid = String(enrollment.customerID?._id ?? enrollment.customerID ?? "");
+          const svc = (enrollment.package?.services ?? []).find((s) => s.serviceCode === serviceCode);
+          if (cid && svc != null) {
+            const prev = sMap[cid];
+            // keep the highest remaining count across multiple active packages
+            if (prev == null || svc.sessionsRemaining > prev) {
+              sMap[cid] = svc.sessionsRemaining;
+            }
+          }
         }
       });
       setGroupCustomerIds(ids);
+      setSessionMap(sMap);
       if (customersRes.success) setAllCustomers(customersRes.data);
       await fetchEnrolled();
       setLoadingRoster(false);
@@ -231,19 +253,52 @@ function GroupStudentRoster({ eventId, onRosterChanged }) {
     const cid = String(customer._id);
     setSaving(cid);
     const newIds = [...currentIds, cid];
-    await api.put(`/api/calendar/${eventId}`, { customerIDs: newIds });
-    setEnrolled((prev) => [...prev, customer]);
+    const res = await api.put(`/api/calendar/${eventId}`, { customerIDs: newIds });
+    if (res.success) {
+      const charged = new Set((res.data?.charges || []).map((ch) => String(ch.customerID)));
+      setChargedIds(charged);
+      setEnrolled((prev) => [...prev, customer]);
+      onRosterChanged?.();
+    }
     setSaving(null);
-    onRosterChanged?.();
   };
 
   const handleRemove = async (customerId) => {
     setSaving(customerId);
     const newIds = [...currentIds].filter((id) => id !== customerId);
-    await api.put(`/api/calendar/${eventId}`, { customerIDs: newIds });
-    setEnrolled((prev) => prev.filter((c) => String(c._id) !== customerId));
+    const res = await api.put(`/api/calendar/${eventId}`, { customerIDs: newIds });
+    if (res.success) {
+      const charged = new Set((res.data?.charges || []).map((ch) => String(ch.customerID)));
+      setChargedIds(charged);
+      setEnrolled((prev) => prev.filter((c) => String(c._id) !== customerId));
+      onRosterChanged?.();
+    }
     setSaving(null);
+  };
+
+  const openPayForm = (cid) => {
+    setPayingId(cid);
+    setPayForm({ amount: servicePrice != null ? String(servicePrice) : "", method: "cash" });
+  };
+
+  const handleDirectPay = async (cid) => {
+    setSaving(cid);
+    const res = await api.post(`/api/calendar/${eventId}/charge-student`, {
+      customerID: cid,
+      method: payForm.method,
+      amount: payForm.amount !== "" ? Number(payForm.amount) : undefined,
+    });
+    if (res.success) {
+      const charges = res.data?.charges || [];
+      const charged = new Set(charges.map((ch) => String(ch.customerID)));
+      setChargedIds(charged);
+      setPayingId(null);
+    } else {
+      await fetchEnrolled();
+    }
+    // Always refresh the calendar so the event badge + tooltip update
     onRosterChanged?.();
+    setSaving(null);
   };
 
   if (loadingRoster) {
@@ -330,9 +385,13 @@ function GroupStudentRoster({ eventId, onRosterChanged }) {
         </div>
       ) : (
         <div className="space-y-2 mt-1">
-          {enrolled.map((c) => (
+          {enrolled.map((c) => {
+            const cid = String(c._id);
+            const remaining = sessionMap[cid];
+            const isCharged = chargedIds.has(cid);
+            return (
+            <div key={cid}>
             <div
-              key={String(c._id)}
               className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center gap-2"
             >
               <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
@@ -342,14 +401,28 @@ function GroupStudentRoster({ eventId, onRosterChanged }) {
                 <p className="text-[13px] font-semibold text-foreground truncate">{c.name || "—"}</p>
                 {c.email && <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>}
               </div>
+              {remaining != null && !(remaining === 0 && isCharged) && (
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${remaining <= 2 ? "bg-red-500/10 text-red-500" : "bg-primary/10 text-primary"}`}>
+                  {remaining} left
+                </span>
+              )}
+              {!isCharged && (
+                <button
+                  type="button"
+                  onClick={() => payingId === cid ? setPayingId(null) : openPayForm(cid)}
+                  className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors"
+                >
+                  Unpaid
+                </button>
+              )}
               <button
                 type="button"
-                disabled={saving === String(c._id)}
-                onClick={() => handleRemove(String(c._id))}
+                disabled={saving === cid}
+                onClick={() => handleRemove(cid)}
                 className="shrink-0 h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40"
                 aria-label="Remove student"
               >
-                {saving === String(c._id) ? (
+                {saving === cid ? (
                   <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
@@ -358,8 +431,64 @@ function GroupStudentRoster({ eventId, onRosterChanged }) {
                   <X className="h-3 w-3" />
                 )}
               </button>
+            </div>{/* end student row */}
+            {payingId === cid && (
+              <div className="mt-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 space-y-2">
+                <p className="text-[11px] font-semibold text-amber-600">Record session payment</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block mb-1 text-[10px] font-medium text-muted-foreground">Amount ($)</label>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={payForm.amount}
+                        onChange={(e) => setPayForm((p) => ({ ...p, amount: e.target.value }))}
+                        placeholder="0.00"
+                        className="h-8 w-full rounded-md border border-border bg-background pl-5 pr-2 text-[11px] text-foreground outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[10px] font-medium text-muted-foreground">Method</label>
+                    <div className="relative">
+                      <select
+                        value={payForm.method}
+                        onChange={(e) => setPayForm((p) => ({ ...p, method: e.target.value }))}
+                        className="h-8 w-full appearance-none rounded-md border border-border bg-background px-2 pr-6 text-[11px] text-foreground outline-none focus:border-amber-500"
+                      >
+                        {["cash", "card", "online", "cheque", "other"].map((m) => (
+                          <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPayingId(null)}
+                    className="flex-1 h-7 rounded-md border border-border bg-background text-[11px] font-medium text-muted-foreground hover:bg-muted/40"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving === cid}
+                    onClick={() => handleDirectPay(cid)}
+                    className="flex-1 h-7 rounded-md bg-amber-500 text-[11px] font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+                  >
+                    {saving === cid ? "Charging…" : "Charge"}
+                  </button>
+                </div>
+              </div>
+            )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -642,67 +771,6 @@ export default function EventDetailPanel({
               />
             </Field>
 
-            {/* Payment */}
-            <div className={[
-              "rounded-xl border px-3 py-2.5 transition-colors",
-              form.payment_collected ? "border-emerald-500/30 bg-emerald-500/5" : "border-border bg-muted/20",
-            ].join(" ")}>
-              <div className="flex items-center justify-between">
-                <p className={`text-[12px] font-semibold ${form.payment_collected ? "text-emerald-600" : "text-foreground"}`}>
-                  {form.payment_collected ? "Payment recorded" : "Record payment"}
-                </p>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={form.payment_collected}
-                  onClick={() => setField("payment_collected", !form.payment_collected)}
-                  className={[
-                    "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-                    form.payment_collected ? "bg-emerald-500" : "bg-muted",
-                  ].join(" ")}
-                >
-                  <span className={[
-                    "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform",
-                    form.payment_collected ? "translate-x-4" : "translate-x-0",
-                  ].join(" ")} />
-                </button>
-              </div>
-              {form.payment_collected && (
-                <div className="mt-2.5 grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block mb-1 text-[10px] font-medium text-muted-foreground">Amount ($)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={form.payment_amount}
-                        onChange={(e) => setField("payment_amount", e.target.value)}
-                        placeholder="0.00"
-                        className="h-9 w-full rounded-lg border border-border bg-background pl-6 pr-3 text-[12px] text-foreground outline-none focus:border-emerald-500"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block mb-1 text-[10px] font-medium text-muted-foreground">Method</label>
-                    <div className="relative">
-                      <select
-                        value={form.payment_method}
-                        onChange={(e) => setField("payment_method", e.target.value)}
-                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-emerald-500"
-                      >
-                        <option value="">Select…</option>
-                        {["cash","card","online","cheque","other"].map((m) => (
-                          <option key={m} value={m} className="capitalize">{m.charAt(0).toUpperCase() + m.slice(1)}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
           </>
         ) : (
           <>
@@ -749,22 +817,14 @@ export default function EventDetailPanel({
                   <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
                     {event.chargeApplied ? (
                       <>
-                        {event.chargeMethod === "package" && event.packageBillingType !== "pay_per_session" ? (
-                          <>
-                            <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
-                            <span className="text-[11px] text-blue-500 font-medium">Covered by package</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                            <span className="text-[11px] text-emerald-600 font-medium">
-                              {event.chargeMethod === "package" && "Paid · Per session"}
-                              {event.chargeMethod === "credits" && `$${Number(event.calendarServiceID.price).toFixed(2)} deducted from credits`}
-                              {event.chargeMethod === "mixed" && "Charged via package + credits"}
-                              {event.chargeMethod === "none" && "Charged"}
-                            </span>
-                          </>
-                        )}
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                        <span className="text-[11px] text-emerald-600 font-medium">
+                          {event.chargeMethod === "package" && event.packageBillingType !== "pay_per_session" && "Paid · Package"}
+                          {event.chargeMethod === "package" && event.packageBillingType === "pay_per_session" && "Paid · Per session"}
+                          {event.chargeMethod === "credits" && `$${Number(event.calendarServiceID.price).toFixed(2)} deducted from credits`}
+                          {event.chargeMethod === "mixed" && "Charged via package + credits"}
+                          {event.chargeMethod === "none" && "Charged"}
+                        </span>
                       </>
                     ) : (
                       <>
@@ -815,7 +875,7 @@ export default function EventDetailPanel({
 
             {/* Customer details */}
             {event.type === "lesson" ? (
-              <GroupStudentRoster eventId={event._id} onRosterChanged={onRosterChanged} />
+              <GroupStudentRoster eventId={event._id} serviceCode={event.calendarServiceID?.serviceCode} servicePrice={event.calendarServiceID?.price} onRosterChanged={onRosterChanged} />
             ) : (
               <div>
                 <Label>Customer{customerDetails.length !== 1 ? "s" : ""}</Label>
@@ -941,16 +1001,6 @@ export default function EventDetailPanel({
         ) : (
           <>
             {/* Quick record-payment button — hidden for pay_per_session (auto-charged at booking) */}
-            {!event.payment?.collected && event.packageBillingType !== "pay_per_session" && (
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="w-full h-9 rounded-lg border border-emerald-500/40 text-[12px] font-semibold text-emerald-600 hover:bg-emerald-500/8 transition-colors flex items-center justify-center gap-1.5"
-              >
-                <span className="text-emerald-500 font-bold text-[14px] leading-none">$</span>
-                Record Payment
-              </button>
-            )}
 
             {/* Quick status actions — only shown when event is still scheduled */}
             {event.effectiveStatus === "scheduled" || event.status === "scheduled" ? (
