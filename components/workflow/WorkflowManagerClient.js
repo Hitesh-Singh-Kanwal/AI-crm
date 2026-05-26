@@ -562,7 +562,7 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                       </button>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
                       <div>
                         <label className="mb-1 block text-[11px] text-muted-foreground">Type</label>
                         <select
@@ -615,6 +615,23 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                             </option>
                           ))}
                         </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] text-muted-foreground">Day</label>
+                        <input
+                          value={step.day ?? 0}
+                          onChange={(e) =>
+                            setEditing((p) => ({
+                              ...p,
+                              steps: p.steps.map((s, i) =>
+                                i === idx ? { ...s, day: Number(e.target.value) } : s
+                              ),
+                            }))
+                          }
+                          type="number"
+                          min={0}
+                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                        />
                       </div>
                       <div>
                         <label className="mb-1 block text-[11px] text-muted-foreground">Description</label>

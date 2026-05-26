@@ -35,6 +35,7 @@ function createEmptyStep(order) {
     description: '',
     order: String(order),
     leadStage: 'new',
+    day: 0,
   }
 }
 
@@ -79,13 +80,16 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
       steps: Array.isArray(wf?.steps) ? wf.steps.map((s) => ({ ...s })) : [createEmptyStep(1)],
     }
     if (!Array.isArray(base.steps) || base.steps.length === 0) base.steps = [createEmptyStep(1)]
-    base.steps = base.steps.map((s, idx) => ({
-      type: s.type || 'sms',
-      description: s.description ?? '',
-      order: String(s.order ?? String(idx + 1)),
-      leadStage: s.leadStage || 'new',
-      ...(s.day !== undefined ? { day: s.day } : {}),
-    }))
+    base.steps = base.steps.map((s, idx) => {
+      const dayNum = Number(s.day)
+      return {
+        type: s.type || 'sms',
+        description: s.description ?? '',
+        order: String(s.order ?? String(idx + 1)),
+        leadStage: s.leadStage || 'new',
+        day: Number.isFinite(dayNum) ? dayNum : 0,
+      }
+    })
     setDraft(base)
     setEditing(true)
     setSaveError('')
@@ -96,7 +100,9 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
     if (!draft.name?.trim()) return false
     if (!draft.event?.trim()) return false
     if (!Array.isArray(draft.steps) || draft.steps.length === 0) return false
-    return draft.steps.every((s) => s.type && s.order !== '' && s.leadStage !== '')
+    return draft.steps.every(
+      (s) => s.type && s.order !== '' && s.leadStage !== '' && Number.isFinite(Number(s.day))
+    )
   }, [draft])
 
   const save = async () => {
@@ -288,7 +294,7 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
                       </button>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
                       <div>
                         <label className="mb-1 block text-[11px] text-muted-foreground">Type</label>
                         <select
@@ -341,6 +347,23 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
                             </option>
                           ))}
                         </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] text-muted-foreground">Day</label>
+                        <input
+                          value={step.day ?? 0}
+                          onChange={(e) =>
+                            setDraft((p) => ({
+                              ...p,
+                              steps: p.steps.map((s, i) =>
+                                i === idx ? { ...s, day: Number(e.target.value) } : s
+                              ),
+                            }))
+                          }
+                          type="number"
+                          min={0}
+                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                        />
                       </div>
                       <div>
                         <label className="mb-1 block text-[11px] text-muted-foreground">Description</label>
