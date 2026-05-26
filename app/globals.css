@@ -179,6 +179,9 @@
 /* FullCalendar overrides */
 .calendar-shell .fc {
   height: auto;
+  font-family: inherit;
+  font-size: 11px;
+  color: hsl(var(--foreground));
 }
 
 /* No fixed max height: grid grows so late-evening appointments stay in view (page scrolls). */
@@ -229,7 +232,11 @@
 
 .calendar-shell .fc .fc-more-link {
   color: hsl(var(--foreground));
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  border-radius: 999px;
+  padding: 2px 6px;
 }
 
 .calendar-shell .fc .fc-event {
@@ -238,6 +245,8 @@
   width: 100% !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
 }
 
 /* Fixed-size booking cards: week (time grid) + month (day grid) */
@@ -323,6 +332,79 @@
 .calendar-shell .fc .fc-timegrid-axis-cushion,
 .calendar-shell .fc .fc-timegrid-slot-label-cushion {
   color: hsl(var(--foreground));
+}
+
+.calendar-shell--month {
+  overflow: hidden;
+}
+
+.calendar-shell--month .fc .fc-scrollgrid {
+  border: 0 !important;
+}
+
+.calendar-shell--month .fc .fc-col-header-cell {
+  background: hsl(var(--muted) / 0.3) !important;
+}
+
+.calendar-shell--month .fc .fc-col-header-cell-cushion {
+  display: block;
+  padding: 10px 8px;
+  color: hsl(var(--foreground));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.calendar-shell--month .fc .fc-daygrid-day-frame {
+  min-height: 132px;
+  padding: 6px;
+}
+
+.calendar-shell--month .fc .fc-daygrid-day-top {
+  justify-content: flex-start;
+}
+
+.calendar-shell--month .fc .fc-daygrid-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  margin-bottom: 4px;
+  border-radius: 999px;
+  color: hsl(var(--foreground));
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.calendar-shell--month .fc .fc-day-today .fc-daygrid-day-number {
+  background: var(--studio-primary);
+  color: rgb(var(--studio-on-primary-rgb));
+}
+
+.calendar-shell--month .fc .fc-daygrid-day.fc-day-other .fc-daygrid-day-number {
+  color: hsl(var(--muted-foreground) / 0.55);
+}
+
+.calendar-shell--month .fc .fc-daygrid-day-events {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+}
+
+.calendar-shell--month .fc .fc-daygrid-event-harness {
+  margin: 0 !important;
+}
+
+.calendar-shell--month .fc .booking-card-shell {
+  border-radius: 5px;
+  box-shadow: 0 1px 3px hsl(var(--foreground) / 0.06);
+}
+
+.calendar-shell--month .fc .fc-more-link:hover {
+  background: hsl(var(--muted) / 0.7);
 }
 
 .calendar-shell .fc .fc-daygrid-day.fc-day-other {

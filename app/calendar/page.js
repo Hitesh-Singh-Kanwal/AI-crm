@@ -179,6 +179,11 @@ function formatDayAxisSlotLabel(totalMinsFromMidnight) {
   return `${hour12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
+function formatLocalDateKey(dateInput) {
+  const date = new Date(dateInput);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function deriveInstructors(appointments) {
   const seen = {};
   let colorIdx = 0;
@@ -1508,7 +1513,7 @@ function TutorDayCalendar({
                 const h = Math.floor(totalSlotMins / 60);
                 const m = totalSlotMins % 60;
                 onSlotClick?.({
-                  date: focusDate.toISOString().slice(0, 10),
+                  date: formatLocalDateKey(focusDate),
                   time: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
                   instructorId:
                     tutor.key && tutor.key !== UNASSIGNED_KEY
@@ -1627,6 +1632,310 @@ function TutorDayCalendar({
   );
 }
 
+
+function TutorWeekCalendar({
+  visibleStartMins,
+  visibleEndHour,
+  visibleGridPhaseMins,
+  focusDate,
+  now,
+  events,
+  onEventClick,
+  onSlotClick,
+  customSlotMins = DEFAULT_SLOT_MINS,
+  slotAlignMins = 0,
+}) {
+  const slotRowHeightPx = TIME_SLOT_ROW_MIN_HEIGHT_PX;
+  const gridPhaseMins =
+    visibleGridPhaseMins != null ? visibleGridPhaseMins : slotAlignMins;
+  const gridStartMins = firstSlotOnGridAtOrAfter(
+    visibleStartMins,
+    gridPhaseMins,
+    customSlotMins,
+  );
+  const gridEndMins = Math.min(24 * 60, Math.max(0, visibleEndHour) * 60);
+  const totalMins = Math.max(0, gridEndMins - gridStartMins);
+  const slotsCount = Math.max(0, Math.floor(totalMins / customSlotMins));
+  const weekHeight = Math.max(slotRowHeightPx, slotsCount * slotRowHeightPx);
+  const gridPadTop = Math.max(12, Math.ceil(slotRowHeightPx / 2));
+  const paddedWeekHeight = weekHeight + gridPadTop;
+  const weekStart = useMemo(() => startOfWeekSunday(focusDate), [focusDate]);
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, idx) => addDays(weekStart, idx)),
+    [weekStart],
+  );
+
+  const visibleTimedEvents = useMemo(
+    () =>
+      events.filter((event) => {
+        if (event.allDay) return false;
+        const start = new Date(event.start);
+        const weekEnd = addDays(weekStart, 7);
+        return (
+          start >= weekStart &&
+          start < weekEnd &&
+          timedEventOverlapsMinuteRange(event, gridStartMins, gridEndMins)
+        );
+      }),
+    [events, weekStart, gridStartMins, gridEndMins],
+  );
+
+  const byDayTimed = useMemo(() => {
+    const map = {};
+    weekDays.forEach((day) => {
+      const key = formatLocalDateKey(day);
+      map[key] = layoutOverlappingEvents(
+        visibleTimedEvents.filter((event) => isSameDate(new Date(event.start), day)),
+      );
+    });
+    return map;
+  }, [visibleTimedEvents, weekDays]);
+
+  const eventCountByDay = useMemo(() => {
+    const map = {};
+    weekDays.forEach((day) => {
+      map[formatLocalDateKey(day)] = events.filter((event) =>
+        isSameDate(new Date(event.start), day),
+      ).length;
+    });
+    return map;
+  }, [events, weekDays]);
+
+  const isCurrentWeek = now >= weekStart && now < addDays(weekStart, 7);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const nowOffset =
+    isCurrentWeek && nowMinutes >= gridStartMins && nowMinutes <= gridEndMins
+      ? gridPadTop +
+        ((nowMinutes - gridStartMins) / customSlotMins) * slotRowHeightPx
+      : null;
+  const todayKey = formatLocalDateKey(now);
+  const dayStartMins = gridStartMins;
+  const weekLabel = `${weekStart.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  })} - ${addDays(weekStart, 6).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  })}`;
+
+  return (
+    <div className="flex flex-col rounded-[12px] border border-border bg-background shadow-sm">
+      <div className="sticky top-0 z-40 border-b border-border bg-background/95 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
+        <div className="flex shrink-0 border-b border-border bg-muted/30">
+          <div className="w-[86px] shrink-0 border-r border-border flex items-end pb-2 px-2">
+            <span className="text-[10px] font-medium text-muted-foreground leading-tight">{weekLabel}</span>
+          </div>
+          {weekDays.map((day, idx) => {
+            const key = formatLocalDateKey(day);
+            const isToday = key === todayKey;
+            const dayCount = eventCountByDay[key] ?? 0;
+            return (
+              <div
+                key={key}
+                className="flex-1 px-3 py-2.5 text-center"
+                style={{
+                  borderRight:
+                    idx < weekDays.length - 1
+                      ? "1px solid hsl(var(--border))"
+                      : "none",
+                }}
+              >
+                <div className="flex flex-col items-center min-w-0">
+                  <span
+                    className={`text-[11px] font-semibold truncate max-w-full leading-tight ${
+                      isToday ? "text-[var(--studio-primary)]" : "text-foreground"
+                    }`}
+                  >
+                    {day.toLocaleDateString("en-US", { weekday: "short", day: "numeric" })}
+                  </span>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span
+                      className={`text-[10px] font-bold px-1.5 py-px rounded-full ${
+                        isToday
+                          ? "bg-[color-mix(in_srgb,var(--studio-primary)_15%,transparent)] text-[var(--studio-primary)]"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {dayCount} event{dayCount === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="relative flex">
+        <div
+          className="relative w-[86px] shrink-0 border-r border-border"
+          style={{ height: paddedWeekHeight }}
+        >
+          {Array.from({ length: slotsCount }).map((_, idx) => {
+            const currentMins = dayStartMins + idx * customSlotMins;
+            const label = formatDayAxisSlotLabel(currentMins);
+
+            return (
+              <div
+                key={idx}
+                className="absolute left-0 right-0"
+                style={{ top: gridPadTop + idx * slotRowHeightPx }}
+              >
+                <div className="-translate-y-1/2 px-2 text-[10px] font-medium text-muted-foreground whitespace-nowrap">
+                  {label}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {weekDays.map((day, colIdx) => {
+          const key = formatLocalDateKey(day);
+          const isToday = key === todayKey;
+          return (
+            <div
+              key={`${key}-week-col`}
+              className="relative flex-1 group/col cursor-pointer overflow-hidden"
+              style={{
+                height: paddedWeekHeight,
+                borderRight:
+                  colIdx < weekDays.length - 1
+                    ? "1px solid hsl(var(--border))"
+                    : "none",
+                backgroundColor: isToday
+                  ? "color-mix(in srgb, var(--studio-primary) 5%, hsl(var(--background)))"
+                  : "hsl(var(--background))",
+              }}
+              onClick={(e) => {
+                if (e.target.closest("[data-event]")) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const offsetY = e.clientY - rect.top - gridPadTop;
+                const rawIdx = Math.floor(Math.max(0, offsetY) / slotRowHeightPx);
+                const slotIdx =
+                  slotsCount > 0
+                    ? Math.min(Math.max(0, rawIdx), slotsCount - 1)
+                    : 0;
+                const totalSlotMins = dayStartMins + slotIdx * customSlotMins;
+                const h = Math.floor(totalSlotMins / 60);
+                const m = totalSlotMins % 60;
+                onSlotClick?.({
+                  date: formatLocalDateKey(day),
+                  time: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
+                });
+              }}
+            >
+              {Array.from({ length: slotsCount }).map((_, idx) => {
+                const slotMins = dayStartMins + idx * customSlotMins;
+                const isHourBoundary = slotMins % 60 === 0;
+                return (
+                  <div
+                    key={idx}
+                    className={`absolute left-0 right-0 ${isHourBoundary ? "border-b border-border/60" : "border-b border-border/20"}`}
+                    style={{
+                      top: gridPadTop + idx * slotRowHeightPx,
+                      height: slotRowHeightPx,
+                    }}
+                  />
+                );
+              })}
+
+              {(byDayTimed[key] || []).map((event) => {
+                const s = new Date(event.start);
+                const startMins = s.getHours() * 60 + s.getMinutes();
+                const displayStartMins = Math.max(startMins, gridStartMins);
+
+                const height = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
+                const stackOffset =
+                  (event.lane || 0) * (height + TIMED_EVENT_CARD_STACK_GAP_PX);
+                const top =
+                  gridPadTop +
+                  ((displayStartMins - dayStartMins) / customSlotMins) *
+                    slotRowHeightPx +
+                  stackOffset;
+
+                const accentColor =
+                  event.extendedProps?.color || "var(--studio-primary)";
+                const effectiveStatus = event.extendedProps?.effectiveStatus;
+                const isCancelledEvent =
+                  effectiveStatus === "cancelled_no_charge" ||
+                  effectiveStatus === "cancelled_charged";
+                const isCompletedEvent = effectiveStatus === "completed";
+
+                return (
+                  <div
+                    key={event.id}
+                    data-event="true"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEventClick?.(event.extendedProps?.raw);
+                    }}
+                    className={`absolute cursor-pointer transition-all duration-150 group/event ${BOOKING_CARD_SHELL_CLASS} ${
+                      isCancelledEvent ? "opacity-50" : ""
+                    } ${isCompletedEvent ? "opacity-80" : ""}`}
+                    style={{
+                      top,
+                      height,
+                      maxHeight: height,
+                      minHeight: height,
+                      left: "2px",
+                      width: "calc(100% - 4px)",
+                      borderLeft: `3px solid ${accentColor}`,
+                      backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
+                      boxShadow: "0 1px 3px hsl(var(--foreground)/0.06)",
+                      zIndex: 10,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = `0 4px 12px ${accentColor}40`;
+                      e.currentTarget.style.zIndex = "20";
+                      e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 38%, hsl(var(--card)))`;
+                      e.currentTarget.style.transform = "scaleX(1.01)";
+                      showEventTooltip(e, event.extendedProps || {});
+                    }}
+                    onMouseMove={(e) => positionTooltip(e)}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = "0 1px 3px hsl(var(--foreground)/0.06)";
+                      e.currentTarget.style.zIndex = "10";
+                      e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`;
+                      e.currentTarget.style.transform = "scaleX(1)";
+                      hideEventTooltip();
+                    }}
+                  >
+                    {isCompletedEvent && (
+                      <span
+                        className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shrink-0"
+                        title="Completed"
+                      >
+                        <svg viewBox="0 0 10 10" className="h-2 w-2 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="1.5,5 4,7.5 8.5,2.5" />
+                        </svg>
+                      </span>
+                    )}
+                    <div className="h-full min-h-0 flex flex-col overflow-hidden px-1.5 py-0.5 gap-[1px] box-border">
+                      <AppointmentTimedEventRows event={event} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+
+        {nowOffset !== null && (
+          <div
+            className="pointer-events-none absolute inset-x-0 z-30 flex items-center gap-1.5 pl-1.5 pr-2"
+            style={{ top: nowOffset }}
+          >
+            <div className="shrink-0 rounded bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground shadow-sm whitespace-nowrap">
+              {formatTime(now)}
+            </div>
+            <div className="h-px min-w-0 flex-1 bg-brand" />
+            <div className="h-2 w-2 shrink-0 rounded-full bg-brand" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 
 function SlotSizePicker({ value, startMins, onApply }) {
@@ -2244,7 +2553,7 @@ export default function CalendarPage() {
   };
 
   const switchToMode = (mode, date = null) => {
-    if (mode === VIEW_MODE.DAY || mode === VIEW_MODE.LIST) {
+    if (mode === VIEW_MODE.DAY || mode === VIEW_MODE.WEEK || mode === VIEW_MODE.LIST) {
       setViewMode(mode);
       if (date) setFocusDate(new Date(date));
       return;
@@ -2264,7 +2573,7 @@ export default function CalendarPage() {
   const navigateToDate = (date) => {
     const d = new Date(date);
     setFocusDate(d);
-    if (viewMode === VIEW_MODE.WEEK || viewMode === VIEW_MODE.MONTH) {
+    if (viewMode === VIEW_MODE.MONTH) {
       const calApi = getCalendarApi();
       if (calApi) calApi.gotoDate(d);
     }
@@ -2281,6 +2590,10 @@ export default function CalendarPage() {
   const shiftView = (direction) => {
     if (viewMode === VIEW_MODE.DAY) {
       setFocusDate((prev) => addDays(prev, direction));
+      return;
+    }
+    if (viewMode === VIEW_MODE.WEEK) {
+      setFocusDate((prev) => addDays(prev, direction * 7));
       return;
     }
     if (viewMode === VIEW_MODE.LIST) {
@@ -2302,7 +2615,7 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => {
-    if (viewMode === VIEW_MODE.DAY || viewMode === VIEW_MODE.LIST) return;
+    if (viewMode !== VIEW_MODE.MONTH) return;
     const calApi = getCalendarApi();
     if (!calApi) return;
     calApi.changeView(FULLCALENDAR_VIEW[viewMode]);
@@ -2327,17 +2640,11 @@ export default function CalendarPage() {
                 <IconCircleButton ariaLabel="Previous" onClick={() => shiftView(-1)}>
                   <ChevronLeft className="h-4 w-4 text-muted-foreground" />
                 </IconCircleButton>
-                {viewMode === VIEW_MODE.LIST ? (
-                  <div className="text-[13px] font-semibold text-foreground min-w-[160px] text-center">
-                    {headerLabel}
-                  </div>
-                ) : (
-                  <CalendarDatePicker
-                    focusDate={focusDate}
-                    label={headerLabel}
-                    onSelectDate={navigateToDate}
-                  />
-                )}
+                <CalendarDatePicker
+                  focusDate={focusDate}
+                  label={headerLabel}
+                  onSelectDate={navigateToDate}
+                />
                 <IconCircleButton ariaLabel="Next" onClick={() => shiftView(1)}>
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 </IconCircleButton>
@@ -2439,6 +2746,27 @@ export default function CalendarPage() {
                     customSlotMins={customSlotMins}
                     slotAlignMins={snappedGridStartMins}
                   />
+                ) : viewMode === VIEW_MODE.WEEK ? (
+                  <TutorWeekCalendar
+                    key={`week-${customSlotMins}-${snappedGridStartMins}-${visibleWindow.visibleStartMins}-${visibleWindow.visibleEndHour}-${formatLocalDateKey(startOfWeekSunday(focusDate))}`}
+                    visibleStartMins={visibleWindow.visibleStartMins}
+                    visibleEndHour={visibleWindow.visibleEndHour}
+                    visibleGridPhaseMins={visibleWindow.visibleGridPhaseMins}
+                    focusDate={focusDate}
+                    now={now}
+                    events={filteredEvents}
+                    onEventClick={(raw) => {
+                      setSelectedEvent(raw);
+                      setIsAppointmentPanelOpen(false);
+                    }}
+                    onSlotClick={({ date, time }) => {
+                      setSlotSelection({ date, time });
+                      setSelectedEvent(null);
+                      setIsAppointmentPanelOpen(true);
+                    }}
+                    customSlotMins={customSlotMins}
+                    slotAlignMins={snappedGridStartMins}
+                  />
                 ) : viewMode === VIEW_MODE.LIST ? (
                   <ListCalendarView
                     events={filteredEvents}
@@ -2450,7 +2778,7 @@ export default function CalendarPage() {
                   />
                 ) : (
                   <div
-                    className="rounded-[12px] border border-border bg-background calendar-shell"
+                    className="rounded-[12px] border border-border bg-background calendar-shell calendar-shell--month shadow-sm"
                     style={{
                       "--cal-time-slot-min-height": `${TIME_SLOT_ROW_MIN_HEIGHT_PX}px`,
                       "--cal-event-min-height": `${TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX}px`,
