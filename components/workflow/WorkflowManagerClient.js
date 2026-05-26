@@ -8,12 +8,11 @@ import { cn } from '@/lib/utils'
 import WorkflowDiagram from '@/components/workflow/WorkflowDiagram'
 import WorkflowCard from '@/components/workflow/WorkflowCard'
 import ConfirmDeleteWorkflowDialog from '@/components/workflow/ConfirmDeleteWorkflowDialog'
-
-const STEP_TYPES = [
-  { value: 'sms', label: 'SMS' },
-  { value: 'email', label: 'Email' },
-  { value: 'call', label: 'Call' },
-]
+import {
+  normalizeWorkflowForPatch,
+  normalizeWorkflowFromApi,
+  WORKFLOW_STEP_TYPES,
+} from '@/lib/workflow-normalize'
 
 const EVENT_OPTIONS = ['non', 'form_submission', 'lead_updated', 'lead_moved_stage', 'custom_event']
 
@@ -36,30 +35,6 @@ function createEmptyStep(order) {
     order: String(order),
     leadStage: 'new',
     day: 0,
-  }
-}
-
-function normalizeWorkflowForPatch(workflow) {
-  const steps = Array.isArray(workflow?.steps) ? workflow.steps : []
-  return {
-    name: String(workflow?.name ?? ''),
-    description: String(workflow?.description ?? ''),
-    event: String(workflow?.event ?? ''),
-    steps: steps.map((s) => {
-      const base = {
-        type: s.type,
-        description: s.description ?? '',
-        order: String(s.order ?? ''),
-        leadStage: String(s.leadStage ?? ''),
-      }
-      // Some APIs include "day" (create example) while PATCH sample omits it.
-      // Only send it when present/finite.
-      const dayNum = Number(s.day)
-      if (Number.isFinite(dayNum)) {
-        return { ...base, day: dayNum }
-      }
-      return base
-    }),
   }
 }
 
@@ -123,21 +98,18 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
   const startEdit = (wf) => {
     if (!wf) return
     setEditError('')
+    const normalized = normalizeWorkflowFromApi(wf)
+    if (!normalized) return
     const base = {
-      _id: wf._id || wf.id,
-      name: wf.name ?? '',
-      description: wf.description ?? '',
-      event: wf.event ?? '',
-      steps: Array.isArray(wf.steps) ? wf.steps.map((s) => ({ ...s })) : [createEmptyStep(1)],
+      _id: normalized._id || normalized.id || wf._id || wf.id,
+      name: normalized.name ?? '',
+      description: normalized.description ?? '',
+      event: normalized.event ?? '',
+      steps:
+        normalized.steps.length > 0
+          ? normalized.steps.map((s) => ({ ...s }))
+          : [createEmptyStep(1)],
     }
-    if (!Array.isArray(base.steps) || base.steps.length === 0) base.steps = [createEmptyStep(1)]
-    base.steps = base.steps.map((s, idx) => ({
-      type: s.type || 'sms',
-      description: s.description ?? '',
-      order: String(s.order ?? String(idx + 1)),
-      leadStage: s.leadStage || 'new',
-      ...(s.day !== undefined ? { day: s.day } : {}),
-    }))
     setEditing(base)
   }
 
@@ -187,18 +159,12 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
     setSuccessMsg('')
     setCreatedWorkflow(null)
 
-    const payload = {
+    const payload = normalizeWorkflowForPatch({
       name: name.trim(),
-      description: description,
+      description,
       event: event.trim(),
-      steps: steps.map((s) => ({
-        type: s.type,
-        description: s.description ?? '',
-        order: String(s.order ?? ''),
-        leadStage: String(s.leadStage ?? ''),
-        day: Number(s.day ?? 0),
-      })),
-    }
+      steps: steps.map((s) => ({ ...s, day: Number(s.day ?? 0) })),
+    })
 
     const res = await api.post('/api/workflow/', payload)
     if (res?.success) {
@@ -398,7 +364,7 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                           onChange={(e) => updateStep(idx, { type: e.target.value })}
                           className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                         >
-                          {STEP_TYPES.map((t) => (
+                          {WORKFLOW_STEP_TYPES.map((t) => (
                             <option key={t.value} value={t.value}>
                               {t.label}
                             </option>
@@ -609,7 +575,7 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                           }
                           className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                         >
-                          {STEP_TYPES.map((t) => (
+                          {WORKFLOW_STEP_TYPES.map((t) => (
                             <option key={t.value} value={t.value}>
                               {t.label}
                             </option>

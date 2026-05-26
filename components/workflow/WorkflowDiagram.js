@@ -1,10 +1,10 @@
 'use client'
 
 import { Clock3, Mail, MessageSquare, Phone } from 'lucide-react'
-import { flattenWorkflowSteps } from '@/lib/workflow-normalize'
+import { flattenWorkflowSteps, isCallStepType } from '@/lib/workflow-normalize'
 
 function StepIcon({ type }) {
-  const Icon = type === 'call' ? Phone : type === 'email' ? Mail : MessageSquare
+  const Icon = isCallStepType(type) ? Phone : type === 'email' ? Mail : MessageSquare
   return <Icon className="h-4 w-4 text-muted-foreground" />
 }
 

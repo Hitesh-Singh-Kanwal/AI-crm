@@ -8,14 +8,12 @@ import MainLayout from '@/components/layout/MainLayout'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import WorkflowDiagram from '@/components/workflow/WorkflowDiagram'
-import { normalizeWorkflowFromApi } from '@/lib/workflow-normalize'
+import {
+  normalizeWorkflowForPatch,
+  normalizeWorkflowFromApi,
+  WORKFLOW_STEP_TYPES,
+} from '@/lib/workflow-normalize'
 import ConfirmDeleteWorkflowDialog from '@/components/workflow/ConfirmDeleteWorkflowDialog'
-
-const STEP_TYPES = [
-  { value: 'sms', label: 'SMS' },
-  { value: 'email', label: 'Email' },
-  { value: 'call', label: 'Call' },
-]
 
 const EVENT_OPTIONS = ['non', 'form_submission', 'lead_updated', 'lead_moved_stage', 'custom_event']
 
@@ -37,26 +35,6 @@ function createEmptyStep(order) {
     description: '',
     order: String(order),
     leadStage: 'new',
-  }
-}
-
-function normalizeWorkflowForPatch(workflow) {
-  const steps = Array.isArray(workflow?.steps) ? workflow.steps : []
-  return {
-    name: String(workflow?.name ?? ''),
-    description: String(workflow?.description ?? ''),
-    event: String(workflow?.event ?? ''),
-    steps: steps.map((s) => {
-      const base = {
-        type: s.type,
-        description: s.description ?? '',
-        order: String(s.order ?? ''),
-        leadStage: String(s.leadStage ?? ''),
-      }
-      const dayNum = Number(s.day)
-      if (Number.isFinite(dayNum)) return { ...base, day: dayNum }
-      return base
-    }),
   }
 }
 
@@ -323,7 +301,7 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
                           }
                           className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                         >
-                          {STEP_TYPES.map((t) => (
+                          {WORKFLOW_STEP_TYPES.map((t) => (
                             <option key={t.value} value={t.value}>
                               {t.label}
                             </option>
