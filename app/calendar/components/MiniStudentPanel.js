@@ -1263,7 +1263,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                     </p>
                     {upcomingPayments.map((item) => {
                       if (item.type === "flexible") {
-                        const f = flexPayForms[item.enrollmentId] ?? { mode: null, payType: "full", sessions: 1, amount: item.amount.toFixed(2), method: "cash", dueDate: item.dueDate ? new Date(item.dueDate).toISOString().slice(0, 10) : "", saving: false, error: null };
+                        const f = flexPayForms[item.enrollmentId] ?? { mode: null, payType: "full", sessions: 1, amount: item.amount.toFixed(2), sessionAmount: "", method: "cash", dueDate: item.dueDate ? new Date(item.dueDate).toISOString().slice(0, 10) : "", saving: false, error: null };
                         const updateFlex = (patch) => setFlexPayForms((prev) => ({ ...prev, [item.enrollmentId]: { ...prev[item.enrollmentId], ...patch } }));
                         const reloadAll = async () => {
                           const [enrRes, planRes] = await Promise.all([api.get(`/api/enrollment?customerID=${customerId}`), api.get(`/api/payment-plan/customer/${customerId}`)]);
@@ -1326,8 +1326,11 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                             {f.error && <p className="text-[10px] text-rose-500">{f.error}</p>}
                             {f.mode === "pay" && (() => {
                               const pps = item.pricePerSession ?? 0;
-                              const sessionAmt = pps > 0 ? pps * Math.max(1, Number(f.sessions) || 1) : null;
-                              const payAmt = f.payType === "sessions" && sessionAmt != null ? sessionAmt : parseFloat(f.amount);
+                              const suggestedSessionAmt = pps > 0 ? pps * Math.max(1, Number(f.sessions) || 1) : null;
+                              const payAmt = f.payType === "sessions"
+                                ? (f.sessionAmount !== "" ? parseFloat(f.sessionAmount) : (suggestedSessionAmt ?? 0))
+                                : parseFloat(f.amount);
+                              const remainingAfter = item.amount - (isNaN(payAmt) ? 0 : payAmt);
                               return (
                                 <form onSubmit={async (e) => { e.preventDefault(); const num = payAmt; if (isNaN(num) || num <= 0) return; updateFlex({ saving: true, error: null }); const sessionCount = f.payType === "sessions" ? Math.max(1, Number(f.sessions) || 1) : 0;
                                   const res = await api.post("/api/payment", { customerID: customerId, enrollmentID: item.enrollmentId, type: "package_purchase", amount: num, method: f.method, ...(sessionCount > 0 && { sessions: sessionCount }) }); if (res.success) { await reloadAll(); } else { updateFlex({ saving: false, error: res.error || "Payment failed." }); } }} className="space-y-2 pt-1.5 border-t border-border/40">
@@ -1335,7 +1338,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                                   {pps > 0 && (
                                     <div className="flex rounded-md border border-border overflow-hidden">
                                       {[{ v: "full", label: "Full Balance" }, { v: "sessions", label: "By Sessions" }].map(({ v, label }) => (
-                                        <button key={v} type="button" onClick={() => updateFlex({ payType: v, sessions: 1 })}
+                                        <button key={v} type="button" onClick={() => updateFlex({ payType: v, sessions: 1, sessionAmount: "" })}
                                           className={`flex-1 h-7 text-[10px] font-medium transition-colors ${f.payType === v ? "bg-brand text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}>
                                           {label}
                                         </button>
@@ -1348,21 +1351,29 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                                         <div className="flex-1">
                                           <label className="block text-[9px] text-muted-foreground mb-0.5">Sessions</label>
                                           <input type="number" min="1" max={item.sessionsRemaining || 999} step="1" value={f.sessions}
-                                            onChange={(e) => updateFlex({ sessions: e.target.value })}
+                                            onChange={(e) => { const s = e.target.value; updateFlex({ sessions: s, sessionAmount: (pps * Math.max(1, Number(s) || 1)).toFixed(2) }); }}
                                             className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none focus:border-primary" />
                                         </div>
                                         <div className="flex-1">
                                           <label className="block text-[9px] text-muted-foreground mb-0.5">Amount</label>
-                                          <div className="h-7 rounded-md border border-border bg-muted/30 px-2 flex items-center text-[11px] font-semibold text-foreground">
-                                            ${(pps * Math.max(1, Number(f.sessions) || 1)).toFixed(2)}
+                                          <div className="relative">
+                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                                            <input type="number" min="0.01" step="0.01"
+                                              value={f.sessionAmount !== "" ? f.sessionAmount : (suggestedSessionAmt != null ? suggestedSessionAmt.toFixed(2) : "")}
+                                              onChange={(e) => updateFlex({ sessionAmount: e.target.value })}
+                                              className="h-7 w-full rounded-md border border-border bg-background pl-5 pr-2 text-[11px] font-semibold text-foreground outline-none focus:border-primary" />
                                           </div>
                                         </div>
                                       </div>
                                       <p className="text-[9px] text-muted-foreground">${pps.toFixed(2)}/session · {item.sessionsRemaining} remaining</p>
+                                      <p className="text-[9px] font-medium text-muted-foreground">Remaining after payment: <span className={remainingAfter < 0 ? "text-rose-500" : "text-emerald-600"}>${Math.max(0, remainingAfter).toFixed(2)}</span></p>
                                     </div>
                                   ) : (
-                                    <div className="flex gap-1.5">
-                                      <div className="relative flex-1"><span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span><input type="number" min="0.01" step="0.01" value={f.amount} onChange={(e) => updateFlex({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background pl-5 pr-2 text-[11px] outline-none focus:border-primary" /></div>
+                                    <div className="space-y-1.5">
+                                      <div className="flex gap-1.5">
+                                        <div className="relative flex-1"><span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span><input type="number" min="0.01" step="0.01" value={f.amount} onChange={(e) => updateFlex({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background pl-5 pr-2 text-[11px] outline-none focus:border-primary" /></div>
+                                      </div>
+                                      <p className="text-[9px] font-medium text-muted-foreground">Remaining after payment: <span className={remainingAfter < 0 ? "text-rose-500" : "text-emerald-600"}>${Math.max(0, remainingAfter).toFixed(2)}</span></p>
                                     </div>
                                   )}
                                   <div className="flex gap-1.5">
