@@ -15,8 +15,21 @@ import EmailHtmlPanel from './EmailHtmlPanel'
 import EmailPreviewFrame from './EmailPreviewFrame'
 import {
   extractCategoriesList,
+  extractLeadReasonsList,
   getTemplateCategoryId,
 } from '../emailBuilderApi'
+
+const LEAD_STAGES = [
+  'new',
+  'engaged',
+  'cold',
+  'booked',
+  'actualized',
+  'no show',
+  'qualified',
+  'disqualified',
+  'human intervention',
+]
 
 export default function EmailTemplateEditorDialog({ open, onClose, templateId, onSaved }) {
   const toast = useToast()
@@ -26,6 +39,10 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
   const [categories, setCategories] = useState([])
   const [subject, setSubject] = useState('')
   const [categoryId, setCategoryId] = useState('')
+  const [leadStage, setLeadStage] = useState('')
+  const [reasonCode, setReasonCode] = useState('')
+  const [reasons, setReasons] = useState([])
+  const [code, setCode] = useState('')
   const [body, setBody] = useState('')
   const [htmlBody, setHtmlBody] = useState('')
   const [editTab, setEditTab] = useState('description')
@@ -37,6 +54,13 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
     }
   }, [])
 
+  const fetchReasons = useCallback(async () => {
+    const result = await api.get('/api/lead-reasons')
+    if (result.success) {
+      setReasons(extractLeadReasonsList(result))
+    }
+  }, [])
+
   const fetchTemplate = useCallback(async () => {
     if (!templateId) return
     setLoading(true)
@@ -45,6 +69,7 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
       const [templateResult] = await Promise.all([
         api.get(`/api/email/builder/${templateId}`),
         fetchCategories(),
+        fetchReasons(),
       ])
       if (!templateResult.success) {
         setError(templateResult.error || 'Could not load template')
@@ -53,6 +78,9 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
       const email = templateResult.data
       setSubject(String(email?.subject || ''))
       setCategoryId(getTemplateCategoryId(email))
+      setLeadStage(String(email?.leadStage || ''))
+      setReasonCode(String(email?.reason || ''))
+      setCode(String(email?.code || ''))
       setBody(String(email?.body || ''))
       setHtmlBody(String(email?.htmlBody || ''))
       setEditTab('description')
@@ -62,7 +90,7 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
     } finally {
       setLoading(false)
     }
-  }, [templateId, fetchCategories])
+  }, [templateId, fetchCategories, fetchReasons])
 
   useEffect(() => {
     if (open) fetchTemplate()
@@ -87,11 +115,21 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
       toast.error({ title: 'Missing HTML', message: 'HTML body is required.' })
       return
     }
+    if (!String(leadStage || '').trim()) {
+      toast.error({ title: 'Missing lead stage', message: 'Please select a lead stage.' })
+      return
+    }
+    if (!String(reasonCode || '').trim()) {
+      toast.error({ title: 'Missing reason', message: 'Reason is required.' })
+      return
+    }
     setSaving(true)
     try {
       const result = await api.patch(`/api/email/builder/${templateId}`, {
         subject: subject.trim(),
         categoryID: categoryId,
+        leadStage: String(leadStage || '').trim(),
+        reason: String(reasonCode || '').trim(),
         body: String(body || ''),
         htmlBody: String(htmlBody || ''),
       })
@@ -168,6 +206,42 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
                       {categories.map((cat) => (
                         <option key={cat._id} value={cat._id}>
                           {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {code ? (
+                    <div className="space-y-2">
+                      <Label className="text-xs">Code</Label>
+                      <Input value={code} readOnly className="font-mono" />
+                    </div>
+                  ) : null}
+                  <div className="space-y-2">
+                    <Label className="text-xs">Lead stage</Label>
+                    <select
+                      value={leadStage}
+                      onChange={(e) => setLeadStage(e.target.value)}
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Select lead stage…</option>
+                      {LEAD_STAGES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Reason</Label>
+                    <select
+                      value={reasonCode}
+                      onChange={(e) => setReasonCode(e.target.value)}
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Select reason…</option>
+                      {reasons.map((r) => (
+                        <option key={r._id || r.reasonCode || r.name} value={r.reasonCode}>
+                          {r.name}
                         </option>
                       ))}
                     </select>

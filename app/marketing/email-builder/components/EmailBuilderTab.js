@@ -30,7 +30,7 @@ import { cn } from '@/lib/utils'
 import EmailHtmlPanel from './EmailHtmlPanel'
 import EmailCanvasModeTabs from './EmailCanvasModeTabs'
 import EmailPreviewFrame from './EmailPreviewFrame'
-import { extractCategoriesList } from '../emailBuilderApi'
+import { extractCategoriesList, extractLeadReasonsList } from '../emailBuilderApi'
 
 import {
   DndContext,
@@ -60,6 +60,18 @@ const contentBlocks = [
   { id: 'link', name: 'Link', icon: Link2 },
   { id: 'columns', name: 'Columns', icon: Columns },
   { id: 'divider', name: 'Divider', icon: Minus },
+]
+
+const LEAD_STAGES = [
+  'new',
+  'engaged',
+  'cold',
+  'booked',
+  'actualized',
+  'no show',
+  'qualified',
+  'disqualified',
+  'human intervention',
 ]
 
 function escapeHtml(str) {
@@ -302,6 +314,9 @@ export default function EmailBuilderTab({ onCreated }) {
   // - `htmlBody` is the actual email content
   const [templateName, setTemplateName] = useState('')
   const [templateDescription, setTemplateDescription] = useState('')
+  const [leadStage, setLeadStage] = useState('')
+  const [reasonCode, setReasonCode] = useState('')
+  const [reasons, setReasons] = useState([])
   const [emailBlocks, setEmailBlocks] = useState([])
   const [selectedBlock, setSelectedBlock] = useState(null)
   const [activeId, setActiveId] = useState(null)
@@ -324,9 +339,17 @@ export default function EmailBuilderTab({ onCreated }) {
     }
   }, [])
 
+  const fetchReasons = useCallback(async () => {
+    const result = await api.get('/api/lead-reasons')
+    if (result.success) {
+      setReasons(extractLeadReasonsList(result))
+    }
+  }, [])
+
   useEffect(() => {
     fetchCategories()
-  }, [fetchCategories])
+    fetchReasons()
+  }, [fetchCategories, fetchReasons])
 
   const generatedHtml = useMemo(() => blocksToHtml(emailBlocks), [emailBlocks])
 
@@ -384,6 +407,8 @@ export default function EmailBuilderTab({ onCreated }) {
   const resetBuilder = () => {
     setTemplateName('')
     setTemplateDescription('')
+    setLeadStage('')
+    setReasonCode('')
     setEmailBlocks([])
     setSelectedBlock(null)
     setCanvasView('visual')
@@ -468,6 +493,14 @@ export default function EmailBuilderTab({ onCreated }) {
       toast.error({ title: 'Missing description', message: 'Please enter a description.' })
       return
     }
+    if (!String(leadStage || '').trim()) {
+      toast.error({ title: 'Missing lead stage', message: 'Please enter a lead stage.' })
+      return
+    }
+    if (!String(reasonCode || '').trim()) {
+      toast.error({ title: 'Missing reason', message: 'Please enter a reason.' })
+      return
+    }
     if (!categoryId) {
       toast.error({
         title: 'Missing category',
@@ -488,6 +521,8 @@ export default function EmailBuilderTab({ onCreated }) {
         categoryID: categoryId,
         subject: templateName.trim(),
         body: templateDescription.trim(),
+        leadStage: String(leadStage || '').trim(),
+        reason: String(reasonCode || '').trim(),
         htmlBody: htmlToSave,
       }
       const result = await api.post('/api/email/builder/', payload)
@@ -593,6 +628,21 @@ export default function EmailBuilderTab({ onCreated }) {
                           className="mt-1.5 rounded-lg"
                         />
                       </div>
+                      <div>
+                        <Label className="text-xs text-slate-600">Lead stage</Label>
+                        <select
+                          value={leadStage}
+                          onChange={(e) => setLeadStage(e.target.value)}
+                          className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
+                        >
+                          <option value="">Select lead stage…</option>
+                          {LEAD_STAGES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <div className="sm:col-span-2">
                         <Label className="text-xs text-slate-600">Template description</Label>
                         <Textarea
@@ -602,6 +652,21 @@ export default function EmailBuilderTab({ onCreated }) {
                           placeholder="Short description"
                           className="mt-1.5 rounded-lg resize-none"
                         />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Label className="text-xs text-slate-600">Reason</Label>
+                        <select
+                          value={reasonCode}
+                          onChange={(e) => setReasonCode(e.target.value)}
+                          className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
+                        >
+                          <option value="">Select reason…</option>
+                          {reasons.map((r) => (
+                            <option key={r._id || r.reasonCode || r.name} value={r.reasonCode}>
+                              {r.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </details>

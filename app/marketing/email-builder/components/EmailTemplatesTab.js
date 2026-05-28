@@ -15,6 +15,7 @@ import api from '@/lib/api'
 import EmailTemplateEditorDialog from './EmailTemplateEditorDialog'
 import EmailTemplatePreviewDialog from './EmailTemplatePreviewDialog'
 import EmailCategoriesDialog from './EmailCategoriesDialog'
+import EmailLeadReasonsDialog from './EmailLeadReasonsDialog'
 import EmailTemplateThumbnail from './EmailTemplateThumbnail'
 import {
   extractEmailTemplatesPayload,
@@ -28,6 +29,7 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
   const [editingId, setEditingId] = useState(null)
   const [previewId, setPreviewId] = useState(null)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
+  const [reasonsOpen, setReasonsOpen] = useState(false)
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -197,6 +199,10 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
             <Tags className="h-4 w-4 mr-2" />
             Categories
           </Button>
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => setReasonsOpen(true)}>
+            <Tags className="h-4 w-4 mr-2" />
+            Lead reasons
+          </Button>
           <Button variant="gradient" className="w-full sm:w-auto" onClick={onCreateNew}>
             <Plus className="h-4 w-4 mr-2" />
             Create template
@@ -207,6 +213,14 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
       <EmailCategoriesDialog
         open={categoriesOpen}
         onClose={() => setCategoriesOpen(false)}
+        onChanged={() => {
+          fetchTemplates()
+          onDataChanged?.()
+        }}
+      />
+      <EmailLeadReasonsDialog
+        open={reasonsOpen}
+        onClose={() => setReasonsOpen(false)}
         onChanged={() => {
           fetchTemplates()
           onDataChanged?.()
@@ -334,6 +348,11 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
                               >
                                 {isInactive ? 'Inactive' : 'Active'}
                               </Badge>
+                              {tpl.code ? (
+                                <Badge variant="outline" className="text-[10px] font-mono">
+                                  {String(tpl.code)}
+                                </Badge>
+                              ) : null}
                               {categoryName ? (
                                 <Badge variant="outline" className="text-[10px] font-normal">
                                   {categoryName}

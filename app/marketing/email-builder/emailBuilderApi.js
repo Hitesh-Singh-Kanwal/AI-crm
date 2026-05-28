@@ -40,6 +40,20 @@ export function extractEmailHistoryList(result) {
   }
 }
 
+export function extractLeadReasonsList(result) {
+  const payload = result?.data
+  const list = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.reasons)
+    ? payload.reasons
+    : Array.isArray(payload?.data?.reasons)
+    ? payload.data.reasons
+    : []
+  return Array.isArray(list) ? list : []
+}
+
 export function getTemplateCategoryId(template) {
   if (!template?.categoryID) return ''
   if (typeof template.categoryID === 'object') return template.categoryID._id || ''

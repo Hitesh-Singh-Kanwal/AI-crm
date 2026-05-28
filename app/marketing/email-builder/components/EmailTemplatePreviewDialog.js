@@ -59,6 +59,21 @@ export default function EmailTemplatePreviewDialog({ open, onClose, templateId }
               <Badge variant="outline" className="font-normal">
                 {email.subject || 'No name'}
               </Badge>
+              {email.code ? (
+                <Badge variant="outline" className="font-normal font-mono">
+                  {String(email.code)}
+                </Badge>
+              ) : null}
+              {email.leadStage ? (
+                <Badge variant="secondary" className="font-normal">
+                  Stage: {email.leadStage}
+                </Badge>
+              ) : null}
+              {email.reason ? (
+                <Badge variant="secondary" className="font-normal">
+                  Reason: {email.reason}
+                </Badge>
+              ) : null}
               {email.body ? (
                 <Badge variant="secondary" className="font-normal max-w-[280px] truncate">
                   {email.body}

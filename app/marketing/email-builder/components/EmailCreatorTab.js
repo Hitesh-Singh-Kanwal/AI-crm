@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Send } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -10,17 +10,44 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
+import { extractLeadReasonsList } from '../emailBuilderApi'
+
+const LEAD_STAGES = [
+  'new',
+  'engaged',
+  'cold',
+  'booked',
+  'actualized',
+  'no show',
+  'qualified',
+  'disqualified',
+  'human intervention',
+]
 
 export default function EmailCreatorTab({ onCreated }) {
   const toast = useToast()
 
   const [to, setTo] = useState('')
+  const [leadStage, setLeadStage] = useState('')
+  const [reasonCode, setReasonCode] = useState('')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [htmlBody, setHtmlBody] = useState('')
   const [saving, setSaving] = useState(false)
+  const [reasons, setReasons] = useState([])
 
-  const canSave = !!subject.trim() && (!!body.trim() || !!htmlBody.trim())
+  const canSave = !!subject.trim() && !!leadStage.trim() && !!reasonCode.trim() && (!!body.trim() || !!htmlBody.trim())
+
+  const fetchReasons = useCallback(async () => {
+    const result = await api.get('/api/lead-reasons')
+    if (result.success) {
+      setReasons(extractLeadReasonsList(result))
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchReasons()
+  }, [fetchReasons])
 
   const previewHtml = useMemo(() => {
     const html = String(htmlBody || '').trim()
@@ -35,6 +62,8 @@ export default function EmailCreatorTab({ onCreated }) {
     try {
       const payload = {
         to: String(to || '').trim(), // backend example includes `to`
+        leadStage: String(leadStage || '').trim(),
+        reason: String(reasonCode || '').trim(),
         subject: subject.trim(),
         body: String(body || ''),
         htmlBody: String(htmlBody || ''),
@@ -47,6 +76,8 @@ export default function EmailCreatorTab({ onCreated }) {
       toast.success({ title: 'Created', message: 'Email template created successfully.' })
       onCreated?.(result.data)
       setTo('')
+      setLeadStage('')
+      setReasonCode('')
       setSubject('')
       setBody('')
       setHtmlBody('')
@@ -69,6 +100,36 @@ export default function EmailCreatorTab({ onCreated }) {
             <div className="space-y-2">
               <Label>To (optional for templates)</Label>
               <Input value={to} onChange={(e) => setTo(e.target.value)} placeholder="student@example.com" />
+            </div>
+            <div className="space-y-2">
+              <Label>Lead stage</Label>
+              <select
+                value={leadStage}
+                onChange={(e) => setLeadStage(e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Select lead stage…</option>
+                {LEAD_STAGES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Reason</Label>
+              <select
+                value={reasonCode}
+                onChange={(e) => setReasonCode(e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Select reason…</option>
+                {reasons.map((r) => (
+                  <option key={r._id || r.reasonCode || r.name} value={r.reasonCode}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-2">
               <Label>Subject</Label>
