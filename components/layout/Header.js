@@ -581,8 +581,7 @@ export default function Header({
                 className="hidden md:inline-flex h-[38px] rounded-full px-4 text-[13px] font-semibold bg-brand text-brand-foreground hover:bg-brand-dark"
                 onClick={() => setCreateEnrollmentOpen(true)}
               >
-                <Plus className="h-4 w-4 mr-2" />
-                New Enrollment
+                <Plus className="h-4 w-4 mr-2" /> Enroll
               </Button>
 
               {/* USER PROFILE – click to open dropdown with Logout */}

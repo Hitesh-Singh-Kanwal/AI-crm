@@ -226,7 +226,7 @@ const TABS = [
   { id: "profile", label: "Profile", Icon: User },
   {
     id: "active-enrollments",
-    label: "Active Enrollments",
+    label: " Enrollments",
     Icon: ClipboardList,
   },
   { id: "payments", label: "Payment History", Icon: Receipt },
@@ -243,7 +243,15 @@ function ProfileTab({ customer, locations, onUpdated }) {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [customerEvents, setCustomerEvents] = useState([]);
-  const [sessionStats, setSessionStats] = useState({ usedValue: 0, scheduledValue: 0, remainingValue: 0, usedCount: 0, scheduledCount: 0, remainingCount: 0, totalCount: 0 });
+  const [sessionStats, setSessionStats] = useState({
+    usedValue: 0,
+    scheduledValue: 0,
+    remainingValue: 0,
+    usedCount: 0,
+    scheduledCount: 0,
+    remainingCount: 0,
+    totalCount: 0,
+  });
   const toast = useToast();
 
   useEffect(() => {
@@ -272,34 +280,53 @@ function ProfileTab({ customer, locations, onUpdated }) {
 
   useEffect(() => {
     if (!customer?._id) return;
-    api.get(`/api/enrollment?customerID=${customer._id}&status=active`).then(async (enrRes) => {
-      if (!enrRes.success) return;
-      const list = enrRes.data || [];
-      if (!list.length) return;
-      const detResults = await Promise.all(list.map((e) => api.get(`/api/customer-package/${e._id}/details`)));
-      let usedCount = 0, remainingCount = 0, totalCount = 0;
-      let usedValue = 0, remainingValue = 0;
-      detResults.forEach((res) => {
-        if (!res.success) return;
-        const services = res.data?.services ?? [];
-        services.forEach((svc) => {
-          const price = Number(svc.pricePerSession) || 0;
-          const used = svc.sessionsUsed ?? 0;
-          const sched = svc.sessionsScheduled ?? 0;
-          const remaining = svc.sessionsRemaining ?? Math.max(0, (svc.sessionsTotal ?? 0) - used - sched);
-          usedCount += used;
-          remainingCount += remaining;
-          totalCount += svc.sessionsTotal ?? 0;
-          usedValue += used * price;
-          remainingValue += remaining * price;
+    api
+      .get(`/api/enrollment?customerID=${customer._id}&status=active`)
+      .then(async (enrRes) => {
+        if (!enrRes.success) return;
+        const list = enrRes.data || [];
+        if (!list.length) return;
+        const detResults = await Promise.all(
+          list.map((e) => api.get(`/api/customer-package/${e._id}/details`)),
+        );
+        let usedCount = 0,
+          remainingCount = 0,
+          totalCount = 0;
+        let usedValue = 0,
+          remainingValue = 0;
+        detResults.forEach((res) => {
+          if (!res.success) return;
+          const services = res.data?.services ?? [];
+          services.forEach((svc) => {
+            const price = Number(svc.pricePerSession) || 0;
+            const used = svc.sessionsUsed ?? 0;
+            const sched = svc.sessionsScheduled ?? 0;
+            const remaining =
+              svc.sessionsRemaining ??
+              Math.max(0, (svc.sessionsTotal ?? 0) - used - sched);
+            usedCount += used;
+            remainingCount += remaining;
+            totalCount += svc.sessionsTotal ?? 0;
+            usedValue += used * price;
+            remainingValue += remaining * price;
+          });
+        });
+        // Derive scheduled count from future calendar events
+        const now = new Date();
+        const scheduledCount = customerEvents.filter(
+          (ev) => new Date(ev.startDateTime) > now,
+        ).length;
+        const scheduledValue = 0; // price per scheduled session not reliably available without per-event charge lookup
+        setSessionStats({
+          usedValue,
+          scheduledValue,
+          remainingValue,
+          usedCount,
+          scheduledCount,
+          remainingCount,
+          totalCount,
         });
       });
-      // Derive scheduled count from future calendar events
-      const now = new Date();
-      const scheduledCount = customerEvents.filter((ev) => new Date(ev.startDateTime) > now).length;
-      const scheduledValue = 0; // price per scheduled session not reliably available without per-event charge lookup
-      setSessionStats({ usedValue, scheduledValue, remainingValue, usedCount, scheduledCount, remainingCount, totalCount });
-    });
   }, [customer?._id, customerEvents]);
 
   function startEdit() {
@@ -352,7 +379,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
     setSaving(false);
   }
 
-
   const locationName = (id) => {
     const loc = locations.find((l) => String(l._id) === String(id));
     return loc?.name || "—";
@@ -364,33 +390,60 @@ function ProfileTab({ customer, locations, onUpdated }) {
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Member Since", value: formatDate(customer.createdAt) },
-          { label: `Used (${sessionStats.usedCount} sess)`, value: `$${sessionStats.usedValue.toFixed(2)}`, accent: "text-blue-500" },
-          { label: "Scheduled Events", value: sessionStats.scheduledCount, accent: "text-violet-500" },
+          {
+            label: `Used (${sessionStats.usedCount} sess)`,
+            value: `$${sessionStats.usedValue.toFixed(2)}`,
+            accent: "text-blue-500",
+          },
+          {
+            label: "Scheduled Events",
+            value: sessionStats.scheduledCount,
+            accent: "text-violet-500",
+          },
         ].map(({ label, value, accent }) => (
           <div
             key={label}
             className="rounded-xl border border-border bg-card px-4 py-3"
           >
             <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-            <p className={`text-[15px] font-semibold ${accent ?? "text-foreground"}`}>{value}</p>
+            <p
+              className={`text-[15px] font-semibold ${accent ?? "text-foreground"}`}
+            >
+              {value}
+            </p>
           </div>
         ))}
         {/* Remaining sessions card */}
         <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-[11px] text-muted-foreground mb-1">Remaining Sessions</p>
+          <p className="text-[11px] text-muted-foreground mb-1">
+            Remaining Sessions
+          </p>
           <div className="flex items-baseline gap-1.5">
-            <p className="text-[15px] font-semibold text-emerald-500">{sessionStats.remainingCount}</p>
-            <p className="text-[12px] text-muted-foreground">/ {sessionStats.totalCount} sess</p>
+            <p className="text-[15px] font-semibold text-emerald-500">
+              {sessionStats.remainingCount}
+            </p>
+            <p className="text-[12px] text-muted-foreground">
+              / {sessionStats.totalCount} sess
+            </p>
           </div>
           <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full rounded-full bg-emerald-500 transition-all"
-              style={{ width: sessionStats.totalCount > 0 ? `${(sessionStats.usedCount / sessionStats.totalCount) * 100}%` : "0%" }}
+              style={{
+                width:
+                  sessionStats.totalCount > 0
+                    ? `${(sessionStats.usedCount / sessionStats.totalCount) * 100}%`
+                    : "0%",
+              }}
             />
           </div>
           <div className="flex items-center justify-between mt-1.5">
-            <p className="text-[10px] text-muted-foreground">{sessionStats.usedCount} used</p>
-            <p className="text-[13px] font-semibold text-emerald-500">${sessionStats.remainingValue.toFixed(2)}</p>
+            <p className="text-[10px] text-muted-foreground">
+              {sessionStats.usedCount} used
+            </p>
+            <p className="text-[13px] font-semibold text-emerald-500">
+              ${sessionStats.remainingValue.toFixed(2)}
+            </p>
           </div>
         </div>
       </div>
@@ -699,29 +752,52 @@ function ProfileTab({ customer, locations, onUpdated }) {
         <div className="flex flex-col gap-4">
           {/* Upcoming events */}
           <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-3">
-            <h2 className="text-[13px] font-semibold text-foreground">Upcoming Events</h2>
+            <h2 className="text-[13px] font-semibold text-foreground">
+              Upcoming Events
+            </h2>
             {(() => {
               const now = new Date();
               const upcoming = customerEvents
                 .filter((ev) => new Date(ev.startDateTime) > now)
-                .sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime))
+                .sort(
+                  (a, b) =>
+                    new Date(a.startDateTime) - new Date(b.startDateTime),
+                )
                 .slice(0, 3);
               if (!upcoming.length)
-                return <p className="text-[12px] text-muted-foreground">No upcoming events.</p>;
+                return (
+                  <p className="text-[12px] text-muted-foreground">
+                    No upcoming events.
+                  </p>
+                );
               return upcoming.map((ev, i) => {
                 const date = new Date(ev.startDateTime);
                 const instructor = ev.teacherID?.name;
                 const label = ev.title || ev.calendarServiceID?.name || "Event";
                 return (
-                  <div key={ev._id ?? i} className="flex flex-col gap-0.5 rounded-lg bg-muted/40 px-3 py-2.5">
-                    <span className="text-[12px] font-medium text-foreground leading-snug">{label}</span>
+                  <div
+                    key={ev._id ?? i}
+                    className="flex flex-col gap-0.5 rounded-lg bg-muted/40 px-3 py-2.5"
+                  >
+                    <span className="text-[12px] font-medium text-foreground leading-snug">
+                      {label}
+                    </span>
                     <span className="text-[11px] text-muted-foreground">
-                      {date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {date.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
                       {" · "}
-                      {date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      {date.toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
                     </span>
                     {instructor && (
-                      <span className="text-[11px] text-muted-foreground">with {instructor}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        with {instructor}
+                      </span>
                     )}
                   </div>
                 );
@@ -731,29 +807,52 @@ function ProfileTab({ customer, locations, onUpdated }) {
 
           {/* Recent completed events */}
           <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-3">
-            <h2 className="text-[13px] font-semibold text-foreground">Recent Completed</h2>
+            <h2 className="text-[13px] font-semibold text-foreground">
+              Recent Completed
+            </h2>
             {(() => {
               const now = new Date();
               const past = customerEvents
                 .filter((ev) => new Date(ev.startDateTime) <= now)
-                .sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime))
+                .sort(
+                  (a, b) =>
+                    new Date(b.startDateTime) - new Date(a.startDateTime),
+                )
                 .slice(0, 3);
               if (!past.length)
-                return <p className="text-[12px] text-muted-foreground">No completed events.</p>;
+                return (
+                  <p className="text-[12px] text-muted-foreground">
+                    No completed events.
+                  </p>
+                );
               return past.map((ev, i) => {
                 const date = new Date(ev.startDateTime);
                 const instructor = ev.teacherID?.name;
                 const label = ev.title || ev.calendarServiceID?.name || "Event";
                 return (
-                  <div key={ev._id ?? i} className="flex flex-col gap-0.5 rounded-lg bg-muted/40 px-3 py-2.5">
-                    <span className="text-[12px] font-medium text-foreground leading-snug">{label}</span>
+                  <div
+                    key={ev._id ?? i}
+                    className="flex flex-col gap-0.5 rounded-lg bg-muted/40 px-3 py-2.5"
+                  >
+                    <span className="text-[12px] font-medium text-foreground leading-snug">
+                      {label}
+                    </span>
                     <span className="text-[11px] text-muted-foreground">
-                      {date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {date.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
                       {" · "}
-                      {date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      {date.toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
                     </span>
                     {instructor && (
-                      <span className="text-[11px] text-muted-foreground">with {instructor}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        with {instructor}
+                      </span>
                     )}
                   </div>
                 );
@@ -763,7 +862,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
         </div>
       </div>
       {/* end inner grid */}
-
     </div>
   );
 }
@@ -879,6 +977,10 @@ const BLANK_ADD_FORM = {
     numberOfInstallments: 3,
     frequency: "monthly",
     startDate: "",
+    dueDate: "",
+    dueAmount: "",
+    installmentMode: "count",
+    installmentAmount: "",
   },
 };
 
@@ -971,14 +1073,16 @@ function PackagesTab({ customerID }) {
       packageID: pkgId,
       services: (pkg?.services || []).map((s) => {
         const isChargeable = s.isChargeable ?? true;
-        const pricePerSession = isChargeable ? (s.pricePerSession || 0) : 0;
+        const pricePerSession = isChargeable ? s.pricePerSession || 0 : 0;
         const numberOfSessions = s.numberOfSessions || 0;
         const gross = numberOfSessions * pricePerSession;
-        const discountType = isChargeable ? (s.discountType || "none") : "none";
+        const discountType = isChargeable ? s.discountType || "none" : "none";
         const discountAmount = isChargeable ? Number(s.discountAmount || 0) : 0;
         let finalAmount = gross;
-        if (discountType === "percentage") finalAmount = Math.max(0, gross - (gross * discountAmount) / 100);
-        else if (discountType === "fixed") finalAmount = Math.max(0, gross - discountAmount);
+        if (discountType === "percentage")
+          finalAmount = Math.max(0, gross - (gross * discountAmount) / 100);
+        else if (discountType === "fixed")
+          finalAmount = Math.max(0, gross - discountAmount);
         return {
           serviceCode: s.serviceCode || "",
           serviceName: s.serviceName || "",
@@ -999,11 +1103,15 @@ function PackagesTab({ customerID }) {
       const svcs = f.services.map((s, idx) => {
         if (idx !== i) return s;
         const updated = { ...s, [field]: val };
-        const gross = (Number(updated.pricePerSession) || 0) * (Number(updated.numberOfSessions) || 0);
+        const gross =
+          (Number(updated.pricePerSession) || 0) *
+          (Number(updated.numberOfSessions) || 0);
         const discAmt = Number(updated.discountAmount) || 0;
         let finalAmount = gross;
-        if (updated.discountType === "percentage") finalAmount = Math.max(0, gross - (gross * discAmt) / 100);
-        else if (updated.discountType === "fixed") finalAmount = Math.max(0, gross - discAmt);
+        if (updated.discountType === "percentage")
+          finalAmount = Math.max(0, gross - (gross * discAmt) / 100);
+        else if (updated.discountType === "fixed")
+          finalAmount = Math.max(0, gross - discAmt);
         updated.finalAmount = parseFloat(finalAmount.toFixed(2));
         return updated;
       });
@@ -1015,9 +1123,13 @@ function PackagesTab({ customerID }) {
     setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }));
   }
 
-  const totalAmount = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0);
+  const totalAmount = addForm.services.reduce(
+    (s, svc) => s + (Number(svc.finalAmount) || 0),
+    0,
+  );
   const totalDiscount = addForm.services.reduce((s, svc) => {
-    const gross = (Number(svc.pricePerSession) || 0) * (Number(svc.numberOfSessions) || 0);
+    const gross =
+      (Number(svc.pricePerSession) || 0) * (Number(svc.numberOfSessions) || 0);
     return s + Math.max(0, gross - (Number(svc.finalAmount) || 0));
   }, 0);
 
@@ -1682,8 +1794,18 @@ function PackagesTab({ customerID }) {
                 <table className="w-full text-[12px]">
                   <thead>
                     <tr className="bg-muted/40 border-b border-border">
-                      {["Service", "Color", "Sessions", "Price / Session", "Discount", "Total"].map((h) => (
-                        <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap">
+                      {[
+                        "Service",
+                        "Color",
+                        "Sessions",
+                        "Price / Session",
+                        "Discount",
+                        "Total",
+                      ].map((h) => (
+                        <th
+                          key={h}
+                          className="px-3 py-2 text-left text-[10px] font-medium text-muted-foreground whitespace-nowrap"
+                        >
                           {h}
                         </th>
                       ))}
@@ -1691,7 +1813,10 @@ function PackagesTab({ customerID }) {
                   </thead>
                   <tbody>
                     {addForm.services.map((svc, i) => (
-                      <tr key={i} className={i > 0 ? "border-t border-border" : ""}>
+                      <tr
+                        key={i}
+                        className={i > 0 ? "border-t border-border" : ""}
+                      >
                         <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">
                           {svc.serviceName}
                         </td>
@@ -1699,7 +1824,9 @@ function PackagesTab({ customerID }) {
                           <input
                             type="color"
                             value={svc.color || "#6366f1"}
-                            onChange={(e) => updateSvc(i, "color", e.target.value)}
+                            onChange={(e) =>
+                              updateSvc(i, "color", e.target.value)
+                            }
                             className="h-7 w-9 rounded border border-border cursor-pointer p-0.5 bg-background"
                           />
                         </td>
@@ -1708,20 +1835,30 @@ function PackagesTab({ customerID }) {
                             type="number"
                             min="0"
                             value={svc.numberOfSessions}
-                            onChange={(e) => updateSvc(i, "numberOfSessions", e.target.value)}
+                            onChange={(e) =>
+                              updateSvc(i, "numberOfSessions", e.target.value)
+                            }
                             className="h-7 w-16 rounded border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
                           />
                         </td>
                         <td className="px-3 py-2">
                           <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+                              $
+                            </span>
                             <input
                               type="number"
                               min="0"
                               step="0.01"
-                              value={svc.isChargeable === false ? 0 : svc.pricePerSession}
+                              value={
+                                svc.isChargeable === false
+                                  ? 0
+                                  : svc.pricePerSession
+                              }
                               disabled={svc.isChargeable === false}
-                              onChange={(e) => updateSvc(i, "pricePerSession", e.target.value)}
+                              onChange={(e) =>
+                                updateSvc(i, "pricePerSession", e.target.value)
+                              }
                               className={`h-7 w-20 rounded border pl-5 pr-2 text-[12px] outline-none ${svc.isChargeable === false ? "border-border bg-muted/30 text-muted-foreground cursor-not-allowed" : "border-border bg-background focus:border-primary"}`}
                             />
                           </div>
@@ -1730,7 +1867,9 @@ function PackagesTab({ customerID }) {
                           <div className="flex items-center gap-1">
                             <select
                               value={svc.discountType}
-                              onChange={(e) => updateSvc(i, "discountType", e.target.value)}
+                              onChange={(e) =>
+                                updateSvc(i, "discountType", e.target.value)
+                              }
                               className="h-7 rounded border border-border bg-background px-1 text-[11px] outline-none focus:border-primary"
                             >
                               <option value="none">—</option>
@@ -1743,7 +1882,9 @@ function PackagesTab({ customerID }) {
                                 min="0"
                                 step="0.01"
                                 value={svc.discountAmount}
-                                onChange={(e) => updateSvc(i, "discountAmount", e.target.value)}
+                                onChange={(e) =>
+                                  updateSvc(i, "discountAmount", e.target.value)
+                                }
                                 className="h-7 w-16 rounded border border-border bg-background px-2 text-[11px] outline-none focus:border-primary"
                               />
                             )}
@@ -1758,13 +1899,27 @@ function PackagesTab({ customerID }) {
                   <tfoot>
                     {totalDiscount > 0 && (
                       <tr className="border-t border-border bg-muted/20">
-                        <td colSpan={5} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Discount</td>
-                        <td className="px-3 py-2 text-[11px] font-medium text-amber-600">-${totalDiscount.toFixed(2)}</td>
+                        <td
+                          colSpan={5}
+                          className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right"
+                        >
+                          Discount
+                        </td>
+                        <td className="px-3 py-2 text-[11px] font-medium text-amber-600">
+                          -${totalDiscount.toFixed(2)}
+                        </td>
                       </tr>
                     )}
                     <tr className="border-t border-border bg-muted/30">
-                      <td colSpan={5} className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right">Total</td>
-                      <td className="px-3 py-2 text-[12px] font-semibold text-foreground">${totalAmount.toFixed(2)}</td>
+                      <td
+                        colSpan={5}
+                        className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right"
+                      >
+                        Total
+                      </td>
+                      <td className="px-3 py-2 text-[12px] font-semibold text-foreground">
+                        ${totalAmount.toFixed(2)}
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
@@ -2079,7 +2234,8 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     if (enrRes.success) {
       const list = enrRes.data || [];
       setEnrollments(list);
-      if (list.length > 0) setSelectedEnrId((prev) => prev ?? String(list[list.length - 1]._id));
+      if (list.length > 0)
+        setSelectedEnrId((prev) => prev ?? String(list[list.length - 1]._id));
       const withPkg = list.filter((e) => e.package);
       if (withPkg.length > 0) {
         const detResults = await Promise.all(
@@ -2137,8 +2293,10 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         const discountType = s.discountType || "none";
         const discountAmount = Number(s.discountAmount || 0);
         let finalAmount = gross;
-        if (discountType === "percentage") finalAmount = Math.max(0, gross - (gross * discountAmount) / 100);
-        else if (discountType === "fixed") finalAmount = Math.max(0, gross - discountAmount);
+        if (discountType === "percentage")
+          finalAmount = Math.max(0, gross - (gross * discountAmount) / 100);
+        else if (discountType === "fixed")
+          finalAmount = Math.max(0, gross - discountAmount);
         return {
           serviceCode: s.serviceCode || "",
           serviceName: s.serviceName || "",
@@ -2158,11 +2316,15 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
       const svcs = f.services.map((s, idx) => {
         if (idx !== i) return s;
         const updated = { ...s, [field]: val };
-        const gross = (Number(updated.pricePerSession) || 0) * (Number(updated.numberOfSessions) || 0);
+        const gross =
+          (Number(updated.pricePerSession) || 0) *
+          (Number(updated.numberOfSessions) || 0);
         const discAmt = Number(updated.discountAmount) || 0;
         let finalAmount = gross;
-        if (updated.discountType === "percentage") finalAmount = Math.max(0, gross - (gross * discAmt) / 100);
-        else if (updated.discountType === "fixed") finalAmount = Math.max(0, gross - discAmt);
+        if (updated.discountType === "percentage")
+          finalAmount = Math.max(0, gross - (gross * discAmt) / 100);
+        else if (updated.discountType === "fixed")
+          finalAmount = Math.max(0, gross - discAmt);
         updated.finalAmount = parseFloat(finalAmount.toFixed(2));
         return updated;
       });
@@ -2200,14 +2362,24 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     setAddForm((f) => ({ ...f, billing: { ...f.billing, [field]: val } }));
   }
 
-  const enrTotalAmount = addForm.services.reduce((s, svc) => s + (Number(svc.finalAmount) || 0), 0);
+  const enrTotalAmount = addForm.services.reduce(
+    (s, svc) => s + (Number(svc.finalAmount) || 0),
+    0,
+  );
   const enrTotalDiscount = addForm.services.reduce((s, svc) => {
-    const gross = (Number(svc.pricePerSession) || 0) * (Number(svc.numberOfSessions) || 0);
+    const gross =
+      (Number(svc.pricePerSession) || 0) * (Number(svc.numberOfSessions) || 0);
     return s + Math.max(0, gross - (Number(svc.finalAmount) || 0));
   }, 0);
 
   function getEnrInstallments() {
-    const { installmentMode, numberOfInstallments, installmentAmount, frequency, startDate } = addForm.billing;
+    const {
+      installmentMode,
+      numberOfInstallments,
+      installmentAmount,
+      frequency,
+      startDate,
+    } = addForm.billing;
     if (!startDate) return [];
     let n, baseAmt;
     if (installmentMode === "amount") {
@@ -2226,7 +2398,10 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     for (let i = 0; i < n; i++) {
       const isLast = i === n - 1;
       const amount = isLast
-        ? Math.max(0, parseFloat((enrTotalAmount - baseAmt * (n - 1)).toFixed(2)))
+        ? Math.max(
+            0,
+            parseFloat((enrTotalAmount - baseAmt * (n - 1)).toFixed(2)),
+          )
         : baseAmt;
       result.push({
         date: d.toLocaleDateString("en-AU", {
@@ -2250,7 +2425,13 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
   async function handleEnrAdd() {
     if (addForm.billingType === "payment_plan") {
-      const { installmentMode, numberOfInstallments, installmentAmount, frequency, startDate } = addForm.billing;
+      const {
+        installmentMode,
+        numberOfInstallments,
+        installmentAmount,
+        frequency,
+        startDate,
+      } = addForm.billing;
       if (!frequency || !startDate) {
         toast.error("Please fill all payment plan fields.");
         return;
@@ -2290,16 +2471,26 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
           : addForm.billingType === "payment_plan"
             ? {
                 installmentMode: addForm.billing.installmentMode || "count",
-                numberOfInstallments: addForm.billing.installmentMode === "amount"
-                  ? Math.ceil(enrTotalAmount / Number(addForm.billing.installmentAmount || 1))
-                  : Number(addForm.billing.numberOfInstallments),
-                installmentAmount: addForm.billing.installmentMode === "amount"
-                  ? Number(addForm.billing.installmentAmount)
-                  : undefined,
+                numberOfInstallments:
+                  addForm.billing.installmentMode === "amount"
+                    ? Math.ceil(
+                        enrTotalAmount /
+                          Number(addForm.billing.installmentAmount || 1),
+                      )
+                    : Number(addForm.billing.numberOfInstallments),
+                installmentAmount:
+                  addForm.billing.installmentMode === "amount"
+                    ? Number(addForm.billing.installmentAmount)
+                    : undefined,
                 frequency: addForm.billing.frequency,
                 startDate: addForm.billing.startDate,
               }
-            : {},
+            : addForm.billingType === "flexible"
+              ? {
+                  dueDate: addForm.billing.dueDate || undefined,
+                  dueAmount: addForm.billing.dueAmount ? Number(addForm.billing.dueAmount) : undefined,
+                }
+              : {},
     };
     if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate;
     const res = await api.post("/api/customer-package/add", payload);
@@ -2346,45 +2537,57 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
   const isActiveTab = statusFilter === "active";
 
-  const selectedEnr = filteredEnrollments.find((e) => String(e._id) === selectedEnrId) ?? filteredEnrollments[filteredEnrollments.length - 1] ?? null;
+  const selectedEnr =
+    filteredEnrollments.find((e) => String(e._id) === selectedEnrId) ??
+    filteredEnrollments[filteredEnrollments.length - 1] ??
+    null;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-        <div className="relative">
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setSelectedEnrId(null); }}
-            className="h-8 rounded-lg border border-border bg-background pl-3 pr-8 text-[12px] font-medium text-foreground outline-none focus:border-primary appearance-none cursor-pointer"
-          >
-            <option value="active">Active</option>
-            <option value="completed">Completed</option>
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        </div>
-        {filteredEnrollments.length > 0 ? (
           <div className="relative">
             <select
-              value={selectedEnrId ?? ""}
-              onChange={(e) => setSelectedEnrId(e.target.value)}
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setSelectedEnrId(null);
+              }}
               className="h-8 rounded-lg border border-border bg-background pl-3 pr-8 text-[12px] font-medium text-foreground outline-none focus:border-primary appearance-none cursor-pointer"
             >
-              {[...filteredEnrollments].reverse().map((enr) => {
-                const ordinal = ["1st", "2nd", "3rd"][enr.enrollmentNumber - 1] ?? `${enr.enrollmentNumber}th`;
-                const pkgName = enr.package?.packageName ?? enr.package?.packageRef?.packageName ?? enr.label ?? "";
-                return (
-                  <option key={enr._id} value={String(enr._id)}>
-                    {ordinal} Enrollment{pkgName ? ` — ${pkgName}` : ""}
-                  </option>
-                );
-              })}
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           </div>
-        ) : (
-          <p className="text-[13px] text-muted-foreground">0 enrollments</p>
-        )}
+          {filteredEnrollments.length > 0 ? (
+            <div className="relative">
+              <select
+                value={selectedEnrId ?? ""}
+                onChange={(e) => setSelectedEnrId(e.target.value)}
+                className="h-8 rounded-lg border border-border bg-background pl-3 pr-8 text-[12px] font-medium text-foreground outline-none focus:border-primary appearance-none cursor-pointer"
+              >
+                {[...filteredEnrollments].reverse().map((enr) => {
+                  const ordinal =
+                    ["1st", "2nd", "3rd"][enr.enrollmentNumber - 1] ??
+                    `${enr.enrollmentNumber}th`;
+                  const pkgName =
+                    enr.package?.packageName ??
+                    enr.package?.packageRef?.packageName ??
+                    enr.label ??
+                    "";
+                  return (
+                    <option key={enr._id} value={String(enr._id)}>
+                      {ordinal} Enrollment{pkgName ? ` — ${pkgName}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            </div>
+          ) : (
+            <p className="text-[13px] text-muted-foreground">0 enrollments</p>
+          )}
         </div>
         {isActiveTab && (
           <Button
@@ -2580,10 +2783,18 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                           totalRemaining = 0,
                           totalCredit = 0,
                           totalServicePrice = 0;
-                        const isDeferred = cp.billingType === "flexible" || cp.billingType === "payment_plan" || cp.billingType === "pay_per_session";
+                        const isDeferred =
+                          cp.billingType === "flexible" ||
+                          cp.billingType === "payment_plan" ||
+                          cp.billingType === "pay_per_session";
                         // Sum of all chargeable service prices (used as denominator for proportion)
                         const chargeableSvcPriceTotal = services.reduce(
-                          (s, sv) => s + (Number(sv.pricePerSession) > 0 ? (sv.sessionsTotal ?? 0) * Number(sv.pricePerSession) : 0),
+                          (s, sv) =>
+                            s +
+                            (Number(sv.pricePerSession) > 0
+                              ? (sv.sessionsTotal ?? 0) *
+                                Number(sv.pricePerSession)
+                              : 0),
                           0,
                         );
                         const rows = services.map((svc, i) => {
@@ -2599,15 +2810,21 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                           const svcCreditSessions = (() => {
                             if (!isDeferred || pps <= 0) return sessRemaining;
                             // Proportion by this service's share of total chargeable price
-                            const svcShare = chargeableSvcPriceTotal > 0 ? svcTotal / chargeableSvcPriceTotal : 1;
-                            const svcAmountPaid = (cp.amountCollected ?? 0) * svcShare;
+                            const svcShare =
+                              chargeableSvcPriceTotal > 0
+                                ? svcTotal / chargeableSvcPriceTotal
+                                : 1;
+                            const svcAmountPaid =
+                              (cp.amountCollected ?? 0) * svcShare;
                             return svcAmountPaid / pps;
                           })();
                           const svcCredit = svcCreditSessions * pps;
                           totalEnrolled += sessTotal;
                           totalUsed += sessUsed;
                           totalSched += sessSched;
-                          totalRemaining += isDeferred ? svcCreditSessions : sessRemaining;
+                          totalRemaining += isDeferred
+                            ? svcCreditSessions
+                            : sessRemaining;
                           totalCredit += svcCredit;
                           totalServicePrice += svcTotal;
                           return {
@@ -2738,18 +2955,39 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                           className={`text-[13px] font-semibold text-right ${svcCreditSessions > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
                                         >
                                           {isDeferred
-                                            ? svcCreditSessions.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1")
+                                            ? svcCreditSessions
+                                                .toFixed(2)
+                                                .replace(/\.00$/, "")
+                                                .replace(/(\.\d)0$/, "$1")
                                             : svcCreditSessions}
                                         </span>
                                         <span className="text-[13px] font-semibold text-foreground text-right">
-                                          {svcTotal > 0 ? (() => {
-                                            const discount = Number(cp.totalDiscount) || 0;
-                                            const svcDiscount = totalServicePrice > 0 ? (svcTotal / totalServicePrice) * discount : 0;
-                                            const svcNet = svcTotal - svcDiscount;
-                                            return discount > 0
-                                              ? <><span className="text-[11px] text-muted-foreground line-through block">${svcTotal.toFixed(2)}</span><span className="text-emerald-600">${svcNet.toFixed(2)}</span></>
-                                              : `$${svcTotal.toFixed(2)}`;
-                                          })() : "—"}
+                                          {svcTotal > 0
+                                            ? (() => {
+                                                const discount =
+                                                  Number(cp.totalDiscount) || 0;
+                                                const svcDiscount =
+                                                  totalServicePrice > 0
+                                                    ? (svcTotal /
+                                                        totalServicePrice) *
+                                                      discount
+                                                    : 0;
+                                                const svcNet =
+                                                  svcTotal - svcDiscount;
+                                                return discount > 0 ? (
+                                                  <>
+                                                    <span className="text-[11px] text-muted-foreground line-through block">
+                                                      ${svcTotal.toFixed(2)}
+                                                    </span>
+                                                    <span className="text-emerald-600">
+                                                      ${svcNet.toFixed(2)}
+                                                    </span>
+                                                  </>
+                                                ) : (
+                                                  `$${svcTotal.toFixed(2)}`
+                                                );
+                                              })()
+                                            : "—"}
                                         </span>
                                       </div>
                                       {isExpanded && (
@@ -2781,12 +3019,21 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                                   </span>
                                                 </div>
                                                 {(() => {
-                                                  const svcDiscount = Math.max(0, svcTotal - (Number(svc.finalAmount) || 0));
+                                                  const svcDiscount = Math.max(
+                                                    0,
+                                                    svcTotal -
+                                                      (Number(
+                                                        svc.finalAmount,
+                                                      ) || 0),
+                                                  );
                                                   return svcDiscount > 0 ? (
                                                     <div className="flex justify-between items-center gap-4 pt-1 border-t border-border/50">
-                                                      <span className="text-[12px] text-muted-foreground">Discount</span>
+                                                      <span className="text-[12px] text-muted-foreground">
+                                                        Discount
+                                                      </span>
                                                       <span className="text-[12px] font-semibold text-amber-500">
-                                                        -${svcDiscount.toFixed(2)}
+                                                        -$
+                                                        {svcDiscount.toFixed(2)}
                                                       </span>
                                                     </div>
                                                   ) : null;
@@ -2917,12 +3164,22 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                     <span
                                       className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? "text-foreground" : "text-muted-foreground"}`}
                                     >
-                                      {isDeferred ? totalRemaining.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1") : totalRemaining}
+                                      {isDeferred
+                                        ? totalRemaining
+                                            .toFixed(2)
+                                            .replace(/\.00$/, "")
+                                            .replace(/(\.\d)0$/, "$1")
+                                        : totalRemaining}
                                     </span>
                                     <span
                                       className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
                                     >
-                                      {isDeferred ? totalRemaining.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1") : totalRemaining}
+                                      {isDeferred
+                                        ? totalRemaining
+                                            .toFixed(2)
+                                            .replace(/\.00$/, "")
+                                            .replace(/(\.\d)0$/, "$1")
+                                        : totalRemaining}
                                     </span>
                                     <div className="text-right">
                                       {Number(cp.totalDiscount) > 0 ? (
@@ -2931,7 +3188,11 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                             ${totalServicePrice.toFixed(2)}
                                           </span>
                                           <span className="text-[13px] font-bold text-emerald-600">
-                                            ${(totalServicePrice - Number(cp.totalDiscount)).toFixed(2)}
+                                            $
+                                            {(
+                                              totalServicePrice -
+                                              Number(cp.totalDiscount)
+                                            ).toFixed(2)}
                                           </span>
                                         </>
                                       ) : (
@@ -3153,391 +3414,538 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
       <Sheet
         open={Boolean(addTargetEnrollment)}
         onClose={() => setAddTargetEnrollment(null)}
-        width="640px"
+        width="520px"
       >
         <SheetContent
           onClose={() => setAddTargetEnrollment(null)}
           className="flex flex-col overflow-hidden p-0"
         >
-          <div className="shrink-0 border-b border-border px-6 py-5">
-            <h2 className="text-[17px] font-bold text-foreground">Add Package</h2>
+          <div className="shrink-0 border-b border-border px-5 py-4">
+            <h2 className="text-[15px] font-bold text-foreground">
+              Add Package
+            </h2>
           </div>
-          <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="space-y-4">
+              {/* ── Package ── */}
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Package" required>
+                  <div className="relative">
+                    <select
+                      value={addForm.packageID}
+                      onChange={(e) => onEnrPkgChange(e.target.value)}
+                      className="h-8 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary"
+                    >
+                      <option value="">Select package…</option>
+                      {allPkgs.map((p) => (
+                        <option key={p._id} value={p._id}>
+                          {p.packageName}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </FormField>
+                <FormField label="Purchase date (optional)">
+                  <input
+                    type="date"
+                    value={addForm.purchaseDate}
+                    onChange={(e) =>
+                      setAddForm((f) => ({
+                        ...f,
+                        purchaseDate: e.target.value,
+                      }))
+                    }
+                    className="h-8 w-full rounded-lg border border-border bg-background px-3 text-[12px] outline-none focus:border-primary"
+                  />
+                </FormField>
+              </div>
 
-          <div className="space-y-6 mt-3">
-            {/* ── Package ── */}
-            <div className="grid grid-cols-2 gap-5">
-              <FormField label="Package" required>
-                <div className="relative">
-                  <select
-                    value={addForm.packageID}
-                    onChange={(e) => onEnrPkgChange(e.target.value)}
-                    className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary"
-                  >
-                    <option value="">Select package…</option>
-                    {allPkgs.map((p) => (
-                      <option key={p._id} value={p._id}>
-                        {p.packageName}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                </div>
-              </FormField>
-              <FormField label="Purchase date (optional)">
-                <input
-                  type="date"
-                  value={addForm.purchaseDate}
-                  onChange={(e) =>
-                    setAddForm((f) => ({ ...f, purchaseDate: e.target.value }))
-                  }
-                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[14px] outline-none focus:border-primary"
-                />
-              </FormField>
-            </div>
-
-            {/* ── Services table ── */}
-            {(addForm.packageID || addForm.services.length > 0) && (
-              <div>
-                <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground mb-3">
-                  Services
-                </p>
-                <div className="rounded-xl border border-border overflow-x-auto">
-                  <table className="min-w-full text-[13px]">
-                    <thead>
-                      <tr className="bg-muted/40 border-b border-border">
-                        {["Service", "Color", "Sessions", "Price / Session", "Discount", "Total", ""].map((h, i) => (
-                          <th key={i} className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground whitespace-nowrap">
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {addForm.services.map((svc, i) => (
-                        <tr key={i} className={i > 0 ? "border-t border-border" : ""}>
-                          <td className="px-4 py-3">
-                            <input
-                              type="text"
-                              value={svc.serviceName}
-                              onChange={(e) => updateEnrSvc(i, "serviceName", e.target.value)}
-                              placeholder="Service name"
-                              className="h-9 w-48 rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="color"
-                              value={svc.color || "#6366f1"}
-                              onChange={(e) => updateEnrSvc(i, "color", e.target.value)}
-                              className="h-9 w-10 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="number"
-                              min="0"
-                              value={svc.numberOfSessions}
-                              onChange={(e) => updateEnrSvc(i, "numberOfSessions", e.target.value)}
-                              className="h-9 w-20 rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">$</span>
+              {/* ── Services table ── */}
+              {(addForm.packageID || addForm.services.length > 0) && (
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">
+                    Services
+                  </p>
+                  <div className="rounded-lg border border-border overflow-x-auto">
+                    <table className="min-w-full text-[12px]">
+                      <thead>
+                        <tr className="bg-muted/40 border-b border-border">
+                          {[
+                            "Service",
+                            "Color",
+                            "Sessions",
+                            "Price / Session",
+                            "Discount",
+                            "Total",
+                            "",
+                          ].map((h, i) => (
+                            <th
+                              key={i}
+                              className="px-3 py-2 text-left text-[10px] font-semibold text-muted-foreground whitespace-nowrap"
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {addForm.services.map((svc, i) => (
+                          <tr
+                            key={i}
+                            className={i > 0 ? "border-t border-border" : ""}
+                          >
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={svc.serviceName}
+                                onChange={(e) =>
+                                  updateEnrSvc(i, "serviceName", e.target.value)
+                                }
+                                placeholder="Service name"
+                                className="h-7 w-36 rounded-md border border-border bg-background px-2 text-[11px] outline-none focus:border-primary"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="color"
+                                value={svc.color || "#6366f1"}
+                                onChange={(e) =>
+                                  updateEnrSvc(i, "color", e.target.value)
+                                }
+                                className="h-7 w-8 rounded border border-border cursor-pointer p-0.5 bg-background"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
                               <input
                                 type="number"
                                 min="0"
-                                step="0.01"
-                                value={svc.pricePerSession}
-                                onChange={(e) => updateEnrSvc(i, "pricePerSession", e.target.value)}
-                                className="h-9 w-24 rounded-lg border border-border bg-background pl-6 pr-3 text-[13px] outline-none focus:border-primary"
+                                value={svc.numberOfSessions}
+                                onChange={(e) =>
+                                  updateEnrSvc(
+                                    i,
+                                    "numberOfSessions",
+                                    e.target.value,
+                                  )
+                                }
+                                className="h-7 w-16 rounded-md border border-border bg-background px-2 text-[11px] outline-none focus:border-primary"
                               />
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1">
-                              <select
-                                value={svc.discountType}
-                                onChange={(e) => updateEnrSvc(i, "discountType", e.target.value)}
-                                className="h-9 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
-                              >
-                                <option value="none">—</option>
-                                <option value="percentage">%</option>
-                                <option value="fixed">$</option>
-                              </select>
-                              {svc.discountType !== "none" && (
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+                                  $
+                                </span>
                                 <input
                                   type="number"
                                   min="0"
                                   step="0.01"
-                                  value={svc.discountAmount}
-                                  onChange={(e) => updateEnrSvc(i, "discountAmount", e.target.value)}
-                                  className="h-9 w-20 rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                                  value={svc.pricePerSession}
+                                  onChange={(e) =>
+                                    updateEnrSvc(
+                                      i,
+                                      "pricePerSession",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="h-7 w-20 rounded-md border border-border bg-background pl-5 pr-2 text-[11px] outline-none focus:border-primary"
                                 />
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-[14px] font-semibold text-foreground whitespace-nowrap">
-                            ${Number(svc.finalAmount).toFixed(2)}
-                          </td>
-                          <td className="px-3 py-3">
-                            <button
-                              type="button"
-                              onClick={() => removeEnrSvcRow(i)}
-                              className="text-muted-foreground hover:text-destructive text-[18px] leading-none"
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-1">
+                                <select
+                                  value={svc.discountType}
+                                  onChange={(e) =>
+                                    updateEnrSvc(
+                                      i,
+                                      "discountType",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="h-7 rounded-md border border-border bg-background px-1.5 text-[11px] outline-none focus:border-primary"
+                                >
+                                  <option value="none">—</option>
+                                  <option value="percentage">%</option>
+                                  <option value="fixed">$</option>
+                                </select>
+                                {svc.discountType !== "none" && (
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={svc.discountAmount}
+                                    onChange={(e) =>
+                                      updateEnrSvc(
+                                        i,
+                                        "discountAmount",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="h-7 w-16 rounded-md border border-border bg-background px-2 text-[11px] outline-none focus:border-primary"
+                                  />
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-[12px] font-semibold text-foreground whitespace-nowrap">
+                              ${Number(svc.finalAmount).toFixed(2)}
+                            </td>
+                            <td className="px-2 py-2">
+                              <button
+                                type="button"
+                                onClick={() => removeEnrSvcRow(i)}
+                                className="text-muted-foreground hover:text-destructive text-[16px] leading-none"
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        {enrTotalDiscount > 0 && (
+                          <tr className="border-t border-border bg-muted/20">
+                            <td
+                              colSpan={5}
+                              className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground text-right"
                             >
-                              ×
-                            </button>
+                              Discount
+                            </td>
+                            <td className="px-3 py-1.5 text-[11px] font-medium text-amber-600">
+                              -${enrTotalDiscount.toFixed(2)}
+                            </td>
+                            <td />
+                          </tr>
+                        )}
+                        <tr className="border-t border-border bg-muted/30">
+                          <td
+                            colSpan={5}
+                            className="px-3 py-2 text-[11px] font-medium text-muted-foreground text-right"
+                          >
+                            Total
                           </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      {enrTotalDiscount > 0 && (
-                        <tr className="border-t border-border bg-muted/20">
-                          <td colSpan={5} className="px-4 py-2 text-[12px] font-medium text-muted-foreground text-right">Discount</td>
-                          <td className="px-4 py-2 text-[12px] font-medium text-amber-600">-${enrTotalDiscount.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-[12px] font-semibold text-foreground">
+                            ${enrTotalAmount.toFixed(2)}
+                          </td>
                           <td />
                         </tr>
-                      )}
-                      <tr className="border-t border-border bg-muted/30">
-                        <td colSpan={5} className="px-4 py-3 text-[12px] font-medium text-muted-foreground text-right">Total</td>
-                        <td className="px-4 py-3 text-[14px] font-semibold text-foreground">${enrTotalAmount.toFixed(2)}</td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-                <button
-                  type="button"
-                  onClick={addEnrSvcRow}
-                  className="mt-2.5 flex items-center gap-1.5 text-[12px] font-semibold text-primary hover:underline"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Add service
-                </button>
-              </div>
-            )}
-
-            {/* ── Billing ── */}
-            {addForm.services.length > 0 && (
-              <div className="space-y-4">
-                <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">
-                  Billing
-                </p>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    {
-                      value: "one_time",
-                      label: "One-time",
-                      desc: "Full payment now",
-                    },
-                    {
-                      value: "payment_plan",
-                      label: "Payment Plan",
-                      desc: "Autopay installments",
-                    },
-                    {
-                      value: "flexible",
-                      label: "Flexible",
-                      desc: "Pay as you go",
-                    },
-                  ].map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() =>
-                        setAddForm((f) => ({ ...f, billingType: opt.value }))
-                      }
-                      className={`rounded-xl border-2 p-4 text-left transition-colors ${addForm.billingType === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-border/80 bg-background"}`}
-                    >
-                      <p className="text-[14px] font-semibold text-foreground">
-                        {opt.label}
-                      </p>
-                      <p className="text-[12px] text-muted-foreground mt-1">
-                        {opt.desc}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-
-                {addForm.billingType === "one_time" && (
-                  <div className="rounded-xl border border-border bg-muted/20 p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[13px] text-muted-foreground">
-                        Payable Balance
-                      </p>
-                      <p className="text-[20px] font-bold text-foreground">
-                        ${enrTotalAmount.toFixed(2)}
-                      </p>
-                    </div>
-                    <FormField label="Payment Method" required>
-                      <div className="relative">
-                        <select
-                          value={addForm.billing.method}
-                          onChange={(e) =>
-                            setEnrBilling("method", e.target.value)
-                          }
-                          className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary capitalize"
-                        >
-                          {PAYMENT_METHODS.map((m) => (
-                            <option key={m} value={m} className="capitalize">
-                              {m}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      </div>
-                    </FormField>
+                      </tfoot>
+                    </table>
                   </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={addEnrSvcRow}
+                    className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-primary hover:underline"
+                  >
+                    <Plus className="h-3 w-3" /> Add service
+                  </button>
+                </div>
+              )}
 
-                {addForm.billingType === "payment_plan" && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField label="Installment Mode" required>
+              {/* ── Billing ── */}
+              {addForm.services.length > 0 && (() => {
+                const chargeableSvcs = addForm.services.filter((s) => s.isChargeable !== false)
+                const canPayPerSession = chargeableSvcs.length === 1
+                return (
+                <div className="space-y-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                    Billing
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { value: "one_time", label: "One-time", desc: "Full payment now" },
+                      { value: "payment_plan", label: "Payment Plan", desc: "Autopay installments" },
+                      { value: "flexible", label: "Flexible", desc: "Pay as you go" },
+                      { value: "pay_per_session", label: "Pay Per Session", desc: "Charge per booking", disabled: !canPayPerSession },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        disabled={opt.disabled}
+                        title={opt.disabled && opt.value === "pay_per_session" ? "Requires exactly 1 chargeable service" : undefined}
+                        onClick={() => !opt.disabled && setAddForm((f) => ({ ...f, billingType: opt.value }))}
+                        className={`rounded-lg border-2 p-2.5 text-left transition-colors ${
+                          addForm.billingType === opt.value
+                            ? "border-primary bg-primary/5"
+                            : opt.disabled
+                              ? "border-border bg-muted/20 text-muted-foreground opacity-50 cursor-not-allowed"
+                              : "border-border hover:border-border/80 bg-background"
+                        }`}
+                      >
+                        <p className="text-[12px] font-semibold text-foreground">{opt.label}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{opt.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                  {!canPayPerSession && addForm.services.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Pay Per Session requires exactly 1 chargeable service.{" "}
+                      {chargeableSvcs.length === 0 ? "No chargeable services." : `This package has ${chargeableSvcs.length} chargeable services.`}
+                    </p>
+                  )}
+
+                  {addForm.billingType === "one_time" && (
+                    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[12px] text-muted-foreground">Payable Balance</p>
+                        <p className="text-[16px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</p>
+                      </div>
+                      <FormField label="Payment Method" required>
                         <div className="relative">
                           <select
-                            value={addForm.billing.installmentMode ?? "count"}
-                            onChange={(e) => setEnrBilling("installmentMode", e.target.value)}
-                            className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary"
+                            value={addForm.billing.method}
+                            onChange={(e) => setEnrBilling("method", e.target.value)}
+                            className="h-8 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary capitalize"
                           >
-                            <option value="count">No. of Installments</option>
-                            <option value="amount">Installment Amount</option>
+                            {PAYMENT_METHODS.map((m) => (
+                              <option key={m} value={m} className="capitalize">{m}</option>
+                            ))}
                           </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                         </div>
                       </FormField>
-                      {addForm.billing.installmentMode === "amount" ? (
-                        <FormField label="Amount per Installment" required>
+                    </div>
+                  )}
+
+                  {addForm.billingType === "payment_plan" && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <FormField label="Installment Mode" required>
                           <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
-                            <input
-                              type="number"
-                              min="1"
-                              step="0.01"
-                              placeholder="e.g. 100"
-                              value={addForm.billing.installmentAmount ?? ""}
-                              onChange={(e) => setEnrBilling("installmentAmount", e.target.value)}
-                              className="h-10 w-full rounded-lg border border-border bg-background pl-7 pr-3 text-[14px] outline-none focus:border-primary"
-                            />
+                            <select
+                              value={addForm.billing.installmentMode ?? "count"}
+                              onChange={(e) =>
+                                setEnrBilling("installmentMode", e.target.value)
+                              }
+                              className="h-8 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary"
+                            >
+                              <option value="count">No. of Installments</option>
+                              <option value="amount">Installment Amount</option>
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                           </div>
                         </FormField>
-                      ) : (
-                        <FormField label="Installments" required>
+                        {addForm.billing.installmentMode === "amount" ? (
+                          <FormField label="Amount per Installment" required>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+                                $
+                              </span>
+                              <input
+                                type="number"
+                                min="1"
+                                step="0.01"
+                                placeholder="e.g. 100"
+                                value={addForm.billing.installmentAmount ?? ""}
+                                onChange={(e) =>
+                                  setEnrBilling(
+                                    "installmentAmount",
+                                    e.target.value,
+                                  )
+                                }
+                                className="h-8 w-full rounded-lg border border-border bg-background pl-6 pr-3 text-[12px] outline-none focus:border-primary"
+                              />
+                            </div>
+                          </FormField>
+                        ) : (
+                          <FormField label="Installments" required>
+                            <input
+                              type="number"
+                              min="2"
+                              max="52"
+                              value={addForm.billing.numberOfInstallments}
+                              onChange={(e) =>
+                                setEnrBilling(
+                                  "numberOfInstallments",
+                                  e.target.value,
+                                )
+                              }
+                              className="h-8 w-full rounded-lg border border-border bg-background px-3 text-[12px] outline-none focus:border-primary"
+                            />
+                          </FormField>
+                        )}
+                        <FormField label="Frequency" required>
+                          <div className="relative">
+                            <select
+                              value={addForm.billing.frequency}
+                              onChange={(e) =>
+                                setEnrBilling("frequency", e.target.value)
+                              }
+                              className="h-8 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary"
+                            >
+                              <option value="weekly">Weekly</option>
+                              <option value="biweekly">Biweekly</option>
+                              <option value="monthly">Monthly</option>
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                          </div>
+                        </FormField>
+                        <FormField label="Start Date" required>
                           <input
-                            type="number"
-                            min="2"
-                            max="52"
-                            value={addForm.billing.numberOfInstallments}
-                            onChange={(e) => setEnrBilling("numberOfInstallments", e.target.value)}
-                            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[14px] outline-none focus:border-primary"
+                            type="date"
+                            value={addForm.billing.startDate}
+                            onChange={(e) =>
+                              setEnrBilling("startDate", e.target.value)
+                            }
+                            className="h-8 w-full rounded-lg border border-border bg-background px-3 text-[12px] outline-none focus:border-primary"
                           />
                         </FormField>
+                      </div>
+                      {enrInstallments.length > 0 && (
+                        <div className="rounded-lg border border-border bg-muted/20 p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                              Schedule Preview
+                            </p>
+                            {enrTotalDiscount > 0 && (
+                              <span className="text-[11px] text-amber-600">
+                                Discount on last payment
+                              </span>
+                            )}
+                          </div>
+                          <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                            {enrInstallments.map((inst, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center justify-between py-1 border-b border-border/30 last:border-0"
+                              >
+                                <span className="text-[11px] text-muted-foreground">
+                                  Payment {i + 1} · {inst.date}
+                                  {inst.isLast && enrTotalDiscount > 0 && (
+                                    <span className="ml-1 text-amber-600">
+                                      (-${enrTotalDiscount.toFixed(2)})
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="text-[12px] font-medium text-foreground">
+                                  ${inst.amount.toFixed(2)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
+                            <p className="text-[12px] font-medium text-muted-foreground">
+                              Payable Balance
+                            </p>
+                            <p className="text-[14px] font-bold text-foreground">
+                              ${enrTotalAmount.toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
                       )}
-                      <FormField label="Frequency" required>
-                        <div className="relative">
-                          <select
-                            value={addForm.billing.frequency}
-                            onChange={(e) =>
-                              setEnrBilling("frequency", e.target.value)
-                            }
-                            className="h-10 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[14px] outline-none focus:border-primary"
-                          >
-                            <option value="weekly">Weekly</option>
-                            <option value="biweekly">Biweekly</option>
-                            <option value="monthly">Monthly</option>
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        </div>
-                      </FormField>
-                      <FormField label="Start Date" required>
-                        <input
-                          type="date"
-                          value={addForm.billing.startDate}
-                          onChange={(e) =>
-                            setEnrBilling("startDate", e.target.value)
-                          }
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[14px] outline-none focus:border-primary"
-                        />
-                      </FormField>
                     </div>
-                    {enrInstallments.length > 0 && (
-                      <div className="rounded-xl border border-border bg-muted/20 p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
-                            Schedule Preview
-                          </p>
-                          {enrTotalDiscount > 0 && (
-                            <span className="text-[12px] text-amber-600">
-                              Discount on last payment
-                            </span>
-                          )}
+                  )}
+
+                  {addForm.billingType === "flexible" && (
+                    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+                      <p className="text-[11px] text-muted-foreground">
+                        No schedule set. Payment can be collected at any time.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Date</label>
+                          <input
+                            type="date"
+                            value={addForm.billing.dueDate}
+                            onChange={(e) => setEnrBilling("dueDate", e.target.value)}
+                            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] outline-none focus:border-primary"
+                          />
                         </div>
-                        <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-                          {enrInstallments.map((inst, i) => (
-                            <div
-                              key={i}
-                              className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0"
-                            >
-                              <span className="text-[12px] text-muted-foreground">
-                                Payment {i + 1} · {inst.date}
-                                {inst.isLast && enrTotalDiscount > 0 && (
-                                  <span className="ml-1 text-amber-600">
-                                    (-${enrTotalDiscount.toFixed(2)})
-                                  </span>
-                                )}
-                              </span>
-                              <span className="text-[13px] font-medium text-foreground">
-                                ${inst.amount.toFixed(2)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
-                          <p className="text-[13px] font-medium text-muted-foreground">
-                            Payable Balance
-                          </p>
-                          <p className="text-[16px] font-bold text-foreground">
-                            ${enrTotalAmount.toFixed(2)}
-                          </p>
+                        <div>
+                          <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Amount</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder={enrTotalAmount.toFixed(2)}
+                            value={addForm.billing.dueAmount}
+                            onChange={(e) => setEnrBilling("dueAmount", e.target.value)}
+                            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] outline-none focus:border-primary"
+                          />
                         </div>
                       </div>
-                    )}
-                  </div>
-                )}
+                      <div className="flex items-center justify-between pt-2 border-t border-border">
+                        <p className="text-[12px] text-muted-foreground">Payable Balance</p>
+                        <p className="text-[14px] font-bold text-foreground">${enrTotalAmount.toFixed(2)}</p>
+                      </div>
+                    </div>
+                  )}
 
-                {addForm.billingType === "flexible" && (
-                  <div className="rounded-xl border border-border bg-muted/20 p-4 flex items-center justify-between">
-                    <p className="text-[13px] text-muted-foreground">
-                      Payments recorded manually at any time.
-                    </p>
-                    <p className="text-[20px] font-bold text-foreground">
-                      ${enrTotalAmount.toFixed(2)}
-                    </p>
-                  </div>
-                )}
+                  {addForm.billingType === "pay_per_session" && (
+                    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+                      <p className="text-[11px] text-muted-foreground">
+                        No upfront payment. A charge is recorded automatically each time a session is booked.
+                      </p>
+                      {chargeableSvcs.map((s) => {
+                        const sessions = Number(s.numberOfSessions || 0)
+                        const pricePerSession = Number(s.pricePerSession || 0)
+                        const finalAmount = Number(s.finalAmount || 0)
+                        const hasDiscount = s.discountType !== "none" && Number(s.discountAmount || 0) > 0
+                        const charges = Array(sessions).fill(pricePerSession)
+                        if (hasDiscount) {
+                          let remaining = Math.max(0, pricePerSession * sessions - finalAmount)
+                          for (let i = sessions - 1; i >= 0 && remaining > 0; i--) {
+                            const reduction = Math.min(charges[i], remaining)
+                            charges[i] = Math.round((charges[i] - reduction) * 100) / 100
+                            remaining = Math.round((remaining - reduction) * 100) / 100
+                          }
+                        }
+                        return (
+                          <div key={s.serviceCode} className="pt-2 border-t border-border space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] font-semibold text-foreground">{s.serviceName || s.serviceCode}</p>
+                              <p className="text-[10px] text-muted-foreground">{sessions} sessions · ${pricePerSession.toFixed(2)}/sess</p>
+                            </div>
+                            <div className="rounded-md border border-border overflow-hidden">
+                              <div className="grid grid-cols-2 bg-muted/40 px-2.5 py-1">
+                                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Session</span>
+                                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Charge</span>
+                              </div>
+                              <div className="max-h-40 overflow-y-auto">
+                                {charges.map((amount, idx) => {
+                                  const isDiscounted = hasDiscount && amount < pricePerSession
+                                  return (
+                                    <div key={idx} className={`grid grid-cols-2 px-2.5 py-1 ${idx > 0 ? "border-t border-border" : ""}`}>
+                                      <span className="text-[11px] text-foreground">Session {idx + 1}</span>
+                                      <div className="text-right">
+                                        {isDiscounted && <span className="text-[10px] text-muted-foreground line-through mr-1">${pricePerSession.toFixed(2)}</span>}
+                                        <span className={`text-[11px] font-semibold ${isDiscounted ? "text-amber-600" : "text-foreground"}`}>${amount.toFixed(2)}</span>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      <div className="flex items-center justify-between pt-2 border-t border-border">
+                        <p className="text-[11px] text-muted-foreground">Total (if all sessions booked)</p>
+                        <p className="text-[13px] font-bold text-foreground">
+                          ${chargeableSvcs.reduce((sum, s) => sum + Number(s.finalAmount || 0), 0).toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                )
+              })()}
+
+              {/* ── Footer ── */}
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAddTargetEnrollment(null)}
+                >
+                  Cancel
+                </Button>
+                <Button type="button" size="sm" disabled={adding} onClick={handleEnrAdd}>
+                  {adding ? "Adding…" : "Add Package"}
+                </Button>
               </div>
-            )}
-
-            {/* ── Footer ── */}
-            <div className="flex justify-end gap-3 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setAddTargetEnrollment(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                disabled={adding}
-                onClick={handleEnrAdd}
-              >
-                {adding ? "Adding…" : "Add Package"}
-              </Button>
             </div>
-          </div>
           </div>
         </SheetContent>
       </Sheet>
@@ -3549,7 +3957,10 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
 function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
   const cp = enr.package;
-  const outstanding = Math.max(0, (cp.dueAmount ?? cp.totalPaid) - (cp.amountCollected ?? 0));
+  const outstanding = Math.max(
+    0,
+    (cp.dueAmount ?? cp.totalPaid) - (cp.amountCollected ?? 0),
+  );
   const isOverdue = cp.dueDate && new Date(cp.dueDate) < new Date();
   const [mode, setMode] = useState(null); // "pay" | "change-date"
   const [amount, setAmount] = useState(String(outstanding.toFixed(2)));
@@ -3573,7 +3984,9 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
       method,
     });
     if (res.success) {
-      toast.success(num >= outstanding ? "Payment recorded." : "Partial payment recorded.");
+      toast.success(
+        num >= outstanding ? "Payment recorded." : "Partial payment recorded.",
+      );
       setMode(null);
       onSuccess();
     } else {
@@ -3586,9 +3999,12 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
     e.preventDefault();
     if (!newDueDate) return;
     setSaving(true);
-    const res = await api.patch(`/api/customer-package/${enr._id}/flexible-due`, {
-      dueDate: newDueDate,
-    });
+    const res = await api.patch(
+      `/api/customer-package/${enr._id}/flexible-due`,
+      {
+        dueDate: newDueDate,
+      },
+    );
     if (res.success) {
       toast.success("Due date updated.");
       setMode(null);
@@ -3600,26 +4016,46 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
   }
 
   return (
-    <div className={`rounded-xl border ${isOverdue ? "border-rose-300 bg-rose-50/40 dark:bg-rose-900/10" : "border-amber-200 bg-amber-50/40 dark:bg-amber-900/10"} p-4 space-y-3`}>
+    <div
+      className={`rounded-xl border ${isOverdue ? "border-rose-300 bg-rose-50/40 dark:bg-rose-900/10" : "border-amber-200 bg-amber-50/40 dark:bg-amber-900/10"} p-4 space-y-3`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-[13px] font-semibold text-foreground">{cp.packageName}</p>
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-500/10 text-violet-600">Flexible Billing</span>
+            <p className="text-[13px] font-semibold text-foreground">
+              {cp.packageName}
+            </p>
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-500/10 text-violet-600">
+              Flexible Billing
+            </span>
             {isOverdue && (
-              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-rose-500/10 text-rose-600">Overdue</span>
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-rose-500/10 text-rose-600">
+                Overdue
+              </span>
             )}
           </div>
           <div className="mt-1.5 flex items-center gap-4 flex-wrap">
             <div>
-              <span className="text-[11px] text-muted-foreground">Amount Due </span>
-              <span className="text-[13px] font-bold text-rose-600">${outstanding.toFixed(2)}</span>
+              <span className="text-[11px] text-muted-foreground">
+                Amount Due{" "}
+              </span>
+              <span className="text-[13px] font-bold text-rose-600">
+                ${outstanding.toFixed(2)}
+              </span>
             </div>
             {cp.dueDate && (
               <div>
-                <span className="text-[11px] text-muted-foreground">Due Date </span>
-                <span className={`text-[12px] font-medium ${isOverdue ? "text-rose-600" : "text-foreground"}`}>
-                  {new Date(cp.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                <span className="text-[11px] text-muted-foreground">
+                  Due Date{" "}
+                </span>
+                <span
+                  className={`text-[12px] font-medium ${isOverdue ? "text-rose-600" : "text-foreground"}`}
+                >
+                  {new Date(cp.dueDate).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
                 </span>
               </div>
             )}
@@ -3627,10 +4063,19 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
         </div>
         {mode === null && (
           <div className="flex items-center gap-2 shrink-0">
-            <Button size="sm" className="h-7 px-3 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => setMode("pay")}>
+            <Button
+              size="sm"
+              className="h-7 px-3 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => setMode("pay")}
+            >
               Pay Now
             </Button>
-            <Button variant="outline" size="sm" className="h-7 px-3 text-[11px]" onClick={() => setMode("change-date")}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-3 text-[11px]"
+              onClick={() => setMode("change-date")}
+            >
               Change Due Date
             </Button>
           </div>
@@ -3638,27 +4083,60 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
       </div>
 
       {mode === "pay" && (
-        <form onSubmit={handlePay} className="flex items-end gap-2 flex-wrap pt-2 border-t border-border/50">
+        <form
+          onSubmit={handlePay}
+          className="flex items-end gap-2 flex-wrap pt-2 border-t border-border/50"
+        >
           <div className="flex-1 min-w-[120px]">
-            <label className="block text-[10px] font-medium text-muted-foreground mb-1">Amount</label>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1">
+              Amount
+            </label>
             <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">$</span>
-              <input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
-                className="h-8 w-full rounded-md border border-border bg-background pl-6 pr-2.5 text-[12px] outline-none focus:border-primary" />
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
+                $
+              </span>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="h-8 w-full rounded-md border border-border bg-background pl-6 pr-2.5 text-[12px] outline-none focus:border-primary"
+              />
             </div>
           </div>
           <div className="flex-1 min-w-[100px]">
-            <label className="block text-[10px] font-medium text-muted-foreground mb-1">Method</label>
-            <select value={method} onChange={(e) => setMethod(e.target.value)}
-              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary capitalize">
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1">
+              Method
+            </label>
+            <select
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary capitalize"
+            >
               {["cash", "card", "online", "cheque", "other"].map((m) => (
-                <option key={m} value={m} className="capitalize">{m}</option>
+                <option key={m} value={m} className="capitalize">
+                  {m}
+                </option>
               ))}
             </select>
           </div>
           <div className="flex gap-1.5">
-            <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => setMode(null)}>Cancel</Button>
-            <Button type="submit" size="sm" className="h-8 px-3 text-[11px]" disabled={saving}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-[11px]"
+              onClick={() => setMode(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              className="h-8 px-3 text-[11px]"
+              disabled={saving}
+            >
               {saving ? "Saving…" : "Confirm Payment"}
             </Button>
           </div>
@@ -3666,15 +4144,37 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
       )}
 
       {mode === "change-date" && (
-        <form onSubmit={handleChangeDate} className="flex items-end gap-2 flex-wrap pt-2 border-t border-border/50">
+        <form
+          onSubmit={handleChangeDate}
+          className="flex items-end gap-2 flex-wrap pt-2 border-t border-border/50"
+        >
           <div className="flex-1 min-w-[160px]">
-            <label className="block text-[10px] font-medium text-muted-foreground mb-1">New Due Date</label>
-            <input type="date" value={newDueDate} onChange={(e) => setNewDueDate(e.target.value)}
-              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary" />
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1">
+              New Due Date
+            </label>
+            <input
+              type="date"
+              value={newDueDate}
+              onChange={(e) => setNewDueDate(e.target.value)}
+              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary"
+            />
           </div>
           <div className="flex gap-1.5">
-            <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => setMode(null)}>Cancel</Button>
-            <Button type="submit" size="sm" className="h-8 px-3 text-[11px]" disabled={saving || !newDueDate}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-[11px]"
+              onClick={() => setMode(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              className="h-8 px-3 text-[11px]"
+              disabled={saving || !newDueDate}
+            >
               {saving ? "Saving…" : "Update Date"}
             </Button>
           </div>
@@ -3706,7 +4206,10 @@ function PaymentsTab({ customerID }) {
       }
       if (enrRes.success) {
         const due = (enrRes.data || []).filter(
-          (e) => e.package?.billingType === "flexible" && e.package?.paymentStatus !== "paid" && e.status === "active",
+          (e) =>
+            e.package?.billingType === "flexible" &&
+            e.package?.paymentStatus !== "paid" &&
+            e.status === "active",
         );
         setFlexEnrollments(due);
       }
@@ -3732,9 +4235,16 @@ function PaymentsTab({ customerID }) {
     <div className="space-y-4">
       {flexEnrollments.length > 0 && (
         <div className="space-y-2">
-          <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">Payments Due</p>
+          <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
+            Payments Due
+          </p>
           {flexEnrollments.map((enr) => (
-            <FlexiblePaymentDueCard key={enr._id} enr={enr} customerID={customerID} onSuccess={() => load(page)} />
+            <FlexiblePaymentDueCard
+              key={enr._id}
+              enr={enr}
+              customerID={customerID}
+              onSuccess={() => load(page)}
+            />
           ))}
         </div>
       )}
@@ -3884,31 +4394,34 @@ function PaymentsTab({ customerID }) {
 function deriveEventStatus(ev) {
   const explicit = ev.status;
   if (explicit && explicit !== "scheduled") return explicit;
-  if (ev.endDateTime && new Date(ev.endDateTime) < new Date()) return "completed";
+  if (ev.endDateTime && new Date(ev.endDateTime) < new Date())
+    return "completed";
   return explicit || "scheduled";
 }
 
 function eventStatusBadge(status) {
   const map = {
-    scheduled:           "bg-blue-500/10 text-blue-600",
-    completed:           "bg-emerald-500/10 text-emerald-600",
-    cancelled:           "bg-muted text-muted-foreground",
+    scheduled: "bg-blue-500/10 text-blue-600",
+    completed: "bg-emerald-500/10 text-emerald-600",
+    cancelled: "bg-muted text-muted-foreground",
     cancelled_no_charge: "bg-muted text-muted-foreground",
-    cancelled_charged:   "bg-amber-500/10 text-amber-600",
-    no_show:             "bg-rose-500/10 text-rose-600",
+    cancelled_charged: "bg-amber-500/10 text-amber-600",
+    no_show: "bg-rose-500/10 text-rose-600",
   };
   return map[status] ?? "bg-muted text-muted-foreground";
 }
 
 function eventStatusLabel(status) {
-  return {
-    scheduled:           "Scheduled",
-    completed:           "Completed",
-    cancelled:           "Cancelled",
-    cancelled_no_charge: "Cancelled",
-    cancelled_charged:   "Cancelled (charged)",
-    no_show:             "No Show",
-  }[status] ?? status;
+  return (
+    {
+      scheduled: "Scheduled",
+      completed: "Completed",
+      cancelled: "Cancelled",
+      cancelled_no_charge: "Cancelled",
+      cancelled_charged: "Cancelled (charged)",
+      no_show: "No Show",
+    }[status] ?? status
+  );
 }
 
 function LessonsTab({ customer }) {
@@ -3935,7 +4448,9 @@ function LessonsTab({ customer }) {
             const ids = Array.isArray(ev.customerIDs) ? ev.customerIDs : [];
             return ids.some((c) => String(c?._id ?? c) === custId);
           })
-          .sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime));
+          .sort(
+            (a, b) => new Date(b.startDateTime) - new Date(a.startDateTime),
+          );
         setEvents(filtered);
       }
       setLoading(false);
@@ -3954,15 +4469,18 @@ function LessonsTab({ customer }) {
     if (statusFilter === "all") return true;
     const status = deriveEventStatus(ev);
     const isPaid =
-      (ev.chargeMethod === "package" && ev.packageBillingType === "pay_per_session") ||
+      (ev.chargeMethod === "package" &&
+        ev.packageBillingType === "pay_per_session") ||
       ev.chargeMethod === "credits" ||
       ev.chargeMethod === "direct" ||
       ev.chargeMethod === "mixed" ||
       ev.payment?.collected;
-    const isCancelledNoCharge = status === "cancelled_no_charge" || status === "no_show_no_charge";
+    const isCancelledNoCharge =
+      status === "cancelled_no_charge" || status === "no_show_no_charge";
     if (statusFilter === "scheduled") return status === "scheduled";
     if (statusFilter === "completed") return status === "completed";
-    if (statusFilter === "cancelled") return status === "cancelled" || isCancelledNoCharge;
+    if (statusFilter === "cancelled")
+      return status === "cancelled" || isCancelledNoCharge;
     if (statusFilter === "paid") return isPaid && !isCancelledNoCharge;
     if (statusFilter === "unpaid") return !isPaid && !isCancelledNoCharge;
     return true;
@@ -3972,7 +4490,8 @@ function LessonsTab({ customer }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-[13px] text-muted-foreground">
-          {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}{statusFilter !== "all" ? ` · filtered` : ""}
+          {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}
+          {statusFilter !== "all" ? ` · filtered` : ""}
         </p>
         <select
           value={statusFilter}
@@ -3990,7 +4509,8 @@ function LessonsTab({ customer }) {
 
       {filteredEvents.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          No events found{statusFilter !== "all" ? ` for status "${statusFilter}"` : ""}.
+          No events found
+          {statusFilter !== "all" ? ` for status "${statusFilter}"` : ""}.
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -4000,15 +4520,23 @@ function LessonsTab({ customer }) {
             const end = ev.endDateTime ? new Date(ev.endDateTime) : null;
             const instructor = ev.teacherID?.name;
             const label = ev.title || ev.calendarServiceID?.name || "Event";
-            const serviceCode = ev.calendarServiceID?.serviceCode ?? ev.type ?? "";
+            const serviceCode =
+              ev.calendarServiceID?.serviceCode ?? ev.type ?? "";
             const isPaid =
-              (ev.chargeMethod === "package" && ev.packageBillingType === "pay_per_session") ||
+              (ev.chargeMethod === "package" &&
+                ev.packageBillingType === "pay_per_session") ||
               ev.chargeMethod === "credits" ||
               ev.chargeMethod === "direct" ||
               ev.chargeMethod === "mixed" ||
               ev.payment?.collected;
-            const isCancelledNoCharge = status === "cancelled_no_charge" || status === "no_show_no_charge";
-            const paymentLabel = isCancelledNoCharge ? "No Charge" : isPaid ? "Paid" : "Unpaid";
+            const isCancelledNoCharge =
+              status === "cancelled_no_charge" ||
+              status === "no_show_no_charge";
+            const paymentLabel = isCancelledNoCharge
+              ? "No Charge"
+              : isPaid
+                ? "Paid"
+                : "Unpaid";
             const paymentClass = isCancelledNoCharge
               ? "bg-muted text-muted-foreground"
               : isPaid
@@ -4029,22 +4557,34 @@ function LessonsTab({ customer }) {
                     </p>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[13px] font-medium text-foreground truncate">{label}</p>
+                    <p className="text-[13px] font-medium text-foreground truncate">
+                      {label}
+                    </p>
                     <p className="text-[11px] text-muted-foreground">
-                      {date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                      {end && ` – ${end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`}
+                      {date.toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                      {end &&
+                        ` – ${end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`}
                       {instructor && ` · ${instructor}`}
                     </p>
                     {serviceCode && (
-                      <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide mt-0.5">{serviceCode}</p>
+                      <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide mt-0.5">
+                        {serviceCode}
+                      </p>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${eventStatusBadge(status)}`}>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${eventStatusBadge(status)}`}
+                  >
                     {eventStatusLabel(status)}
                   </span>
-                  <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${paymentClass}`}>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${paymentClass}`}
+                  >
                     {paymentLabel}
                   </span>
                 </div>
@@ -4292,11 +4832,11 @@ export default function CustomerDetailPage() {
             />
           )}
           {tab === "payments" && <PaymentsTab customerID={customer._id} />}
-          {tab === "lessons" && (
-            <LessonsTab customer={customer} />
-          )}
+          {tab === "lessons" && <LessonsTab customer={customer} />}
           {tab === "notes" && <NotesTab customer={customer} onUpdated={load} />}
-          {tab === "members" && <MembersTab customer={customer} onUpdated={load} />}
+          {tab === "members" && (
+            <MembersTab customer={customer} onUpdated={load} />
+          )}
           {tab === "contracts" && <ContractsTab customerID={customer._id} />}
         </div>
       </div>
@@ -4313,7 +4853,15 @@ const MEMBER_GENDER_OPTIONS = [
   { value: "prefer_not_to_say", label: "Prefer not to say" },
 ];
 
-const EMPTY_MEMBER = { name: "", email: "", phoneNumber: "", gender: "", dateOfBirth: "", relationship: "", notes: "" };
+const EMPTY_MEMBER = {
+  name: "",
+  email: "",
+  phoneNumber: "",
+  gender: "",
+  dateOfBirth: "",
+  relationship: "",
+  notes: "",
+};
 
 function MemberFormSheet({ open, onClose, customerId, member, onSaved }) {
   const [form, setForm] = useState(EMPTY_MEMBER);
@@ -4324,9 +4872,20 @@ function MemberFormSheet({ open, onClose, customerId, member, onSaved }) {
 
   useEffect(() => {
     if (open) {
-      setForm(member
-        ? { name: member.name || "", email: member.email || "", phoneNumber: member.phoneNumber || "", gender: member.gender || "", dateOfBirth: member.dateOfBirth ? String(member.dateOfBirth).slice(0, 10) : "", relationship: member.relationship || "", notes: member.notes || "" }
-        : EMPTY_MEMBER
+      setForm(
+        member
+          ? {
+              name: member.name || "",
+              email: member.email || "",
+              phoneNumber: member.phoneNumber || "",
+              gender: member.gender || "",
+              dateOfBirth: member.dateOfBirth
+                ? String(member.dateOfBirth).slice(0, 10)
+                : "",
+              relationship: member.relationship || "",
+              notes: member.notes || "",
+            }
+          : EMPTY_MEMBER,
       );
       setError(null);
     }
@@ -4336,11 +4895,25 @@ function MemberFormSheet({ open, onClose, customerId, member, onSaved }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.name.trim()) { setError("Name is required."); return; }
+    if (!form.name.trim()) {
+      setError("Name is required.");
+      return;
+    }
     setSaving(true);
-    const payload = { name: form.name.trim(), email: form.email || undefined, phoneNumber: form.phoneNumber || undefined, gender: form.gender || undefined, dateOfBirth: form.dateOfBirth || undefined, relationship: form.relationship || undefined, notes: form.notes || undefined };
+    const payload = {
+      name: form.name.trim(),
+      email: form.email || undefined,
+      phoneNumber: form.phoneNumber || undefined,
+      gender: form.gender || undefined,
+      dateOfBirth: form.dateOfBirth || undefined,
+      relationship: form.relationship || undefined,
+      notes: form.notes || undefined,
+    };
     const result = isEdit
-      ? await api.put(`/api/customer/${customerId}/members/${member._id}`, payload)
+      ? await api.put(
+          `/api/customer/${customerId}/members/${member._id}`,
+          payload,
+        )
       : await api.post(`/api/customer/${customerId}/members`, payload);
     if (result.success) {
       toast.success(isEdit ? "Member updated." : "Member added.");
@@ -4353,52 +4926,124 @@ function MemberFormSheet({ open, onClose, customerId, member, onSaved }) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Sheet
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <SheetContent>
         <div className="px-6 py-4 border-b border-border">
-          <h2 className="text-base font-semibold text-foreground">{isEdit ? "Edit Member" : "Add Member"}</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            {isEdit ? "Edit Member" : "Add Member"}
+          </h2>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4 px-6">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="block text-[12px] font-medium text-muted-foreground">Name<span className="text-destructive ml-0.5">*</span></label>
-              <input type="text" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Full name" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+              <label className="block text-[12px] font-medium text-muted-foreground">
+                Name<span className="text-destructive ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                placeholder="Full name"
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+              />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-[12px] font-medium text-muted-foreground">Relationship</label>
-              <input type="text" value={form.relationship} onChange={(e) => set("relationship", e.target.value)} placeholder="e.g. Spouse, Partner" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+              <label className="block text-[12px] font-medium text-muted-foreground">
+                Relationship
+              </label>
+              <input
+                type="text"
+                value={form.relationship}
+                onChange={(e) => set("relationship", e.target.value)}
+                placeholder="e.g. Spouse, Partner"
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+              />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-[12px] font-medium text-muted-foreground">Email</label>
-              <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="Optional" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+              <label className="block text-[12px] font-medium text-muted-foreground">
+                Email
+              </label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => set("email", e.target.value)}
+                placeholder="Optional"
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+              />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-[12px] font-medium text-muted-foreground">Phone</label>
-              <input type="tel" value={form.phoneNumber} onChange={(e) => set("phoneNumber", e.target.value)} placeholder="Optional" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+              <label className="block text-[12px] font-medium text-muted-foreground">
+                Phone
+              </label>
+              <input
+                type="tel"
+                value={form.phoneNumber}
+                onChange={(e) => set("phoneNumber", e.target.value)}
+                placeholder="Optional"
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+              />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-[12px] font-medium text-muted-foreground">Date of Birth</label>
-              <input type="date" value={form.dateOfBirth} onChange={(e) => set("dateOfBirth", e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+              <label className="block text-[12px] font-medium text-muted-foreground">
+                Date of Birth
+              </label>
+              <input
+                type="date"
+                value={form.dateOfBirth}
+                onChange={(e) => set("dateOfBirth", e.target.value)}
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+              />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-[12px] font-medium text-muted-foreground">Gender</label>
+              <label className="block text-[12px] font-medium text-muted-foreground">
+                Gender
+              </label>
               <div className="relative">
-                <select value={form.gender} onChange={(e) => set("gender", e.target.value)} className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary">
+                <select
+                  value={form.gender}
+                  onChange={(e) => set("gender", e.target.value)}
+                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                >
                   <option value="">Select…</option>
-                  {MEMBER_GENDER_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+                  {MEMBER_GENDER_OPTIONS.map((g) => (
+                    <option key={g.value} value={g.value}>
+                      {g.label}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               </div>
             </div>
             <div className="col-span-2 space-y-1.5">
-              <label className="block text-[12px] font-medium text-muted-foreground">Notes</label>
-              <input type="text" value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Any notes about this member" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+              <label className="block text-[12px] font-medium text-muted-foreground">
+                Notes
+              </label>
+              <input
+                type="text"
+                value={form.notes}
+                onChange={(e) => set("notes", e.target.value)}
+                placeholder="Any notes about this member"
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+              />
             </div>
           </div>
-          {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>}
+          {error && (
+            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+              {error}
+            </p>
+          )}
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? "Saving…" : isEdit ? "Save Changes" : "Add Member"}</Button>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving…" : isEdit ? "Save Changes" : "Add Member"}
+            </Button>
           </div>
         </form>
       </SheetContent>
@@ -4417,17 +5062,30 @@ function MembersTab({ customer, onUpdated }) {
   async function handleDelete(memberId) {
     if (!window.confirm("Remove this member?")) return;
     setDeletingId(memberId);
-    const res = await api.delete(`/api/customer/${customer._id}/members/${memberId}`);
-    if (res.success) { toast.success("Member removed."); onUpdated(); }
-    else toast.error(res.error || "Failed to remove member.");
+    const res = await api.delete(
+      `/api/customer/${customer._id}/members/${memberId}`,
+    );
+    if (res.success) {
+      toast.success("Member removed.");
+      onUpdated();
+    } else toast.error(res.error || "Failed to remove member.");
     setDeletingId(null);
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">{members.length} member{members.length !== 1 ? "s" : ""} on this account</p>
-        <Button size="sm" onClick={() => { setEditingMember(null); setSheetOpen(true); }}>
+        <p className="text-[13px] text-muted-foreground">
+          {members.length} member{members.length !== 1 ? "s" : ""} on this
+          account
+        </p>
+        <Button
+          size="sm"
+          onClick={() => {
+            setEditingMember(null);
+            setSheetOpen(true);
+          }}
+        >
           <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Member
         </Button>
       </div>
@@ -4435,28 +5093,55 @@ function MembersTab({ customer, onUpdated }) {
       {members.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center">
           <Users className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-          <p className="text-[13px] text-muted-foreground">No members added yet.</p>
-          <p className="text-[12px] text-muted-foreground mt-1">Add a family member or partner to this account.</p>
+          <p className="text-[13px] text-muted-foreground">
+            No members added yet.
+          </p>
+          <p className="text-[12px] text-muted-foreground mt-1">
+            Add a family member or partner to this account.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {members.map((m) => (
-            <div key={m._id} className="rounded-xl border border-border bg-card p-4">
+            <div
+              key={m._id}
+              className="rounded-xl border border-border bg-card p-4"
+            >
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-3">
                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-[12px] font-semibold text-primary">
                     {(m.name || "?").charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <p className="text-[13px] font-medium text-foreground">{m.name}</p>
-                    {m.relationship && <p className="text-[11px] text-muted-foreground capitalize">{m.relationship}</p>}
+                    <p className="text-[13px] font-medium text-foreground">
+                      {m.name}
+                    </p>
+                    {m.relationship && (
+                      <p className="text-[11px] text-muted-foreground capitalize">
+                        {m.relationship}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingMember(m); setSheetOpen(true); }}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      setEditingMember(m);
+                      setSheetOpen(true);
+                    }}
+                  >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={deletingId === m._id} onClick={() => handleDelete(m._id)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    disabled={deletingId === m._id}
+                    onClick={() => handleDelete(m._id)}
+                  >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -4464,8 +5149,12 @@ function MembersTab({ customer, onUpdated }) {
               <div className="text-[12px] text-muted-foreground space-y-0.5 pl-11">
                 {m.email && <p>{m.email}</p>}
                 {m.phoneNumber && <p>{m.phoneNumber}</p>}
-                {m.dateOfBirth && <p>DOB: {new Date(m.dateOfBirth).toLocaleDateString()}</p>}
-                {m.gender && <p className="capitalize">{m.gender.replace(/_/g, " ")}</p>}
+                {m.dateOfBirth && (
+                  <p>DOB: {new Date(m.dateOfBirth).toLocaleDateString()}</p>
+                )}
+                {m.gender && (
+                  <p className="capitalize">{m.gender.replace(/_/g, " ")}</p>
+                )}
                 {m.notes && <p className="italic">"{m.notes}"</p>}
               </div>
             </div>
@@ -4473,7 +5162,13 @@ function MembersTab({ customer, onUpdated }) {
         </div>
       )}
 
-      <MemberFormSheet open={sheetOpen} onClose={() => setSheetOpen(false)} customerId={customer._id} member={editingMember} onSaved={onUpdated} />
+      <MemberFormSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        customerId={customer._id}
+        member={editingMember}
+        onSaved={onUpdated}
+      />
     </div>
   );
 }
@@ -4497,7 +5192,15 @@ function ContractFormSheet({ open, onClose, customerId, contract, onSaved }) {
 
   useEffect(() => {
     if (open) {
-      setForm(contract ? { title: contract.title || "", content: contract.content || "", notes: contract.notes || "" } : { title: "", content: "", notes: "" });
+      setForm(
+        contract
+          ? {
+              title: contract.title || "",
+              content: contract.content || "",
+              notes: contract.notes || "",
+            }
+          : { title: "", content: "", notes: "" },
+      );
       setError(null);
     }
   }, [open, contract]);
@@ -4506,9 +5209,17 @@ function ContractFormSheet({ open, onClose, customerId, contract, onSaved }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.title.trim() || !form.content.trim()) { setError("Title and content are required."); return; }
+    if (!form.title.trim() || !form.content.trim()) {
+      setError("Title and content are required.");
+      return;
+    }
     setSaving(true);
-    const payload = { customerID: customerId, title: form.title.trim(), content: form.content.trim(), notes: form.notes || undefined };
+    const payload = {
+      customerID: customerId,
+      title: form.title.trim(),
+      content: form.content.trim(),
+      notes: form.notes || undefined,
+    };
     const result = isEdit
       ? await api.put(`/api/contract/${contract._id}`, payload)
       : await api.post("/api/contract", payload);
@@ -4523,28 +5234,67 @@ function ContractFormSheet({ open, onClose, customerId, contract, onSaved }) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Sheet
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <SheetContent className="w-full sm:max-w-xl">
         <div className="px-6 py-4 border-b border-border">
-          <h2 className="text-base font-semibold text-foreground">{isEdit ? "Edit Contract" : "New Contract"}</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            {isEdit ? "Edit Contract" : "New Contract"}
+          </h2>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4 px-6">
           <div className="space-y-1.5">
-            <label className="block text-[12px] font-medium text-muted-foreground">Title<span className="text-destructive ml-0.5">*</span></label>
-            <input type="text" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Enrollment Agreement" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+            <label className="block text-[12px] font-medium text-muted-foreground">
+              Title<span className="text-destructive ml-0.5">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.title}
+              onChange={(e) => set("title", e.target.value)}
+              placeholder="e.g. Enrollment Agreement"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
           </div>
           <div className="space-y-1.5">
-            <label className="block text-[12px] font-medium text-muted-foreground">Contract Content<span className="text-destructive ml-0.5">*</span></label>
-            <textarea value={form.content} onChange={(e) => set("content", e.target.value)} rows={10} placeholder="Enter the full contract text here…" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[13px] outline-none focus:border-primary resize-y" />
+            <label className="block text-[12px] font-medium text-muted-foreground">
+              Contract Content<span className="text-destructive ml-0.5">*</span>
+            </label>
+            <textarea
+              value={form.content}
+              onChange={(e) => set("content", e.target.value)}
+              rows={10}
+              placeholder="Enter the full contract text here…"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[13px] outline-none focus:border-primary resize-y"
+            />
           </div>
           <div className="space-y-1.5">
-            <label className="block text-[12px] font-medium text-muted-foreground">Internal Notes</label>
-            <input type="text" value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Staff notes (not shown to customer)" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary" />
+            <label className="block text-[12px] font-medium text-muted-foreground">
+              Internal Notes
+            </label>
+            <input
+              type="text"
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+              placeholder="Staff notes (not shown to customer)"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
           </div>
-          {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>}
+          {error && (
+            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+              {error}
+            </p>
+          )}
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? "Saving…" : isEdit ? "Save Changes" : "Create Contract"}</Button>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Contract"}
+            </Button>
           </div>
         </form>
       </SheetContent>
@@ -4563,89 +5313,157 @@ function ContractsTab({ customerID }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await api.get(`/api/contract?customerID=${customerID}&limit=50`);
+    const res = await api.get(
+      `/api/contract?customerID=${customerID}&limit=50`,
+    );
     if (res.success) setContracts(res.data || []);
     setLoading(false);
   }, [customerID]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function handleSend(c) {
-    if (!window.confirm(`Send "${c.title}" to the customer for signing?`)) return;
+    if (!window.confirm(`Send "${c.title}" to the customer for signing?`))
+      return;
     setSendingId(c._id);
     const res = await api.post(`/api/contract/${c._id}/send`, {});
-    if (res.success) { toast.success("Contract sent for signing."); load(); }
-    else toast.error(res.error || "Failed to send.");
+    if (res.success) {
+      toast.success("Contract sent for signing.");
+      load();
+    } else toast.error(res.error || "Failed to send.");
     setSendingId(null);
   }
 
   async function handleRevoke(c) {
     if (!window.confirm(`Revoke "${c.title}"?`)) return;
     const res = await api.post(`/api/contract/${c._id}/revoke`, {});
-    if (res.success) { toast.success("Contract revoked."); load(); }
-    else toast.error(res.error || "Failed to revoke.");
+    if (res.success) {
+      toast.success("Contract revoked.");
+      load();
+    } else toast.error(res.error || "Failed to revoke.");
   }
 
   async function handleDelete(c) {
     if (!window.confirm(`Delete "${c.title}"?`)) return;
     const res = await api.delete(`/api/contract/${c._id}`);
-    if (res.success) { toast.success("Contract deleted."); load(); }
-    else toast.error(res.error || "Failed to delete.");
+    if (res.success) {
+      toast.success("Contract deleted.");
+      load();
+    } else toast.error(res.error || "Failed to delete.");
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">{contracts.length} contract{contracts.length !== 1 ? "s" : ""}</p>
-        <Button size="sm" onClick={() => { setEditingContract(null); setSheetOpen(true); }}>
+        <p className="text-[13px] text-muted-foreground">
+          {contracts.length} contract{contracts.length !== 1 ? "s" : ""}
+        </p>
+        <Button
+          size="sm"
+          onClick={() => {
+            setEditingContract(null);
+            setSheetOpen(true);
+          }}
+        >
           <Plus className="mr-1.5 h-3.5 w-3.5" /> New Contract
         </Button>
       </div>
 
       {loading ? (
-        <div className="py-10 text-center text-[13px] text-muted-foreground">Loading…</div>
+        <div className="py-10 text-center text-[13px] text-muted-foreground">
+          Loading…
+        </div>
       ) : contracts.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center">
           <FileText className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
           <p className="text-[13px] text-muted-foreground">No contracts yet.</p>
-          <p className="text-[12px] text-muted-foreground mt-1">Create a contract and send it to the customer for digital signing.</p>
+          <p className="text-[12px] text-muted-foreground mt-1">
+            Create a contract and send it to the customer for digital signing.
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
           {contracts.map((c) => (
-            <div key={c._id} className="rounded-xl border border-border bg-card p-4">
+            <div
+              key={c._id}
+              className="rounded-xl border border-border bg-card p-4"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <p className="text-[13px] font-medium text-foreground truncate">{c.title}</p>
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize shrink-0 ${CONTRACT_STATUS_STYLES[c.status] ?? "bg-muted text-muted-foreground"}`}>
+                    <p className="text-[13px] font-medium text-foreground truncate">
+                      {c.title}
+                    </p>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize shrink-0 ${CONTRACT_STATUS_STYLES[c.status] ?? "bg-muted text-muted-foreground"}`}
+                    >
                       {c.status}
                     </span>
                   </div>
                   {c.signedByName && (
-                    <p className="text-[12px] text-emerald-600">Signed by {c.signedByName} · {formatDate(c.signedAt)}</p>
+                    <p className="text-[12px] text-emerald-600">
+                      Signed by {c.signedByName} · {formatDate(c.signedAt)}
+                    </p>
                   )}
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Created {formatDate(c.createdAt)}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Created {formatDate(c.createdAt)}
+                  </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" title="View" onClick={() => setViewingContract(c)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="View"
+                    onClick={() => setViewingContract(c)}
+                  >
                     <FileText className="h-3.5 w-3.5" />
                   </Button>
                   {c.status === "draft" && (
                     <>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit" onClick={() => { setEditingContract(c); setSheetOpen(true); }}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Edit"
+                        onClick={() => {
+                          setEditingContract(c);
+                          setSheetOpen(true);
+                        }}
+                      >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600 hover:text-blue-700" title="Send for signing" disabled={sendingId === c._id} onClick={() => handleSend(c)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-blue-600 hover:text-blue-700"
+                        title="Send for signing"
+                        disabled={sendingId === c._id}
+                        onClick={() => handleSend(c)}
+                      >
                         <Send className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" title="Delete" onClick={() => handleDelete(c)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        title="Delete"
+                        onClick={() => handleDelete(c)}
+                      >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </>
                   )}
                   {c.status === "sent" && (
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600 hover:text-amber-700" title="Revoke" onClick={() => handleRevoke(c)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-amber-600 hover:text-amber-700"
+                      title="Revoke"
+                      onClick={() => handleRevoke(c)}
+                    >
                       <X className="h-3.5 w-3.5" />
                     </Button>
                   )}
@@ -4656,18 +5474,32 @@ function ContractsTab({ customerID }) {
         </div>
       )}
 
-      <ContractFormSheet open={sheetOpen} onClose={() => setSheetOpen(false)} customerId={customerID} contract={editingContract} onSaved={load} />
+      <ContractFormSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        customerId={customerID}
+        contract={editingContract}
+        onSaved={load}
+      />
 
       {/* View contract dialog */}
-      <Dialog open={Boolean(viewingContract)} onClose={() => setViewingContract(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" onClose={() => setViewingContract(null)}>
+      <Dialog
+        open={Boolean(viewingContract)}
+        onClose={() => setViewingContract(null)}
+      >
+        <DialogContent
+          className="max-w-2xl max-h-[90vh] overflow-y-auto"
+          onClose={() => setViewingContract(null)}
+        >
           <DialogHeader>
             <DialogTitle>{viewingContract?.title}</DialogTitle>
           </DialogHeader>
           {viewingContract && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize ${CONTRACT_STATUS_STYLES[viewingContract.status]}`}>
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize ${CONTRACT_STATUS_STYLES[viewingContract.status]}`}
+                >
                   {viewingContract.status}
                 </span>
               </div>
@@ -4678,11 +5510,19 @@ function ContractsTab({ customerID }) {
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-[12px] text-emerald-800 space-y-0.5">
                   <p className="font-semibold">Signature Record</p>
                   <p>Signed by: {viewingContract.signedByName}</p>
-                  <p>Date: {new Date(viewingContract.signedAt).toLocaleString()}</p>
-                  {viewingContract.signedByIp && <p>IP: {viewingContract.signedByIp}</p>}
+                  <p>
+                    Date: {new Date(viewingContract.signedAt).toLocaleString()}
+                  </p>
+                  {viewingContract.signedByIp && (
+                    <p>IP: {viewingContract.signedByIp}</p>
+                  )}
                 </div>
               )}
-              {viewingContract.notes && <p className="text-[12px] text-muted-foreground">Notes: {viewingContract.notes}</p>}
+              {viewingContract.notes && (
+                <p className="text-[12px] text-muted-foreground">
+                  Notes: {viewingContract.notes}
+                </p>
+              )}
             </div>
           )}
         </DialogContent>

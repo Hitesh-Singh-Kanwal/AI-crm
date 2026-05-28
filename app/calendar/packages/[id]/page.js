@@ -32,6 +32,93 @@ function formatEventTime(iso) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
+function ServiceNamePicker({ value, onChange, onSelect, calendarServices }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState(value || '')
+  const [dropdownStyle, setDropdownStyle] = useState({})
+  const inputRef = useRef(null)
+  const wrapperRef = useRef(null)
+  const dropdownRef = useRef(null)
+
+  useEffect(() => { setQuery(value || '') }, [value])
+
+  useEffect(() => {
+    function close(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false)
+    }
+    function onScroll(e) {
+      if (dropdownRef.current && dropdownRef.current.contains(e.target)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      window.removeEventListener('scroll', onScroll, true)
+    }
+  }, [])
+
+  function openDropdown() {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect()
+      setDropdownStyle({ position: 'fixed', top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 260), zIndex: 9999 })
+    }
+    setOpen(true)
+  }
+
+  const filtered = query.trim()
+    ? calendarServices.filter((s) => s.serviceName.toLowerCase().includes(query.toLowerCase()))
+    : calendarServices
+
+  return (
+    <div ref={wrapperRef} className="relative w-full">
+      <Input
+        ref={inputRef}
+        placeholder="Service name"
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); onChange(e.target.value); openDropdown() }}
+        onFocus={openDropdown}
+        className="h-8 text-sm w-full"
+      />
+      {open && filtered.length > 0 && (
+        <div
+          ref={dropdownRef}
+          style={dropdownStyle}
+          className="max-h-52 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg"
+        >
+          {filtered.map((s) => (
+            <button
+              key={s._id}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                onSelect(s)
+                setQuery(s.serviceName)
+                setOpen(false)
+              }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/60 flex items-center gap-2"
+            >
+              <span
+                className="h-6 w-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold text-white"
+                style={{ backgroundColor: s.color || '#6366f1' }}
+              >
+                {s.serviceName.charAt(0).toUpperCase()}
+              </span>
+              <span className="text-foreground truncate flex-1">{s.serviceName}</span>
+              <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded border border-border shrink-0 text-muted-foreground">
+                {s.serviceCode}
+              </span>
+              {s.price != null && (
+                <span className="text-xs text-muted-foreground shrink-0">${Number(s.price).toFixed(2)}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ServiceCodePicker({ value, onChange, onSelect, calendarServices }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState(value || '')
@@ -410,17 +497,6 @@ export default function PackageEditPage() {
               <LocationSelector value={locationID} onChange={setLocationID} multiple={true} showAllOption={false} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pkg-order">Sort Order</Label>
-              <Input
-                id="pkg-order"
-                type="number"
-                min="0"
-                placeholder="0"
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
               <Label>Color</Label>
               <div className="flex items-center gap-3">
                 <input
@@ -516,11 +592,11 @@ export default function PackageEditPage() {
                     return (
                       <tr key={svc._id} className="border-b border-border/60 hover:bg-muted/20">
                         <td className="py-2 px-3">
-                          <Input
-                            placeholder="Service name"
-                            value={svc.serviceName ?? ""}
-                            onChange={(e) => updateService(idx, 'serviceName', e.target.value)}
-                            className="h-8 text-sm w-full"
+                          <ServiceNamePicker
+                            value={svc.serviceName}
+                            onChange={(val) => updateService(idx, 'serviceName', val)}
+                            onSelect={(catalogSvc) => selectServiceFromCatalog(idx, catalogSvc)}
+                            calendarServices={calendarServices}
                           />
                         </td>
                         <td className="py-2 px-3">

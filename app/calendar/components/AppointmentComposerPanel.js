@@ -1664,10 +1664,12 @@ export default function AppointmentComposerPanel({
 
         if (customersRes.success && Array.isArray(customersRes.data))
           setCustomerOptions(
-            customersRes.data.map((c) => ({
-              value: String(c._id ?? c.id),
-              label: c.name || c.email || String(c._id),
-            })),
+            customersRes.data.map((c) => {
+              const base = c.name || c.email || String(c._id)
+              const memberNames = (c.members || []).map((m) => m.name).filter(Boolean)
+              const label = memberNames.length > 0 ? `${base} & ${memberNames.join(', ')}` : base
+              return { value: String(c._id ?? c.id), label }
+            }),
           );
 
         // Store raw enrollments for later cross-referencing once calendarServices are loaded

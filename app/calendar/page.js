@@ -243,7 +243,12 @@ function transformAppointments(appointments, colorMap) {
 
     const customerNames = Array.isArray(appt.customerIDs)
       ? appt.customerIDs
-          .map((c) => (typeof c === "object" ? c.name || c.email : ""))
+          .map((c) => {
+            if (typeof c !== "object") return ""
+            const base = c.name || c.email || ""
+            const memberNames = (c.members || []).map((m) => m.name).filter(Boolean)
+            return memberNames.length > 0 ? `${base} & ${memberNames.join(", ")}` : base
+          })
           .filter(Boolean)
       : [];
 
@@ -932,7 +937,11 @@ function showEventTooltip(e, props) {
   const customerObjs = Array.isArray(raw.customerIDs)
     ? raw.customerIDs.filter((c) => typeof c === "object")
     : [];
-  const customerNames = customerObjs.map((c) => c.name || c.email).filter(Boolean);
+  const customerNames = customerObjs.map((c) => {
+    const base = c.name || c.email || ""
+    const memberNames = (c.members || []).map((m) => m.name).filter(Boolean)
+    return memberNames.length > 0 ? `${base} & ${memberNames.join(", ")}` : base
+  }).filter(Boolean);
   const customerEmails = customerObjs.map((c) => c.email).filter(Boolean);
 
   // ── Teacher ───────────────────────────────────────────────────────────────
@@ -2333,8 +2342,20 @@ export default function CalendarPage() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [slotSelection, setSlotSelection] = useState(null);
   const [hideEmptySlots, setHideEmptySlots] = useState(false);
-  const [customSlotMins, setCustomSlotMins] = useState(DEFAULT_SLOT_MINS);
-  const [slotAlignMins, setSlotAlignMins] = useState(FULL_START_HOUR * 60);
+  const [customSlotMins, setCustomSlotMins] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cal_slotMins')
+      const n = Number(saved)
+      return Number.isFinite(n) && n > 0 ? n : DEFAULT_SLOT_MINS
+    } catch { return DEFAULT_SLOT_MINS }
+  });
+  const [slotAlignMins, setSlotAlignMins] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cal_startMins')
+      const n = Number(saved)
+      return Number.isFinite(n) && n >= 0 ? n : FULL_START_HOUR * 60
+    } catch { return FULL_START_HOUR * 60 }
+  });
 
   // slotDuration string for FullCalendar (HH:MM:SS)
   const slotDurationStr = useMemo(() => {
@@ -2705,6 +2726,10 @@ export default function CalendarPage() {
                 onApply={(mins, startOff) => {
                   setCustomSlotMins(mins);
                   setSlotAlignMins(startOff);
+                  try {
+                    localStorage.setItem('cal_slotMins', String(mins));
+                    localStorage.setItem('cal_startMins', String(startOff));
+                  } catch {}
                 }}
               />
 
