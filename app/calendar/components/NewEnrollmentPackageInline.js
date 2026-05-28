@@ -20,6 +20,13 @@ const BLANK_FORM = {
     startDate: "",
     installmentMode: "count",
     installmentAmount: "",
+    dueDate: "",
+    dueAmount: "",
+  },
+  tip: {
+    enabled: false,
+    amount: "",
+    method: "cash",
   },
 };
 
@@ -309,7 +316,13 @@ export default function NewEnrollmentPackageInline({
     }
     setError("");
     setLoading(true);
-    const ok = await onSubmit?.(form);
+    const payload = { ...form };
+    if (form.tip.enabled && form.tip.amount && form.teacherID) {
+      payload.tip = { teacherID: form.teacherID, amount: form.tip.amount, method: form.tip.method };
+    } else {
+      payload.tip = undefined;
+    }
+    const ok = await onSubmit?.(payload);
     setLoading(false);
     if (!ok) setError("Failed to create enrollment and package.");
   }
@@ -756,18 +769,40 @@ export default function NewEnrollmentPackageInline({
               </div>
             )}
             {form.billingType === "flexible" && (
-              <div className="rounded-lg border border-border bg-muted/20 p-3">
+              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
                 <p className="text-[11px] text-muted-foreground">
-                  No schedule set. Payments can be recorded manually at any
-                  time.
+                  No schedule set. A due date is recorded and payment can be collected at any time.
                 </p>
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
-                  <p className="text-[11px] text-muted-foreground">
-                    Payable Balance
-                  </p>
-                  <p className="text-[13px] font-bold text-foreground">
-                    ${total.toFixed(2)}
-                  </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Date <span className="text-rose-500">*</span></label>
+                    <input
+                      type="date"
+                      value={form.billing.dueDate}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, billing: { ...p.billing, dueDate: e.target.value } }))
+                      }
+                      className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Amount</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder={total.toFixed(2)}
+                      value={form.billing.dueAmount}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, billing: { ...p.billing, dueAmount: e.target.value } }))
+                      }
+                      className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                  <p className="text-[11px] text-muted-foreground">Payable Balance</p>
+                  <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
                 </div>
               </div>
             )}
@@ -835,8 +870,80 @@ export default function NewEnrollmentPackageInline({
               </div>
             )}
           </div>
+
         </div>
       </div>
+
+      {/* ── Tip for teacher ── */}
+      {form.teacherID && (
+        <div className="shrink-0 mt-3 rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium text-muted-foreground">
+              Add a tip for the teacher?
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setForm((p) => ({
+                  ...p,
+                  tip: { ...p.tip, enabled: !p.tip.enabled },
+                }))
+              }
+              className={`relative h-5 w-9 rounded-full transition-colors ${
+                form.tip.enabled ? "bg-primary" : "bg-muted-foreground/30"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  form.tip.enabled ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+          {form.tip.enabled && (
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
+                  $
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={form.tip.amount}
+                  onChange={(e) =>
+                    setForm((p) => ({
+                      ...p,
+                      tip: { ...p.tip, amount: e.target.value },
+                    }))
+                  }
+                  className="h-9 w-full rounded-lg border border-border bg-background pl-6 pr-3 text-[12px] outline-none focus:border-primary"
+                />
+              </div>
+              <div className="relative w-32">
+                <select
+                  value={form.tip.method}
+                  onChange={(e) =>
+                    setForm((p) => ({
+                      ...p,
+                      tip: { ...p.tip, method: e.target.value },
+                    }))
+                  }
+                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
+                >
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m} value={m} className="capitalize">
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-[11px] text-destructive mt-2">{error}</p>}
 

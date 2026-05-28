@@ -7,6 +7,7 @@ import OverviewTab from './components/OverviewTab'
 import CustomersTab from './components/CustomersTab'
 import InvoicesTab from './components/InvoicesTab'
 import PlansTab from './components/PlansTab'
+import TipsTab from './components/TipsTab'
 import { INITIAL_CUSTOMERS, PLAN_CATALOG } from './components/billingData'
 import api from '@/lib/api'
 
@@ -14,6 +15,7 @@ const BILLING_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'customers', label: 'Customers' },
   { id: 'invoices', label: 'Invoices' },
+  { id: 'tips', label: 'Tips' },
   { id: 'plans', label: 'Plans' },
 ]
 
@@ -91,6 +93,7 @@ export default function BillingPage() {
 
         {activeTab === 'customers' && <CustomersTab customers={INITIAL_CUSTOMERS} />}
         {activeTab === 'invoices' && <InvoicesTab payments={payments} loading={loadingBilling} />}
+        {activeTab === 'tips' && <TipsTab />}
         {activeTab === 'plans' && <PlansTab plans={PLAN_CATALOG} />}
       </div>
     </MainLayout>

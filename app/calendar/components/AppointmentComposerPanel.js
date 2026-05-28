@@ -538,17 +538,19 @@ function EnrollmentServiceSelector({
   return (
     <div className="space-y-2">
       <div>
-        <FieldLabel>Enrollment</FieldLabel>
+        <FieldLabel>Package</FieldLabel>
         <StyledSelect
           value={selectedEnrollmentId}
           onChange={(v) => {
             onEnrollmentSelect(v);
           }}
-          options={activeEnrollments.map((e) => ({
-            value: String(e._id),
-            label: `${ordinalLabel(e.enrollmentNumber)} Enrollment${e.label ? ` — ${e.label}` : ""}${e.package ? "" : " (no package)"}`,
-          }))}
-          placeholder="Select enrollment…"
+          options={activeEnrollments
+            .filter((e) => e.package)
+            .map((e) => ({
+              value: String(e._id),
+              label: e.package.packageName || "Unnamed Package",
+            }))}
+          placeholder="Select package…"
         />
         <button
           type="button"
@@ -1325,78 +1327,6 @@ function NotesBlock({ form, setField }) {
   );
 }
 
-// ─── Payment block ────────────────────────────────────────────────────────────
-
-function PaymentBlock({ form, setField, suggestedAmount }) {
-  return (
-    <div
-      className={[
-        "rounded-xl border px-3 py-2.5 transition-colors",
-        form.payment_collected
-          ? "border-emerald-500/30 bg-emerald-500/5"
-          : "border-border bg-muted/20",
-      ].join(" ")}
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p
-            className={`text-[12px] font-semibold ${form.payment_collected ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}
-          >
-            {form.payment_collected ? "Payment recorded" : "Record payment"}
-          </p>
-          {!form.payment_collected && (
-            <p className="text-[10px] text-muted-foreground">
-              Toggle to capture payment at booking
-            </p>
-          )}
-        </div>
-        <Toggle
-          checked={form.payment_collected}
-          onChange={(v) => setField("payment_collected", v)}
-        />
-      </div>
-      {form.payment_collected && (
-        <div className="mt-2.5 grid grid-cols-2 gap-2">
-          <div>
-            <FieldLabel>Amount ($)</FieldLabel>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
-                $
-              </span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.payment_amount}
-                onChange={(e) => setField("payment_amount", e.target.value)}
-                placeholder={suggestedAmount ? String(suggestedAmount) : "0.00"}
-                className="h-9 w-full rounded-lg border border-border bg-background pl-6 pr-3 text-[12px] text-foreground outline-none focus:border-emerald-500 transition-colors"
-              />
-            </div>
-          </div>
-          <div>
-            <FieldLabel>Method</FieldLabel>
-            <div className="relative">
-              <select
-                value={form.payment_method}
-                onChange={(e) => setField("payment_method", e.target.value)}
-                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-emerald-500 transition-colors"
-              >
-                <option value="">Select…</option>
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Tab form components ──────────────────────────────────────────────────────
 
@@ -1463,7 +1393,7 @@ function AppointmentFields({
       <div className="space-y-3">
         <SectionDivider label="Notes & Payment" />
         <NotesBlock form={form} setField={setField} />
-        {showSessionPayment ? (
+        {showSessionPayment && (
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 space-y-2.5">
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -1509,12 +1439,6 @@ function AppointmentFields({
               </div>
             </div>
           </div>
-        ) : (
-          <PaymentBlock
-            form={form}
-            setField={setField}
-            suggestedAmount={suggestedAmount}
-          />
         )}
       </div>
     </div>
