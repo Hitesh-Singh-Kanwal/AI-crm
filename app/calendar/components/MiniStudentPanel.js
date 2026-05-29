@@ -1361,8 +1361,13 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                                       <p className="text-[9px] text-muted-foreground">${pps.toFixed(2)}/session · {item.sessionsRemaining} remaining</p>
                                     </div>
                                   ) : (
-                                    <div className="flex gap-1.5">
-                                      <div className="relative flex-1"><span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span><input type="number" min="0.01" step="0.01" value={f.amount} onChange={(e) => updateFlex({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background pl-5 pr-2 text-[11px] outline-none focus:border-primary" /></div>
+                                    <div className="space-y-1">
+                                      <div className="flex gap-1.5">
+                                        <div className="relative flex-1"><span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span><input type="number" min="0.01" step="0.01" value={f.amount} onChange={(e) => updateFlex({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background pl-5 pr-2 text-[11px] outline-none focus:border-primary" /></div>
+                                      </div>
+                                      {(() => { const entered = parseFloat(f.amount); const remaining = item.amount - (isNaN(entered) ? 0 : entered); return !isNaN(entered) && entered > 0 && Math.abs(remaining) > 0.001 ? (
+                                        <p className="text-[9px] text-muted-foreground">${Math.max(0, remaining).toFixed(2)} remaining after payment</p>
+                                      ) : null; })()}
                                     </div>
                                   )}
                                   <div className="flex gap-1.5">
