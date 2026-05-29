@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { Clock3, Mail, MessageSquare, Phone, RefreshCw } from 'lucide-react'
+import { Clock3, Mail, MessageSquare, Pencil, Phone, RefreshCw } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
+import CampaignEditDialog from '@/components/campaign/CampaignEditDialog'
 import api from '@/lib/api'
 
 function getStepsCount(steps) {
@@ -67,6 +68,7 @@ export default function CampaignDetailsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [campaign, setCampaign] = useState(null)
+  const [editing, setEditing] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -120,14 +122,26 @@ export default function CampaignDetailsPage() {
             </Link>
           </div>
 
-          <button
-            type="button"
-            onClick={load}
-            className="inline-flex h-10 items-center rounded-lg border border-border bg-background px-4 text-[13px] font-semibold text-foreground hover:bg-muted/40"
-          >
-            <RefreshCw className={loading ? 'mr-2 h-4 w-4 animate-spin' : 'mr-2 h-4 w-4'} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            {campaign && (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="inline-flex h-10 items-center rounded-lg border border-border bg-background px-4 text-[13px] font-semibold text-foreground hover:bg-muted/40"
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={load}
+              className="inline-flex h-10 items-center rounded-lg border border-border bg-background px-4 text-[13px] font-semibold text-foreground hover:bg-muted/40"
+            >
+              <RefreshCw className={loading ? 'mr-2 h-4 w-4 animate-spin' : 'mr-2 h-4 w-4'} />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -233,6 +247,16 @@ export default function CampaignDetailsPage() {
             </div>
           )}
         </div>
+
+        <CampaignEditDialog
+          campaign={editing ? campaign : null}
+          onClose={() => setEditing(false)}
+          onSaved={(updated) => {
+            setEditing(false)
+            if (updated) setCampaign(updated)
+            else load()
+          }}
+        />
       </div>
     </MainLayout>
   )

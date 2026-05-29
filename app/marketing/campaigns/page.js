@@ -2,9 +2,10 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import MainLayout from '@/components/layout/MainLayout'
-import { Eye, Target, Trash2 } from 'lucide-react'
+import { Eye, Pencil, Target, Trash2 } from 'lucide-react'
 import api from '@/lib/api'
 import Link from 'next/link'
+import CampaignEditDialog from '@/components/campaign/CampaignEditDialog'
 
 function getStepsCount(steps) {
     if (!Array.isArray(steps)) return 0
@@ -42,6 +43,7 @@ export default function CampaignsPage() {
     const [error, setError] = useState('')
     const [deletingId, setDeletingId] = useState('')
     const [confirmDelete, setConfirmDelete] = useState(null) // campaign | null
+    const [editingCampaign, setEditingCampaign] = useState(null)
 
     const loadCampaigns = async () => {
         setLoading(true)
@@ -166,18 +168,26 @@ export default function CampaignsPage() {
                                     </div>
 
                                     {/* Actions */}
-                                    <div className="flex items-center gap-3 pt-3 mt-1 border-t border-border">
+                                    <div className="flex items-center gap-2 pt-3 mt-1 border-t border-border">
                                         <Link
                                             href={`/marketing/campaigns/${id}`}
-                                            className="flex-1 flex items-center justify-center gap-2 bg-background border border-border text-foreground hover:bg-muted/50 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                                            className="flex-1 flex items-center justify-center gap-1.5 bg-background border border-border text-foreground hover:bg-muted/50 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors"
                                         >
                                             <Eye className="w-4 h-4" />
                                             View
                                         </Link>
                                         <button
                                             type="button"
+                                            onClick={() => setEditingCampaign(campaign)}
+                                            className="flex-1 flex items-center justify-center gap-1.5 bg-background border border-border text-foreground hover:bg-muted/50 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                                        >
+                                            <Pencil className="w-4 h-4" />
+                                            Edit
+                                        </button>
+                                        <button
+                                            type="button"
                                             onClick={() => setConfirmDelete(campaign)}
-                                            className="flex-1 flex items-center justify-center gap-2 bg-destructive text-destructive-foreground hover:brightness-95 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                                            className="flex-1 flex items-center justify-center gap-1.5 bg-destructive text-destructive-foreground hover:brightness-95 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors"
                                         >
                                             <Trash2 className="w-4 h-4" />
                                             Delete
@@ -189,6 +199,12 @@ export default function CampaignsPage() {
                     )}
                 </div>
             </div>
+
+            <CampaignEditDialog
+                campaign={editingCampaign}
+                onClose={() => setEditingCampaign(null)}
+                onSaved={() => loadCampaigns()}
+            />
 
             {/* Delete confirm modal */}
             {confirmDelete && (
