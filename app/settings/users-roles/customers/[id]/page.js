@@ -964,6 +964,76 @@ function PayInstallmentDialog({
   );
 }
 
+// ─── ChangeInstallmentDateDialog ─────────────────────────────────────────────
+
+function ChangeInstallmentDateDialog({ open, onClose, plan, installmentIndex, onSuccess }) {
+  const [dueDate, setDueDate] = useState("");
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+
+  const installment = plan?.installments?.[installmentIndex];
+
+  useEffect(() => {
+    if (installment?.dueDate) {
+      setDueDate(new Date(installment.dueDate).toISOString().slice(0, 10));
+    }
+  }, [installment]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!dueDate) return;
+    setSaving(true);
+    const res = await api.patch(
+      `/api/payment-plan/${plan._id}/installment/${installmentIndex}/due-date`,
+      { dueDate },
+    );
+    if (res.success) {
+      toast.success("Due date updated.");
+      onSuccess();
+      onClose();
+    } else {
+      toast.error(res.error || "Failed to update due date.");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Change Due Date</DialogTitle>
+        </DialogHeader>
+        {installment && (
+          <p className="text-[12px] text-muted-foreground -mt-1">
+            Payment {installmentIndex + 1} of {plan.numberOfInstallments} ·{" "}
+            <span className="text-foreground font-medium">
+              ${Number(installment.amount).toFixed(2)}
+            </span>
+          </p>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <FormField label="New Due Date" required>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
+          </FormField>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={saving || !dueDate} className="bg-brand hover:opacity-90 text-white">
+              {saving ? "Saving…" : "Update"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Packages Tab ─────────────────────────────────────────────────────────────
 
 const BLANK_ADD_FORM = {
@@ -1003,6 +1073,7 @@ function PackagesTab({ customerID }) {
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
   const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
+  const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null); // { plan, index }
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -1566,18 +1637,33 @@ function PackagesTab({ customerID }) {
                                   {inst.status === "pending" &&
                                     plan.status === "active" &&
                                     pkg.status === "active" && (
-                                      <Button
-                                        size="sm"
-                                        className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                                        onClick={() =>
-                                          setPayInstallTarget({
-                                            plan,
-                                            index: idx,
-                                          })
-                                        }
-                                      >
-                                        Pay
-                                      </Button>
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 px-2.5 text-[11px]"
+                                          onClick={() =>
+                                            setChangeInstallDateTarget({
+                                              plan,
+                                              index: idx,
+                                            })
+                                          }
+                                        >
+                                          Change Date
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                          onClick={() =>
+                                            setPayInstallTarget({
+                                              plan,
+                                              index: idx,
+                                            })
+                                          }
+                                        >
+                                          Pay
+                                        </Button>
+                                      </>
                                     )}
                                 </div>
                               </div>
@@ -1612,6 +1698,15 @@ function PackagesTab({ customerID }) {
         onClose={() => setPayInstallTarget(null)}
         plan={payInstallTarget?.plan}
         installmentIndex={payInstallTarget?.index}
+        onSuccess={load}
+      />
+
+      {/* Change installment date dialog */}
+      <ChangeInstallmentDateDialog
+        open={Boolean(changeInstallDateTarget)}
+        onClose={() => setChangeInstallDateTarget(null)}
+        plan={changeInstallDateTarget?.plan}
+        installmentIndex={changeInstallDateTarget?.index}
         onSuccess={load}
       />
 
@@ -2211,6 +2306,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
   const [payInstallTarget, setPayInstallTarget] = useState(null);
+  const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null);
   const [expandedServices, setExpandedServices] = useState(new Set());
 
   function toggleService(key) {
@@ -3310,18 +3406,33 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                       {inst.status === "pending" &&
                                         plan.status === "active" &&
                                         cp.status === "active" && (
-                                          <Button
-                                            size="sm"
-                                            className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                                            onClick={() =>
-                                              setPayInstallTarget({
-                                                plan,
-                                                index: idx,
-                                              })
-                                            }
-                                          >
-                                            Pay
-                                          </Button>
+                                          <>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="h-7 px-2.5 text-[11px]"
+                                              onClick={() =>
+                                                setChangeInstallDateTarget({
+                                                  plan,
+                                                  index: idx,
+                                                })
+                                              }
+                                            >
+                                              Change Date
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                              onClick={() =>
+                                                setPayInstallTarget({
+                                                  plan,
+                                                  index: idx,
+                                                })
+                                              }
+                                            >
+                                              Pay
+                                            </Button>
+                                          </>
                                         )}
                                     </div>
                                   </div>
@@ -3358,6 +3469,15 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         onClose={() => setPayInstallTarget(null)}
         plan={payInstallTarget?.plan}
         installmentIndex={payInstallTarget?.index}
+        onSuccess={load}
+      />
+
+      {/* Change installment date dialog */}
+      <ChangeInstallmentDateDialog
+        open={Boolean(changeInstallDateTarget)}
+        onClose={() => setChangeInstallDateTarget(null)}
+        plan={changeInstallDateTarget?.plan}
+        installmentIndex={changeInstallDateTarget?.index}
         onSuccess={load}
       />
 

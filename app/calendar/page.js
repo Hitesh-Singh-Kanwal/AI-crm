@@ -2343,19 +2343,27 @@ export default function CalendarPage() {
   const [slotSelection, setSlotSelection] = useState(null);
   const [hideEmptySlots, setHideEmptySlots] = useState(false);
   const [customSlotMins, setCustomSlotMins] = useState(() => {
-    try {
-      const saved = localStorage.getItem('cal_slotMins')
-      const n = Number(saved)
-      return Number.isFinite(n) && n > 0 ? n : DEFAULT_SLOT_MINS
-    } catch { return DEFAULT_SLOT_MINS }
+    try { const n = Number(localStorage.getItem("cal_slotMins")); return Number.isFinite(n) && n > 0 ? n : DEFAULT_SLOT_MINS; } catch { return DEFAULT_SLOT_MINS; }
   });
   const [slotAlignMins, setSlotAlignMins] = useState(() => {
-    try {
-      const saved = localStorage.getItem('cal_startMins')
-      const n = Number(saved)
-      return Number.isFinite(n) && n >= 0 ? n : FULL_START_HOUR * 60
-    } catch { return FULL_START_HOUR * 60 }
+    try { const n = Number(localStorage.getItem("cal_startMins")); return Number.isFinite(n) && n >= 0 ? n : FULL_START_HOUR * 60; } catch { return FULL_START_HOUR * 60; }
   });
+
+  useEffect(() => {
+    api.get("/api/organisation/calendar-settings").then((res) => {
+      if (res.success && res.data) {
+        const { slotMins, startMins } = res.data;
+        if (Number.isFinite(slotMins) && slotMins > 0) {
+          setCustomSlotMins(slotMins);
+          try { localStorage.setItem("cal_slotMins", String(slotMins)); } catch {}
+        }
+        if (Number.isFinite(startMins) && startMins >= 0) {
+          setSlotAlignMins(startMins);
+          try { localStorage.setItem("cal_startMins", String(startMins)); } catch {}
+        }
+      }
+    });
+  }, []);
 
   // slotDuration string for FullCalendar (HH:MM:SS)
   const slotDurationStr = useMemo(() => {
@@ -2726,10 +2734,8 @@ export default function CalendarPage() {
                 onApply={(mins, startOff) => {
                   setCustomSlotMins(mins);
                   setSlotAlignMins(startOff);
-                  try {
-                    localStorage.setItem('cal_slotMins', String(mins));
-                    localStorage.setItem('cal_startMins', String(startOff));
-                  } catch {}
+                  try { localStorage.setItem("cal_slotMins", String(mins)); localStorage.setItem("cal_startMins", String(startOff)); } catch {}
+                  api.patch("/api/organisation/calendar-settings", { slotMins: mins, startMins: startOff });
                 }}
               />
 
