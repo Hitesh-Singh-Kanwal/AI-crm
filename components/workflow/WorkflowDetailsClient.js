@@ -9,10 +9,12 @@ import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import WorkflowDiagram from '@/components/workflow/WorkflowDiagram'
 import {
+  createEmptyWorkflowStep,
   normalizeWorkflowForPatch,
   normalizeWorkflowFromApi,
-  WORKFLOW_STEP_TYPES,
+  normalizeWorkflowStepFromApi,
 } from '@/lib/workflow-normalize'
+import WorkflowStepFields from '@/components/workflow/WorkflowStepFields'
 import ConfirmDeleteWorkflowDialog from '@/components/workflow/ConfirmDeleteWorkflowDialog'
 
 const EVENT_OPTIONS = ['non', 'form_submission', 'lead_updated', 'lead_moved_stage', 'custom_event']
@@ -28,16 +30,6 @@ const LEAD_STAGE_OPTIONS = [
   'disqualified',
   'human intervention',
 ]
-
-function createEmptyStep(order) {
-  return {
-    type: 'sms',
-    description: '',
-    order: String(order),
-    leadStage: 'new',
-    day: 0,
-  }
-}
 
 export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/workflows' }) {
   const router = useRouter()
@@ -77,19 +69,10 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
       name: wf?.name ?? '',
       description: wf?.description ?? '',
       event: wf?.event ?? 'non',
-      steps: Array.isArray(wf?.steps) ? wf.steps.map((s) => ({ ...s })) : [createEmptyStep(1)],
+      steps: Array.isArray(wf?.steps) ? wf.steps.map((s) => ({ ...s })) : [createEmptyWorkflowStep(1)],
     }
-    if (!Array.isArray(base.steps) || base.steps.length === 0) base.steps = [createEmptyStep(1)]
-    base.steps = base.steps.map((s, idx) => {
-      const dayNum = Number(s.day)
-      return {
-        type: s.type || 'sms',
-        description: s.description ?? '',
-        order: String(s.order ?? String(idx + 1)),
-        leadStage: s.leadStage || 'new',
-        day: Number.isFinite(dayNum) ? dayNum : 0,
-      }
-    })
+    if (!Array.isArray(base.steps) || base.steps.length === 0) base.steps = [createEmptyWorkflowStep(1)]
+    base.steps = base.steps.map((s, idx) => normalizeWorkflowStepFromApi(s, idx))
     setDraft(base)
     setEditing(true)
     setSaveError('')
@@ -101,7 +84,12 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
     if (!draft.event?.trim()) return false
     if (!Array.isArray(draft.steps) || draft.steps.length === 0) return false
     return draft.steps.every(
-      (s) => s.type && s.order !== '' && s.leadStage !== '' && Number.isFinite(Number(s.day))
+      (s) =>
+        s.type &&
+        s.order !== '' &&
+        s.leadStage !== '' &&
+        Number.isFinite(Number(s.day)) &&
+        Number.isFinite(Number(s.hour))
     )
   }, [draft])
 
@@ -266,7 +254,10 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
                 <button
                   type="button"
                   onClick={() =>
-                    setDraft((p) => ({ ...p, steps: [...p.steps, createEmptyStep(p.steps.length + 1)] }))
+                    setDraft((p) => ({
+                      ...p,
+                      steps: [...p.steps, createEmptyWorkflowStep(p.steps.length + 1)],
+                    }))
                   }
                   className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-background px-3 text-[13px] font-medium text-foreground hover:bg-muted/40"
                 >
@@ -294,92 +285,18 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
                       </button>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
-                      <div>
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Type</label>
-                        <select
-                          value={step.type}
-                          onChange={(e) =>
-                            setDraft((p) => ({
-                              ...p,
-                              steps: p.steps.map((s, i) => (i === idx ? { ...s, type: e.target.value } : s)),
-                            }))
-                          }
-                          className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        >
-                          {WORKFLOW_STEP_TYPES.map((t) => (
-                            <option key={t.value} value={t.value}>
-                              {t.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Order</label>
-                        <input
-                          value={step.order}
-                          onChange={(e) =>
-                            setDraft((p) => ({
-                              ...p,
-                              steps: p.steps.map((s, i) => (i === idx ? { ...s, order: e.target.value } : s)),
-                            }))
-                          }
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Lead Stage</label>
-                        <select
-                          value={step.leadStage}
-                          onChange={(e) =>
-                            setDraft((p) => ({
-                              ...p,
-                              steps: p.steps.map((s, i) =>
-                                i === idx ? { ...s, leadStage: e.target.value } : s
-                              ),
-                            }))
-                          }
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        >
-                          {LEAD_STAGE_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Day</label>
-                        <input
-                          value={step.day ?? 0}
-                          onChange={(e) =>
-                            setDraft((p) => ({
-                              ...p,
-                              steps: p.steps.map((s, i) =>
-                                i === idx ? { ...s, day: Number(e.target.value) } : s
-                              ),
-                            }))
-                          }
-                          type="number"
-                          min={0}
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Description</label>
-                        <input
-                          value={step.description}
-                          onChange={(e) =>
-                            setDraft((p) => ({
-                              ...p,
-                              steps: p.steps.map((s, i) =>
-                                i === idx ? { ...s, description: e.target.value } : s
-                              ),
-                            }))
-                          }
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        />
-                      </div>
+                    <div className="mt-3">
+                      <WorkflowStepFields
+                        step={step}
+                        leadStageOptions={LEAD_STAGE_OPTIONS}
+                        compact
+                        onChange={(patch) =>
+                          setDraft((p) => ({
+                            ...p,
+                            steps: p.steps.map((s, i) => (i === idx ? { ...s, ...patch } : s)),
+                          }))
+                        }
+                      />
                     </div>
                   </div>
                 ))}

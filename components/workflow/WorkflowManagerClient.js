@@ -9,10 +9,11 @@ import WorkflowDiagram from '@/components/workflow/WorkflowDiagram'
 import WorkflowCard from '@/components/workflow/WorkflowCard'
 import ConfirmDeleteWorkflowDialog from '@/components/workflow/ConfirmDeleteWorkflowDialog'
 import {
+  createEmptyWorkflowStep,
   normalizeWorkflowForPatch,
   normalizeWorkflowFromApi,
-  WORKFLOW_STEP_TYPES,
 } from '@/lib/workflow-normalize'
+import WorkflowStepFields from '@/components/workflow/WorkflowStepFields'
 
 const EVENT_OPTIONS = ['non', 'form_submission', 'lead_updated', 'lead_moved_stage', 'custom_event']
 
@@ -28,16 +29,6 @@ const LEAD_STAGE_OPTIONS = [
   'human intervention',
 ]
 
-function createEmptyStep(order) {
-  return {
-    type: 'sms',
-    description: '',
-    order: String(order),
-    leadStage: 'new',
-    day: 0,
-  }
-}
-
 export default function WorkflowManagerClient({ detailPathBase = '/ai-automation/workflows' }) {
   const [view, setView] = useState('list') // 'list' | 'create'
   const [workflows, setWorkflows] = useState([])
@@ -50,7 +41,7 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [event, setEvent] = useState('')
-  const [steps, setSteps] = useState([createEmptyStep(1)])
+  const [steps, setSteps] = useState([createEmptyWorkflowStep(1)])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
@@ -108,7 +99,7 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
       steps:
         normalized.steps.length > 0
           ? normalized.steps.map((s) => ({ ...s }))
-          : [createEmptyStep(1)],
+          : [createEmptyWorkflowStep(1)],
     }
     setEditing(base)
   }
@@ -137,11 +128,18 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
     if (!name.trim()) return false
     if (!event.trim()) return false
     if (!Array.isArray(steps) || steps.length === 0) return false
-    return steps.every((s) => s.type && s.order !== '' && s.leadStage !== '' && Number.isFinite(Number(s.day)))
+    return steps.every(
+      (s) =>
+        s.type &&
+        s.order !== '' &&
+        s.leadStage !== '' &&
+        Number.isFinite(Number(s.day)) &&
+        Number.isFinite(Number(s.hour))
+    )
   }, [name, event, steps])
 
   const addStep = () => {
-    setSteps((prev) => [...prev, createEmptyStep(prev.length + 1)])
+    setSteps((prev) => [...prev, createEmptyWorkflowStep(prev.length + 1)])
   }
 
   const removeStep = (idx) => {
@@ -173,7 +171,7 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
       setName('')
       setDescription('')
       setEvent('')
-      setSteps([createEmptyStep(1)])
+      setSteps([createEmptyWorkflowStep(1)])
       setView('list')
       await loadWorkflows()
     } else {
@@ -356,66 +354,12 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                       </button>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
-                      <div className="md:col-span-1">
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Type</label>
-                        <select
-                          value={step.type}
-                          onChange={(e) => updateStep(idx, { type: e.target.value })}
-                          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        >
-                          {WORKFLOW_STEP_TYPES.map((t) => (
-                            <option key={t.value} value={t.value}>
-                              {t.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="md:col-span-1">
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Order</label>
-                        <input
-                          value={step.order}
-                          onChange={(e) => updateStep(idx, { order: e.target.value })}
-                          inputMode="numeric"
-                          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        />
-                      </div>
-
-                      <div className="md:col-span-1">
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Lead Stage</label>
-                        <select
-                          value={step.leadStage}
-                          onChange={(e) => updateStep(idx, { leadStage: e.target.value })}
-                          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        >
-                          {LEAD_STAGE_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="md:col-span-1">
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Day</label>
-                        <input
-                          value={step.day}
-                          onChange={(e) => updateStep(idx, { day: Number(e.target.value) })}
-                          type="number"
-                          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        />
-                      </div>
-
-                      <div className="md:col-span-1">
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Step Description</label>
-                        <input
-                          value={step.description}
-                          onChange={(e) => updateStep(idx, { description: e.target.value })}
-                          placeholder=""
-                          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        />
-                      </div>
+                    <div className="mt-3">
+                      <WorkflowStepFields
+                        step={step}
+                        leadStageOptions={LEAD_STAGE_OPTIONS}
+                        onChange={(patch) => updateStep(idx, patch)}
+                      />
                     </div>
                   </div>
                 ))}
@@ -532,7 +476,10 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                 <button
                   type="button"
                   onClick={() =>
-                    setEditing((p) => ({ ...p, steps: [...p.steps, createEmptyStep(p.steps.length + 1)] }))
+                    setEditing((p) => ({
+                      ...p,
+                      steps: [...p.steps, createEmptyWorkflowStep(p.steps.length + 1)],
+                    }))
                   }
                   className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-background px-3 text-[13px] font-medium text-foreground hover:bg-muted/40"
                 >
@@ -562,92 +509,18 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                       </button>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
-                      <div>
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Type</label>
-                        <select
-                          value={step.type}
-                          onChange={(e) =>
-                            setEditing((p) => ({
-                              ...p,
-                              steps: p.steps.map((s, i) => (i === idx ? { ...s, type: e.target.value } : s)),
-                            }))
-                          }
-                          className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        >
-                          {WORKFLOW_STEP_TYPES.map((t) => (
-                            <option key={t.value} value={t.value}>
-                              {t.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Order</label>
-                        <input
-                          value={step.order}
-                          onChange={(e) =>
-                            setEditing((p) => ({
-                              ...p,
-                              steps: p.steps.map((s, i) => (i === idx ? { ...s, order: e.target.value } : s)),
-                            }))
-                          }
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Lead Stage</label>
-                        <select
-                          value={step.leadStage}
-                          onChange={(e) =>
-                            setEditing((p) => ({
-                              ...p,
-                              steps: p.steps.map((s, i) =>
-                                i === idx ? { ...s, leadStage: e.target.value } : s
-                              ),
-                            }))
-                          }
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        >
-                          {LEAD_STAGE_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Day</label>
-                        <input
-                          value={step.day ?? 0}
-                          onChange={(e) =>
-                            setEditing((p) => ({
-                              ...p,
-                              steps: p.steps.map((s, i) =>
-                                i === idx ? { ...s, day: Number(e.target.value) } : s
-                              ),
-                            }))
-                          }
-                          type="number"
-                          min={0}
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[11px] text-muted-foreground">Description</label>
-                        <input
-                          value={step.description}
-                          onChange={(e) =>
-                            setEditing((p) => ({
-                              ...p,
-                              steps: p.steps.map((s, i) =>
-                                i === idx ? { ...s, description: e.target.value } : s
-                              ),
-                            }))
-                          }
-                          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                        />
-                      </div>
+                    <div className="mt-3">
+                      <WorkflowStepFields
+                        step={step}
+                        leadStageOptions={LEAD_STAGE_OPTIONS}
+                        compact
+                        onChange={(patch) =>
+                          setEditing((p) => ({
+                            ...p,
+                            steps: p.steps.map((s, i) => (i === idx ? { ...s, ...patch } : s)),
+                          }))
+                        }
+                      />
                     </div>
                   </div>
                 ))}

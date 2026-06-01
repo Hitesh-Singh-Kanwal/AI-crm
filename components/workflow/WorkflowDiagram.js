@@ -1,7 +1,11 @@
 'use client'
 
 import { Clock3, Mail, MessageSquare, Phone } from 'lucide-react'
-import { flattenWorkflowSteps, isCallStepType } from '@/lib/workflow-normalize'
+import {
+  flattenWorkflowSteps,
+  isCallStepType,
+  normalizeWorkflowStepFromApi,
+} from '@/lib/workflow-normalize'
 
 function StepIcon({ type }) {
   const Icon = isCallStepType(type) ? Phone : type === 'email' ? Mail : MessageSquare
@@ -29,7 +33,7 @@ function DownArrow() {
 function normalizeSteps(workflow) {
   const steps = flattenWorkflowSteps(workflow?.steps)
   const normalized = steps.map((s, idx) => ({
-    ...s,
+    ...normalizeWorkflowStepFromApi(s, idx),
     _idx: idx,
     _orderNum: Number.parseInt(String(s.order ?? ''), 10),
   }))
@@ -78,12 +82,10 @@ export default function WorkflowDiagram({ workflow, title = 'Workflow Diagram', 
                     <div className="text-[13px] font-semibold text-foreground">{String(step.type || '').toUpperCase()}</div>
                   </div>
                 </div>
-                {step.day !== undefined && (
-                  <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
-                    <Clock3 className="h-3.5 w-3.5" />
-                    Day {Number(step.day ?? 0)}
-                  </div>
-                )}
+                <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
+                  <Clock3 className="h-3.5 w-3.5" />
+                  Day {Number(step.day ?? 0)} · {String(step.hour ?? 0).padStart(2, '0')}:00
+                </div>
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -95,6 +97,14 @@ export default function WorkflowDiagram({ workflow, title = 'Workflow Diagram', 
                   <div className="text-[10px] text-muted-foreground">Description</div>
                   <div className="mt-0.5 text-[12px] font-medium text-foreground">{step.description?.trim() ? step.description : '—'}</div>
                 </div>
+                {step.type === 'email' && (
+                  <div className="rounded-lg border border-border bg-card px-3 py-2 md:col-span-2">
+                    <div className="text-[10px] text-muted-foreground">Email format</div>
+                    <div className="mt-0.5 text-[12px] font-medium text-foreground">
+                      {step.emailType === 'template' ? 'HTML template' : 'Plain text'}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
