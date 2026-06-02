@@ -748,7 +748,7 @@ export default function EventDetailPanel({
                 />
               </Field>
             </div>
-            <Field label="Instructor">
+            <Field label="Teacher">
               <Select
                 value={form.teacherID}
                 onChange={(v) => setField("teacherID", v)}
@@ -837,9 +837,9 @@ export default function EventDetailPanel({
               </div>
             )}
 
-            {/* Instructor details */}
+            {/* Teacher details */}
             <div>
-              <Label>Instructor</Label>
+              <Label>Teacher</Label>
               {!teacherDetail ? (
                 <p className="text-[13px] text-muted-foreground">—</p>
               ) : (

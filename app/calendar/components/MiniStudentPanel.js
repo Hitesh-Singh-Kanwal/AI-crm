@@ -59,6 +59,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
   const [flexPayForms, setFlexPayForms] = useState({});
   const [upcomingPayments, setUpcomingPayments] = useState([]); // unified sorted list
   const [planPayForms, setPlanPayForms] = useState({}); // planId_installmentIdx → { method, saving, error }
+  const [paymentView, setPaymentView] = useState("due");
 
   const [msgMode, setMsgMode] = useState("sms"); // "sms" | "email"
   const [smsText, setSmsText] = useState("");
@@ -344,13 +345,16 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
           .filter((e) => e.status === "active" && e.package?.status === "active")
           .reduce((sum, e) => {
             const bt = e.package?.billingType;
+            const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable === true);
             if (bt === "flexible" || bt === "payment_plan") {
               const collected = e.package?.amountCollected ?? 0;
-              const svc = (e.package?.services ?? []).find((s) => s.pricePerSession > 0);
+              const svc = chargeableServices.find((s) => s.pricePerSession > 0);
               const pps = svc?.pricePerSession ?? 0;
-              return sum + (pps > 0 ? collected / pps : 0);
+              const sessionsPaidFor = pps > 0 ? collected / pps : 0;
+              const sessionsUsed = svc?.sessionsUsed ?? 0;
+              return sum + Math.max(0, sessionsPaidFor - sessionsUsed);
             }
-            return sum + (e.package?.services ?? []).reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0);
+            return sum + chargeableServices.reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0);
           }, 0);
         setTotalSessionsRemaining(totalRemaining);
         const forms = {};
@@ -1255,8 +1259,19 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                   </div>
                 </div>
 
+                {/* Payment view filter */}
+                <select
+                  value={paymentView}
+                  onChange={(e) => setPaymentView(e.target.value)}
+                  className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary text-foreground"
+                >
+                  <option value="due">Payments Due</option>
+                  <option value="auto">Auto-charged from Bookings</option>
+                  <option value="collected">Collected Payments</option>
+                </select>
+
                 {/* Upcoming payments — flexible, payment plan, pay-per-session */}
-                {!loadingPayments && upcomingPayments.length > 0 && (
+                {paymentView === "due" && !loadingPayments && upcomingPayments.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">
                       Upcoming Payments
@@ -1500,7 +1515,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                 ) : (
                   <>
                     {/* Service charges section */}
-                    {serviceCharges.length > 0 && (
+                    {paymentView === "auto" && serviceCharges.length > 0 && (
                       <div className="space-y-1.5">
                         <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">
                           Auto-charged from bookings
@@ -1580,7 +1595,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                     )}
 
                     {/* Collected payments section */}
-                    {collectedPayments.length > 0 && (
+                    {paymentView === "collected" && collectedPayments.length > 0 && (
                       <div className="space-y-1.5">
                         <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">
                           Collected payments (cash / card)
@@ -1639,12 +1654,15 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                       </div>
                     )}
 
-                    {serviceCharges.length === 0 &&
-                      collectedPayments.length === 0 && (
-                        <p className="text-[12px] text-muted-foreground">
-                          No payments recorded yet.
-                        </p>
-                      )}
+                    {paymentView === "due" && upcomingPayments.length === 0 && (
+                      <p className="text-[12px] text-muted-foreground">No payments due.</p>
+                    )}
+                    {paymentView === "auto" && serviceCharges.length === 0 && (
+                      <p className="text-[12px] text-muted-foreground">No auto-charged bookings.</p>
+                    )}
+                    {paymentView === "collected" && collectedPayments.length === 0 && (
+                      <p className="text-[12px] text-muted-foreground">No collected payments yet.</p>
+                    )}
                   </>
                 )}
               </div>

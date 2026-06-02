@@ -730,12 +730,12 @@ function WhoSection({
       )}
 
       <div>
-        <FieldLabel>Instructor</FieldLabel>
+        <FieldLabel>Teacher</FieldLabel>
         <SearchableSelect
           value={form.instructor_id}
           onChange={(v) => setField("instructor_id", v)}
           options={instructorOptions}
-          placeholder="Select instructor…"
+          placeholder="Select teacher…"
         />
       </div>
     </div>
@@ -757,12 +757,12 @@ function GroupWhoSection({
     <div className="space-y-3">
       <SectionDivider label="Who" />
       <div>
-        <FieldLabel>Instructor</FieldLabel>
+        <FieldLabel>Teacher</FieldLabel>
         <SearchableSelect
           value={form.instructor_id}
           onChange={(v) => setField("instructor_id", v)}
           options={instructorOptions}
-          placeholder="Select instructor…"
+          placeholder="Select teacher…"
         />
       </div>
       <div>
@@ -1468,12 +1468,12 @@ function GroupClassFields({
           />
         </div>
         <div>
-          <FieldLabel>Instructor</FieldLabel>
+          <FieldLabel>Teacher</FieldLabel>
           <SearchableSelect
             value={form.instructor_id}
             onChange={(v) => setField("instructor_id", v)}
             options={instructorOptions}
-            placeholder="Select instructor…"
+            placeholder="Select teacher…"
           />
         </div>
         <div>
@@ -1554,7 +1554,7 @@ function ToDoFields({
             value={form.instructor_id}
             onChange={(v) => setField("instructor_id", v)}
             options={instructorOptions}
-            placeholder="Select instructor…"
+            placeholder="Select teacher…"
           />
         </div>
       </div>

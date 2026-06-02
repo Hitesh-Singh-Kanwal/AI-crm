@@ -226,6 +226,30 @@ function deriveEffectiveStatus(appt) {
 }
 
 function transformAppointments(appointments, colorMap) {
+  // For flexible packages, track session order per (customerID + enrollmentID) so we can
+  // determine which session number each event is and compare against sessionsPaidFor.
+  // Key: `${customerId}::${enrollmentId}`, value: sorted array of appointment IDs by date.
+  const flexSessionOrder = {};
+
+  appointments.forEach((appt) => {
+    if (appt.packageBillingType !== "flexible") return;
+    const pkgCharge = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
+    if (!pkgCharge) return;
+    const enrollmentId = String(pkgCharge.enrollmentID?._id ?? pkgCharge.enrollmentID ?? "");
+    if (!enrollmentId) return;
+    const customerIds = Array.isArray(appt.customerIDs)
+      ? appt.customerIDs.map((c) => String(c._id ?? c))
+      : [];
+    customerIds.forEach((cid) => {
+      const key = `${cid}::${enrollmentId}`;
+      if (!flexSessionOrder[key]) flexSessionOrder[key] = [];
+      flexSessionOrder[key].push({ id: String(appt._id), date: new Date(appt.startDateTime) });
+    });
+  });
+
+  // Sort each group chronologically
+  Object.values(flexSessionOrder).forEach((arr) => arr.sort((a, b) => a.date - b.date));
+
   return appointments.map((appt) => {
     const teacherId = String(
       appt.teacherID?._id || appt.teacherID || "unknown",
@@ -257,27 +281,66 @@ function transformAppointments(appointments, colorMap) {
     // Find sessions remaining from the first package/enrollment charge record
     let sessionsRemaining = null;
     let totalSessions = null;
+    let sessionsPaidFor = null;
+    let sessionsUsedForPaidCheck = null;
     if (Array.isArray(appt.charges) && appt.charges.length > 0) {
       const pkgCharge = appt.charges.find((c) => c.method === "package");
       if (pkgCharge) {
+        const billingType = appt.packageBillingType ?? null;
+        const enrollmentPkg = pkgCharge?.enrollmentID?.package ?? null;
+        const amountCollected = enrollmentPkg?.amountCollected ?? 0;
+
+        const resolveSessionsPaidFor = (svc) => {
+          if (svc.isChargeable === false) return null;
+          const pps = svc.pricePerSession ?? 0;
+          if (pps <= 0) return null;
+          const bt = billingType ?? enrollmentPkg?.billingType;
+          if (bt === "flexible" || bt === "payment_plan") {
+            return amountCollected / pps;
+          }
+          return (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
+        };
+
         // Try customerPackageID first
         if (pkgCharge?.customerPackageID?.services) {
-          const svc = pkgCharge.customerPackageID.services.find(
-            (s) => s.serviceCode === pkgCharge.serviceCode,
-          );
+          const pkg = pkgCharge.customerPackageID;
+          const svc = pkg.services.find((s) => s.serviceCode === pkgCharge.serviceCode) ?? pkg.services.find((s) => (s.pricePerSession ?? 0) > 0);
           if (svc) {
             sessionsRemaining = svc.sessionsRemaining ?? null;
             totalSessions = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
+            sessionsUsedForPaidCheck = svc.sessionsUsed ?? 0;
+            sessionsPaidFor = resolveSessionsPaidFor(svc);
           }
         }
         // Fall back to enrollmentID
-        if (sessionsRemaining === null && pkgCharge?.enrollmentID?.package?.services) {
-          const svc = pkgCharge.enrollmentID.package.services.find(
-            (s) => s.serviceCode === pkgCharge.serviceCode,
-          );
+        if (sessionsRemaining === null && enrollmentPkg?.services) {
+          const svc = enrollmentPkg.services.find((s) => s.serviceCode === pkgCharge.serviceCode) ?? enrollmentPkg.services.find((s) => (s.pricePerSession ?? 0) > 0);
           if (svc) {
             sessionsRemaining = svc.sessionsRemaining ?? null;
             totalSessions = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
+            sessionsUsedForPaidCheck = svc.sessionsUsed ?? 0;
+            sessionsPaidFor = resolveSessionsPaidFor(svc);
+          }
+        }
+      }
+    }
+
+    let flexibleCoveredByCredits = false;
+    if (appt.packageBillingType === "flexible" && sessionsPaidFor != null) {
+      const pkgChargeForOrder = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
+      const enrollmentId = String(pkgChargeForOrder?.enrollmentID?._id ?? pkgChargeForOrder?.enrollmentID ?? "");
+      const customerIds = Array.isArray(appt.customerIDs)
+        ? appt.customerIDs.map((c) => String(c._id ?? c))
+        : [];
+      const apptId = String(appt._id);
+      for (const cid of customerIds) {
+        const key = `${cid}::${enrollmentId}`;
+        const order = flexSessionOrder[key];
+        if (order) {
+          const sessionNumber = order.findIndex((e) => e.id === apptId) + 1; // 1-indexed
+          if (sessionNumber > 0 && sessionNumber <= sessionsPaidFor) {
+            flexibleCoveredByCredits = true;
+            break;
           }
         }
       }
@@ -286,6 +349,7 @@ function transformAppointments(appointments, colorMap) {
     const _isActuallyPaid =
       appt.payment?.collected ||
       (appt.chargeMethod === "package" && appt.packageBillingType !== "flexible") ||
+      flexibleCoveredByCredits ||
       appt.chargeMethod === "credits" ||
       appt.chargeMethod === "direct" ||
       appt.chargeMethod === "mixed";
@@ -312,6 +376,7 @@ function transformAppointments(appointments, colorMap) {
         serviceCode,
         sessionsRemaining,
         totalSessions,
+        sessionsPaidFor,
         paymentCollected,
         studentCount: Array.isArray(appt.customerIDs) ? appt.customerIDs.length : 0,
         // Inject effectiveStatus into raw so EventDetailPanel sees the correct status
@@ -1087,6 +1152,7 @@ function AppointmentTimedEventRows({ event }) {
     serviceCode,
     sessionsRemaining,
     totalSessions,
+    sessionsPaidFor,
     paymentCollected,
     studentCount: studentCountProp,
   } = ep;
@@ -1165,6 +1231,11 @@ function AppointmentTimedEventRows({ event }) {
         {isGroupClass && (
           <span className="shrink-0 text-[8px] font-semibold text-foreground/80 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
             {studentCount} student{studentCount === 1 ? "" : "s"}
+          </span>
+        )}
+        {!isGroupClass && sessionsPaidFor != null && (
+          <span className="shrink-0 text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
+            {Number.isInteger(sessionsPaidFor) ? sessionsPaidFor : +sessionsPaidFor.toFixed(2)} Paid
           </span>
         )}
         {!isGroupClass && sessionsLabel && (

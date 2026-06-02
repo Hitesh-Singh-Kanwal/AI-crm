@@ -3232,73 +3232,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                               )}
                               {/* Totals row */}
                               {rows.length > 1 && (
-                                <>
-                                  <div
-                                    className="grid items-center px-3 py-3 border-t border-border bg-muted/40"
-                                    style={{
-                                      gridTemplateColumns:
-                                        "1fr 80px 80px 80px 80px 80px 80px 100px",
-                                    }}
-                                  >
-                                    <span className="text-[12px] font-bold text-foreground uppercase tracking-wider">
-                                      Total
-                                    </span>
-                                    <span />
-                                    <span className="text-[13px] font-bold text-foreground text-right">
-                                      {totalEnrolled}
-                                    </span>
-                                    <span
-                                      className={`text-[13px] font-bold text-right ${totalUsed > 0 ? "text-blue-600" : "text-muted-foreground"}`}
-                                    >
-                                      {totalUsed}
-                                    </span>
-                                    <span
-                                      className={`text-[13px] font-bold text-right ${totalSched > 0 ? "text-violet-600" : "text-muted-foreground"}`}
-                                    >
-                                      {totalSched}
-                                    </span>
-                                    <span
-                                      className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? "text-foreground" : "text-muted-foreground"}`}
-                                    >
-                                      {isDeferred
-                                        ? totalRemaining
-                                            .toFixed(2)
-                                            .replace(/\.00$/, "")
-                                            .replace(/(\.\d)0$/, "$1")
-                                        : totalRemaining}
-                                    </span>
-                                    <span
-                                      className={`text-[13px] font-bold text-right ${totalRemaining > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
-                                    >
-                                      {isDeferred
-                                        ? totalRemaining
-                                            .toFixed(2)
-                                            .replace(/\.00$/, "")
-                                            .replace(/(\.\d)0$/, "$1")
-                                        : totalRemaining}
-                                    </span>
-                                    <div className="text-right">
-                                      {Number(cp.totalDiscount) > 0 ? (
-                                        <>
-                                          <span className="text-[11px] text-muted-foreground line-through block">
-                                            ${totalServicePrice.toFixed(2)}
-                                          </span>
-                                          <span className="text-[13px] font-bold text-emerald-600">
-                                            $
-                                            {(
-                                              totalServicePrice -
-                                              Number(cp.totalDiscount)
-                                            ).toFixed(2)}
-                                          </span>
-                                        </>
-                                      ) : (
-                                        <span className="text-[13px] font-bold text-foreground">
-                                          ${totalServicePrice.toFixed(2)}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </>
+<></>
                               )}
                             </div>
                           </div>
