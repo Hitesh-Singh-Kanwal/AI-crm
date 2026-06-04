@@ -49,6 +49,8 @@ const DAY_LEFT_RAIL_WIDTH = 86;
 const TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX = 60;
 /** Vertical gap when stacking overlapping bookings (day view + FullCalendar week). */
 const TIMED_EVENT_CARD_STACK_GAP_PX = 2;
+/** Week view: cards shown before "+N more" for same instructor + same time range. */
+const WEEK_SAME_SLOT_MAX_VISIBLE = 1;
 const BOOKING_CARD_SHELL_CLASS =
   "booking-card-shell h-full w-full min-h-0 min-w-0 overflow-hidden rounded-[5px] flex flex-col box-border";
 
@@ -1142,7 +1144,7 @@ function hideEventTooltip() {
 }
 
 /** Timed event card: title/customer, teacher, time, sessions, Paid/Unpaid, group student count. */
-function AppointmentTimedEventRows({ event }) {
+function AppointmentTimedEventRows({ event, compact = false }) {
   const ep = event.extendedProps || {};
   const {
     tutorName,
@@ -1226,7 +1228,9 @@ function AppointmentTimedEventRows({ event }) {
           {timeRange && durationLabel ? ` (${durationLabel})` : durationLabel}
         </div>
       )}
-      <div className="flex items-center gap-1 flex-wrap shrink-0 mt-auto min-w-0 pt-px">
+      <div
+        className={`flex items-center gap-1 shrink-0 mt-auto min-w-0 pt-px ${compact ? "flex-nowrap overflow-hidden pr-[54px]" : "flex-wrap"}`}
+      >
         <PaymentStatusBadge collected={paymentCollected} />
         {isGroupClass && (
           <span className="shrink-0 text-[8px] font-semibold text-foreground/80 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
@@ -1238,12 +1242,12 @@ function AppointmentTimedEventRows({ event }) {
             {Number.isInteger(sessionsPaidFor) ? sessionsPaidFor : +sessionsPaidFor.toFixed(2)} Paid
           </span>
         )}
-        {!isGroupClass && sessionsLabel && (
+        {!isGroupClass && sessionsLabel && !compact && (
           <span className="shrink-0 text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
             {sessionsLabel} left
           </span>
         )}
-        <TypeBadge type={eventType} />
+        {!compact && <TypeBadge type={eventType} />}
       </div>
     </div>
   );
@@ -1338,6 +1342,259 @@ function layoutOverlappingEvents(events) {
   });
 
   return laidOut.map((event) => ({ ...event, totalLanes: maxLanes }));
+}
+
+function getEventStartMinsSinceMidnight(event) {
+  const s = new Date(event.start);
+  return s.getHours() * 60 + s.getMinutes();
+}
+
+/** Week grid slot by start time (e.g. all 9:00 AM sessions share one slot). */
+function getEventTimeSlotKey(event) {
+  return String(getEventStartMinsSinceMidnight(event));
+}
+
+function computeGridTopForStartMins(
+  startMins,
+  { gridPadTop, dayStartMins, gridStartMins, customSlotMins, slotRowHeightPx },
+) {
+  const displayStartMins = Math.max(startMins, gridStartMins);
+  return (
+    gridPadTop +
+    ((displayStartMins - dayStartMins) / customSlotMins) * slotRowHeightPx
+  );
+}
+
+/**
+ * Week day column: same start-time slot (e.g. 9:00) → 1 card + "+N more" (all instructors).
+ * Different start times stay separate on the grid.
+ */
+function layoutWeekDayTimedEvents(events, gridLayout) {
+  const cardH = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
+  const gap = TIMED_EVENT_CARD_STACK_GAP_PX;
+
+  const buckets = new Map();
+  for (const event of events) {
+    const bucketKey = getEventTimeSlotKey(event);
+    if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+    buckets.get(bucketKey).push(event);
+  }
+
+  const units = Array.from(buckets.entries())
+    .map(([bucketKey, bucketEvents]) => {
+      const sorted = [...bucketEvents].sort(
+        (a, b) =>
+          new Date(a.start) - new Date(b.start) ||
+          String(a.id).localeCompare(String(b.id)),
+      );
+      return {
+        bucketKey,
+        events: sorted,
+        startMins: getEventStartMinsSinceMidnight(sorted[0]),
+        collapse: sorted.length > 1,
+      };
+    })
+    .sort((a, b) => a.startMins - b.startMins);
+
+  const visible = [];
+
+  units.forEach((unit) => {
+    const anchorTop = computeGridTopForStartMins(unit.startMins, gridLayout);
+
+    if (!unit.collapse) {
+      visible.push({ ...unit.events[0], top: anchorTop });
+      return;
+    }
+
+    const sortedCluster = [...unit.events].sort(
+      (a, b) =>
+        new Date(a.start) - new Date(b.start) ||
+        String(a.id).localeCompare(String(b.id)),
+    );
+    const show = sortedCluster.slice(0, WEEK_SAME_SLOT_MAX_VISIBLE);
+    const hidden = sortedCluster.slice(WEEK_SAME_SLOT_MAX_VISIBLE);
+
+    show.forEach((event, lane) => {
+      const item = { ...event, top: anchorTop + lane * (cardH + gap) };
+      if (lane === 0 && hidden.length > 0) {
+        item.slotOverflow = {
+          count: hidden.length,
+          allEvents: sortedCluster,
+          bucketKey: unit.bucketKey,
+        };
+      }
+      visible.push(item);
+    });
+  });
+
+  return { visible };
+}
+
+function TimedCalendarEventCard({
+  event,
+  top,
+  onEventClick,
+  slotOverflow,
+  onSlotMoreClick,
+}) {
+  const accentColor = event.extendedProps?.color || "var(--studio-primary)";
+  const effectiveStatus = event.extendedProps?.effectiveStatus;
+  const isCancelledEvent =
+    effectiveStatus === "cancelled_no_charge" ||
+    effectiveStatus === "cancelled_charged";
+  const isCompletedEvent = effectiveStatus === "completed";
+  const height = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
+
+  return (
+    <div
+      data-event="true"
+      data-week-event-card="true"
+      onClick={(e) => {
+        if (e.target.closest("[data-slot-more]")) return;
+        e.stopPropagation();
+        onEventClick?.(event.extendedProps?.raw);
+      }}
+      className={`absolute cursor-pointer transition-all duration-150 group/event ${BOOKING_CARD_SHELL_CLASS} ${
+        isCancelledEvent ? "opacity-50" : ""
+      } ${isCompletedEvent ? "opacity-80" : ""}`}
+      style={{
+        top,
+        height,
+        maxHeight: height,
+        minHeight: height,
+        left: "2px",
+        width: "calc(100% - 4px)",
+        borderLeft: `3px solid ${accentColor}`,
+        backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
+        boxShadow: "0 1px 3px hsl(var(--foreground)/0.06)",
+        zIndex: 10,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow = `0 4px 12px ${accentColor}40`;
+        e.currentTarget.style.zIndex = "20";
+        e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 38%, hsl(var(--card)))`;
+        e.currentTarget.style.transform = "scaleX(1.01)";
+        showEventTooltip(e, event.extendedProps || {});
+      }}
+      onMouseMove={(e) => positionTooltip(e)}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.boxShadow = "0 1px 3px hsl(var(--foreground)/0.06)";
+        e.currentTarget.style.zIndex = "10";
+        e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`;
+        e.currentTarget.style.transform = "scaleX(1)";
+        hideEventTooltip();
+      }}
+    >
+      {isCompletedEvent && (
+        <span
+          className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shrink-0"
+          title="Completed"
+        >
+          <svg
+            viewBox="0 0 10 10"
+            className="h-2 w-2 text-white"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="1.5,5 4,7.5 8.5,2.5" />
+          </svg>
+        </span>
+      )}
+      {slotOverflow ? (
+        <button
+          type="button"
+          data-slot-more="true"
+          title={`View all ${slotOverflow.allEvents?.length ?? slotOverflow.count + 1} sessions at this time`}
+          onClick={(e) => {
+            e.stopPropagation();
+            hideEventTooltip();
+            const cardEl = e.currentTarget.closest("[data-week-event-card]");
+            onSlotMoreClick?.(e, slotOverflow, cardEl);
+          }}
+          onMouseEnter={(e) => e.stopPropagation()}
+          className="calendar-more-link absolute bottom-0.5 right-0.5 z-20 shrink-0 max-w-[calc(100%-8px)]"
+        >
+          +{slotOverflow.count} more
+        </button>
+      ) : null}
+      <div className="h-full min-h-0 flex flex-col overflow-hidden px-1.5 py-0.5 gap-[1px] box-border">
+        <AppointmentTimedEventRows event={event} compact={Boolean(slotOverflow)} />
+      </div>
+    </div>
+  );
+}
+
+/** Place overflow popover to the right of the anchor card; flip left if near viewport edge. */
+function computeWeekOverflowPopoverStyle(anchor) {
+  const gap = 6;
+  const width = anchor.width;
+  let left = anchor.right + gap;
+  let top = anchor.top;
+
+  if (typeof window !== "undefined") {
+    if (left + width > window.innerWidth - 8) {
+      left = Math.max(8, anchor.left - width - gap);
+    }
+    const maxTop = window.innerHeight - 120;
+    if (top > maxTop) top = Math.max(8, maxTop);
+  }
+
+  return { top, left, width };
+}
+
+function TimedEventsOverflowPopover({ events, style, onClose, onEventClick }) {
+  const ref = useRef(null);
+  useCloseOnClickOutside(true, onClose, ref);
+  useCloseOnOuterScroll(true, onClose, ref);
+
+  return (
+    <div
+      ref={ref}
+      className="fixed z-[100] max-h-[min(320px,50vh)] overflow-y-auto rounded-lg border border-border bg-popover py-1 px-0 shadow-xl box-border"
+      style={style}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {events.map((event) => {
+        const accentColor = event.extendedProps?.color || "var(--studio-primary)";
+        const effectiveStatus = event.extendedProps?.effectiveStatus;
+        const isCancelledEvent =
+          effectiveStatus === "cancelled_no_charge" ||
+          effectiveStatus === "cancelled_charged";
+        const isCompletedEvent = effectiveStatus === "completed";
+        return (
+          <button
+            key={event.id}
+            type="button"
+            data-event="true"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEventClick?.(event.extendedProps?.raw);
+              onClose();
+            }}
+            className={`w-full text-left mb-1 last:mb-0 cursor-pointer ${BOOKING_CARD_SHELL_CLASS} ${
+              isCancelledEvent ? "opacity-50" : ""
+            } ${isCompletedEvent ? "opacity-80" : ""}`}
+            style={{
+              height: TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX,
+              minHeight: TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX,
+              maxHeight: TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX,
+              width: "100%",
+              borderLeft: `3px solid ${accentColor}`,
+              backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
+              boxShadow: "0 1px 3px hsl(var(--foreground)/0.06)",
+            }}
+          >
+            <div className="h-full min-h-0 flex flex-col overflow-hidden px-1.5 py-0.5 gap-[1px] box-border">
+              <AppointmentTimedEventRows event={event} />
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 const UNASSIGNED_KEY = "__unassigned__";
@@ -1761,16 +2018,34 @@ function TutorWeekCalendar({
     [events, weekStart, gridStartMins, gridEndMins],
   );
 
+  const timedGridLayout = useMemo(
+    () => ({
+      gridPadTop,
+      dayStartMins: gridStartMins,
+      gridStartMins,
+      customSlotMins,
+      slotRowHeightPx,
+    }),
+    [gridPadTop, gridStartMins, customSlotMins, slotRowHeightPx],
+  );
+
   const byDayTimed = useMemo(() => {
     const map = {};
     weekDays.forEach((day) => {
       const key = formatLocalDateKey(day);
-      map[key] = layoutOverlappingEvents(
+      map[key] = layoutWeekDayTimedEvents(
         visibleTimedEvents.filter((event) => isSameDate(new Date(event.start), day)),
+        timedGridLayout,
       );
     });
     return map;
-  }, [visibleTimedEvents, weekDays]);
+  }, [visibleTimedEvents, weekDays, timedGridLayout]);
+
+  const [overflowPopover, setOverflowPopover] = useState(null);
+
+  useEffect(() => {
+    setOverflowPopover(null);
+  }, [focusDate, events]);
 
   const eventCountByDay = useMemo(() => {
     const map = {};
@@ -1920,83 +2195,32 @@ function TutorWeekCalendar({
                 );
               })}
 
-              {(byDayTimed[key] || []).map((event) => {
-                const s = new Date(event.start);
-                const startMins = s.getHours() * 60 + s.getMinutes();
-                const displayStartMins = Math.max(startMins, gridStartMins);
-
-                const height = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
-                const stackOffset =
-                  (event.lane || 0) * (height + TIMED_EVENT_CARD_STACK_GAP_PX);
-                const top =
-                  gridPadTop +
-                  ((displayStartMins - dayStartMins) / customSlotMins) *
-                    slotRowHeightPx +
-                  stackOffset;
-
-                const accentColor =
-                  event.extendedProps?.color || "var(--studio-primary)";
-                const effectiveStatus = event.extendedProps?.effectiveStatus;
-                const isCancelledEvent =
-                  effectiveStatus === "cancelled_no_charge" ||
-                  effectiveStatus === "cancelled_charged";
-                const isCompletedEvent = effectiveStatus === "completed";
-
-                return (
-                  <div
-                    key={event.id}
-                    data-event="true"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEventClick?.(event.extendedProps?.raw);
-                    }}
-                    className={`absolute cursor-pointer transition-all duration-150 group/event ${BOOKING_CARD_SHELL_CLASS} ${
-                      isCancelledEvent ? "opacity-50" : ""
-                    } ${isCompletedEvent ? "opacity-80" : ""}`}
-                    style={{
-                      top,
-                      height,
-                      maxHeight: height,
-                      minHeight: height,
-                      left: "2px",
-                      width: "calc(100% - 4px)",
-                      borderLeft: `3px solid ${accentColor}`,
-                      backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
-                      boxShadow: "0 1px 3px hsl(var(--foreground)/0.06)",
-                      zIndex: 10,
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow = `0 4px 12px ${accentColor}40`;
-                      e.currentTarget.style.zIndex = "20";
-                      e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 38%, hsl(var(--card)))`;
-                      e.currentTarget.style.transform = "scaleX(1.01)";
-                      showEventTooltip(e, event.extendedProps || {});
-                    }}
-                    onMouseMove={(e) => positionTooltip(e)}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.boxShadow = "0 1px 3px hsl(var(--foreground)/0.06)";
-                      e.currentTarget.style.zIndex = "10";
-                      e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`;
-                      e.currentTarget.style.transform = "scaleX(1)";
-                      hideEventTooltip();
-                    }}
-                  >
-                    {isCompletedEvent && (
-                      <span
-                        className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shrink-0"
-                        title="Completed"
-                      >
-                        <svg viewBox="0 0 10 10" className="h-2 w-2 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="1.5,5 4,7.5 8.5,2.5" />
-                        </svg>
-                      </span>
-                    )}
-                    <div className="h-full min-h-0 flex flex-col overflow-hidden px-1.5 py-0.5 gap-[1px] box-border">
-                      <AppointmentTimedEventRows event={event} />
-                    </div>
-                  </div>
-                );
-              })}
+              {(byDayTimed[key]?.visible || []).map((event) => (
+                <TimedCalendarEventCard
+                  key={event.id}
+                  event={event}
+                  top={event.top}
+                  onEventClick={onEventClick}
+                  slotOverflow={event.slotOverflow}
+                  onSlotMoreClick={(e, overflow, cardEl) => {
+                    const moreKey = `${key}-${overflow.bucketKey}`;
+                    const anchor = (
+                      cardEl instanceof HTMLElement
+                        ? cardEl
+                        : e.currentTarget
+                    ).getBoundingClientRect();
+                    setOverflowPopover((prev) =>
+                      prev?.key === moreKey
+                        ? null
+                        : {
+                            key: moreKey,
+                            events: overflow.allEvents,
+                            style: computeWeekOverflowPopoverStyle(anchor),
+                          },
+                    );
+                  }}
+                />
+              ))}
             </div>
           );
         })}
@@ -2014,6 +2238,14 @@ function TutorWeekCalendar({
           </div>
         )}
       </div>
+      {overflowPopover && (
+        <TimedEventsOverflowPopover
+          events={overflowPopover.events}
+          style={overflowPopover.style}
+          onClose={() => setOverflowPopover(null)}
+          onEventClick={onEventClick}
+        />
+      )}
     </div>
   );
 }
