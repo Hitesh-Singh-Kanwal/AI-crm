@@ -59,6 +59,13 @@ export default function WorkflowDiagram({ workflow, title = 'Workflow Diagram', 
         <div className="text-right">
           <div className="text-[12px] font-semibold text-foreground">{workflow?.name || '—'}</div>
           <div className="text-[11px] text-muted-foreground">Event: {workflow?.event || '—'}</div>
+          {(workflow?.formID || workflow?.reason) && (
+            <div className="text-[11px] text-muted-foreground">
+              {workflow?.formID ? 'Form set' : ''}
+              {workflow?.formID && workflow?.reason ? ' · ' : ''}
+              {workflow?.reason ? `Reason: ${workflow.reason}` : ''}
+            </div>
+          )}
         </div>
       </div>
 

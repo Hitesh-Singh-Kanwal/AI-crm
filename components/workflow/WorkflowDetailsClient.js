@@ -15,6 +15,8 @@ import {
   normalizeWorkflowStepFromApi,
 } from '@/lib/workflow-normalize'
 import WorkflowStepFields from '@/components/workflow/WorkflowStepFields'
+import WorkflowMetaFields from '@/components/workflow/WorkflowMetaFields'
+import { useWorkflowOptions } from '@/lib/useWorkflowOptions'
 import ConfirmDeleteWorkflowDialog from '@/components/workflow/ConfirmDeleteWorkflowDialog'
 
 const EVENT_OPTIONS = ['non', 'form_submission', 'lead_updated', 'lead_moved_stage', 'custom_event']
@@ -44,6 +46,22 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
+  const { forms, reasons, formsLoading, reasonsLoading, optionsError } = useWorkflowOptions(true)
+
+  const linkedFormName = useMemo(() => {
+    const id = workflow?.formID
+    if (!id) return ''
+    const match = forms.find((f) => String(f?._id || f?.id) === String(id))
+    return match?.name || ''
+  }, [workflow?.formID, forms])
+
+  const linkedReasonName = useMemo(() => {
+    const code = workflow?.reason
+    if (!code) return ''
+    const match = reasons.find((r) => (r?.reasonCode || r?.name) === code)
+    return match?.name || code
+  }, [workflow?.reason, reasons])
+
   const load = async () => {
     if (!id) return
     setLoading(true)
@@ -69,6 +87,8 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
       name: wf?.name ?? '',
       description: wf?.description ?? '',
       event: wf?.event ?? 'non',
+      formID: wf?.formID ?? '',
+      reason: wf?.reason ?? '',
       steps: Array.isArray(wf?.steps) ? wf.steps.map((s) => ({ ...s })) : [createEmptyWorkflowStep(1)],
     }
     if (!Array.isArray(base.steps) || base.steps.length === 0) base.steps = [createEmptyWorkflowStep(1)]
@@ -161,6 +181,13 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
                   <h2 className="truncate text-[20px] font-bold text-foreground">{workflow?.name || '—'}</h2>
                   <p className="mt-1 text-[12px] text-muted-foreground">Event: {workflow?.event || '—'}</p>
                   <p className="mt-2 text-[13px] text-muted-foreground">{workflow?.description || '—'}</p>
+                  {(linkedFormName || linkedReasonName) && (
+                    <p className="mt-2 text-[12px] text-muted-foreground">
+                      {linkedFormName ? `Form: ${linkedFormName}` : ''}
+                      {linkedFormName && linkedReasonName ? ' · ' : ''}
+                      {linkedReasonName ? `Reason: ${linkedReasonName}` : ''}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -235,6 +262,17 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
                     ))}
                   </select>
                 </div>
+                <WorkflowMetaFields
+                  compact
+                  formID={draft.formID ?? ''}
+                  reason={draft.reason ?? ''}
+                  forms={forms}
+                  reasons={reasons}
+                  formsLoading={formsLoading}
+                  reasonsLoading={reasonsLoading}
+                  onFormChange={(value) => setDraft((p) => ({ ...p, formID: value }))}
+                  onReasonChange={(value) => setDraft((p) => ({ ...p, reason: value }))}
+                />
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-[13px] font-medium text-foreground">Description</label>
                   <textarea
@@ -245,6 +283,12 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
                   />
                 </div>
               </div>
+
+              {optionsError && (
+                <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-800 dark:text-amber-200">
+                  {optionsError}
+                </div>
+              )}
 
               <div className="mt-4 flex items-center justify-between gap-3">
                 <div>

@@ -14,6 +14,8 @@ import {
   normalizeWorkflowFromApi,
 } from '@/lib/workflow-normalize'
 import WorkflowStepFields from '@/components/workflow/WorkflowStepFields'
+import WorkflowMetaFields from '@/components/workflow/WorkflowMetaFields'
+import { useWorkflowOptions } from '@/lib/useWorkflowOptions'
 
 const EVENT_OPTIONS = ['non', 'form_submission', 'lead_updated', 'lead_moved_stage', 'custom_event']
 
@@ -41,6 +43,8 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [event, setEvent] = useState('')
+  const [formID, setFormID] = useState('')
+  const [reason, setReason] = useState('')
   const [steps, setSteps] = useState([createEmptyWorkflowStep(1)])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -50,6 +54,9 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
   const [editing, setEditing] = useState(null) // workflow | null
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState('')
+
+  const needsOptions = view === 'create' || Boolean(editing)
+  const { forms, reasons, formsLoading, reasonsLoading, optionsError } = useWorkflowOptions(needsOptions)
 
   const loadWorkflows = async () => {
     setLoadingList(true)
@@ -96,6 +103,8 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
       name: normalized.name ?? '',
       description: normalized.description ?? '',
       event: normalized.event ?? '',
+      formID: normalized.formID ?? '',
+      reason: normalized.reason ?? '',
       steps:
         normalized.steps.length > 0
           ? normalized.steps.map((s) => ({ ...s }))
@@ -161,6 +170,8 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
       name: name.trim(),
       description,
       event: event.trim(),
+      formID,
+      reason,
       steps: steps.map((s) => ({ ...s, day: Number(s.day ?? 0) })),
     })
 
@@ -171,6 +182,8 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
       setName('')
       setDescription('')
       setEvent('')
+      setFormID('')
+      setReason('')
       setSteps([createEmptyWorkflowStep(1)])
       setView('list')
       await loadWorkflows()
@@ -305,6 +318,16 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                     ))}
                   </select>
                 </div>
+                <WorkflowMetaFields
+                  formID={formID}
+                  reason={reason}
+                  forms={forms}
+                  reasons={reasons}
+                  formsLoading={formsLoading}
+                  reasonsLoading={reasonsLoading}
+                  onFormChange={setFormID}
+                  onReasonChange={setReason}
+                />
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-[16px] font-semibold text-foreground">Description</label>
                   <textarea
@@ -316,6 +339,12 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                   />
                 </div>
               </div>
+
+              {optionsError && (
+                <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-800 dark:text-amber-200">
+                  {optionsError}
+                </div>
+              )}
 
               <div className="mt-6 flex items-center justify-between gap-3">
                 <div>
@@ -457,6 +486,17 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                     ))}
                   </select>
                 </div>
+                <WorkflowMetaFields
+                  compact
+                  formID={editing.formID ?? ''}
+                  reason={editing.reason ?? ''}
+                  forms={forms}
+                  reasons={reasons}
+                  formsLoading={formsLoading}
+                  reasonsLoading={reasonsLoading}
+                  onFormChange={(value) => setEditing((p) => ({ ...p, formID: value }))}
+                  onReasonChange={(value) => setEditing((p) => ({ ...p, reason: value }))}
+                />
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-[13px] font-medium text-foreground">Description</label>
                   <textarea
@@ -467,6 +507,12 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                   />
                 </div>
               </div>
+
+              {optionsError && (
+                <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-800 dark:text-amber-200">
+                  {optionsError}
+                </div>
+              )}
 
               <div className="mt-4 flex items-center justify-between gap-3">
                 <div>
