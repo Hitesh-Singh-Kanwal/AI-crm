@@ -2691,7 +2691,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
             className="h-8 text-[12px]"
             onClick={openCreateAndAddFlow}
           >
-            <Plus className="h-3.5 w-3.5 mr-1.5" /> New Enrollment
+            <Plus className="h-3.5 w-3.5 mr-1.5" /> Enroll
           </Button>
         )}
       </div>
