@@ -825,7 +825,7 @@ export default function PackageEditPage() {
                       <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Date & Time</th>
                       <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Title</th>
                       <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Students</th>
-                      <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Instructor</th>
+                      <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Teachers</th>
                       <th className="py-2.5 px-4 text-left text-xs font-medium text-muted-foreground">Status</th>
                     </tr>
                   </thead>

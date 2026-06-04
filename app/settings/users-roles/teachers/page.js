@@ -310,7 +310,7 @@ export default function TeachersPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-foreground">Teachers</h1>
-            <p className="mt-0.5 text-[13px] text-muted-foreground">Manage your studio's instructors</p>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">Manage your studio's teachers</p>
           </div>
           <Button onClick={() => { setEditingTeacher(null); setDialogOpen(true) }}>
             <Plus className="mr-1.5 h-4 w-4" />
