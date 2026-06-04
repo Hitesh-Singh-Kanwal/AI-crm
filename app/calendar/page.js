@@ -1734,7 +1734,7 @@ function TutorDayCalendar({
 
   const MIN_COL_WIDTH = 200;
   const MAX_FILL_COLS = 3;
-  const COL_FIXED_WIDTH = 280;
+  const COL_FIXED_WIDTH = 200;
   const useFixedCols = effectiveTutors.length > MAX_FILL_COLS;
   const colClass = useFixedCols ? "flex-none" : "flex-1";
   const colWidth = useFixedCols ? COL_FIXED_WIDTH : undefined;
