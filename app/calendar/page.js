@@ -1107,7 +1107,12 @@ function showEventTooltip(e, props) {
     ${divider}
     ${packageName ? section("Package", packageName) : ""}
     ${packageExpiry ? section("Expires", packageExpiry) : ""}
-    ${sessionsRemaining != null ? section("Sessions left", `<span style="color:${sessionsRemaining <= 1 ? "#ef4444" : "#22c55e"}">${sessionsRemaining}${totalSessions != null ? " / " + totalSessions : ""}</span>`) : ""}
+    ${sessionsRemaining != null && totalSessions != null ? (() => {
+      const sessionsPaidForTooltip = props.sessionsPaidFor ?? totalSessions;
+      const sessionsUsedTooltip = totalSessions - sessionsRemaining;
+      const schedulableTooltip = Math.max(0, Math.floor(sessionsPaidForTooltip) - sessionsUsedTooltip);
+      return section("Credits", `<span style="color:${schedulableTooltip <= 1 ? "#ef4444" : "#22c55e"}">${schedulableTooltip} schedulable</span> <span style="opacity:.6">(${sessionsRemaining}/${totalSessions} remaining)</span>`);
+    })() : ""}
     ${divider}
     <div style="display:flex;align-items:center;gap:6px;margin:2px 0">
       <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${statusColor};flex-shrink:0"></span>
@@ -1237,12 +1242,17 @@ function AppointmentTimedEventRows({ event, compact = false }) {
             {studentCount} student{studentCount === 1 ? "" : "s"}
           </span>
         )}
-        {!isGroupClass && sessionsPaidFor != null && (
-          <span className="shrink-0 text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
-            {Number.isInteger(sessionsPaidFor) ? sessionsPaidFor : +sessionsPaidFor.toFixed(2)} Paid
-          </span>
-        )}
-        {!isGroupClass && sessionsLabel && !compact && (
+        {!isGroupClass && sessionsPaidFor != null && sessionsRemaining != null && totalSessions != null && (() => {
+          const sessionsUsed = totalSessions - sessionsRemaining;
+          const creditLeft = Math.max(0, sessionsPaidFor - sessionsUsed);
+          const display = Number.isInteger(creditLeft) ? creditLeft : +creditLeft.toFixed(1);
+          return (
+            <span className="shrink-0 text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
+              {display} Paid
+            </span>
+          );
+        })()}
+        {!isGroupClass && sessionsLabel && (
           <span className="shrink-0 text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
             {sessionsLabel} left
           </span>
@@ -1639,6 +1649,7 @@ function TutorDayCalendar({
   allEvents,
   onEventClick,
   onSlotClick,
+  onColumnReorder,
   customSlotMins = DEFAULT_SLOT_MINS,
   slotAlignMins = 0,
 }) {
@@ -1716,13 +1727,33 @@ function TutorDayCalendar({
 
   const focusDateLabel = focusDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
+  const headerScrollRef = useRef(null);
+  const bodyScrollRef = useRef(null);
+  const draggedColRef = useRef(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+
+  const MIN_COL_WIDTH = 200;
+  const MAX_FILL_COLS = 3;
+  const COL_FIXED_WIDTH = 280;
+  const useFixedCols = effectiveTutors.length > MAX_FILL_COLS;
+  const colClass = useFixedCols ? "flex-none" : "flex-1";
+  const colWidth = useFixedCols ? COL_FIXED_WIDTH : undefined;
+
+  function syncHeaderScroll() {
+    if (headerScrollRef.current && bodyScrollRef.current) {
+      headerScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
+    }
+  }
+
   return (
-    <div className="flex flex-col rounded-[12px] border border-border bg-background shadow-sm">
+    <div className="flex flex-col rounded-[12px] border border-border bg-background shadow-sm overflow-hidden">
       <div className="sticky top-0 z-40 border-b border-border bg-background/95 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
         <div className="flex shrink-0 border-b border-border bg-muted/30">
-          <div className="w-[86px] shrink-0 border-r border-border flex items-end pb-2 px-2">
+          <div className="w-[86px] shrink-0 border-r border-border flex items-end pb-2 px-2 bg-muted/30 z-10">
             <span className="text-[10px] font-medium text-muted-foreground leading-tight">{focusDateLabel}</span>
           </div>
+          <div ref={headerScrollRef} className="flex-1 overflow-x-hidden">
+            <div className="flex" style={{ minWidth: effectiveTutors.length * MIN_COL_WIDTH }}>
           {effectiveTutors.map((tutor, idx) => {
             const todayCount =
               dayTimedEvents.filter(
@@ -1732,12 +1763,38 @@ function TutorDayCalendar({
             return (
               <div
                 key={tutor.key}
-                className="flex-1 px-3 py-2.5 text-center"
+                className={`px-3 py-2.5 text-center ${colClass}`}
                 style={{
+                  minWidth: MIN_COL_WIDTH,
+                  ...(colWidth && { width: colWidth }),
                   borderRight:
                     idx < effectiveTutors.length - 1
                       ? "1px solid hsl(var(--border))"
                       : "none",
+                  backgroundColor: dragOverCol === tutor.key ? `color-mix(in srgb, ${tutor.color} 18%, hsl(var(--muted)))` : undefined,
+                  transition: "background-color 0.15s",
+                  cursor: "grab",
+                }}
+                draggable
+                onDragStart={(e) => { draggedColRef.current = tutor.key; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", tutor.key); }}
+                onDragEnd={() => { draggedColRef.current = null; setDragOverCol(null); }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                onDragEnter={(e) => { e.preventDefault(); if (draggedColRef.current && draggedColRef.current !== tutor.key) setDragOverCol(tutor.key); }}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverCol(null); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverCol(null);
+                  const fromKey = draggedColRef.current || e.dataTransfer.getData("text/plain");
+                  draggedColRef.current = null;
+                  if (!fromKey || fromKey === tutor.key) return;
+                  const keys = effectiveTutors.map((t) => t.key);
+                  const fromIdx = keys.indexOf(fromKey);
+                  const toIdx = keys.indexOf(tutor.key);
+                  if (fromIdx === -1 || toIdx === -1) return;
+                  const reordered = [...keys];
+                  reordered.splice(fromIdx, 1);
+                  reordered.splice(toIdx, 0, fromKey);
+                  onColumnReorder?.(reordered);
                 }}
               >
                 <div className="flex flex-col items-center min-w-0">
@@ -1764,6 +1821,8 @@ function TutorDayCalendar({
               </div>
             );
           })}
+            </div>
+          </div>
         </div>
 
         {/* All-day row (per-tutor all-day events) — hidden for now; uncomment to restore
@@ -1804,33 +1863,44 @@ function TutorDayCalendar({
       </div>
 
       <div className="relative flex">
-          <div
-            className="relative w-[86px] shrink-0 border-r border-border"
-            style={{ height: paddedDayHeight }}
-          >
-            {Array.from({ length: slotsCount }).map((_, idx) => {
-              const currentMins = dayStartMins + idx * customSlotMins;
-              const label = formatDayAxisSlotLabel(currentMins);
+        <div
+          className="relative w-[86px] shrink-0 border-r border-border bg-background z-10"
+          style={{ height: paddedDayHeight }}
+        >
+          {Array.from({ length: slotsCount }).map((_, idx) => {
+            const currentMins = dayStartMins + idx * customSlotMins;
+            const label = formatDayAxisSlotLabel(currentMins);
 
-              return (
-                <div
-                  key={idx}
-                  className="absolute left-0 right-0"
-                  style={{ top: gridPadTop + idx * slotRowHeightPx }}
-                >
-                  <div className="-translate-y-1/2 px-2 text-[10px] font-medium text-muted-foreground whitespace-nowrap">
-                    {label}
-                  </div>
+            return (
+              <div
+                key={idx}
+                className="absolute left-0 right-0"
+                style={{ top: gridPadTop + idx * slotRowHeightPx }}
+              >
+                <div className="-translate-y-1/2 px-2 text-[10px] font-medium text-muted-foreground whitespace-nowrap">
+                  {label}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
+        </div>
 
+        <div
+          ref={bodyScrollRef}
+          className="flex-1 overflow-x-auto"
+          onScroll={syncHeaderScroll}
+        >
+          <div
+            className="relative flex"
+            style={{ minWidth: effectiveTutors.length * MIN_COL_WIDTH, height: paddedDayHeight }}
+          >
           {effectiveTutors.map((tutor, colIdx) => (
             <div
               key={`${tutor.key}-day-col`}
-              className="relative flex-1 group/col cursor-pointer overflow-hidden"
+              className={`relative group/col cursor-pointer overflow-hidden ${colClass}`}
               style={{
+                minWidth: MIN_COL_WIDTH,
+                ...(colWidth && { width: colWidth }),
                 height: paddedDayHeight,
                 borderRight:
                   colIdx < effectiveTutors.length - 1
@@ -1953,19 +2023,22 @@ function TutorDayCalendar({
             </div>
           ))}
 
-          {nowOffset !== null && (
-            <div
-              className="pointer-events-none absolute inset-x-0 z-30 flex items-center gap-1.5 pl-1.5 pr-2"
-              style={{ top: nowOffset }}
-            >
-              <div className="shrink-0 rounded bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground shadow-sm whitespace-nowrap">
-                {formatTime(now)}
-              </div>
-              <div className="h-px min-w-0 flex-1 bg-brand" />
-              <div className="h-2 w-2 shrink-0 rounded-full bg-brand" />
-            </div>
-          )}
+          </div>
         </div>
+
+        {nowOffset !== null && (
+          <div
+            className="pointer-events-none absolute inset-x-0 z-30 flex items-center gap-1.5 pl-1.5 pr-2"
+            style={{ top: nowOffset }}
+          >
+            <div className="shrink-0 rounded bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground shadow-sm whitespace-nowrap">
+              {formatTime(now)}
+            </div>
+            <div className="h-px min-w-0 flex-1 bg-brand" />
+            <div className="h-2 w-2 shrink-0 rounded-full bg-brand" />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -3077,6 +3150,13 @@ export default function CalendarPage() {
                       setSlotSelection({ date, time, instructorId });
                       setSelectedEvent(null);
                       setIsAppointmentPanelOpen(true);
+                    }}
+                    onColumnReorder={(orderedKeys) => {
+                      setInstructors((prev) => {
+                        const orderMap = new Map(orderedKeys.map((k, i) => [k, i]));
+                        return [...prev].sort((a, b) => (orderMap.get(a.key) ?? 999) - (orderMap.get(b.key) ?? 999));
+                      });
+                      api.patch("/api/teacher/reorder", { order: orderedKeys });
                     }}
                     customSlotMins={customSlotMins}
                     slotAlignMins={snappedGridStartMins}
