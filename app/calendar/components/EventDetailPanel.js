@@ -502,6 +502,7 @@ export default function EventDetailPanel({
   onUpdated,
   onDeleted,
   onRosterChanged,
+  onPaymentSuccess,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -701,6 +702,7 @@ export default function EventDetailPanel({
             customerName={selectedStudentName}
             onBack={() => { setSelectedStudentId(null); setSelectedStudentName(""); }}
             inline
+            onPaymentSuccess={onPaymentSuccess}
           />
         ) : (<>
         {isEditing ? (

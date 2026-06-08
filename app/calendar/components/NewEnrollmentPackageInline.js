@@ -103,17 +103,7 @@ function ServicePicker({ catalogServices, onSelect }) {
             />
           </div>
           <div className="max-h-48 overflow-y-auto py-1">
-            <button
-              type="button"
-              onClick={() => {
-                onSelect(null);
-                setOpen(false);
-                setQuery("");
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground hover:bg-muted/40 transition-colors italic"
-            >
-              + Blank service
-            </button>
+            {/* + Blank service button removed */}
             {filtered.map((s) => (
               <button
                 key={String(s._id)}

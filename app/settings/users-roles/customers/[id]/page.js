@@ -14,6 +14,7 @@ import {
   StickyNote,
   User,
   ChevronDown,
+  ArrowUpDown,
   X,
   CreditCard,
   RotateCcw,
@@ -301,9 +302,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
             const price = Number(svc.pricePerSession) || 0;
             const used = svc.sessionsUsed ?? 0;
             const sched = svc.sessionsScheduled ?? 0;
-            const remaining =
-              svc.sessionsRemaining ??
-              Math.max(0, (svc.sessionsTotal ?? 0) - used - sched);
+            const remaining = Math.max(0, (svc.sessionsTotal ?? 0) - used);
             usedCount += used;
             remainingCount += remaining;
             totalCount += svc.sessionsTotal ?? 0;
@@ -391,7 +390,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
         {[
           { label: "Member Since", value: formatDate(customer.createdAt) },
           {
-            label: `Used (${sessionStats.usedCount} sess)`,
+            label: `Completed (${sessionStats.usedCount} sess)`,
             value: `$${sessionStats.usedValue.toFixed(2)}`,
             accent: "text-blue-500",
           },
@@ -1072,6 +1071,9 @@ function PackagesTab({ customerID }) {
   // Cancel / pay / pay-installment
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const [extendTarget, setExtendTarget] = useState(null); // { _id, packageName, expiryDate }
+  const [extendDate, setExtendDate] = useState("");
+  const [extending, setExtending] = useState(false);
   const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null); // { plan, index }
   const toast = useToast();
@@ -1081,7 +1083,7 @@ function PackagesTab({ customerID }) {
     const [pkgRes, allRes, enrRes] = await Promise.all([
       api.get(`/api/customer-package/customer/${customerID}`),
       api.get("/api/package?limit=200&isActive=true"),
-      api.get(`/api/enrollment?customerID=${customerID}&status=active`),
+      api.get(`/api/enrollment?customerID=${customerID}`),
     ]);
     if (allRes.success) setAllPkgs(allRes.data || []);
     if (enrRes.success) setEnrollments(enrRes.data || []);
@@ -1304,6 +1306,19 @@ function PackagesTab({ customerID }) {
     setCancelling(false);
   }
 
+  async function handleExtend() {
+    if (!extendTarget || !extendDate) return;
+    setExtending(true);
+    const res = await api.put(`/api/enrollment/${extendTarget._id}/extend-expiry`, { expiryDate: extendDate });
+    if (res.success) {
+      toast.success("Expiry date extended.");
+      setExtendTarget(null);
+      setExtendDate("");
+      load();
+    } else toast.error(res.error || "Failed to extend expiry.");
+    setExtending(false);
+  }
+
   if (loading)
     return (
       <div className="flex items-center justify-center py-16">
@@ -1385,11 +1400,25 @@ function PackagesTab({ customerID }) {
                     >
                       {pkg.status}
                     </span>
+                    {pkg.status !== "cancelled" && pkg.expiryDate && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2.5 text-[11px] font-medium"
+                        onClick={() => {
+                          const d = pkg.expiryDate ? new Date(pkg.expiryDate).toISOString().slice(0, 10) : "";
+                          setExtendDate(d);
+                          setExtendTarget({ _id: enr._id, packageName: pkg.packageName });
+                        }}
+                      >
+                        Extend
+                      </Button>
+                    )}
                     {pkg.status === "active" && (
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
+                        className="h-7 px-2.5 text-[11px] font-medium border-destructive/40 text-destructive hover:bg-destructive/10"
                         onClick={() =>
                           setCancelTarget({
                             _id: enr._id,
@@ -1454,13 +1483,14 @@ function PackagesTab({ customerID }) {
                     <div className="space-y-2.5">
                       {services.map((svc, i) => {
                         const sessTotal = svc.sessionsTotal ?? 0;
-                        const sessUsed = svc.sessionsUsed ?? 0;
+                        const sessUsed = svc.sessionsCompleted ?? svc.sessionsUsed ?? 0;
                         const sessSched = svc.sessionsScheduled ?? 0;
-                        const sessRemaining =
-                          svc.sessionsRemaining ??
-                          Math.max(0, sessTotal - sessUsed);
-                        const svcTotal =
-                          sessTotal * (Number(svc.pricePerSession) || 0);
+                        const sessRemaining = Math.max(0, sessTotal - sessUsed - sessSched);
+                        const pps = Number(svc.pricePerSession) || 0;
+                        const effectivePps = sessTotal > 0 && svc.finalAmount > 0
+                          ? Number(svc.finalAmount) / sessTotal
+                          : pps;
+                        const svcTotal = sessTotal * pps;
                         return (
                           <div
                             key={i}
@@ -1493,7 +1523,7 @@ function PackagesTab({ customerID }) {
                               {[
                                 { label: "Total", value: sessTotal },
                                 {
-                                  label: "Used",
+                                  label: "Completed",
                                   value: sessUsed,
                                   cls: sessUsed > 0 ? "text-blue-600" : "",
                                 },
@@ -1743,6 +1773,46 @@ function PackagesTab({ customerID }) {
               onClick={handleCancel}
             >
               {cancelling ? "Cancelling…" : "Cancel Package"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Extend expiry */}
+      <Dialog
+        open={Boolean(extendTarget)}
+        onOpenChange={(v) => {
+          if (!v) { setExtendTarget(null); setExtendDate(""); }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Extend Package Expiry</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-muted-foreground mt-1">
+            Set a new expiry date for{" "}
+            <span className="font-semibold text-foreground">{extendTarget?.packageName}</span>.
+            If the new date is in the future the package will be reactivated.
+          </p>
+          <div className="mt-4">
+            <label className="text-[12px] font-medium text-foreground block mb-1">New Expiry Date</label>
+            <input
+              type="date"
+              value={extendDate}
+              onChange={(e) => setExtendDate(e.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={() => { setExtendTarget(null); setExtendDate(""); }}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={extending || !extendDate}
+              onClick={handleExtend}
+            >
+              {extending ? "Saving…" : "Extend Expiry"}
             </Button>
           </div>
         </DialogContent>
@@ -2305,6 +2375,9 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const [extendTarget, setExtendTarget] = useState(null);
+  const [extendDate, setExtendDate] = useState("");
+  const [extending, setExtending] = useState(false);
   const [payInstallTarget, setPayInstallTarget] = useState(null);
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null);
   const [expandedServices, setExpandedServices] = useState(new Set());
@@ -2614,6 +2687,19 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     setCancelling(false);
   }
 
+  async function handleEnrExtend() {
+    if (!extendTarget || !extendDate) return;
+    setExtending(true);
+    const res = await api.put(`/api/enrollment/${extendTarget._id}/extend-expiry`, { expiryDate: extendDate });
+    if (res.success) {
+      toast.success("Expiry date extended.");
+      setExtendTarget(null);
+      setExtendDate("");
+      load();
+    } else toast.error(res.error || "Failed to extend expiry.");
+    setExtending(false);
+  }
+
   if (loading)
     return (
       <div className="flex items-center justify-center py-16">
@@ -2810,11 +2896,24 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                         >
                           {cp.status}
                         </span>
+                        {cp.status !== "cancelled" && cp.expiryDate && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2.5 text-[11px] font-medium"
+                            onClick={() => {
+                              setExtendDate(new Date(cp.expiryDate).toISOString().slice(0, 10));
+                              setExtendTarget({ _id: enr._id, packageName: cp.packageName });
+                            }}
+                          >
+                            Extend
+                          </Button>
+                        )}
                         {cp.status === "active" && (
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
+                            className="h-7 px-2.5 text-[11px] font-medium border-destructive/40 text-destructive hover:bg-destructive/10"
                             onClick={() =>
                               setCancelTarget({
                                 enrollmentId: enr._id,
@@ -2895,12 +2994,13 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                         );
                         const rows = services.map((svc, i) => {
                           const sessTotal = svc.sessionsTotal ?? 0;
-                          const sessUsed = svc.sessionsUsed ?? 0;
+                          const sessUsed = svc.sessionsCompleted ?? svc.sessionsUsed ?? 0;
                           const sessSched = svc.sessionsScheduled ?? 0;
-                          const sessRemaining =
-                            svc.sessionsRemaining ??
-                            Math.max(0, sessTotal - sessUsed - sessSched);
+                          const sessRemaining = Math.max(0, sessTotal - sessUsed - sessSched);
                           const pps = Number(svc.pricePerSession) || 0;
+                          const effectivePps = sessTotal > 0 && svc.finalAmount > 0
+                            ? Number(svc.finalAmount) / sessTotal
+                            : pps;
                           const svcTotal = sessTotal * pps;
                           // For deferred billing, credit = paid amount ÷ price-per-session (decimal)
                           const svcCreditSessions = (() => {
@@ -2933,6 +3033,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                             svcCreditSessions,
                             svcCredit,
                             svcTotal,
+                            effectivePps,
                           };
                         });
                         return (
@@ -2955,7 +3056,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                 {[
                                   "Price/Sess",
                                   "Enrolled",
-                                  "Used",
+                                  "Completed",
                                   "Scheduled",
                                   "Remaining",
                                   "Credit Balance",
@@ -2981,6 +3082,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                   svcCreditSessions,
                                   svcCredit,
                                   svcTotal,
+                                  effectivePps,
                                 }) => {
                                   const expandKey = `${enr._id}-${i}`;
                                   const isExpanded =
@@ -3149,7 +3251,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                                     cls: "text-foreground",
                                                   },
                                                   {
-                                                    label: "Used",
+                                                    label: "Completed",
                                                     value: sessUsed,
                                                     cls: "text-blue-500",
                                                   },
@@ -3190,35 +3292,19 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                               <div className="space-y-2">
                                                 <div className="flex justify-between items-center gap-4">
                                                   <span className="text-[12px] text-muted-foreground">
-                                                    Used ({sessUsed} sess)
+                                                    Completed ({sessUsed} sess)
                                                   </span>
                                                   <span className="text-[12px] font-semibold text-blue-500">
                                                     $
-                                                    {(
-                                                      sessUsed *
-                                                      (svc.pricePerSession || 0)
-                                                    ).toFixed(2)}
+                                                    {(sessUsed * effectivePps).toFixed(2)}
                                                   </span>
                                                 </div>
                                                 <div className="flex justify-between items-center gap-4">
                                                   <span className="text-[12px] text-muted-foreground">
-                                                    Scheduled ({sessSched} sess)
-                                                  </span>
-                                                  <span className="text-[12px] font-semibold text-violet-500">
-                                                    $
-                                                    {(
-                                                      sessSched *
-                                                      (svc.pricePerSession || 0)
-                                                    ).toFixed(2)}
-                                                  </span>
-                                                </div>
-                                                <div className="flex justify-between items-center gap-4">
-                                                  <span className="text-[12px] text-muted-foreground">
-                                                    Remaining ({sessRemaining}{" "}
-                                                    sess)
+                                                    Remaining ({sessRemaining} sess)
                                                   </span>
                                                   <span className="text-[12px] font-semibold text-emerald-500">
-                                                    ${svcCredit.toFixed(2)}
+                                                    ${(sessRemaining * effectivePps).toFixed(2)}
                                                   </span>
                                                 </div>
                                               </div>
@@ -3238,6 +3324,20 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                           </div>
                         );
                       })()}
+
+                    {/* Flexible billing — payment due card */}
+                    {cp.billingType === "flexible" && enr.status === "active" && cp.paymentStatus !== "paid" && (
+                      <div className="mt-5 border-t border-border pt-5">
+                        <p className="text-[12px] font-bold text-foreground uppercase tracking-widest mb-3">
+                          Payment Due
+                        </p>
+                        <FlexiblePaymentDueCard
+                          enr={enr}
+                          customerID={customerID}
+                          onSuccess={load}
+                        />
+                      </div>
+                    )}
 
                     {/* Payment plan installments */}
                     {cp.billingType === "payment_plan" &&
@@ -3448,6 +3548,42 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
               onClick={handleEnrCancel}
             >
               {cancelling ? "Cancelling…" : "Cancel Package"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Extend expiry */}
+      <Dialog
+        open={Boolean(extendTarget)}
+        onOpenChange={(v) => {
+          if (!v) { setExtendTarget(null); setExtendDate(""); }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Extend Package Expiry</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-muted-foreground mt-1">
+            Set a new expiry date for{" "}
+            <span className="font-semibold text-foreground">{extendTarget?.packageName}</span>.
+            If the new date is in the future the package will be reactivated.
+          </p>
+          <div className="mt-4">
+            <label className="text-[12px] font-medium text-foreground block mb-1">New Expiry Date</label>
+            <input
+              type="date"
+              value={extendDate}
+              onChange={(e) => setExtendDate(e.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={() => { setExtendTarget(null); setExtendDate(""); }}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={extending || !extendDate} onClick={handleEnrExtend}>
+              {extending ? "Saving…" : "Extend Expiry"}
             </Button>
           </div>
         </DialogContent>
@@ -4244,28 +4380,15 @@ function PaymentsTab({ customerID }) {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [refundTarget, setRefundTarget] = useState(null);
-  const [flexEnrollments, setFlexEnrollments] = useState([]);
   const LIMIT = 20;
 
   const load = useCallback(
     async (p = 1) => {
       setLoading(true);
-      const [payRes, enrRes] = await Promise.all([
-        api.get(`/api/payment/customer/${customerID}?page=${p}&limit=${LIMIT}`),
-        api.get(`/api/enrollment?customerID=${customerID}`),
-      ]);
+      const payRes = await api.get(`/api/payment/customer/${customerID}?page=${p}&limit=${LIMIT}`);
       if (payRes.success) {
         setPayments(payRes.data || []);
         setTotal(payRes.meta?.total ?? payRes.data?.length ?? 0);
-      }
-      if (enrRes.success) {
-        const due = (enrRes.data || []).filter(
-          (e) =>
-            e.package?.billingType === "flexible" &&
-            e.package?.paymentStatus !== "paid" &&
-            e.status === "active",
-        );
-        setFlexEnrollments(due);
       }
       setLoading(false);
     },
@@ -4287,22 +4410,6 @@ function PaymentsTab({ customerID }) {
 
   return (
     <div className="space-y-4">
-      {flexEnrollments.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
-            Payments Due
-          </p>
-          {flexEnrollments.map((enr) => (
-            <FlexiblePaymentDueCard
-              key={enr._id}
-              enr={enr}
-              customerID={customerID}
-              onSuccess={() => load(page)}
-            />
-          ))}
-        </div>
-      )}
-
       <div className="flex items-center justify-between">
         <p className="text-[13px] text-muted-foreground">
           {total} transaction{total !== 1 ? "s" : ""}
@@ -4478,10 +4585,21 @@ function eventStatusLabel(status) {
   );
 }
 
+const LESSON_FILTERS = [
+  { id: "scheduled", label: "Scheduled" },
+  { id: "completed", label: "Completed" },
+  { id: "cancelled", label: "Cancelled" },
+  { id: "no_show", label: "No Show" },
+  { id: "paid", label: "Paid" },
+  { id: "unpaid", label: "Unpaid" },
+];
+
 function LessonsTab({ customer }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [activeFilters, setActiveFilters] = useState(new Set());
+  const [showFilters, setShowFilters] = useState(false);
+  const [sortOrder, setSortOrder] = useState("new_to_old");
 
   useEffect(() => {
     if (!customer?._id) return;
@@ -4511,6 +4629,15 @@ function LessonsTab({ customer }) {
     });
   }, [customer?._id]);
 
+  function toggleFilter(id) {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -4520,24 +4647,37 @@ function LessonsTab({ customer }) {
   }
 
   const filteredEvents = events.filter((ev) => {
-    if (statusFilter === "all") return true;
+    if (activeFilters.size === 0) return true;
     const status = deriveEventStatus(ev);
     const isPaid =
-      (ev.chargeMethod === "package" &&
-        ev.packageBillingType === "pay_per_session") ||
+      (ev.chargeMethod === "package" && ev.packageBillingType === "pay_per_session") ||
       ev.chargeMethod === "credits" ||
       ev.chargeMethod === "direct" ||
       ev.chargeMethod === "mixed" ||
       ev.payment?.collected;
-    const isCancelledNoCharge =
-      status === "cancelled_no_charge" || status === "no_show_no_charge";
-    if (statusFilter === "scheduled") return status === "scheduled";
-    if (statusFilter === "completed") return status === "completed";
-    if (statusFilter === "cancelled")
-      return status === "cancelled" || isCancelledNoCharge;
-    if (statusFilter === "paid") return isPaid && !isCancelledNoCharge;
-    if (statusFilter === "unpaid") return !isPaid && !isCancelledNoCharge;
-    return true;
+    const isCancelledNoCharge = status === "cancelled_no_charge" || status === "no_show_no_charge";
+
+    const STATUS_IDS = ["scheduled", "completed", "cancelled", "no_show"];
+    const PAYMENT_IDS = ["paid", "unpaid"];
+    const selectedStatuses = STATUS_IDS.filter((id) => activeFilters.has(id));
+    const selectedPayments = PAYMENT_IDS.filter((id) => activeFilters.has(id));
+
+    const matchesStatus =
+      selectedStatuses.length === 0 ||
+      (selectedStatuses.includes("scheduled") && status === "scheduled") ||
+      (selectedStatuses.includes("completed") && status === "completed") ||
+      (selectedStatuses.includes("cancelled") && (status === "cancelled" || isCancelledNoCharge)) ||
+      (selectedStatuses.includes("no_show") && status === "no_show");
+
+    const matchesPayment =
+      selectedPayments.length === 0 ||
+      (selectedPayments.includes("paid") && isPaid && !isCancelledNoCharge) ||
+      (selectedPayments.includes("unpaid") && !isPaid && !isCancelledNoCharge);
+
+    return matchesStatus && matchesPayment;
+  }).sort((a, b) => {
+    const diff = new Date(a.startDateTime) - new Date(b.startDateTime);
+    return sortOrder === "old_to_new" ? diff : -diff;
   });
 
   return (
@@ -4545,26 +4685,79 @@ function LessonsTab({ customer }) {
       <div className="flex items-center justify-between">
         <p className="text-[13px] text-muted-foreground">
           {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}
-          {statusFilter !== "all" ? ` · filtered` : ""}
+          {activeFilters.size > 0 ? " · filtered" : ""}
         </p>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-8 rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
-        >
-          <option value="all">All</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="paid">Paid</option>
-          <option value="unpaid">Unpaid</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-lg border border-border overflow-hidden text-[12px] font-medium">
+            <button
+              type="button"
+              onClick={() => setSortOrder("new_to_old")}
+              className={`h-8 px-3 transition-colors ${sortOrder === "new_to_old" ? "bg-brand text-brand-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+            >
+              New to Old
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortOrder("old_to_new")}
+              className={`h-8 px-3 border-l border-border transition-colors ${sortOrder === "old_to_new" ? "bg-brand text-brand-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+            >
+              Old to New
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            className={`flex items-center gap-1.5 h-8 rounded-lg border px-3 text-[12px] font-medium transition-colors ${
+              showFilters || activeFilters.size > 0
+                ? "border-brand bg-brand/10 text-brand"
+                : "border-border bg-background text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Filter
+            {activeFilters.size > 0 && (
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-brand-foreground">
+                {activeFilters.size}
+              </span>
+            )}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showFilters ? "rotate-180" : ""}`} />
+          </button>
+        </div>
       </div>
+
+      {showFilters && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {LESSON_FILTERS.map((f) => {
+            const active = activeFilters.has(f.id);
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => toggleFilter(f.id)}
+                className={`h-7 rounded-full px-3 text-[12px] font-medium border transition-colors ${
+                  active
+                    ? "bg-brand text-brand-foreground border-brand"
+                    : "bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground"
+                }`}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+          {activeFilters.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveFilters(new Set())}
+              className="h-7 rounded-full px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {filteredEvents.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          No events found
-          {statusFilter !== "all" ? ` for status "${statusFilter}"` : ""}.
+          No events found{activeFilters.size > 0 ? " for the selected filters" : ""}.
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">

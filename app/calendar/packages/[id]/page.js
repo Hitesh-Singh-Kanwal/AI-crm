@@ -496,25 +496,6 @@ export default function PackageEditPage() {
               <Label>Location</Label>
               <LocationSelector value={locationID} onChange={setLocationID} multiple={true} showAllOption={false} />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Color</Label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  className="h-9 w-16 cursor-pointer rounded-md border border-border bg-background p-0.5"
-                />
-                <span className="text-sm font-mono text-muted-foreground">{color}</span>
-                <button
-                  type="button"
-                  onClick={() => setColor(randomColor())}
-                  className="text-xs text-brand hover:text-brand-dark font-medium"
-                >
-                  Randomise
-                </button>
-              </div>
-            </div>
           </div>
           <div className="flex flex-col gap-1.5 mt-4">
             <Label htmlFor="pkg-desc">Description</Label>

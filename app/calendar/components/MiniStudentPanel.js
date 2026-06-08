@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Pin, Plus, Trash2 } from "lucide-react";
 import api from "@/lib/api";
+import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 
 const TABS = [
   { key: "appointments", label: "Appointments" },
@@ -12,7 +13,6 @@ const TABS = [
   { key: "messages", label: "Messages" },
 ];
 
-const BLANK_NEW_ENR = { label: "", teacherID: "", packageID: "", purchaseDate: "", services: [] };
 
 function statusColor(status) {
   if (status === "completed") return "bg-green-500/10 text-green-400";
@@ -21,7 +21,7 @@ function statusColor(status) {
   return "bg-blue-500/10 text-blue-400";
 }
 
-export default function MiniStudentPanel({ customerId, customerName, onBack, inline = false }) {
+export default function MiniStudentPanel({ customerId, customerName, onBack, inline = false, onPaymentSuccess }) {
   const [activeTab, setActiveTab] = useState("appointments");
   const [customer, setCustomer] = useState(null);
   const [loadingCustomer, setLoadingCustomer] = useState(true);
@@ -35,7 +35,6 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
   const [isSavingNote, setIsSavingNote] = useState(false);
 
   const [catalogPackages, setCatalogPackages] = useState([]);
-  const [catalogTeachers, setCatalogTeachers] = useState([]);
   const [sellTargetEnrollmentId, setSellTargetEnrollmentId] = useState(null);
   const [sellForm, setSellForm] = useState({ packageID: "", purchaseDate: "", notes: "" });
   const [sellServices, setSellServices] = useState([]);
@@ -45,10 +44,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
   const [enrollments, setEnrollments] = useState([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(false);
 
-  const [showNewEnrForm, setShowNewEnrForm] = useState(false);
-  const [newEnrForm, setNewEnrForm] = useState(BLANK_NEW_ENR);
-  const [isCreatingEnroll, setIsCreatingEnroll] = useState(false);
-  const [enrollError, setEnrollError] = useState(null);
+  const [showCreateEnrollmentSheet, setShowCreateEnrollmentSheet] = useState(false);
 
   const [collectedPayments, setCollectedPayments] = useState([]);
   const [serviceCharges, setServiceCharges] = useState([]);
@@ -128,114 +124,141 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
     if (activeTab !== "enrollments") return;
     async function load() {
       setLoadingEnrollments(true);
-      const [enrResult, catalogResult, teachersResult] = await Promise.all([
+      const [enrResult, catalogResult] = await Promise.all([
         api.get(`/api/enrollment?customerID=${customerId}&limit=50`),
         api.get("/api/package?limit=200&isActive=true"),
-        api.get("/api/teacher?limit=200&status=active"),
       ]);
       if (enrResult.success && Array.isArray(enrResult.data)) setEnrollments(enrResult.data);
       if (catalogResult.success && Array.isArray(catalogResult.data)) setCatalogPackages(catalogResult.data);
-      if (teachersResult.success && Array.isArray(teachersResult.data)) setCatalogTeachers(teachersResult.data);
       setLoadingEnrollments(false);
     }
     load();
   }, [activeTab, customerId]);
 
-  function setNewEnrField(field, val) {
-    setNewEnrForm((f) => ({ ...f, [field]: val }));
+  async function reloadEnrollments() {
+    const enrResult = await api.get(`/api/enrollment?customerID=${customerId}&limit=50`);
+    if (enrResult.success && Array.isArray(enrResult.data)) setEnrollments(enrResult.data);
   }
 
-  function onNewEnrPkgChange(pkgId) {
-    const pkg = catalogPackages.find((p) => String(p._id) === pkgId);
-    setNewEnrForm((f) => ({
-      ...f,
-      packageID: pkgId,
-      services: (pkg?.services || []).map((s) => ({
-        serviceCode: s.serviceCode || "",
-        serviceName: s.serviceName || "",
-        color: s.color || "",
-        numberOfSessions: s.numberOfSessions || 0,
-        pricePerSession: s.pricePerSession || 0,
-        finalAmount: (s.numberOfSessions || 0) * (s.pricePerSession || 0),
-      })),
-    }));
-  }
+  async function refreshPaymentsData() {
+    const [calResult, enrResult, planResult, custResult] = await Promise.all([
+      api.get(`/api/calendar/customer/${customerId}`),
+      api.get(`/api/enrollment?customerID=${customerId}`),
+      api.get(`/api/payment-plan/customer/${customerId}`),
+      api.get(`/api/customer/${customerId}`),
+    ]);
 
-  function updateNewEnrSvc(i, field, val) {
-    setNewEnrForm((f) => {
-      const services = f.services.map((s, idx) => {
-        if (idx !== i) return s;
-        const updated = { ...s, [field]: val };
-        updated.finalAmount = parseFloat(
-          ((Number(updated.pricePerSession) || 0) * (Number(updated.numberOfSessions) || 0)).toFixed(2)
-        );
-        return updated;
-      });
-      return { ...f, services };
-    });
-  }
+    if (custResult.success) setCustomer(custResult.data);
 
-  function addNewEnrSvcRow() {
-    setNewEnrForm((f) => ({
-      ...f,
-      services: [...f.services, { serviceCode: "", serviceName: "", color: "", numberOfSessions: 0, pricePerSession: 0, finalAmount: 0 }],
-    }));
-  }
-
-  function removeNewEnrSvcRow(i) {
-    setNewEnrForm((f) => ({ ...f, services: f.services.filter((_, idx) => idx !== i) }));
-  }
-
-  async function handleCreateEnrollment() {
-    setIsCreatingEnroll(true);
-    setEnrollError(null);
-
-    const enrRes = await api.post("/api/enrollment", {
-      customerID: customerId,
-      label: newEnrForm.label.trim() || undefined,
-      teacherID: newEnrForm.teacherID || undefined,
-    });
-    if (!enrRes.success) {
-      setEnrollError(enrRes.error || "Failed to create enrollment.");
-      setIsCreatingEnroll(false);
-      return;
-    }
-    const created = enrRes.data?.enrollment ?? enrRes.data;
-    const enrollmentID = String(created?._id || "");
-
-    if (newEnrForm.packageID && enrollmentID) {
-      const pkgRes = await api.post("/api/customer-package/add", {
-        customerID: customerId,
-        enrollmentID,
-        packageID: newEnrForm.packageID,
-        purchaseDate: newEnrForm.purchaseDate || undefined,
-        services: newEnrForm.services.map((s) => ({
-          serviceCode: s.serviceCode,
-          serviceName: s.serviceName,
-          color: s.color,
-          numberOfSessions: Number(s.numberOfSessions),
-          pricePerSession: Number(s.pricePerSession),
-          finalAmount: Number(s.finalAmount),
-        })),
-        billingType: "flexible",
-        billing: {},
-      });
-      if (!pkgRes.success) {
-        setEnrollError(pkgRes.error || "Enrollment created but failed to add package.");
-        setIsCreatingEnroll(false);
-        // still reload so the enrollment shows
-        const enrListRes = await api.get(`/api/enrollment?customerID=${customerId}&limit=50`);
-        if (enrListRes.success) setEnrollments(enrListRes.data);
-        return;
-      }
+    let calEvents = [];
+    if (calResult.success && Array.isArray(calResult.data)) {
+      calEvents = [...calResult.data].sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime));
+      setCollectedPayments(calEvents.filter((e) => e.payment?.collected));
+      setServiceCharges(calEvents.filter((e) => e.chargeApplied));
     }
 
-    const enrListRes = await api.get(`/api/enrollment?customerID=${customerId}&limit=50`);
-    if (enrListRes.success) setEnrollments(enrListRes.data);
-    setShowNewEnrForm(false);
-    setNewEnrForm(BLANK_NEW_ENR);
-    setIsCreatingEnroll(false);
+    let allEnr = [];
+    if (enrResult.success) {
+      allEnr = enrResult.data || [];
+      const allFlex = allEnr.filter((e) => e.package?.billingType === "flexible");
+      const due = allFlex.filter((e) => e.package?.paymentStatus !== "paid" && e.status === "active");
+      setAllFlexEnrollments(allFlex);
+      setFlexEnrollments(due);
+      const totalRemaining = allEnr
+        .filter((e) => e.status === "active" && e.package?.status === "active")
+        .reduce((sum, e) => {
+          const bt = e.package?.billingType;
+          const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable !== false);
+          if (bt === "flexible" || bt === "payment_plan") {
+            const collected = e.package?.amountCollected ?? 0;
+            const svc = chargeableServices.find((s) => s.pricePerSession > 0);
+            const pps = svc?.pricePerSession ?? 0;
+            const sessionsPaidFor = pps > 0 ? collected / pps : 0;
+            const sessionsUsed = svc?.sessionsUsed ?? 0;
+            return sum + Math.max(0, sessionsPaidFor - sessionsUsed);
+          }
+          return sum + chargeableServices.reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0);
+        }, 0);
+      setTotalSessionsRemaining(totalRemaining);
+      const forms = {};
+      due.forEach((e) => {
+        const outstanding = Math.max(0, (e.package.dueAmount ?? e.package.totalPaid) - (e.package.amountCollected ?? 0));
+        forms[String(e._id)] = { mode: null, payType: "full", sessions: 1, amount: outstanding.toFixed(2), method: "cash", dueDate: e.package.dueDate ? new Date(e.package.dueDate).toISOString().slice(0, 10) : "", saving: false, error: null };
+      });
+      setFlexPayForms(forms);
+    }
+
+    const upcoming = [];
+    const now = new Date();
+
+    allEnr
+      .filter((e) => e.package?.billingType === "flexible" && e.package?.paymentStatus !== "paid" && e.status === "active")
+      .forEach((e) => {
+        const outstanding = Math.max(0, (e.package.dueAmount ?? e.package.totalPaid) - (e.package.amountCollected ?? 0));
+        const chargeableService = (e.package.services ?? []).find((s) => s.pricePerSession > 0);
+        upcoming.push({
+          type: "flexible",
+          sortDate: e.package.dueDate ? new Date(e.package.dueDate) : new Date(8640000000000000),
+          enrollmentId: String(e._id),
+          packageName: e.package.packageName,
+          amount: outstanding,
+          dueDate: e.package.dueDate,
+          isOverdue: e.package.dueDate && new Date(e.package.dueDate) < now,
+          pricePerSession: chargeableService?.pricePerSession ?? 0,
+          sessionsRemaining: chargeableService?.sessionsRemaining ?? 0,
+        });
+      });
+
+    if (planResult.success) {
+      const plans = planResult.data || [];
+      const planForms = {};
+      plans.filter((p) => p.status === "active").forEach((plan) => {
+        (plan.installments || []).forEach((inst, idx) => {
+          if (inst.status !== "pending") return;
+          const dueDate = new Date(inst.dueDate);
+          upcoming.push({
+            type: "plan",
+            sortDate: dueDate,
+            planId: String(plan._id),
+            installmentIdx: idx,
+            plan,
+            packageName: plan.enrollmentID?.package?.packageName ?? "Package",
+            amount: inst.amount,
+            dueDate: inst.dueDate,
+            installmentNumber: idx + 1,
+            totalInstallments: plan.numberOfInstallments,
+            isOverdue: dueDate < now,
+          });
+          planForms[`${plan._id}_${idx}`] = { method: "cash", saving: false, error: null, open: false };
+        });
+      });
+      setPlanPayForms(planForms);
+    }
+
+    calEvents
+      .filter((e) => {
+        const isUpcoming = new Date(e.startDateTime) >= now;
+        const isPps = e.chargeApplied && e.chargeMethod === "package";
+        return isUpcoming && isPps;
+      })
+      .forEach((e) => {
+        upcoming.push({
+          type: "session",
+          sortDate: new Date(e.startDateTime),
+          eventId: String(e._id),
+          title: e.title,
+          serviceName: e.calendarServiceID?.serviceName,
+          amount: e.calendarServiceID?.price ?? 0,
+          startDateTime: e.startDateTime,
+          isOverdue: false,
+        });
+      });
+
+    upcoming.sort((a, b) => a.sortDate - b.sortDate);
+    setUpcomingPayments(upcoming);
+    onPaymentSuccess?.();
   }
+
 
   function handlePkgSelect(pkgId) {
     const pkg = catalogPackages.find((p) => p._id === pkgId);
@@ -345,7 +368,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
           .filter((e) => e.status === "active" && e.package?.status === "active")
           .reduce((sum, e) => {
             const bt = e.package?.billingType;
-            const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable === true);
+            const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable !== false);
             if (bt === "flexible" || bt === "payment_plan") {
               const collected = e.package?.amountCollected ?? 0;
               const svc = chargeableServices.find((s) => s.pricePerSession > 0);
@@ -686,151 +709,12 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
               <div className="space-y-3">
                 <button
                   type="button"
-                  onClick={() => { setShowNewEnrForm((v) => !v); setEnrollError(null); setNewEnrForm(BLANK_NEW_ENR); }}
+                  onClick={() => setShowCreateEnrollmentSheet(true)}
                   className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark"
                 >
                   <Plus className="h-3 w-3" />
                   New Enrollment
                 </button>
-
-                {showNewEnrForm && (
-                  <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-3">
-                    <p className="text-[11px] font-bold text-foreground uppercase tracking-wide">New Enrollment</p>
-
-                    {/* Teacher */}
-                    <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground mb-1">Teacher</p>
-                      <select
-                        value={newEnrForm.teacherID}
-                        onChange={(e) => setNewEnrField("teacherID", e.target.value)}
-                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
-                      >
-                        <option value="">Select teacher…</option>
-                        {catalogTeachers.map((t) => (
-                          <option key={t._id} value={t._id}>{t.name || t.email}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Label */}
-                    <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground mb-1">Label <span className="font-normal">(optional)</span></p>
-                      <input
-                        type="text"
-                        value={newEnrForm.label}
-                        onChange={(e) => setNewEnrField("label", e.target.value)}
-                        placeholder="e.g. Term 1, Trial…"
-                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
-                      />
-                    </div>
-
-                    {/* Package */}
-                    <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground mb-1">Package <span className="font-normal">(optional)</span></p>
-                      <select
-                        value={newEnrForm.packageID}
-                        onChange={(e) => onNewEnrPkgChange(e.target.value)}
-                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
-                      >
-                        <option value="">Select package…</option>
-                        {catalogPackages.map((p) => (
-                          <option key={p._id} value={p._id}>{p.packageName}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Services table — shown when package selected or services added */}
-                    {(newEnrForm.packageID || newEnrForm.services.length > 0) && (
-                      <div>
-                        <p className="text-[10px] font-semibold text-muted-foreground mb-1.5">Services</p>
-                        <div className="rounded-lg border border-border overflow-hidden">
-                          {/* Header */}
-                          <div className="grid grid-cols-[1fr_56px_64px_60px_20px] gap-1 bg-muted/40 px-2 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            <span>Service</span>
-                            <span className="text-center">Sess.</span>
-                            <span className="text-center">$/Sess</span>
-                            <span className="text-right">Total</span>
-                            <span />
-                          </div>
-                          {newEnrForm.services.map((svc, i) => (
-                            <div key={i} className="grid grid-cols-[1fr_56px_64px_60px_20px] gap-1 items-center px-2 py-1.5 border-t border-border">
-                              <input
-                                type="text"
-                                value={svc.serviceName}
-                                onChange={(e) => updateNewEnrSvc(i, "serviceName", e.target.value)}
-                                placeholder="Name"
-                                className="h-6 w-full rounded border border-border bg-background px-1.5 text-[10px] text-foreground outline-none focus:border-primary"
-                              />
-                              <input
-                                type="number" min="0" value={svc.numberOfSessions}
-                                onChange={(e) => updateNewEnrSvc(i, "numberOfSessions", e.target.value)}
-                                className="h-6 w-full text-center rounded border border-border bg-background text-[10px] outline-none focus:border-primary"
-                              />
-                              <div className="relative">
-                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">$</span>
-                                <input
-                                  type="number" min="0" step="0.01" value={svc.pricePerSession}
-                                  onChange={(e) => updateNewEnrSvc(i, "pricePerSession", e.target.value)}
-                                  className="h-6 w-full pl-3.5 pr-1 rounded border border-border bg-background text-[10px] outline-none focus:border-primary"
-                                />
-                              </div>
-                              <p className="text-right text-[10px] font-semibold text-foreground">${Number(svc.finalAmount).toFixed(2)}</p>
-                              <button type="button" onClick={() => removeNewEnrSvcRow(i)} className="text-muted-foreground hover:text-destructive text-[12px] leading-none">×</button>
-                            </div>
-                          ))}
-                          {/* Total row */}
-                          {newEnrForm.services.length > 0 && (
-                            <div className="flex justify-between px-2 py-1 border-t border-border bg-muted/30">
-                              <span className="text-[9px] font-semibold text-muted-foreground uppercase">Total</span>
-                              <span className="text-[11px] font-bold text-foreground">
-                                ${newEnrForm.services.reduce((s, x) => s + (Number(x.finalAmount) || 0), 0).toFixed(2)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={addNewEnrSvcRow}
-                          className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-brand hover:underline"
-                        >
-                          <Plus className="h-3 w-3" /> Add service
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Purchase date */}
-                    {newEnrForm.packageID && (
-                      <div>
-                        <p className="text-[10px] font-semibold text-muted-foreground mb-1">Purchase date <span className="font-normal">(optional)</span></p>
-                        <input
-                          type="date" value={newEnrForm.purchaseDate}
-                          onChange={(e) => setNewEnrField("purchaseDate", e.target.value)}
-                          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
-                        />
-                      </div>
-                    )}
-
-                    {enrollError && <p className="text-[11px] text-destructive">{enrollError}</p>}
-
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => { setShowNewEnrForm(false); setEnrollError(null); }}
-                        className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleCreateEnrollment}
-                        disabled={isCreatingEnroll}
-                        className="flex-1 h-8 rounded-lg bg-brand text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60"
-                      >
-                        {isCreatingEnroll ? "Creating…" : newEnrForm.packageID ? "Create & Add Package" : "Create Enrollment"}
-                      </button>
-                    </div>
-                  </div>
-                )}
 
                 {loadingEnrollments ? (
                   <p className="text-[12px] text-muted-foreground animate-pulse">Loading…</p>
@@ -1280,43 +1164,6 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                       if (item.type === "flexible") {
                         const f = flexPayForms[item.enrollmentId] ?? { mode: null, payType: "full", sessions: 1, amount: item.amount.toFixed(2), method: "cash", dueDate: item.dueDate ? new Date(item.dueDate).toISOString().slice(0, 10) : "", saving: false, error: null };
                         const updateFlex = (patch) => setFlexPayForms((prev) => ({ ...prev, [item.enrollmentId]: { ...prev[item.enrollmentId], ...patch } }));
-                        const reloadAll = async () => {
-                          const [enrRes, planRes] = await Promise.all([api.get(`/api/enrollment?customerID=${customerId}`), api.get(`/api/payment-plan/customer/${customerId}`)]);
-                          const allEnr2 = enrRes.success ? enrRes.data || [] : [];
-                          const allFlex2 = allEnr2.filter((e2) => e2.package?.billingType === "flexible");
-                          const due2 = allFlex2.filter((e2) => e2.package?.paymentStatus !== "paid" && e2.status === "active");
-                          setAllFlexEnrollments(allFlex2);
-                          setFlexEnrollments(due2);
-                          setTotalSessionsRemaining(allEnr2.filter((e2) => e2.status === "active" && e2.package?.status === "active").reduce((sum, e2) => { const bt = e2.package?.billingType; if (bt === "flexible" || bt === "payment_plan") { const col = e2.package?.amountCollected ?? 0; const sv = (e2.package?.services ?? []).find((s) => s.pricePerSession > 0); return sum + (sv?.pricePerSession > 0 ? col / sv.pricePerSession : 0); } return sum + (e2.package?.services ?? []).reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0); }, 0));
-                          const newForms = {};
-                          due2.forEach((e2) => {
-                            const os = Math.max(0, (e2.package.dueAmount ?? e2.package.totalPaid) - (e2.package.amountCollected ?? 0));
-                            newForms[String(e2._id)] = { mode: null, amount: os.toFixed(2), method: "cash", dueDate: e2.package.dueDate ? new Date(e2.package.dueDate).toISOString().slice(0, 10) : "", saving: false, error: null };
-                          });
-                          setFlexPayForms(newForms);
-                          const now2 = new Date();
-                          const upcoming2 = [];
-                          due2.forEach((e2) => {
-                            const os = Math.max(0, (e2.package.dueAmount ?? e2.package.totalPaid) - (e2.package.amountCollected ?? 0));
-                            const cs2 = (e2.package.services ?? []).find((s) => s.pricePerSession > 0);
-                            upcoming2.push({ type: "flexible", sortDate: e2.package.dueDate ? new Date(e2.package.dueDate) : new Date(8640000000000000), enrollmentId: String(e2._id), packageName: e2.package.packageName, amount: os, dueDate: e2.package.dueDate, isOverdue: e2.package.dueDate && new Date(e2.package.dueDate) < now2, pricePerSession: cs2?.pricePerSession ?? 0, sessionsRemaining: cs2?.sessionsRemaining ?? 0 });
-                          });
-                          if (planRes.success) {
-                            const plans2 = planRes.data || [];
-                            const pf2 = {};
-                            plans2.filter((p) => p.status === "active").forEach((plan) => {
-                              (plan.installments || []).forEach((inst, idx) => {
-                                if (inst.status !== "pending") return;
-                                const dd = new Date(inst.dueDate);
-                                upcoming2.push({ type: "plan", sortDate: dd, planId: String(plan._id), installmentIdx: idx, plan, packageName: plan.enrollmentID?.package?.packageName ?? "Package", amount: inst.amount, dueDate: inst.dueDate, installmentNumber: idx + 1, totalInstallments: plan.numberOfInstallments, isOverdue: dd < now2 });
-                                pf2[`${plan._id}_${idx}`] = { method: "cash", saving: false, error: null, open: false };
-                              });
-                            });
-                            setPlanPayForms(pf2);
-                          }
-                          upcoming2.sort((a, b) => a.sortDate - b.sortDate);
-                          setUpcomingPayments(upcoming2);
-                        };
                         return (
                           <div key={`flex-${item.enrollmentId}`} className={`rounded-lg border ${item.isOverdue ? "border-rose-300 bg-rose-50/30 dark:bg-rose-900/10" : "border-amber-200 bg-amber-50/30 dark:bg-amber-900/10"} px-3 py-2.5 space-y-2`}>
                             <div className="flex items-start justify-between gap-1.5">
@@ -1345,7 +1192,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                               const payAmt = f.payType === "sessions" && sessionAmt != null ? sessionAmt : parseFloat(f.amount);
                               return (
                                 <form onSubmit={async (e) => { e.preventDefault(); const num = payAmt; if (isNaN(num) || num <= 0) return; updateFlex({ saving: true, error: null }); const sessionCount = f.payType === "sessions" ? Math.max(1, Number(f.sessions) || 1) : 0;
-                                  const res = await api.post("/api/payment", { customerID: customerId, enrollmentID: item.enrollmentId, type: "package_purchase", amount: num, method: f.method, ...(sessionCount > 0 && { sessions: sessionCount }) }); if (res.success) { await reloadAll(); } else { updateFlex({ saving: false, error: res.error || "Payment failed." }); } }} className="space-y-2 pt-1.5 border-t border-border/40">
+                                  const res = await api.post("/api/payment", { customerID: customerId, enrollmentID: item.enrollmentId, type: "package_purchase", amount: num, method: f.method, ...(sessionCount > 0 && { sessions: sessionCount }) }); if (res.success) { await refreshPaymentsData(); } else { updateFlex({ saving: false, error: res.error || "Payment failed." }); } }} className="space-y-2 pt-1.5 border-t border-border/40">
                                   {/* Payment type selector */}
                                   {pps > 0 && (
                                     <div className="flex rounded-md border border-border overflow-hidden">
@@ -1396,7 +1243,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                               );
                             })()}
                             {f.mode === "change-date" && (
-                              <form onSubmit={async (e) => { e.preventDefault(); if (!f.dueDate) return; updateFlex({ saving: true, error: null }); const res = await api.patch(`/api/customer-package/${item.enrollmentId}/flexible-due`, { dueDate: f.dueDate }); if (res.success) { await reloadAll(); } else { updateFlex({ saving: false, error: res.error || "Failed to update." }); } }} className="space-y-1.5 pt-1.5 border-t border-border/40">
+                              <form onSubmit={async (e) => { e.preventDefault(); if (!f.dueDate) return; updateFlex({ saving: true, error: null }); const res = await api.patch(`/api/customer-package/${item.enrollmentId}/flexible-due`, { dueDate: f.dueDate }); if (res.success) { await refreshPaymentsData(); } else { updateFlex({ saving: false, error: res.error || "Failed to update." }); } }} className="space-y-1.5 pt-1.5 border-t border-border/40">
                                 <input type="date" value={f.dueDate} onChange={(e) => updateFlex({ dueDate: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
                                 <div className="flex gap-1.5">
                                   <button type="button" onClick={() => updateFlex({ mode: null })} className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
@@ -1435,7 +1282,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                             </div>
                             {pf.error && <p className="text-[10px] text-rose-500">{pf.error}</p>}
                             {pf.mode === "change-date" && (
-                              <form onSubmit={async (e) => { e.preventDefault(); if (!pf.changeDate) return; updatePlan({ saving: true, error: null }); try { const res = await api.patch(`/api/payment-plan/${item.planId}/installment/${item.installmentIdx}/due-date`, { dueDate: pf.changeDate }); if (res.success) { const [enrRes4, planRes4] = await Promise.all([api.get(`/api/enrollment?customerID=${customerId}`), api.get(`/api/payment-plan/customer/${customerId}`)]); const allEnr4 = enrRes4.success ? enrRes4.data || [] : []; const allFlex4 = allEnr4.filter((e4) => e4.package?.billingType === "flexible"); const due4 = allFlex4.filter((e4) => e4.package?.paymentStatus !== "paid" && e4.status === "active"); setAllFlexEnrollments(allFlex4); setFlexEnrollments(due4); setTotalSessionsRemaining(allEnr4.filter((e4) => e4.status === "active" && e4.package?.status === "active").reduce((sum, e4) => { const bt = e4.package?.billingType; if (bt === "flexible" || bt === "payment_plan") { const col = e4.package?.amountCollected ?? 0; const sv = (e4.package?.services ?? []).find((s) => s.pricePerSession > 0); return sum + (sv?.pricePerSession > 0 ? col / sv.pricePerSession : 0); } return sum + (e4.package?.services ?? []).reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0); }, 0)); const flexForms4 = {}; due4.forEach((e4) => { const os4 = Math.max(0, (e4.package.dueAmount ?? e4.package.totalPaid) - (e4.package.amountCollected ?? 0)); flexForms4[String(e4._id)] = { mode: null, amount: os4.toFixed(2), method: "cash", dueDate: e4.package.dueDate ? new Date(e4.package.dueDate).toISOString().slice(0, 10) : "", saving: false, error: null }; }); setFlexPayForms(flexForms4); const now4 = new Date(); const upcoming4 = []; due4.forEach((e4) => { const os4 = Math.max(0, (e4.package.dueAmount ?? e4.package.totalPaid) - (e4.package.amountCollected ?? 0)); const cs4 = (e4.package.services ?? []).find((s) => s.pricePerSession > 0); upcoming4.push({ type: "flexible", sortDate: e4.package.dueDate ? new Date(e4.package.dueDate) : new Date(8640000000000000), enrollmentId: String(e4._id), packageName: e4.package.packageName, amount: os4, dueDate: e4.package.dueDate, isOverdue: e4.package.dueDate && new Date(e4.package.dueDate) < now4, pricePerSession: cs4?.pricePerSession ?? 0, sessionsRemaining: cs4?.sessionsRemaining ?? 0 }); }); const pf4 = {}; if (planRes4.success) { (planRes4.data || []).filter((p4) => p4.status === "active").forEach((plan4) => { (plan4.installments || []).forEach((inst4, idx4) => { if (inst4.status !== "pending") return; const dd4 = new Date(inst4.dueDate); upcoming4.push({ type: "plan", sortDate: dd4, planId: String(plan4._id), installmentIdx: idx4, plan: plan4, packageName: plan4.enrollmentID?.package?.packageName ?? "Package", amount: inst4.amount, dueDate: inst4.dueDate, installmentNumber: idx4 + 1, totalInstallments: plan4.numberOfInstallments, isOverdue: dd4 < now4 }); pf4[`${plan4._id}_${idx4}`] = { method: "cash", saving: false, error: null, open: false }; }); }); } setPlanPayForms(pf4); upcoming4.sort((a, b) => a.sortDate - b.sortDate); setUpcomingPayments(upcoming4); } else { updatePlan({ saving: false, error: res.error || "Failed to update." }); } } catch (err) { updatePlan({ saving: false, error: "Something went wrong." }); } }} className="space-y-1.5 pt-1.5 border-t border-border/40">
+                              <form onSubmit={async (e) => { e.preventDefault(); if (!pf.changeDate) return; updatePlan({ saving: true, error: null }); try { const res = await api.patch(`/api/payment-plan/${item.planId}/installment/${item.installmentIdx}/due-date`, { dueDate: pf.changeDate }); if (res.success) { await refreshPaymentsData(); } else { updatePlan({ saving: false, error: res.error || "Failed to update." }); } } catch (err) { updatePlan({ saving: false, error: "Something went wrong." }); } }} className="space-y-1.5 pt-1.5 border-t border-border/40">
                                 <input type="date" value={pf.changeDate ?? ""} onChange={(e) => updatePlan({ changeDate: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
                                 <div className="flex gap-1.5">
                                   <button type="button" onClick={() => updatePlan({ mode: null })} className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
@@ -1444,35 +1291,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                               </form>
                             )}
                             {pf.open && (
-                              <form onSubmit={async (e) => { e.preventDefault(); updatePlan({ saving: true, error: null }); const res = await api.post(`/api/payment-plan/${item.planId}/pay-installment`, { installmentIndex: item.installmentIdx, method: pf.method }); if (res.success) {
-                                  const [enrRes2, planRes2] = await Promise.all([api.get(`/api/enrollment?customerID=${customerId}`), api.get(`/api/payment-plan/customer/${customerId}`)]);
-                                  const allEnr3 = enrRes2.success ? enrRes2.data || [] : [];
-                                  const allFlex3 = allEnr3.filter((e3) => e3.package?.billingType === "flexible");
-                                  setAllFlexEnrollments(allFlex3);
-                                  setFlexEnrollments(allFlex3.filter((e3) => e3.package?.paymentStatus !== "paid" && e3.status === "active"));
-                                  setTotalSessionsRemaining(allEnr3.filter((e3) => e3.status === "active" && e3.package?.status === "active").reduce((sum, e3) => { const bt = e3.package?.billingType; if (bt === "flexible" || bt === "payment_plan") { const col = e3.package?.amountCollected ?? 0; const sv = (e3.package?.services ?? []).find((s) => s.pricePerSession > 0); return sum + (sv?.pricePerSession > 0 ? col / sv.pricePerSession : 0); } return sum + (e3.package?.services ?? []).reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0); }, 0));
-                                  const now3 = new Date();
-                                  const upcoming3 = [];
-                                  allFlex3.filter((e3) => e3.package?.paymentStatus !== "paid" && e3.status === "active").forEach((e3) => {
-                                    const os3 = Math.max(0, (e3.package.dueAmount ?? e3.package.totalPaid) - (e3.package.amountCollected ?? 0));
-                                    const cs3 = (e3.package.services ?? []).find((s) => s.pricePerSession > 0);
-                                    upcoming3.push({ type: "flexible", sortDate: e3.package.dueDate ? new Date(e3.package.dueDate) : new Date(8640000000000000), enrollmentId: String(e3._id), packageName: e3.package.packageName, amount: os3, dueDate: e3.package.dueDate, isOverdue: e3.package.dueDate && new Date(e3.package.dueDate) < now3, pricePerSession: cs3?.pricePerSession ?? 0, sessionsRemaining: cs3?.sessionsRemaining ?? 0 });
-                                  });
-                                  const pf3 = {};
-                                  if (planRes2.success) {
-                                    (planRes2.data || []).filter((p3) => p3.status === "active").forEach((plan3) => {
-                                      (plan3.installments || []).forEach((inst3, idx3) => {
-                                        if (inst3.status !== "pending") return;
-                                        const dd3 = new Date(inst3.dueDate);
-                                        upcoming3.push({ type: "plan", sortDate: dd3, planId: String(plan3._id), installmentIdx: idx3, plan: plan3, packageName: plan3.enrollmentID?.package?.packageName ?? "Package", amount: inst3.amount, dueDate: inst3.dueDate, installmentNumber: idx3 + 1, totalInstallments: plan3.numberOfInstallments, isOverdue: dd3 < now3 });
-                                        pf3[`${plan3._id}_${idx3}`] = { method: "cash", saving: false, error: null, open: false };
-                                      });
-                                    });
-                                  }
-                                  setPlanPayForms(pf3);
-                                  upcoming3.sort((a, b) => a.sortDate - b.sortDate);
-                                  setUpcomingPayments(upcoming3);
-                                } else { updatePlan({ saving: false, error: res.error || "Payment failed." }); } }} className="space-y-1.5 pt-1.5 border-t border-border/40">
+                              <form onSubmit={async (e) => { e.preventDefault(); updatePlan({ saving: true, error: null }); const res = await api.post(`/api/payment-plan/${item.planId}/pay-installment`, { installmentIndex: item.installmentIdx, method: pf.method }); if (res.success) { await refreshPaymentsData(); } else { updatePlan({ saving: false, error: res.error || "Payment failed." }); } }} className="space-y-1.5 pt-1.5 border-t border-border/40">
                                 <select value={pf.method} onChange={(e) => updatePlan({ method: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none capitalize">{["cash","card","online","cheque","other"].map((m) => <option key={m} value={m}>{m}</option>)}</select>
                                 <div className="flex gap-1.5">
                                   <button type="button" onClick={() => updatePlan({ open: false })} className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
@@ -1750,47 +1569,55 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
       </div>
   );
 
+  const enrollmentSheet = (
+    <CreateEnrollmentSheet
+      open={showCreateEnrollmentSheet}
+      onClose={() => setShowCreateEnrollmentSheet(false)}
+      customerID={customerId}
+      customerName={customerName}
+      onSuccess={reloadEnrollments}
+    />
+  );
+
   if (inline) {
     return (
-      <div className="flex flex-col h-full">
-        {customer && (
-          <div className="flex items-center justify-between pb-3 px-1">
-            <p className="text-[11px] text-muted-foreground">Student Account</p>
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-              ${Number(customer.credits ?? 0).toFixed(2)} credits
-            </span>
-          </div>
-        )}
-        {tabs}
-        {body}
-      </div>
+      <>
+        <div className="flex flex-col h-full">
+          {customer && (
+            <div className="flex items-center justify-between pb-3 px-1">
+              <p className="text-[11px] text-muted-foreground">Student Account</p>
+            </div>
+          )}
+          {tabs}
+          {body}
+        </div>
+        {enrollmentSheet}
+      </>
     );
   }
 
   return (
-    <aside className="h-full w-[380px] shrink-0 rounded-xl border border-border bg-card shadow-lg flex flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3 shrink-0">
-        <button
-          type="button"
-          onClick={onBack}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted"
-          aria-label="Back to event"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-foreground">{customerName}</p>
-          <p className="text-[10px] text-muted-foreground">Student Account</p>
+    <>
+      <aside className="h-full w-[380px] shrink-0 rounded-xl border border-border bg-card shadow-lg flex flex-col">
+        {/* Header */}
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3 shrink-0">
+          <button
+            type="button"
+            onClick={onBack}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted"
+            aria-label="Back to event"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-semibold text-foreground">{customerName}</p>
+            <p className="text-[10px] text-muted-foreground">Student Account</p>
+          </div>
         </div>
-        {customer && (
-          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-            ${Number(customer.credits ?? 0).toFixed(2)} credits
-          </span>
-        )}
-      </div>
-      {tabs}
-      {body}
-    </aside>
+        {tabs}
+        {body}
+      </aside>
+      {enrollmentSheet}
+    </>
   );
 }
