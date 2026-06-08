@@ -3321,6 +3321,7 @@ export default function CalendarPage() {
                   setSelectedEvent(null);
                 }}
                 onRosterChanged={fetchCalendarEvents}
+                onPaymentSuccess={fetchCalendarEvents}
               />
             </div>
           </div>
