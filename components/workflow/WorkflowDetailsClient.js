@@ -3,23 +3,23 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Trash2 } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import WorkflowDiagram from '@/components/workflow/WorkflowDiagram'
 import {
-  createEmptyWorkflowStep,
+  WORKFLOW_EVENT_OPTIONS,
+  createInitialStepsByDay,
   normalizeWorkflowForPatch,
   normalizeWorkflowFromApi,
-  normalizeWorkflowStepFromApi,
+  validateWorkflowMeta,
+  validateWorkflowSteps,
 } from '@/lib/workflow-normalize'
-import WorkflowStepFields from '@/components/workflow/WorkflowStepFields'
 import WorkflowMetaFields from '@/components/workflow/WorkflowMetaFields'
+import WorkflowStepsBuilder from '@/components/workflow/WorkflowStepsBuilder'
 import { useWorkflowOptions } from '@/lib/useWorkflowOptions'
 import ConfirmDeleteWorkflowDialog from '@/components/workflow/ConfirmDeleteWorkflowDialog'
-
-const EVENT_OPTIONS = ['non', 'form_submission', 'lead_updated', 'lead_moved_stage', 'custom_event']
 
 const LEAD_STAGE_OPTIONS = [
   'new',
@@ -48,12 +48,19 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
 
   const { forms, reasons, formsLoading, reasonsLoading, optionsError } = useWorkflowOptions(true)
 
-  const linkedFormName = useMemo(() => {
-    const id = workflow?.formID
-    if (!id) return ''
-    const match = forms.find((f) => String(f?._id || f?.id) === String(id))
-    return match?.name || ''
-  }, [workflow?.formID, forms])
+  const linkedFormNames = useMemo(() => {
+    const ids = workflow?.formIDs ?? (workflow?.formID ? [workflow.formID] : [])
+    if (!Array.isArray(ids) || ids.length === 0) {
+      if (workflow?.isGenericForm) return ['All forms']
+      return []
+    }
+    return ids
+      .map((fid) => {
+        const match = forms.find((f) => String(f?._id || f?.id) === String(fid))
+        return match?.name || fid
+      })
+      .filter(Boolean)
+  }, [workflow, forms])
 
   const linkedReasonName = useMemo(() => {
     const code = workflow?.reason
@@ -82,34 +89,30 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
 
   const startEdit = () => {
     const wf = normalizeWorkflowFromApi(workflow) || workflow
-    const base = {
+    setDraft({
       _id: wf?._id || wf?.id || id,
       name: wf?.name ?? '',
       description: wf?.description ?? '',
       event: wf?.event ?? 'non',
-      formID: wf?.formID ?? '',
+      formID: wf?.formIDs ?? [],
+      isGenericForm: Boolean(wf?.isGenericForm),
       reason: wf?.reason ?? '',
-      steps: Array.isArray(wf?.steps) ? wf.steps.map((s) => ({ ...s })) : [createEmptyWorkflowStep(1)],
-    }
-    if (!Array.isArray(base.steps) || base.steps.length === 0) base.steps = [createEmptyWorkflowStep(1)]
-    base.steps = base.steps.map((s, idx) => normalizeWorkflowStepFromApi(s, idx))
-    setDraft(base)
+      stepsByDay: wf?.stepsByDay?.length ? wf.stepsByDay.map((g) => g.map((s) => ({ ...s }))) : createInitialStepsByDay(),
+    })
     setEditing(true)
     setSaveError('')
   }
 
   const canSave = useMemo(() => {
     if (!draft) return false
-    if (!draft.name?.trim()) return false
-    if (!draft.event?.trim()) return false
-    if (!Array.isArray(draft.steps) || draft.steps.length === 0) return false
-    return draft.steps.every(
-      (s) =>
-        s.type &&
-        s.order !== '' &&
-        s.leadStage !== '' &&
-        Number.isFinite(Number(s.day)) &&
-        Number.isFinite(Number(s.hour))
+    return (
+      validateWorkflowMeta({
+        name: draft.name,
+        event: draft.event,
+        formIDs: draft.formID,
+        isGenericForm: draft.isGenericForm,
+        reason: draft.reason,
+      }) && validateWorkflowSteps(draft.stepsByDay)
     )
   }, [draft])
 
@@ -143,7 +146,7 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
 
   return (
     <MainLayout title="Workflow" subtitle="Workflow details">
-      <div className="mx-auto w-full max-w-4xl space-y-4">
+      <div className="mx-auto w-full max-w-5xl space-y-4">
         <div className="flex items-center justify-between gap-3">
           <Link
             href={listHref}
@@ -179,12 +182,15 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-[20px] font-bold text-foreground">{workflow?.name || '—'}</h2>
-                  <p className="mt-1 text-[12px] text-muted-foreground">Event: {workflow?.event || '—'}</p>
+                  <p className="mt-1 text-[12px] text-muted-foreground">
+                    Event:{' '}
+                    {WORKFLOW_EVENT_OPTIONS.find((o) => o.value === workflow?.event)?.label || workflow?.event || '—'}
+                  </p>
                   <p className="mt-2 text-[13px] text-muted-foreground">{workflow?.description || '—'}</p>
-                  {(linkedFormName || linkedReasonName) && (
+                  {(linkedFormNames.length > 0 || linkedReasonName) && (
                     <p className="mt-2 text-[12px] text-muted-foreground">
-                      {linkedFormName ? `Form: ${linkedFormName}` : ''}
-                      {linkedFormName && linkedReasonName ? ' · ' : ''}
+                      {linkedFormNames.length > 0 ? `Forms: ${linkedFormNames.join(', ')}` : ''}
+                      {linkedFormNames.length > 0 && linkedReasonName ? ' · ' : ''}
                       {linkedReasonName ? `Reason: ${linkedReasonName}` : ''}
                     </p>
                   )}
@@ -219,13 +225,11 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
 
         {editing && draft && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-3xl rounded-2xl border border-border bg-card p-6 shadow-xl">
-              <div className="flex items-start justify-between gap-3">
+            <div className="flex max-h-[92vh] w-full max-w-5xl flex-col rounded-2xl border border-border bg-card shadow-xl">
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-6">
                 <div>
-                  <h3 className="text-[18px] font-bold text-foreground">Edit Workflow</h3>
-                  <p className="text-[12px] text-muted-foreground">
-                    Update fields below, then save changes.
-                  </p>
+                  <h3 className="text-[18px] font-bold text-foreground">Edit workflow</h3>
+                  <p className="text-[12px] text-muted-foreground">Update trigger settings and day-by-day sequence.</p>
                 </div>
                 <button
                   type="button"
@@ -239,120 +243,93 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
                 </button>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-[13px] font-medium text-foreground">Name</label>
-                  <input
-                    value={draft.name}
-                    onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))}
-                    className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[13px] font-medium text-foreground">Event</label>
-                  <select
-                    value={draft.event}
-                    onChange={(e) => setDraft((p) => ({ ...p, event: e.target.value }))}
-                    className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                  >
-                    {EVENT_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <WorkflowMetaFields
-                  compact
-                  formID={draft.formID ?? ''}
-                  reason={draft.reason ?? ''}
-                  forms={forms}
-                  reasons={reasons}
-                  formsLoading={formsLoading}
-                  reasonsLoading={reasonsLoading}
-                  onFormChange={(value) => setDraft((p) => ({ ...p, formID: value }))}
-                  onReasonChange={(value) => setDraft((p) => ({ ...p, reason: value }))}
-                />
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-[13px] font-medium text-foreground">Description</label>
-                  <textarea
-                    value={draft.description}
-                    onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))}
-                    rows={3}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                  />
-                </div>
-              </div>
-
-              {optionsError && (
-                <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-800 dark:text-amber-200">
-                  {optionsError}
-                </div>
-              )}
-
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[14px] font-semibold text-foreground">Steps</div>
-                  <div className="text-[12px] text-muted-foreground">Update steps then save.</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDraft((p) => ({
-                      ...p,
-                      steps: [...p.steps, createEmptyWorkflowStep(p.steps.length + 1)],
-                    }))
-                  }
-                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-background px-3 text-[13px] font-medium text-foreground hover:bg-muted/40"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Step
-                </button>
-              </div>
-
-              <div className="mt-3 max-h-[40vh] space-y-3 overflow-y-auto pr-1">
-                {draft.steps.map((step, idx) => (
-                  <div key={idx} className="rounded-xl border border-border bg-background p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-[13px] font-semibold text-foreground">Step {idx + 1}</div>
-                      <button
-                        type="button"
-                        onClick={() => setDraft((p) => ({ ...p, steps: p.steps.filter((_, i) => i !== idx) }))}
-                        disabled={draft.steps.length === 1}
-                        className={cn(
-                          'inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-[12px] font-medium text-muted-foreground hover:bg-muted/40',
-                          draft.steps.length === 1 && 'opacity-50 cursor-not-allowed'
-                        )}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Remove
-                      </button>
-                    </div>
-
-                    <div className="mt-3">
-                      <WorkflowStepFields
-                        step={step}
-                        leadStageOptions={LEAD_STAGE_OPTIONS}
-                        compact
-                        onChange={(patch) =>
-                          setDraft((p) => ({
-                            ...p,
-                            steps: p.steps.map((s, i) => (i === idx ? { ...s, ...patch } : s)),
-                          }))
-                        }
-                      />
-                    </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-[13px] font-medium text-foreground">Name</label>
+                    <input
+                      value={draft.name}
+                      onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))}
+                      className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                    />
                   </div>
-                ))}
+                  <div className="space-y-2">
+                    <label className="text-[13px] font-medium text-foreground">Trigger event</label>
+                    <select
+                      value={draft.event}
+                      onChange={(e) => {
+                        const next = e.target.value
+                        setDraft((p) => ({
+                          ...p,
+                          event: next,
+                          ...(next !== 'form_submission'
+                            ? { formID: [], isGenericForm: false, reason: '' }
+                            : {}),
+                        }))
+                      }}
+                      className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                    >
+                      {WORKFLOW_EVENT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <WorkflowMetaFields
+                    compact
+                    event={draft.event}
+                    formIDs={draft.formID ?? []}
+                    isGenericForm={Boolean(draft.isGenericForm)}
+                    reason={draft.reason ?? ''}
+                    forms={forms}
+                    reasons={reasons}
+                    formsLoading={formsLoading}
+                    reasonsLoading={reasonsLoading}
+                    onFormIDsChange={(value) => setDraft((p) => ({ ...p, formID: value }))}
+                    onIsGenericFormChange={(value) => setDraft((p) => ({ ...p, isGenericForm: value }))}
+                    onReasonChange={(value) => setDraft((p) => ({ ...p, reason: value }))}
+                  />
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-[13px] font-medium text-foreground">Description</label>
+                    <textarea
+                      value={draft.description}
+                      onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))}
+                      rows={3}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+                    />
+                  </div>
+                </div>
+
+                {optionsError && (
+                  <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-800 dark:text-amber-200">
+                    {optionsError}
+                  </div>
+                )}
+
+                <div className="mt-6">
+                  <div className="text-[14px] font-semibold text-foreground">Sequence</div>
+                  <div className="text-[12px] text-muted-foreground">
+                    Steps on the same day run in parallel.
+                  </div>
+                  <div className="mt-4">
+                    <WorkflowStepsBuilder
+                      compact
+                      stepsByDay={draft.stepsByDay}
+                      onChange={(next) => setDraft((p) => ({ ...p, stepsByDay: next }))}
+                      leadStageOptions={LEAD_STAGE_OPTIONS}
+                    />
+                  </div>
+                </div>
+
+                {saveError && (
+                  <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
+                    {saveError}
+                  </div>
+                )}
               </div>
 
-              {saveError && (
-                <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
-                  {saveError}
-                </div>
-              )}
-
-              <div className="mt-5 flex items-center justify-end gap-3 border-t border-border pt-4">
+              <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border p-6">
                 <button
                   type="button"
                   onClick={() => {
@@ -372,7 +349,7 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
                     (!canSave || saving) && 'opacity-60 cursor-not-allowed'
                   )}
                 >
-                  {saving ? 'Saving…' : 'Save Changes'}
+                  {saving ? 'Saving…' : 'Save changes'}
                 </button>
               </div>
             </div>
@@ -393,4 +370,3 @@ export default function WorkflowDetailsClient({ id, listHref = '/ai-automation/w
     </MainLayout>
   )
 }
-

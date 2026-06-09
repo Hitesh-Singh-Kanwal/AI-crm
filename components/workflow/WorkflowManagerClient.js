@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { GitBranch, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import api from '@/lib/api'
@@ -9,15 +9,15 @@ import WorkflowDiagram from '@/components/workflow/WorkflowDiagram'
 import WorkflowCard from '@/components/workflow/WorkflowCard'
 import ConfirmDeleteWorkflowDialog from '@/components/workflow/ConfirmDeleteWorkflowDialog'
 import {
-  createEmptyWorkflowStep,
+  createInitialStepsByDay,
   normalizeWorkflowForPatch,
   normalizeWorkflowFromApi,
+  validateWorkflowMeta,
+  validateWorkflowSteps,
 } from '@/lib/workflow-normalize'
-import WorkflowStepFields from '@/components/workflow/WorkflowStepFields'
-import WorkflowMetaFields from '@/components/workflow/WorkflowMetaFields'
+import WorkflowBasicsSection from '@/components/workflow/WorkflowBasicsSection'
+import WorkflowStepsBuilder from '@/components/workflow/WorkflowStepsBuilder'
 import { useWorkflowOptions } from '@/lib/useWorkflowOptions'
-
-const EVENT_OPTIONS = ['non', 'form_submission', 'lead_updated', 'lead_moved_stage', 'custom_event']
 
 const LEAD_STAGE_OPTIONS = [
   'new',
@@ -32,30 +32,27 @@ const LEAD_STAGE_OPTIONS = [
 ]
 
 export default function WorkflowManagerClient({ detailPathBase = '/ai-automation/workflows' }) {
-  const [view, setView] = useState('list') // 'list' | 'create'
+  const [view, setView] = useState('list')
   const [workflows, setWorkflows] = useState([])
   const [loadingList, setLoadingList] = useState(false)
   const [listError, setListError] = useState('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState(null) // { id, name } | null
+  const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [event, setEvent] = useState('')
-  const [formID, setFormID] = useState('')
+  const [formIDs, setFormIDs] = useState([])
+  const [isGenericForm, setIsGenericForm] = useState(false)
   const [reason, setReason] = useState('')
-  const [steps, setSteps] = useState([createEmptyWorkflowStep(1)])
+  const [stepsByDay, setStepsByDay] = useState(createInitialStepsByDay)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
   const [createdWorkflow, setCreatedWorkflow] = useState(null)
 
-  const [editing, setEditing] = useState(null) // workflow | null
-  const [savingEdit, setSavingEdit] = useState(false)
-  const [editError, setEditError] = useState('')
-
-  const needsOptions = view === 'create' || Boolean(editing)
+  const needsOptions = view === 'create'
   const { forms, reasons, formsLoading, reasonsLoading, optionsError } = useWorkflowOptions(needsOptions)
 
   const loadWorkflows = async () => {
@@ -93,39 +90,14 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
     setDeleting(false)
   }
 
-  const startEdit = (wf) => {
-    if (!wf) return
-    setEditError('')
-    const normalized = normalizeWorkflowFromApi(wf)
-    if (!normalized) return
-    const base = {
-      _id: normalized._id || normalized.id || wf._id || wf.id,
-      name: normalized.name ?? '',
-      description: normalized.description ?? '',
-      event: normalized.event ?? '',
-      formID: normalized.formID ?? '',
-      reason: normalized.reason ?? '',
-      steps:
-        normalized.steps.length > 0
-          ? normalized.steps.map((s) => ({ ...s }))
-          : [createEmptyWorkflowStep(1)],
-    }
-    setEditing(base)
-  }
-
-  const saveEdit = async () => {
-    if (!editing?._id) return
-    setSavingEdit(true)
-    setEditError('')
-    const payload = normalizeWorkflowForPatch(editing)
-    const res = await api.patch(`/api/workflow/${editing._id}`, payload)
-    if (res?.success) {
-      setEditing(null)
-      await loadWorkflows()
-    } else {
-      setEditError(res?.error || 'Failed to update workflow.')
-    }
-    setSavingEdit(false)
+  const resetCreateForm = () => {
+    setName('')
+    setDescription('')
+    setEvent('')
+    setFormIDs([])
+    setIsGenericForm(false)
+    setReason('')
+    setStepsByDay(createInitialStepsByDay())
   }
 
   useEffect(() => {
@@ -134,30 +106,11 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
   }, [])
 
   const canSubmit = useMemo(() => {
-    if (!name.trim()) return false
-    if (!event.trim()) return false
-    if (!Array.isArray(steps) || steps.length === 0) return false
-    return steps.every(
-      (s) =>
-        s.type &&
-        s.order !== '' &&
-        s.leadStage !== '' &&
-        Number.isFinite(Number(s.day)) &&
-        Number.isFinite(Number(s.hour))
+    return (
+      validateWorkflowMeta({ name, event, formIDs, isGenericForm, reason }) &&
+      validateWorkflowSteps(stepsByDay)
     )
-  }, [name, event, steps])
-
-  const addStep = () => {
-    setSteps((prev) => [...prev, createEmptyWorkflowStep(prev.length + 1)])
-  }
-
-  const removeStep = (idx) => {
-    setSteps((prev) => prev.filter((_, i) => i !== idx))
-  }
-
-  const updateStep = (idx, patch) => {
-    setSteps((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)))
-  }
+  }, [name, event, formIDs, isGenericForm, reason, stepsByDay])
 
   const submit = async () => {
     if (!canSubmit || submitting) return
@@ -170,21 +123,17 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
       name: name.trim(),
       description,
       event: event.trim(),
-      formID,
+      formID: formIDs,
+      isGenericForm,
       reason,
-      steps: steps.map((s) => ({ ...s, day: Number(s.day ?? 0) })),
+      stepsByDay,
     })
 
     const res = await api.post('/api/workflow/', payload)
     if (res?.success) {
       setSuccessMsg(res?.message || 'Workflow created successfully.')
-      setCreatedWorkflow(res?.data || payload)
-      setName('')
-      setDescription('')
-      setEvent('')
-      setFormID('')
-      setReason('')
-      setSteps([createEmptyWorkflowStep(1)])
+      setCreatedWorkflow(normalizeWorkflowFromApi(res?.data) || { ...payload, ...res?.data })
+      resetCreateForm()
       setView('list')
       await loadWorkflows()
     } else {
@@ -196,429 +145,249 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 text-[16px]">
-        <div className="rounded-2xl border border-border bg-card p-3 shadow-sm">
-          <div className="flex items-center justify-between gap-3 p-2">
-            <div className="inline-flex rounded-xl border border-border bg-background p-1">
+      <div className="rounded-2xl border border-border bg-card p-3 shadow-sm">
+        <div className="flex items-center justify-between gap-3 p-2">
+          <div className="inline-flex rounded-xl border border-border bg-background p-1">
+            <button
+              type="button"
+              onClick={() => setView('list')}
+              className={cn(
+                'h-10 rounded-lg px-4 text-[14px] font-semibold',
+                view === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/40'
+              )}
+            >
+              All Workflows
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setView('create')
+                setSuccessMsg('')
+                setError('')
+              }}
+              className={cn(
+                'h-10 rounded-lg px-4 text-[14px] font-semibold',
+                view === 'create' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/40'
+              )}
+            >
+              Create
+            </button>
+          </div>
+
+          {view === 'list' && (
+            <button
+              type="button"
+              onClick={loadWorkflows}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-[14px] font-semibold text-foreground hover:bg-muted/40"
+            >
+              <RefreshCw className={cn('h-4 w-4', loadingList && 'animate-spin')} />
+              Refresh
+            </button>
+          )}
+        </div>
+      </div>
+
+      {view === 'list' ? (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[26px] font-bold text-foreground">Workflows</h2>
+                <p className="text-[15px] text-muted-foreground">
+                  Automate follow-ups with timed SMS, email, and call steps tied to lead stages.
+                </p>
+              </div>
+              <div className="text-[15px] text-muted-foreground">{workflows.length} total</div>
+            </div>
+
+            {listError && (
+              <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
+                {listError}
+              </div>
+            )}
+
+            <div className="mt-4">
+              {loadingList ? (
+                <div className="rounded-xl border border-border bg-muted/40 px-4 py-8 text-center text-[13px] text-muted-foreground">
+                  Loading…
+                </div>
+              ) : workflows.length === 0 ? (
+                <div className="rounded-xl border border-border bg-muted/40 px-4 py-8 text-center text-[13px] text-muted-foreground">
+                  No workflows found. Create your first workflow to get started.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {workflows.map((wf) => (
+                    <WorkflowCard
+                      key={wf?._id || wf?.id}
+                      workflow={wf}
+                      onDelete={requestDelete}
+                      detailPathBase={detailPathBase}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+            <div className="border-b border-border bg-gradient-to-br from-primary/[0.07] via-background to-background px-6 py-7 sm:px-8">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-sm">
+                    <GitBranch className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-[26px] font-bold tracking-tight text-foreground sm:text-[28px]">
+                      Create workflow
+                    </h2>
+                    <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted-foreground sm:text-[15px]">
+                      Set a trigger, choose forms when needed, then build a day-by-day sequence of
+                      actions.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-[12px] font-semibold text-primary">
+                    1 · Basics
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1.5 text-[12px] font-medium text-muted-foreground">
+                    2 · Sequence
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-7 sm:px-8">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-[13px] font-bold text-primary">
+                  1
+                </div>
+                <div>
+                  <h3 className="text-[17px] font-bold text-foreground">Basics</h3>
+                  <p className="text-[13px] text-muted-foreground">Name your workflow and define what starts it.</p>
+                </div>
+              </div>
+
+              <WorkflowBasicsSection
+                layout="page"
+                name={name}
+                description={description}
+                event={event}
+                formIDs={formIDs}
+                isGenericForm={isGenericForm}
+                reason={reason}
+                forms={forms}
+                reasons={reasons}
+                formsLoading={formsLoading}
+                reasonsLoading={reasonsLoading}
+                onNameChange={setName}
+                onDescriptionChange={setDescription}
+                onEventChange={setEvent}
+                onFormIDsChange={setFormIDs}
+                onIsGenericFormChange={setIsGenericForm}
+                onReasonChange={setReason}
+              />
+
+              {optionsError && (
+                <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-800 dark:text-amber-200">
+                  {optionsError}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border bg-muted/[0.12] px-6 py-7 sm:px-8">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-[13px] font-bold text-muted-foreground">
+                  2
+                </div>
+                <div>
+                  <h3 className="text-[17px] font-bold text-foreground">Sequence</h3>
+                  <p className="text-[13px] text-muted-foreground">
+                    Each row is a day after the trigger. Add multiple steps on the same day to run them in
+                    parallel.
+                  </p>
+                </div>
+              </div>
+
+              <WorkflowStepsBuilder
+                stepsByDay={stepsByDay}
+                onChange={setStepsByDay}
+                leadStageOptions={LEAD_STAGE_OPTIONS}
+              />
+            </div>
+
+            {(error || successMsg) && (
+              <div
+                className={cn(
+                  'mx-6 mb-2 rounded-xl border px-4 py-3 text-[13px] sm:mx-8',
+                  error
+                    ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                )}
+                role="status"
+              >
+                {error || successMsg}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-5 sm:px-8">
               <button
                 type="button"
                 onClick={() => setView('list')}
-                className={cn(
-                  'h-10 rounded-lg px-4 text-[14px] font-semibold',
-                  view === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/40'
-                )}
+                className="inline-flex h-11 items-center rounded-lg border border-border px-5 text-[15px] font-medium text-foreground hover:bg-muted/40"
               >
-                All Workflows
+                Cancel
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setView('create')
-                  setSuccessMsg('')
-                  setError('')
-                }}
+                onClick={submit}
+                disabled={!canSubmit || submitting}
                 className={cn(
-                  'h-10 rounded-lg px-4 text-[14px] font-semibold',
-                  view === 'create' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/40'
+                  'inline-flex h-11 items-center rounded-lg bg-[var(--studio-primary)] px-5 text-[15px] font-medium text-white hover:brightness-95',
+                  (!canSubmit || submitting) && 'opacity-60 cursor-not-allowed'
                 )}
               >
-                Create
+                {submitting ? 'Creating…' : 'Create workflow'}
               </button>
             </div>
-
-            {view === 'list' && (
-              <button
-                type="button"
-                onClick={loadWorkflows}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-[14px] font-semibold text-foreground hover:bg-muted/40"
-              >
-                <RefreshCw className={cn('h-4 w-4', loadingList && 'animate-spin')} />
-                Refresh
-              </button>
-            )}
           </div>
-        </div>
 
-        {view === 'list' ? (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                <h2 className="text-[26px] font-bold text-foreground">Workflows</h2>
-                  <p className="text-[15px] text-muted-foreground">
-                    Create sequences with SMS, email, and call steps tied to lead stages and events.
-                  </p>
-                </div>
-                <div className="text-[15px] text-muted-foreground">{workflows.length} total</div>
-              </div>
-
-              {listError && (
-                <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
-                  {listError}
+          {createdWorkflow && (
+            <>
+              <WorkflowDiagram workflow={createdWorkflow} />
+              {createdWorkflow?._id && (
+                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[13px] text-muted-foreground">Open the details page to view or edit this workflow.</div>
+                    <Link
+                      href={`${detailPathBase}/${createdWorkflow._id}`}
+                      className="inline-flex h-10 items-center rounded-xl bg-[var(--studio-primary)] px-4 text-[13px] font-medium text-white hover:brightness-95"
+                    >
+                      Open workflow
+                    </Link>
+                  </div>
                 </div>
               )}
+            </>
+          )}
+        </>
+      )}
 
-              <div className="mt-4">
-                {loadingList ? (
-                  <div className="rounded-xl border border-border bg-muted/40 px-4 py-8 text-center text-[13px] text-muted-foreground">
-                    Loading…
-                  </div>
-                ) : workflows.length === 0 ? (
-                  <div className="rounded-xl border border-border bg-muted/40 px-4 py-8 text-center text-[13px] text-muted-foreground">
-                    No workflows found.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {workflows.map((wf) => (
-                      <WorkflowCard
-                        key={wf?._id || wf?.id}
-                        workflow={wf}
-                        onDelete={requestDelete}
-                        detailPathBase={detailPathBase}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-              <div className="flex flex-col gap-1">
-                <h2 className="text-[28px] font-bold text-foreground">Create Workflow</h2>
-                <p className="text-[15px] text-muted-foreground">
-                  Define name, trigger event, and ordered steps. Saved to your organization.
-                </p>
-              </div>
-
-              <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-[16px] font-semibold text-foreground">Name *</label>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="workflow1"
-                    className="h-14 w-full rounded-lg border border-border bg-background px-4 text-[16px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[16px] font-semibold text-foreground">Event *</label>
-                  <select
-                    value={event}
-                    onChange={(e) => setEvent(e.target.value)}
-                    className="h-14 w-full rounded-lg border border-border bg-background px-4 text-[16px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                  >
-                    <option value="" disabled>
-                      Select event…
-                    </option>
-                    {EVENT_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <WorkflowMetaFields
-                  formID={formID}
-                  reason={reason}
-                  forms={forms}
-                  reasons={reasons}
-                  formsLoading={formsLoading}
-                  reasonsLoading={reasonsLoading}
-                  onFormChange={setFormID}
-                  onReasonChange={setReason}
-                />
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-[16px] font-semibold text-foreground">Description</label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="workflow created"
-                    rows={3}
-                    className="w-full rounded-lg border border-border bg-background px-4 py-3 text-[16px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                  />
-                </div>
-              </div>
-
-              {optionsError && (
-                <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-800 dark:text-amber-200">
-                  {optionsError}
-                </div>
-              )}
-
-              <div className="mt-6 flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-[20px] font-bold text-foreground">Steps</h3>
-                  <p className="text-[14px] text-muted-foreground">Add the sequence steps you want to run.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={addStep}
-                  className="inline-flex h-12 items-center gap-2 rounded-xl bg-[var(--studio-primary)] px-5 text-[15px] font-semibold text-white hover:brightness-95"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Step
-                </button>
-              </div>
-
-              <div className="mt-3 space-y-3">
-                {steps.map((step, idx) => (
-                  <div key={idx} className="rounded-xl border border-border bg-background p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-[16px] font-semibold text-foreground">Step {idx + 1}</div>
-                        <div className="text-[13px] text-muted-foreground">Configure step fields</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeStep(idx)}
-                        disabled={steps.length === 1}
-                        className={cn(
-                          'inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-[14px] font-medium text-muted-foreground hover:bg-muted/50',
-                          steps.length === 1 && 'opacity-50 cursor-not-allowed'
-                        )}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Remove
-                      </button>
-                    </div>
-
-                    <div className="mt-3">
-                      <WorkflowStepFields
-                        step={step}
-                        leadStageOptions={LEAD_STAGE_OPTIONS}
-                        onChange={(patch) => updateStep(idx, patch)}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {(error || successMsg) && (
-                <div
-                  className={cn(
-                    'mt-4 rounded-xl border px-4 py-3 text-[13px]',
-                    error
-                      ? 'border-destructive/30 bg-destructive/10 text-destructive'
-                      : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                  )}
-                  role="status"
-                >
-                  {error || successMsg}
-                </div>
-              )}
-
-              <div className="mt-6 flex items-center justify-end gap-3 border-t border-border pt-4">
-                <button
-                  type="button"
-                  onClick={submit}
-                  disabled={!canSubmit || submitting}
-                  className={cn(
-                    'inline-flex h-11 items-center rounded-lg bg-[var(--studio-primary)] px-5 text-[15px] font-medium text-white hover:brightness-95',
-                    (!canSubmit || submitting) && 'opacity-60 cursor-not-allowed'
-                  )}
-                >
-                  {submitting ? 'Creating…' : 'Create Workflow'}
-                </button>
-              </div>
-            </div>
-
-            {createdWorkflow && (
-              <>
-                <WorkflowDiagram workflow={createdWorkflow} title="Workflow Diagram" subtitle="Vertical preview of the created workflow." />
-                {createdWorkflow?._id && (
-                  <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-[13px] text-muted-foreground">Open details page to view/edit/delete.</div>
-                      <Link
-                        href={`${detailPathBase}/${createdWorkflow._id}`}
-                        className="inline-flex h-10 items-center rounded-xl bg-[var(--studio-primary)] px-4 text-[13px] font-medium text-white hover:brightness-95"
-                      >
-                        Open Workflow
-                      </Link>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
-
-        {editing && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-3xl rounded-2xl border border-border bg-card p-6 shadow-xl">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-[18px] font-bold text-foreground">Edit Workflow</h3>
-                  <p className="text-[12px] text-muted-foreground">
-                    Update name, event, description, and steps, then save.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditing(null)}
-                  className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-[12px] font-medium text-foreground hover:bg-muted/40"
-                >
-                  Close
-                </button>
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-[13px] font-medium text-foreground">Name</label>
-                  <input
-                    value={editing.name}
-                    onChange={(e) => setEditing((p) => ({ ...p, name: e.target.value }))}
-                    className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[13px] font-medium text-foreground">Event</label>
-                  <select
-                    value={editing.event}
-                    onChange={(e) => setEditing((p) => ({ ...p, event: e.target.value }))}
-                    className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                  >
-                    {EVENT_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <WorkflowMetaFields
-                  compact
-                  formID={editing.formID ?? ''}
-                  reason={editing.reason ?? ''}
-                  forms={forms}
-                  reasons={reasons}
-                  formsLoading={formsLoading}
-                  reasonsLoading={reasonsLoading}
-                  onFormChange={(value) => setEditing((p) => ({ ...p, formID: value }))}
-                  onReasonChange={(value) => setEditing((p) => ({ ...p, reason: value }))}
-                />
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-[13px] font-medium text-foreground">Description</label>
-                  <textarea
-                    value={editing.description}
-                    onChange={(e) => setEditing((p) => ({ ...p, description: e.target.value }))}
-                    rows={3}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                  />
-                </div>
-              </div>
-
-              {optionsError && (
-                <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-800 dark:text-amber-200">
-                  {optionsError}
-                </div>
-              )}
-
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[14px] font-semibold text-foreground">Steps</div>
-                  <div className="text-[12px] text-muted-foreground">Update steps then save.</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setEditing((p) => ({
-                      ...p,
-                      steps: [...p.steps, createEmptyWorkflowStep(p.steps.length + 1)],
-                    }))
-                  }
-                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-background px-3 text-[13px] font-medium text-foreground hover:bg-muted/40"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Step
-                </button>
-              </div>
-
-              <div className="mt-3 max-h-[40vh] space-y-3 overflow-y-auto pr-1">
-                {editing.steps.map((step, idx) => (
-                  <div key={idx} className="rounded-xl border border-border bg-background p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-[13px] font-semibold text-foreground">Step {idx + 1}</div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEditing((p) => ({ ...p, steps: p.steps.filter((_, i) => i !== idx) }))
-                        }
-                        disabled={editing.steps.length === 1}
-                        className={cn(
-                          'inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-[12px] font-medium text-muted-foreground hover:bg-muted/40',
-                          editing.steps.length === 1 && 'opacity-50 cursor-not-allowed'
-                        )}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Remove
-                      </button>
-                    </div>
-
-                    <div className="mt-3">
-                      <WorkflowStepFields
-                        step={step}
-                        leadStageOptions={LEAD_STAGE_OPTIONS}
-                        compact
-                        onChange={(patch) =>
-                          setEditing((p) => ({
-                            ...p,
-                            steps: p.steps.map((s, i) => (i === idx ? { ...s, ...patch } : s)),
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {(editError || savingEdit) && (
-                <div
-                  className={cn(
-                    'mt-4 rounded-xl border px-4 py-3 text-[13px]',
-                    editError ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'border-border bg-muted/40 text-muted-foreground'
-                  )}
-                >
-                  {editError || 'Saving…'}
-                </div>
-              )}
-
-              <div className="mt-5 flex items-center justify-end gap-3 border-t border-border pt-4">
-                <button
-                  type="button"
-                  onClick={() => setEditing(null)}
-                  className="inline-flex h-11 items-center rounded-lg border border-border px-5 text-[15px] font-medium text-foreground hover:bg-muted/40"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={saveEdit}
-                  disabled={savingEdit}
-                  className={cn(
-                    'inline-flex h-11 items-center rounded-lg bg-[var(--studio-primary)] px-5 text-[15px] font-medium text-white hover:brightness-95',
-                    savingEdit && 'opacity-60 cursor-not-allowed'
-                  )}
-                >
-                  {savingEdit ? 'Saving…' : 'Save Changes'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <ConfirmDeleteWorkflowDialog
-          open={deleteDialogOpen}
-          busy={deleting}
-          workflowName={deleteTarget?.name}
-          onClose={() => {
-            if (deleting) return
-            setDeleteDialogOpen(false)
-            setDeleteTarget(null)
-          }}
-          onConfirm={confirmDelete}
-        />
-      </div>
+      <ConfirmDeleteWorkflowDialog
+        open={deleteDialogOpen}
+        busy={deleting}
+        workflowName={deleteTarget?.name}
+        onClose={() => {
+          if (deleting) return
+          setDeleteDialogOpen(false)
+          setDeleteTarget(null)
+        }}
+        onConfirm={confirmDelete}
+      />
+    </div>
   )
 }
-
