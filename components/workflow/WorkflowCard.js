@@ -1,10 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { Eye, Trash2, Workflow } from 'lucide-react'
+import { Copy, Eye, Loader2, Trash2, Workflow } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { flattenWorkflowSteps } from '@/lib/workflow-normalize'
 
-export default function WorkflowCard({ workflow, onDelete, detailPathBase = '/ai-automation/workflows' }) {
+export default function WorkflowCard({
+  workflow,
+  onDelete,
+  onDuplicate,
+  duplicating = false,
+  detailPathBase = '/ai-automation/workflows',
+}) {
   const id = workflow?._id || workflow?.id
   const flatSteps = flattenWorkflowSteps(workflow?.steps)
   const stepsCount = flatSteps.length || workflow?.stepsCount || 0
@@ -31,20 +38,40 @@ export default function WorkflowCard({ workflow, onDelete, detailPathBase = '/ai
           )}
         </div>
 
-        <div className="mt-auto grid grid-cols-2 gap-3 pt-4">
+        <div className="mt-auto grid grid-cols-3 gap-2 pt-4">
           <Link
             href={`${detailPathBase}/${id}`}
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-border bg-background text-[12px] font-medium text-muted-foreground hover:bg-muted/50"
+            className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-border bg-background text-[11px] font-medium text-muted-foreground hover:bg-muted/50"
           >
-            <Eye className="h-3.5 w-3.5" />
+            <Eye className="h-3.5 w-3.5 shrink-0" />
             View
           </Link>
           <button
             type="button"
-            onClick={() => onDelete?.(id)}
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-[#EF4444] text-[12px] font-medium text-white hover:bg-[#DC2626]"
+            onClick={() => onDuplicate?.(id)}
+            disabled={duplicating}
+            className={cn(
+              'inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-border bg-background text-[11px] font-medium text-foreground hover:bg-muted/50',
+              duplicating && 'cursor-not-allowed opacity-60'
+            )}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            {duplicating ? (
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+            ) : (
+              <Copy className="h-3.5 w-3.5 shrink-0" />
+            )}
+            {duplicating ? 'Copying…' : 'Duplicate'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete?.(id)}
+            disabled={duplicating}
+            className={cn(
+              'inline-flex h-9 items-center justify-center gap-1 rounded-xl bg-[#EF4444] text-[11px] font-medium text-white hover:bg-[#DC2626]',
+              duplicating && 'cursor-not-allowed opacity-60'
+            )}
+          >
+            <Trash2 className="h-3.5 w-3.5 shrink-0" />
             Delete
           </button>
         </div>

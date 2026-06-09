@@ -9,6 +9,7 @@ import WorkflowDiagram from '@/components/workflow/WorkflowDiagram'
 import WorkflowCard from '@/components/workflow/WorkflowCard'
 import ConfirmDeleteWorkflowDialog from '@/components/workflow/ConfirmDeleteWorkflowDialog'
 import {
+  buildDuplicateWorkflowPayload,
   createInitialStepsByDay,
   normalizeWorkflowForPatch,
   normalizeWorkflowFromApi,
@@ -39,6 +40,8 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [duplicatingId, setDuplicatingId] = useState(null)
+  const [listSuccessMsg, setListSuccessMsg] = useState('')
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -72,6 +75,39 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
     const wf = workflows.find((w) => (w?._id || w?.id) === id)
     setDeleteTarget({ id, name: wf?.name || '' })
     setDeleteDialogOpen(true)
+  }
+
+  const duplicateWorkflow = async (id) => {
+    if (!id || duplicatingId) return
+    setDuplicatingId(id)
+    setListError('')
+    setListSuccessMsg('')
+
+    const fetchRes = await api.get(`/api/workflow/${id}`)
+    if (!fetchRes?.success) {
+      setListError(fetchRes?.error || 'Failed to load workflow to duplicate.')
+      setDuplicatingId(null)
+      return
+    }
+
+    const payload = buildDuplicateWorkflowPayload(fetchRes.data)
+    if (!payload) {
+      setListError('Could not prepare duplicate workflow.')
+      setDuplicatingId(null)
+      return
+    }
+
+    const res = await api.post('/api/workflow/', payload)
+    if (res?.success) {
+      await loadWorkflows()
+      setListSuccessMsg(
+        `"${payload.name}" was created as inactive. Open it to review, then activate when ready.`
+      )
+    } else {
+      setListError(res?.error || 'Failed to duplicate workflow.')
+    }
+
+    setDuplicatingId(null)
   }
 
   const confirmDelete = async () => {
@@ -177,7 +213,10 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
           {view === 'list' && (
             <button
               type="button"
-              onClick={loadWorkflows}
+              onClick={() => {
+                setListSuccessMsg('')
+                loadWorkflows()
+              }}
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-[14px] font-semibold text-foreground hover:bg-muted/40"
             >
               <RefreshCw className={cn('h-4 w-4', loadingList && 'animate-spin')} />
@@ -199,6 +238,12 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
               </div>
               <div className="text-[15px] text-muted-foreground">{workflows.length} total</div>
             </div>
+
+            {listSuccessMsg && (
+              <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-[13px] text-emerald-700 dark:text-emerald-300">
+                {listSuccessMsg}
+              </div>
+            )}
 
             {listError && (
               <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
@@ -222,6 +267,8 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
                       key={wf?._id || wf?.id}
                       workflow={wf}
                       onDelete={requestDelete}
+                      onDuplicate={duplicateWorkflow}
+                      duplicating={duplicatingId === (wf?._id || wf?.id)}
                       detailPathBase={detailPathBase}
                     />
                   ))}
