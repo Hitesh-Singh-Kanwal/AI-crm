@@ -227,14 +227,13 @@ function deriveEffectiveStatus(appt) {
   return explicit || "scheduled";
 }
 
-function transformAppointments(appointments, colorMap) {
-  // For flexible packages, track session order per (customerID + enrollmentID) so we can
-  // determine which session number each event is and compare against sessionsPaidFor.
+function transformAppointments(appointments, colorMap, memberSelections = {}) {
+  // Track session order per (customerID + enrollmentID) for all package billing types.
   // Key: `${customerId}::${enrollmentId}`, value: sorted array of appointment IDs by date.
   const flexSessionOrder = {};
+  const pkgSessionOrder = {};
 
   appointments.forEach((appt) => {
-    if (appt.packageBillingType !== "flexible") return;
     const pkgCharge = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
     if (!pkgCharge) return;
     const enrollmentId = String(pkgCharge.enrollmentID?._id ?? pkgCharge.enrollmentID ?? "");
@@ -244,13 +243,20 @@ function transformAppointments(appointments, colorMap) {
       : [];
     customerIds.forEach((cid) => {
       const key = `${cid}::${enrollmentId}`;
-      if (!flexSessionOrder[key]) flexSessionOrder[key] = [];
-      flexSessionOrder[key].push({ id: String(appt._id), date: new Date(appt.startDateTime) });
+      // flexible tracking (existing)
+      if (appt.packageBillingType === "flexible") {
+        if (!flexSessionOrder[key]) flexSessionOrder[key] = [];
+        flexSessionOrder[key].push({ id: String(appt._id), date: new Date(appt.startDateTime) });
+      }
+      // all-package tracking for credit balance display
+      if (!pkgSessionOrder[key]) pkgSessionOrder[key] = [];
+      pkgSessionOrder[key].push({ id: String(appt._id), date: new Date(appt.startDateTime) });
     });
   });
 
   // Sort each group chronologically
   Object.values(flexSessionOrder).forEach((arr) => arr.sort((a, b) => a.date - b.date));
+  Object.values(pkgSessionOrder).forEach((arr) => arr.sort((a, b) => a.date - b.date));
 
   return appointments.map((appt) => {
     const teacherId = String(
@@ -267,12 +273,26 @@ function transformAppointments(appointments, colorMap) {
     const isCancelled = effectiveStatus === "cancelled";
     const isCompleted = effectiveStatus === "completed";
 
+    const apptId = String(appt._id || appt.id);
+    // Persisted member attendance (backend stores memberIDs as Customer.members subdoc ids,
+    // and populates customerIDs[].members so we can resolve them to names here).
+    const persistedMemberIds = new Set(
+      (Array.isArray(appt.memberIDs) ? appt.memberIDs : []).map((m) => String(m?._id ?? m)),
+    );
+    // Optimistic fallback: { customerId: [memberName, ...] } captured at selection time,
+    // used for the brief window before the refetch returns the persisted memberIDs.
+    const refMembers = memberSelections[apptId] || {};
     const customerNames = Array.isArray(appt.customerIDs)
       ? appt.customerIDs
           .map((c) => {
             if (typeof c !== "object") return ""
             const base = c.name || c.email || ""
-            const memberNames = (c.members || []).map((m) => m.name).filter(Boolean)
+            const persistedNames = (c.members || [])
+              .filter((m) => persistedMemberIds.has(String(m._id)))
+              .map((m) => m.name)
+              .filter(Boolean)
+            const memberNames =
+              persistedNames.length > 0 ? persistedNames : refMembers[String(c._id)] || []
             return memberNames.length > 0 ? `${base} & ${memberNames.join(", ")}` : base
           })
           .filter(Boolean)
@@ -348,6 +368,24 @@ function transformAppointments(appointments, colorMap) {
       }
     }
 
+    // Determine this event's chronological session number within its enrollment
+    let pkgSessionNumber = null;
+    {
+      const pkgCharge2 = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
+      if (pkgCharge2) {
+        const enrollmentId2 = String(pkgCharge2.enrollmentID?._id ?? pkgCharge2.enrollmentID ?? "");
+        const customerIds2 = Array.isArray(appt.customerIDs) ? appt.customerIDs.map((c) => String(c._id ?? c)) : [];
+        for (const cid of customerIds2) {
+          const key = `${cid}::${enrollmentId2}`;
+          const order = pkgSessionOrder[key];
+          if (order) {
+            const idx = order.findIndex((e) => e.id === String(appt._id));
+            if (idx >= 0) { pkgSessionNumber = idx + 1; break; }
+          }
+        }
+      }
+    }
+
     const _isActuallyPaid =
       appt.payment?.collected ||
       (appt.chargeMethod === "package" && appt.packageBillingType !== "flexible") ||
@@ -379,6 +417,7 @@ function transformAppointments(appointments, colorMap) {
         sessionsRemaining,
         totalSessions,
         sessionsPaidFor,
+        pkgSessionNumber,
         paymentCollected,
         studentCount: Array.isArray(appt.customerIDs) ? appt.customerIDs.length : 0,
         // Inject effectiveStatus into raw so EventDetailPanel sees the correct status
@@ -1004,11 +1043,10 @@ function showEventTooltip(e, props) {
   const customerObjs = Array.isArray(raw.customerIDs)
     ? raw.customerIDs.filter((c) => typeof c === "object")
     : [];
-  const customerNames = customerObjs.map((c) => {
-    const base = c.name || c.email || ""
-    const memberNames = (c.members || []).map((m) => m.name).filter(Boolean)
-    return memberNames.length > 0 ? `${base} & ${memberNames.join(", ")}` : base
-  }).filter(Boolean);
+  // Use the already member-filtered names from extendedProps instead of recomputing from raw
+  const customerNames = Array.isArray(props.customerNames) && props.customerNames.length > 0
+    ? props.customerNames
+    : customerObjs.map((c) => c.name || c.email || "").filter(Boolean);
   const customerEmails = customerObjs.map((c) => c.email).filter(Boolean);
 
   // ── Teacher ───────────────────────────────────────────────────────────────
@@ -1160,6 +1198,7 @@ function AppointmentTimedEventRows({ event, compact = false }) {
     sessionsRemaining,
     totalSessions,
     sessionsPaidFor,
+    pkgSessionNumber,
     paymentCollected,
     studentCount: studentCountProp,
   } = ep;
@@ -1242,9 +1281,10 @@ function AppointmentTimedEventRows({ event, compact = false }) {
             {studentCount} student{studentCount === 1 ? "" : "s"}
           </span>
         )}
-        {!isGroupClass && sessionsPaidFor != null && sessionsRemaining != null && totalSessions != null && (() => {
-          const sessionsUsed = totalSessions - sessionsRemaining;
-          const creditLeft = Math.max(0, sessionsPaidFor - sessionsUsed);
+        {!isGroupClass && sessionsPaidFor != null && (() => {
+          // Show credit balance as it was just before this session was consumed
+          const sessionsBefore = pkgSessionNumber != null ? pkgSessionNumber - 1 : (totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0);
+          const creditLeft = Math.max(0, sessionsPaidFor - sessionsBefore);
           const display = Number.isInteger(creditLeft) ? creditLeft : +creditLeft.toFixed(1);
           return (
             <span className="shrink-0 text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
@@ -2710,6 +2750,7 @@ export default function CalendarPage() {
 
   const [events, setEvents] = useState([]);
   const [instructors, setInstructors] = useState([]);
+  const memberSelectionsRef = useRef({}); // appointmentId -> memberIds[]
   const allTeachersRef = useRef([]);
   const [allServices, setAllServices] = useState([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
@@ -2787,7 +2828,7 @@ export default function CalendarPage() {
         merged = derived;
       }
       const colorMap = buildColorMap(merged);
-      setEvents(transformAppointments(result.data, colorMap));
+      setEvents(transformAppointments(result.data, colorMap, memberSelectionsRef.current));
       setInstructors(merged.length > 0 ? merged : derived);
     }
     setIsLoadingEvents(false);
@@ -3300,7 +3341,10 @@ export default function CalendarPage() {
                   setIsAppointmentPanelOpen(false);
                   setSlotSelection(null);
                 }}
-                onCreated={fetchCalendarEvents}
+                onCreated={(memberMap) => {
+                  if (memberMap) Object.assign(memberSelectionsRef.current, memberMap);
+                  fetchCalendarEvents();
+                }}
                 initialDate={slotSelection?.date}
                 initialTime={slotSelection?.time}
                 initialInstructorId={slotSelection?.instructorId}
@@ -3320,7 +3364,20 @@ export default function CalendarPage() {
                   fetchCalendarEvents();
                   setSelectedEvent(null);
                 }}
-                onRosterChanged={fetchCalendarEvents}
+                onRosterChanged={(memberInfo) => {
+                  if (
+                    memberInfo?.eventId &&
+                    memberInfo?.customerId &&
+                    memberInfo?.memberNames?.length > 0
+                  ) {
+                    const eid = String(memberInfo.eventId);
+                    memberSelectionsRef.current[eid] = {
+                      ...(memberSelectionsRef.current[eid] || {}),
+                      [String(memberInfo.customerId)]: memberInfo.memberNames,
+                    };
+                  }
+                  fetchCalendarEvents();
+                }}
                 onPaymentSuccess={fetchCalendarEvents}
               />
             </div>

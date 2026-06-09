@@ -2712,7 +2712,13 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
   const filteredEnrollments = statusFilter
     ? enrollments.filter((e) => {
         if (statusFilter === "active") return e.status === "active";
-        if (statusFilter === "completed") return e.status !== "active";
+        if (statusFilter === "expired") return e.package?.status === "expired";
+        if (statusFilter === "completed") {
+          const svcs = e.package?.services ?? [];
+          const total = svcs.reduce((s, svc) => s + (svc.sessionsTotal ?? 0), 0);
+          const used = svcs.reduce((s, svc) => s + (svc.sessionsCompleted ?? svc.sessionsUsed ?? 0), 0);
+          return e.status !== "active" && e.package?.status !== "expired" && total > 0 && used >= total;
+        }
         return true;
       })
     : enrollments;
@@ -2739,6 +2745,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
             >
               <option value="active">Active</option>
               <option value="completed">Completed</option>
+              <option value="expired">Expired</option>
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           </div>
@@ -3012,7 +3019,9 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                 : 1;
                             const svcAmountPaid =
                               (cp.amountCollected ?? 0) * svcShare;
-                            return svcAmountPaid / pps;
+                            const paidSessions = svcAmountPaid / pps;
+                            // Subtract scheduled sessions so credit reduces when booked
+                            return Math.max(0, paidSessions - sessUsed - sessSched);
                           })();
                           const svcCredit = svcCreditSessions * pps;
                           totalEnrolled += sessTotal;
@@ -3047,14 +3056,13 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                 className="grid sticky top-0 z-10 bg-muted/50 border-b-2 border-border px-3 py-2.5"
                                 style={{
                                   gridTemplateColumns:
-                                    "1fr 80px 80px 80px 80px 80px 80px 100px",
+                                    "minmax(0,1fr) 80px 80px 80px 80px 80px 100px",
                                 }}
                               >
                                 <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                                   Service
                                 </span>
                                 {[
-                                  "Price/Sess",
                                   "Enrolled",
                                   "Completed",
                                   "Scheduled",
@@ -3098,7 +3106,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                         className="grid items-center px-3 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
                                         style={{
                                           gridTemplateColumns:
-                                            "1fr 80px 80px 80px 80px 80px 80px 100px",
+                                            "minmax(0,1fr) 80px 80px 80px 80px 80px 100px",
                                         }}
                                         onClick={() => toggleService(expandKey)}
                                       >
@@ -3121,16 +3129,11 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                           </div>
                                           <div className="mt-1.5 pl-[28px]">
                                             <SessionBar
-                                              used={sessUsed}
+                                              used={sessUsed + sessSched}
                                               total={sessTotal}
                                             />
                                           </div>
                                         </div>
-                                        <span className="text-[12px] text-muted-foreground text-right">
-                                          {svc.pricePerSession > 0
-                                            ? `$${Number(svc.pricePerSession).toFixed(2)}`
-                                            : "—"}
-                                        </span>
                                         <span className="text-[13px] font-semibold text-foreground text-right">
                                           {sessTotal}
                                         </span>
