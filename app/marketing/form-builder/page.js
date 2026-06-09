@@ -37,6 +37,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { extractLeadReasonsList } from '../email-builder/emailBuilderApi'
 
 const fieldTypes = [
   { id: 'text', name: 'Text Input', icon: Type },
@@ -70,6 +71,30 @@ const templateFields = {
     { id: 't1', type: 'rating', label: 'Overall Rating', placeholder: '', required: true },
     { id: 't2', type: 'textarea', label: 'Feedback', placeholder: 'Share your feedback', required: false },
   ],
+}
+
+function buildRequiredLeadFields(leadReasons = []) {
+  const reasonOptions = (leadReasons || []).map((r) => ({
+    label: r.name,
+    value: r.reasonCode,
+  }))
+  return [
+    { id: 'req-name', type: 'text', name: 'name', label: 'Name', placeholder: 'Enter your name', required: true, locked: true, styles: {} },
+    { id: 'req-email', type: 'email', name: 'email', label: 'Email', placeholder: 'you@email.com', required: true, locked: true, styles: {} },
+    { id: 'req-phoneNumber', type: 'phone', name: 'phoneNumber', label: 'Phone Number', placeholder: '(555) 123-4567', required: true, locked: true, styles: {} },
+    { id: 'req-location', type: 'text', name: 'location', label: 'Location', placeholder: 'Enter location', required: true, locked: true, styles: {} },
+    {
+      id: 'req-reason',
+      type: 'select',
+      name: 'reason',
+      label: 'Reason',
+      placeholder: 'Select reason',
+      required: true,
+      locked: true,
+      styles: {},
+      options: reasonOptions,
+    },
+  ]
 }
 
 // Sortable Field Item Component
@@ -603,6 +628,7 @@ function FormsPageInner() {
   const [previewLoading, setPreviewLoading] = useState(false)
   // Clone
   const [cloningFormId, setCloningFormId] = useState(null)
+  const [leadReasons, setLeadReasons] = useState([])
 
   // Backend-required hidden fields injected into exported HTML
   const organisationID = user?.organisationID || ''
@@ -612,12 +638,6 @@ function FormsPageInner() {
     { id: 'sys-formID', type: 'hidden', name: 'formID', label: 'formID', hidden: true, locked: true, styles: {} },
     { id: 'sys-locationID', type: 'hidden', name: 'locationID', label: 'locationID', hidden: true, locked: true, styles: {} },
   ]
-  const REQUIRED_LEAD_FIELDS = [
-    { id: 'req-name', type: 'text', name: 'name', label: 'Name', placeholder: 'Enter your name', required: true, locked: true, styles: {} },
-    { id: 'req-email', type: 'email', name: 'email', label: 'Email', placeholder: 'you@email.com', required: true, locked: true, styles: {} },
-    { id: 'req-phoneNumber', type: 'phone', name: 'phoneNumber', label: 'Phone Number', placeholder: '(555) 123-4567', required: true, locked: true, styles: {} },
-    { id: 'req-location', type: 'text', name: 'location', label: 'Location', placeholder: 'Enter location', required: true, locked: true, styles: {} },
-  ]
   const REQUIRED_FIELD_NAMES = new Set([
     'organisationID',
     'formID',
@@ -626,11 +646,12 @@ function FormsPageInner() {
     'email',
     'phoneNumber',
     'location',
+    'reason',
   ])
 
   const [formFields, setFormFields] = useState([
     ...REQUIRED_SYSTEM_FIELDS,
-    ...REQUIRED_LEAD_FIELDS,
+    ...buildRequiredLeadFields([]),
   ])
   const [selectedField, setSelectedField] = useState(null)
   const [activeId, setActiveId] = useState(null)
@@ -649,6 +670,37 @@ function FormsPageInner() {
     params.set('view', tab)
     router.push(`${pathname}?${params.toString()}`)
   }
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const result = await api.get('/api/lead-reasons')
+        if (cancelled || !result.success) return
+        setLeadReasons(extractLeadReasonsList(result))
+      } catch (e) {
+        console.error(e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!leadReasons.length) return
+    const reasonOptions = leadReasons.map((r) => ({
+      label: r.name,
+      value: r.reasonCode,
+    }))
+    setFormFields((prev) =>
+      prev.map((f) =>
+        f.id === 'req-reason'
+          ? { ...f, type: 'select', options: reasonOptions }
+          : f
+      )
+    )
+  }, [leadReasons])
 
   const saveForm = async () => {
     if (!formName.trim()) {
@@ -743,7 +795,7 @@ function FormsPageInner() {
     setFormName('')
     setFormDescription('')
     setEditingFormId(null)
-    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...REQUIRED_LEAD_FIELDS])
+    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons)])
     setSelectedField(null)
     setActiveTab('builder')
   }
@@ -759,7 +811,7 @@ function FormsPageInner() {
     })
   )
 
-  const RESERVED_FIELD_NAMES = new Set(['organisationID', 'formID', 'name', 'email', 'phoneNumber', 'location', 'locationID'])
+  const RESERVED_FIELD_NAMES = new Set(['organisationID', 'formID', 'name', 'email', 'phoneNumber', 'location', 'locationID', 'reason'])
   const SYSTEM_HIDDEN_FIELD_NAMES = new Set(['organisationID', 'formID', 'locationID'])
 
   const getFieldNameForHtml = (field) => {
@@ -945,9 +997,9 @@ function FormsPageInner() {
 
       // Ensure required lead fields always exist, and avoid duplicates
       const inferredFiltered = inferred.filter((f) => !REQUIRED_FIELD_NAMES.has(String(f?.name || '').trim()))
-      const nextFields = [...REQUIRED_SYSTEM_FIELDS, ...REQUIRED_LEAD_FIELDS, ...inferredFiltered]
+      const nextFields = [...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons), ...inferredFiltered]
       setFormFields(nextFields)
-      const firstVisible = [...REQUIRED_LEAD_FIELDS, ...inferredFiltered].find((f) => f && !f.hidden && f.type !== 'hidden')
+      const firstVisible = [...buildRequiredLeadFields(leadReasons), ...inferredFiltered].find((f) => f && !f.hidden && f.type !== 'hidden')
       setSelectedField(firstVisible?.id || null)
       setActiveTab('builder')
     } catch (e) {
@@ -980,7 +1032,7 @@ function FormsPageInner() {
     }))
     // Prevent template fields from duplicating reserved backend field names (e.g. a second "email")
     const filtered = normalized.filter((f) => !REQUIRED_FIELD_NAMES.has(getFieldNameForHtml(f)))
-    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...REQUIRED_LEAD_FIELDS, ...filtered])
+    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons), ...filtered])
     setSelectedField(normalized[0]?.id || null)
     setActiveTab('builder')
   }
@@ -1110,7 +1162,7 @@ function FormsPageInner() {
         ${field.required ? 'required' : ''}
         style="${styleString}"
       >
-        <option value="">Select an option</option>
+        <option value="">${field.placeholder || 'Select an option'}</option>
         ${optsHtml}
       </select>`
     } else if (field.type === 'checkbox') {
@@ -1328,6 +1380,7 @@ ${gtagScript}
           payload.phone = payload.phone || pickFirst(payload.phone_number) || pickFirst(payload.phone);
           payload.source = payload.source || 'Website';
           payload.url = capturedUrl;
+          payload.reason = pickFirst(payload.reason);
           // Safety: ensure backend required ids are scalar even if duplicated somehow
           payload.organisationID = pickFirst(payload.organisationID);
           payload.formID = pickFirst(payload.formID);

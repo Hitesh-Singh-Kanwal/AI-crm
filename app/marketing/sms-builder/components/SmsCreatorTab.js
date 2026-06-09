@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/select'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
+import { extractLeadReasonsList } from '../../email-builder/emailBuilderApi'
 import { SMS_VARIABLES, previewMessage } from './constants'
 
 export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion = 0 }) {
@@ -20,10 +21,13 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
 
   const [categories, setCategories] = useState([])
   const [loadingCats, setLoadingCats] = useState(false)
+  const [reasons, setReasons] = useState([])
+  const [loadingReasons, setLoadingReasons] = useState(false)
 
   const [name, setName] = useState(initialTemplate?.name || '')
   const [subCategory, setSubCategory] = useState(initialTemplate?.subCategory || '')
   const [categoryId, setCategoryId] = useState(initialTemplate?.categoryID?._id || '')
+  const [reasonCode, setReasonCode] = useState(initialTemplate?.reason || '')
   const [message, setMessage] = useState(initialTemplate?.message || '')
 
   const [saving, setSaving] = useState(false)
@@ -33,6 +37,7 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
     setName(initialTemplate.name || '')
     setSubCategory(initialTemplate.subCategory || '')
     setCategoryId(initialTemplate.categoryID?._id || '')
+    setReasonCode(initialTemplate.reason || '')
     setMessage(initialTemplate.message || '')
   }, [initialTemplate])
 
@@ -49,9 +54,30 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
     }
   }, [])
 
+  const fetchReasons = useCallback(async () => {
+    setLoadingReasons(true)
+    try {
+      const result = await api.get('/api/lead-reasons')
+      if (result.success) {
+        const list = extractLeadReasonsList(result)
+        setReasons(list)
+        setReasonCode((prev) => {
+          if (prev) return prev
+          const first = list[0]?.reasonCode
+          return first ? String(first) : ''
+        })
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoadingReasons(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchCategories()
-  }, [fetchCategories, dataVersion])
+    fetchReasons()
+  }, [fetchCategories, fetchReasons, dataVersion])
 
   const meta = useMemo(() => {
     const chars = String(message || '').length
@@ -61,18 +87,26 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
 
   const insertVariable = (v) => setMessage((m) => `${m}${m ? ' ' : ''}${v}`)
 
-  const canSave = !!name.trim() && !!message.trim() && !!categoryId && !!subCategory.trim()
+  const canSave =
+    !!name.trim() &&
+    !!message.trim() &&
+    !!categoryId &&
+    !!subCategory.trim() &&
+    !!String(reasonCode || '').trim()
 
   const createTemplate = async () => {
+    if (!String(reasonCode || '').trim()) {
+      toast.error({ title: 'Missing reason', message: 'Reason is required.' })
+      return
+    }
     if (!canSave) return
     setSaving(true)
     try {
-      // Backend create route wasn't provided explicitly in prompt, but follows REST pattern.
-      // We send all template fields used by GET responses.
       const payload = {
         name: name.trim(),
         subCategory: subCategory.trim(),
         categoryID: categoryId,
+        reason: String(reasonCode || '').trim(),
         message: String(message || ''),
       }
       const result = await api.post('/api/smsBuilder', payload)
@@ -189,6 +223,26 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
                 <Input value={subCategory} onChange={(e) => setSubCategory(e.target.value)} placeholder="e.g. Welcome" />
               </div>
 
+              <div className="space-y-2">
+                <Label>
+                  Reason <span className="text-red-500">*</span>
+                </Label>
+                {loadingReasons ? (
+                  <div className="py-2">
+                    <LoadingSpinner size="sm" text="Loading reasons…" />
+                  </div>
+                ) : (
+                  <Select value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
+                    <option value="">Select reason…</option>
+                    {reasons.map((r) => (
+                      <option key={r._id || r.reasonCode || r.name} value={r.reasonCode}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </div>
+
               <Button variant="gradient" className="w-full" onClick={createTemplate} disabled={saving || !canSave}>
                 <Send className="h-4 w-4 mr-2" />
                 {saving ? 'Saving…' : 'Save template'}
@@ -201,6 +255,7 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
                     {!name.trim() && <li>Template name</li>}
                     {!categoryId && <li>Category</li>}
                     {!subCategory.trim() && <li>Sub-category</li>}
+                    {!String(reasonCode || '').trim() && <li>Reason</li>}
                     {!message.trim() && <li>Message</li>}
                   </ul>
                 </div>

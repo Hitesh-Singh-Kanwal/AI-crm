@@ -115,47 +115,68 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate }) {
             {(field.type === 'select' || field.type === 'checkbox') && (
               <div className="space-y-2.5">
                 <Label className="text-xs text-muted-foreground font-medium">Options</Label>
-                {(field.options || []).map((opt, idx) => (
-                  <div key={idx} className="flex gap-2 items-center">
-                    <Input
-                      value={opt.label || ''}
-                      onChange={(e) => {
-                        const newOptions = [...(field.options || [])]
-                        const newLabel = e.target.value
-                        const derivedValue = (newOptions[idx]?.value && newOptions[idx].value !== (`option_${idx+1}`)) ? newOptions[idx].value : newLabel.toLowerCase().replace(/\s+/g, '_')
-                        newOptions[idx] = { ...newOptions[idx], label: newLabel, value: derivedValue }
-                        handleFieldUpdate({ ...field, options: newOptions })
-                      }}
-                      placeholder="Option label"
-                      className="flex-1 border-border bg-background text-sm h-9"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newOptions = [...(field.options || [])]
-                        newOptions.splice(idx, 1)
-                        handleFieldUpdate({ ...field, options: newOptions })
-                      }}
-                      className="px-2 py-1 text-sm rounded bg-destructive/10 text-destructive hover:bg-destructive/15"
-                    >
-                      Remove
-                    </button>
+                {field.locked ? (
+                  <div className="space-y-1.5">
+                    {field.name === 'reason' && (
+                      <p className="text-xs text-muted-foreground">
+                        Options are loaded from your existing lead reasons.
+                      </p>
+                    )}
+                    <ul className="text-xs text-muted-foreground space-y-1 rounded-md border border-border p-2 max-h-36 overflow-y-auto">
+                      {(field.options || []).length > 0 ? (
+                        field.options.map((opt, idx) => (
+                          <li key={opt.value || opt.label || idx}>{opt.label || opt.value}</li>
+                        ))
+                      ) : (
+                        <li>No options available</li>
+                      )}
+                    </ul>
                   </div>
-                ))}
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newOptions = [...(field.options || [])]
-                      const nextIndex = newOptions.length + 1
-                      newOptions.push({ label: `Option ${nextIndex}`, value: `option_${nextIndex}` })
-                      handleFieldUpdate({ ...field, options: newOptions })
-                    }}
-                    className="px-3 py-2 text-sm bg-muted text-foreground rounded"
-                  >
-                    Add Option
-                  </button>
-                </div>
+                ) : (
+                  <>
+                    {(field.options || []).map((opt, idx) => (
+                      <div key={idx} className="flex gap-2 items-center">
+                        <Input
+                          value={opt.label || ''}
+                          onChange={(e) => {
+                            const newOptions = [...(field.options || [])]
+                            const newLabel = e.target.value
+                            const derivedValue = (newOptions[idx]?.value && newOptions[idx].value !== (`option_${idx+1}`)) ? newOptions[idx].value : newLabel.toLowerCase().replace(/\s+/g, '_')
+                            newOptions[idx] = { ...newOptions[idx], label: newLabel, value: derivedValue }
+                            handleFieldUpdate({ ...field, options: newOptions })
+                          }}
+                          placeholder="Option label"
+                          className="flex-1 border-border bg-background text-sm h-9"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newOptions = [...(field.options || [])]
+                            newOptions.splice(idx, 1)
+                            handleFieldUpdate({ ...field, options: newOptions })
+                          }}
+                          className="px-2 py-1 text-sm rounded bg-destructive/10 text-destructive hover:bg-destructive/15"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newOptions = [...(field.options || [])]
+                          const nextIndex = newOptions.length + 1
+                          newOptions.push({ label: `Option ${nextIndex}`, value: `option_${nextIndex}` })
+                          handleFieldUpdate({ ...field, options: newOptions })
+                        }}
+                        className="px-3 py-2 text-sm bg-muted text-foreground rounded"
+                      >
+                        Add Option
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
             <div className="flex items-center gap-2 pt-2 border-t border-border">
