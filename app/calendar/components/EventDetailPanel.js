@@ -163,6 +163,10 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
   const [saving, setSaving] = useState(null);
   const [payingId, setPayingId] = useState(null); // student currently showing the pay form
   const [payForm, setPayForm] = useState({ amount: "", method: "cash" });
+  const [pendingAdd, setPendingAdd] = useState(null); // { customer, memberIds: [] } - waiting for member selection
+  const [enrolledMemberMap, setEnrolledMemberMap] = useState({}); // customerId -> [memberId, ...]
+  const [eventMemberIds, setEventMemberIds] = useState([]); // flat list of persisted member subdoc ids
+
   const dropRef = useRef(null);
 
   // Fetch the event's current customerIDs then resolve each to a full customer object
@@ -172,13 +176,29 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
     const customerIds = (evRes.data?.customerIDs || [])
       .map((c) => (typeof c === "object" ? String(c._id) : String(c)))
       .filter(Boolean);
+    const persistedMemberIds = (evRes.data?.memberIDs || []).map((m) =>
+      String(m?._id ?? m),
+    );
+    setEventMemberIds(persistedMemberIds);
     const charged = new Set(
       (evRes.data?.charges || []).map((ch) => String(ch.customerID))
     );
     setChargedIds(charged);
-    if (customerIds.length === 0) { setEnrolled([]); return; }
+    if (customerIds.length === 0) { setEnrolled([]); setEnrolledMemberMap({}); return; }
     const results = await Promise.all(customerIds.map((id) => api.get(`/api/customer/${id}`)));
-    setEnrolled(results.filter((r) => r.success).map((r) => r.data));
+    const customers = results.filter((r) => r.success).map((r) => r.data);
+    setEnrolled(customers);
+    // Seed the per-customer member map from persisted memberIDs so existing
+    // attendance shows in the roster when the panel reopens.
+    const memberSet = new Set(persistedMemberIds);
+    const map = {};
+    customers.forEach((c) => {
+      const mine = (c.members || [])
+        .filter((m) => memberSet.has(String(m._id)))
+        .map((m) => String(m._id));
+      if (mine.length > 0) map[String(c._id)] = mine;
+    });
+    setEnrolledMemberMap(map);
   };
 
   useEffect(() => {
@@ -249,28 +269,74 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
       )
     : eligibleToAdd;
 
-  const handleAdd = async (customer) => {
+  const handleAdd = (customer) => {
+    if ((customer.members || []).length > 0) {
+      setPendingAdd({ customer, memberIds: [] });
+      setAddOpen(false);
+      setQuery("");
+      return;
+    }
+    confirmAdd(customer, []);
+  };
+
+  const confirmAdd = async (customer, memberIds) => {
     const cid = String(customer._id);
     setSaving(cid);
     const newIds = [...currentIds, cid];
-    const res = await api.put(`/api/calendar/${eventId}`, { customerIDs: newIds });
+    // memberIDs is a flat list across all customers on the event — merge with the
+    // existing ones so we never clobber another student's attending members.
+    const mergedMemberIds = Array.from(
+      new Set([...eventMemberIds.map(String), ...memberIds.map(String)]),
+    );
+    const body = { customerIDs: newIds, memberIDs: mergedMemberIds };
+    const res = await api.put(`/api/calendar/${eventId}`, body);
     if (res.success) {
       const charged = new Set((res.data?.charges || []).map((ch) => String(ch.customerID)));
       setChargedIds(charged);
       setEnrolled((prev) => [...prev, customer]);
-      onRosterChanged?.();
+      setEventMemberIds(mergedMemberIds);
+      if (memberIds.length > 0) {
+        setEnrolledMemberMap((prev) => ({ ...prev, [cid]: memberIds.map(String) }));
+      }
+      const memberNames = (customer.members || [])
+        .filter((m) => memberIds.map(String).includes(String(m._id)))
+        .map((m) => m.name)
+        .filter(Boolean);
+      onRosterChanged?.(
+        memberNames.length > 0
+          ? { eventId, customerId: cid, memberNames }
+          : null,
+      );
     }
     setSaving(null);
+    setPendingAdd(null);
   };
 
   const handleRemove = async (customerId) => {
     setSaving(customerId);
     const newIds = [...currentIds].filter((id) => id !== customerId);
-    const res = await api.put(`/api/calendar/${eventId}`, { customerIDs: newIds });
+    // Drop the removed student's members from the event-wide memberIDs list.
+    const removed = enrolled.find((c) => String(c._id) === String(customerId));
+    const removedMemberIds = new Set(
+      (removed?.members || []).map((m) => String(m._id)),
+    );
+    const newMemberIds = eventMemberIds.filter(
+      (id) => !removedMemberIds.has(String(id)),
+    );
+    const res = await api.put(`/api/calendar/${eventId}`, {
+      customerIDs: newIds,
+      memberIDs: newMemberIds,
+    });
     if (res.success) {
       const charged = new Set((res.data?.charges || []).map((ch) => String(ch.customerID)));
       setChargedIds(charged);
       setEnrolled((prev) => prev.filter((c) => String(c._id) !== customerId));
+      setEventMemberIds(newMemberIds);
+      setEnrolledMemberMap((prev) => {
+        const next = { ...prev };
+        delete next[String(customerId)];
+        return next;
+      });
       onRosterChanged?.();
     }
     setSaving(null);
@@ -315,6 +381,58 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
 
   return (
     <div>
+      {pendingAdd && (
+        <div className="mb-3 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 space-y-2">
+          <p className="text-[12px] font-semibold text-foreground">
+            Adding <span className="text-primary">{pendingAdd.customer.name}</span> — select attending members <span className="text-muted-foreground font-normal">(optional)</span>:
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {(pendingAdd.customer.members || []).map((m) => {
+              const selected = pendingAdd.memberIds.includes(String(m._id));
+              return (
+                <button
+                  key={m._id}
+                  type="button"
+                  onClick={() => {
+                    const set = new Set(pendingAdd.memberIds);
+                    selected ? set.delete(String(m._id)) : set.add(String(m._id));
+                    setPendingAdd((p) => ({ ...p, memberIds: [...set] }));
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors ${
+                    selected
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  <span className="h-4 w-4 rounded-full bg-current/20 flex items-center justify-center text-[8px] font-bold shrink-0">
+                    {(m.name || "?").charAt(0).toUpperCase()}
+                  </span>
+                  {m.name}
+                  {m.relationship && <span className="opacity-60 capitalize">· {m.relationship}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex gap-2 pt-0.5">
+            <button
+              type="button"
+              onClick={() => confirmAdd(pendingAdd.customer, pendingAdd.memberIds)}
+              disabled={saving === String(pendingAdd.customer._id)}
+              className="h-7 px-3 rounded-md bg-primary text-[11px] font-semibold text-white disabled:opacity-50"
+            >
+              {saving === String(pendingAdd.customer._id) ? "Adding…" : "Confirm & Add"}
+            </button>
+            <button
+              type="button"
+              onClick={() => confirmAdd(pendingAdd.customer, [])}
+              disabled={saving === String(pendingAdd.customer._id)}
+              className="h-7 px-3 rounded-md border border-border text-[11px] font-medium text-foreground hover:bg-muted/50 disabled:opacity-50"
+            >
+              Add without member
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-1.5">
         <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
           <Users className="h-3.5 w-3.5" />
@@ -367,7 +485,12 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
                             </svg>
                           ) : (c.name || "?").charAt(0).toUpperCase()}
                         </span>
-                        <span className="truncate">{c.name || c.email}</span>
+                        <span className="truncate">
+                          {c.name || c.email}
+                          {(c.members || []).length > 0 && (
+                            <span className="ml-1 text-[10px] text-muted-foreground">& {(c.members).map((m) => m.name).join(", ")}</span>
+                          )}
+                        </span>
                       </button>
                     );
                   })
@@ -389,6 +512,11 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
             const cid = String(c._id);
             const remaining = sessionMap[cid];
             const isCharged = chargedIds.has(cid);
+            const attendingMemberIds = enrolledMemberMap[cid] || [];
+            const attendingMembers = (c.members || []).filter((m) => attendingMemberIds.includes(String(m._id)));
+            const displayName = attendingMembers.length > 0
+              ? `${c.name || "—"} & ${attendingMembers.map((m) => m.name).join(", ")}`
+              : c.name || "—";
             return (
             <div key={cid}>
             <div
@@ -398,7 +526,7 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
                 {(c.name || "?").charAt(0).toUpperCase()}
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-foreground truncate">{c.name || "—"}</p>
+                <p className="text-[13px] font-semibold text-foreground truncate">{displayName}</p>
                 {c.email && <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>}
               </div>
               {remaining != null && !(remaining === 0 && isCharged) && (

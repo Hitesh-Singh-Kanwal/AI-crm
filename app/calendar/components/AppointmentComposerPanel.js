@@ -139,6 +139,8 @@ const EMPTY_FORM = {
   session_payment_method: "",
   group_sell_package: false,
   group_package_id: "",
+  member_ids: [],
+  group_member_ids: {},
 };
 
 // ─── Primitive UI ─────────────────────────────────────────────────────────────
@@ -654,6 +656,47 @@ function EnrollmentServiceSelector({
   );
 }
 
+// ─── Member picker (shown when a selected customer has members) ───────────────
+
+function MemberPicker({ members, selectedIds, onChange, label = "Attending members" }) {
+  if (!members || members.length === 0) return null;
+  const toggle = (id) => {
+    const set = new Set(selectedIds);
+    set.has(id) ? set.delete(id) : set.add(id);
+    onChange([...set]);
+  };
+  return (
+    <div className="rounded-xl border border-border bg-muted/20 px-3 py-2.5 space-y-1.5">
+      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {members.map((m) => {
+          const selected = selectedIds.includes(String(m._id));
+          return (
+            <button
+              key={m._id}
+              type="button"
+              onClick={() => toggle(String(m._id))}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors ${
+                selected
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-background text-muted-foreground hover:bg-muted/50"
+              }`}
+            >
+              <span className="h-4 w-4 rounded-full bg-current/20 flex items-center justify-center text-[8px] font-bold shrink-0">
+                {(m.name || "?").charAt(0).toUpperCase()}
+              </span>
+              {m.name}
+              {m.relationship && (
+                <span className="opacity-60 capitalize">· {m.relationship}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── WHO section ──────────────────────────────────────────────────────────────
 
 function WhoSection({
@@ -661,11 +704,14 @@ function WhoSection({
   setField,
   instructorOptions,
   customerOptions,
+  rawCustomers,
   onNewCustomer,
   onOpenEnrollmentWizard,
   enrollments,
   allServices,
 }) {
+  const selectedCustomer = rawCustomers?.find((c) => String(c._id) === form.customer_id);
+  const selectedMembers = selectedCustomer?.members || [];
   const [showNew, setShowNew] = useState(false);
 
   return (
@@ -678,6 +724,7 @@ function WhoSection({
           value={form.customer_id}
           onChange={(v) => {
             setField("customer_id", v);
+            setField("member_ids", []);
             onOpenEnrollmentWizard?.(false);
             setField("enrollment_id", "");
             setField("service_id", "");
@@ -708,6 +755,14 @@ function WhoSection({
           </button>
         )}
       </div>
+
+      {selectedMembers.length > 0 && (
+        <MemberPicker
+          members={selectedMembers}
+          selectedIds={form.member_ids}
+          onChange={(ids) => setField("member_ids", ids)}
+        />
+      )}
 
       {form.customer_id && (
         <EnrollmentServiceSelector
@@ -1335,6 +1390,7 @@ function AppointmentFields({
   setField,
   instructorOptions,
   customerOptions,
+  rawCustomers,
   lessonDuration,
   slotStepMins,
   slotAlignMins,
@@ -1376,6 +1432,7 @@ function AppointmentFields({
         setField={setField}
         instructorOptions={instructorOptions}
         customerOptions={customerOptions}
+        rawCustomers={rawCustomers}
         onNewCustomer={onNewCustomer}
         onOpenEnrollmentWizard={onOpenEnrollmentWizard}
         enrollments={enrollments}
@@ -1592,6 +1649,7 @@ export default function AppointmentComposerPanel({
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [instructorOptions, setInstructorOptions] = useState([]);
   const [customerOptions, setCustomerOptions] = useState([]);
+  const [rawCustomers, setRawCustomers] = useState([]);
   const [lessonOptions, setLessonOptions] = useState([]);
   const [lessonMap, setLessonMap] = useState({});
   const [lessonByName, setLessonByName] = useState({});
@@ -1662,15 +1720,15 @@ export default function AppointmentComposerPanel({
             })),
           );
 
-        if (customersRes.success && Array.isArray(customersRes.data))
+        if (customersRes.success && Array.isArray(customersRes.data)) {
+          setRawCustomers(customersRes.data);
           setCustomerOptions(
-            customersRes.data.map((c) => {
-              const base = c.name || c.email || String(c._id)
-              const memberNames = (c.members || []).map((m) => m.name).filter(Boolean)
-              const label = memberNames.length > 0 ? `${base} & ${memberNames.join(', ')}` : base
-              return { value: String(c._id ?? c.id), label }
-            }),
+            customersRes.data.map((c) => ({
+              value: String(c._id ?? c.id),
+              label: c.name || c.email || String(c._id),
+            })),
           );
+        }
 
         // Store raw enrollments for later cross-referencing once calendarServices are loaded
         if (customerPkgRes.success && Array.isArray(customerPkgRes.data)) {
@@ -1888,6 +1946,7 @@ export default function AppointmentComposerPanel({
           : form.customer_id
             ? [form.customer_id]
             : undefined,
+      memberIDs: form.member_ids?.length > 0 ? form.member_ids : undefined,
       lessonID: form.lesson_id || undefined,
       calendarServiceID: form.service_id || undefined,
       enrollmentID: activeTab === "Group Class" ? undefined : form.enrollment_id || undefined,
@@ -1952,7 +2011,26 @@ export default function AppointmentComposerPanel({
     const firstFailure = results.find((r) => !r.success);
 
     if (!firstFailure) {
-      onCreated?.();
+      // Resolve the selected member IDs to names now, while we still have the full
+      // customer object — the calendar GET response does not populate member sub-docs.
+      const selCustomer = rawCustomers.find((c) => String(c._id) === form.customer_id);
+      const selMemberNames = (selCustomer?.members || [])
+        .filter((m) => form.member_ids?.map(String).includes(String(m._id)))
+        .map((m) => m.name)
+        .filter(Boolean);
+      if (form.customer_id && selMemberNames.length > 0) {
+        const memberMap = {};
+        results.forEach((r) => {
+          const d = r.data;
+          const id = d?.calendarEvent?._id ?? d?._id ?? d?.id;
+          if (r.success && id) {
+            memberMap[String(id)] = { [String(form.customer_id)]: selMemberNames };
+          }
+        });
+        onCreated?.(Object.keys(memberMap).length > 0 ? memberMap : null);
+      } else {
+        onCreated?.();
+      }
       onClose();
     } else {
       setError(firstFailure.error || "Failed to save. Please try again.");
@@ -2024,6 +2102,7 @@ export default function AppointmentComposerPanel({
     packageOptions,
     packageTemplates,
     enrollments,
+    rawCustomers,
     onNewCustomer: handleNewCustomer,
     onOpenEnrollmentWizard: (open = true) => setShowEnrollmentWizard(Boolean(open)),
   };
