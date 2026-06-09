@@ -137,7 +137,7 @@ function SortablePackageRow({ pkg, selectedIds, toggleOne, onDelete, onToggleSta
       </TableCell>
       <TableCell className="py-3 px-4">
         <div className="flex items-center gap-3">
-          <span className="h-9 w-9 rounded-full shrink-0 flex items-center justify-center text-sm font-bold text-foreground border border-border bg-background">
+          <span className="h-9 w-9 rounded-full shrink-0 flex items-center justify-center text-sm font-bold bg-brand text-brand-foreground">
             {pkg.packageName.charAt(0).toUpperCase()}
           </span>
           <p className="text-sm font-medium text-foreground">{pkg.packageName}</p>
