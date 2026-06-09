@@ -14,6 +14,7 @@ import {
   StickyNote,
   User,
   ChevronDown,
+  ArrowUpDown,
   X,
   CreditCard,
   RotateCcw,
@@ -4584,10 +4585,21 @@ function eventStatusLabel(status) {
   );
 }
 
+const LESSON_FILTERS = [
+  { id: "scheduled", label: "Scheduled" },
+  { id: "completed", label: "Completed" },
+  { id: "cancelled", label: "Cancelled" },
+  { id: "no_show", label: "No Show" },
+  { id: "paid", label: "Paid" },
+  { id: "unpaid", label: "Unpaid" },
+];
+
 function LessonsTab({ customer }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [activeFilters, setActiveFilters] = useState(new Set());
+  const [showFilters, setShowFilters] = useState(false);
+  const [sortOrder, setSortOrder] = useState("new_to_old");
 
   useEffect(() => {
     if (!customer?._id) return;
@@ -4617,6 +4629,15 @@ function LessonsTab({ customer }) {
     });
   }, [customer?._id]);
 
+  function toggleFilter(id) {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -4626,24 +4647,37 @@ function LessonsTab({ customer }) {
   }
 
   const filteredEvents = events.filter((ev) => {
-    if (statusFilter === "all") return true;
+    if (activeFilters.size === 0) return true;
     const status = deriveEventStatus(ev);
     const isPaid =
-      (ev.chargeMethod === "package" &&
-        ev.packageBillingType === "pay_per_session") ||
+      (ev.chargeMethod === "package" && ev.packageBillingType === "pay_per_session") ||
       ev.chargeMethod === "credits" ||
       ev.chargeMethod === "direct" ||
       ev.chargeMethod === "mixed" ||
       ev.payment?.collected;
-    const isCancelledNoCharge =
-      status === "cancelled_no_charge" || status === "no_show_no_charge";
-    if (statusFilter === "scheduled") return status === "scheduled";
-    if (statusFilter === "completed") return status === "completed";
-    if (statusFilter === "cancelled")
-      return status === "cancelled" || isCancelledNoCharge;
-    if (statusFilter === "paid") return isPaid && !isCancelledNoCharge;
-    if (statusFilter === "unpaid") return !isPaid && !isCancelledNoCharge;
-    return true;
+    const isCancelledNoCharge = status === "cancelled_no_charge" || status === "no_show_no_charge";
+
+    const STATUS_IDS = ["scheduled", "completed", "cancelled", "no_show"];
+    const PAYMENT_IDS = ["paid", "unpaid"];
+    const selectedStatuses = STATUS_IDS.filter((id) => activeFilters.has(id));
+    const selectedPayments = PAYMENT_IDS.filter((id) => activeFilters.has(id));
+
+    const matchesStatus =
+      selectedStatuses.length === 0 ||
+      (selectedStatuses.includes("scheduled") && status === "scheduled") ||
+      (selectedStatuses.includes("completed") && status === "completed") ||
+      (selectedStatuses.includes("cancelled") && (status === "cancelled" || isCancelledNoCharge)) ||
+      (selectedStatuses.includes("no_show") && status === "no_show");
+
+    const matchesPayment =
+      selectedPayments.length === 0 ||
+      (selectedPayments.includes("paid") && isPaid && !isCancelledNoCharge) ||
+      (selectedPayments.includes("unpaid") && !isPaid && !isCancelledNoCharge);
+
+    return matchesStatus && matchesPayment;
+  }).sort((a, b) => {
+    const diff = new Date(a.startDateTime) - new Date(b.startDateTime);
+    return sortOrder === "old_to_new" ? diff : -diff;
   });
 
   return (
@@ -4651,26 +4685,79 @@ function LessonsTab({ customer }) {
       <div className="flex items-center justify-between">
         <p className="text-[13px] text-muted-foreground">
           {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}
-          {statusFilter !== "all" ? ` · filtered` : ""}
+          {activeFilters.size > 0 ? " · filtered" : ""}
         </p>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-8 rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary"
-        >
-          <option value="all">All</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="paid">Paid</option>
-          <option value="unpaid">Unpaid</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-lg border border-border overflow-hidden text-[12px] font-medium">
+            <button
+              type="button"
+              onClick={() => setSortOrder("new_to_old")}
+              className={`h-8 px-3 transition-colors ${sortOrder === "new_to_old" ? "bg-brand text-brand-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+            >
+              New to Old
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortOrder("old_to_new")}
+              className={`h-8 px-3 border-l border-border transition-colors ${sortOrder === "old_to_new" ? "bg-brand text-brand-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+            >
+              Old to New
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            className={`flex items-center gap-1.5 h-8 rounded-lg border px-3 text-[12px] font-medium transition-colors ${
+              showFilters || activeFilters.size > 0
+                ? "border-brand bg-brand/10 text-brand"
+                : "border-border bg-background text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Filter
+            {activeFilters.size > 0 && (
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-brand-foreground">
+                {activeFilters.size}
+              </span>
+            )}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showFilters ? "rotate-180" : ""}`} />
+          </button>
+        </div>
       </div>
+
+      {showFilters && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {LESSON_FILTERS.map((f) => {
+            const active = activeFilters.has(f.id);
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => toggleFilter(f.id)}
+                className={`h-7 rounded-full px-3 text-[12px] font-medium border transition-colors ${
+                  active
+                    ? "bg-brand text-brand-foreground border-brand"
+                    : "bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground"
+                }`}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+          {activeFilters.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveFilters(new Set())}
+              className="h-7 rounded-full px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {filteredEvents.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          No events found
-          {statusFilter !== "all" ? ` for status "${statusFilter}"` : ""}.
+          No events found{activeFilters.size > 0 ? " for the selected filters" : ""}.
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">

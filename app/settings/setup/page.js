@@ -137,7 +137,7 @@ function SortablePackageRow({ pkg, selectedIds, toggleOne, onDelete, onToggleSta
       </TableCell>
       <TableCell className="py-3 px-4">
         <div className="flex items-center gap-3">
-          <span className="h-9 w-9 rounded-full shrink-0 flex items-center justify-center text-sm font-bold text-white" style={{ backgroundColor: pkg.color || '#6366f1' }}>
+          <span className="h-9 w-9 rounded-full shrink-0 flex items-center justify-center text-sm font-bold text-foreground border border-border bg-background">
             {pkg.packageName.charAt(0).toUpperCase()}
           </span>
           <p className="text-sm font-medium text-foreground">{pkg.packageName}</p>
@@ -145,12 +145,6 @@ function SortablePackageRow({ pkg, selectedIds, toggleOne, onDelete, onToggleSta
       </TableCell>
       <TableCell className="py-3 px-4"><p className="text-sm text-foreground">{pkg.locationID?.name || <span className="text-muted-foreground">—</span>}</p></TableCell>
       <TableCell className="py-3 px-4 max-w-[200px]"><p className="text-sm text-muted-foreground truncate">{pkg.description || '—'}</p></TableCell>
-      <TableCell className="py-3 px-4">
-        <div className="flex items-center gap-2">
-          <span className="h-5 w-5 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: pkg.color || '#6366f1' }} />
-          <span className="text-xs font-mono text-muted-foreground">{pkg.color || '—'}</span>
-        </div>
-      </TableCell>
       <TableCell className="py-3 px-4">
         <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-foreground">
           {pkg.services?.length ?? 0} service{(pkg.services?.length ?? 0) !== 1 ? 's' : ''}
@@ -585,7 +579,6 @@ function PackagesTab() {
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Package Name</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Location</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Description</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Color</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Services</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Status</TableHead>
                   <TableHead className="w-12 py-3 pr-4 pl-0" />
@@ -595,7 +588,7 @@ function PackagesTab() {
                 <SortableContext items={packages.map((p) => p._id)} strategy={verticalListSortingStrategy}>
                   {packages.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="py-16 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={8} className="py-16 text-center text-sm text-muted-foreground">
                         {searchQuery ? 'No packages match your search.' : 'No packages yet. Click "Add Package" to create one.'}
                       </TableCell>
                     </TableRow>
