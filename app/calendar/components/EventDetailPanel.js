@@ -5,6 +5,7 @@ import { ChevronDown, ArrowLeft, Pencil, Trash2, Plus, X, Users } from "lucide-r
 import api from "@/lib/api";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MiniStudentPanel from "./MiniStudentPanel";
+import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 
 const STATUS_OPTIONS = [
   { value: "scheduled",           label: "Scheduled" },
@@ -155,11 +156,17 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
   const [enrolled, setEnrolled] = useState([]);
   const [allCustomers, setAllCustomers] = useState([]);
   const [groupCustomerIds, setGroupCustomerIds] = useState(new Set());
-  const [sessionMap, setSessionMap] = useState({}); // customerID -> sessionsRemaining
+  const [groupServiceCodes, setGroupServiceCodes] = useState(new Set());
+  const [sessionMap, setSessionMap] = useState({}); // customerID -> { sessionsRemaining, packageName }
   const [chargedIds, setChargedIds] = useState(new Set()); // customerIDs that have a charge record
   const [loadingRoster, setLoadingRoster] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [sellOpen, setSellOpen] = useState(false);
+  const [sellQuery, setSellQuery] = useState("");
+  const [sellCustomer, setSellCustomer] = useState(null); // customer being sold a group package
+  const sellDropRef = useRef(null);
+  const pendingSellRef = useRef(null);
   const [saving, setSaving] = useState(null);
   const [payingId, setPayingId] = useState(null); // student currently showing the pay form
   const [payForm, setPayForm] = useState({ amount: "", method: "cash" });
@@ -201,43 +208,51 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
     setEnrolledMemberMap(map);
   };
 
+  const loadRosterData = async () => {
+    const [customersRes, pkgRes, servicesRes] = await Promise.all([
+      api.get("/api/customer?limit=500"),
+      api.get("/api/customer-package?limit=500"),
+      api.get("/api/calendar-service?limit=200"),
+    ]);
+    const groupCodes = new Set(
+      (servicesRes.success ? servicesRes.data : [])
+        .filter((s) => s.type === "group")
+        .map((s) => s.serviceCode),
+    );
+    const ids = new Set();
+    const sMap = {};
+    (pkgRes.success ? pkgRes.data : []).forEach((enrollment) => {
+      const pkgServices = enrollment.package?.services ?? [];
+      if (pkgServices.some((s) => groupCodes.has(s.serviceCode))) {
+        const cid = String(enrollment.customerID?._id ?? enrollment.customerID ?? "");
+        if (cid) ids.add(cid);
+      }
+      // Build sessions-remaining map for this event's service
+      if (serviceCode && enrollment.status === "active" && enrollment.package?.status === "active") {
+        const cid = String(enrollment.customerID?._id ?? enrollment.customerID ?? "");
+        const svc = (enrollment.package?.services ?? []).find((s) => s.serviceCode === serviceCode);
+        if (cid && svc != null) {
+          const prev = sMap[cid];
+          // keep the entry with the highest remaining count across multiple active packages
+          if (prev == null || svc.sessionsRemaining > prev.sessionsRemaining) {
+            sMap[cid] = {
+              sessionsRemaining: svc.sessionsRemaining,
+              packageName: enrollment.package?.packageName || svc.serviceName || "",
+            };
+          }
+        }
+      }
+    });
+    setGroupServiceCodes(groupCodes);
+    setGroupCustomerIds(ids);
+    setSessionMap(sMap);
+    if (customersRes.success) setAllCustomers(customersRes.data);
+  };
+
   useEffect(() => {
     async function load() {
       setLoadingRoster(true);
-      const [customersRes, pkgRes, servicesRes] = await Promise.all([
-        api.get("/api/customer?limit=500"),
-        api.get("/api/customer-package?limit=500"),
-        api.get("/api/calendar-service?limit=200"),
-      ]);
-      const groupCodes = new Set(
-        (servicesRes.success ? servicesRes.data : [])
-          .filter((s) => s.type === "group")
-          .map((s) => s.serviceCode),
-      );
-      const ids = new Set();
-      const sMap = {};
-      (pkgRes.success ? pkgRes.data : []).forEach((enrollment) => {
-        const pkgServices = enrollment.package?.services ?? [];
-        if (pkgServices.some((s) => groupCodes.has(s.serviceCode))) {
-          const cid = String(enrollment.customerID?._id ?? enrollment.customerID ?? "");
-          if (cid) ids.add(cid);
-        }
-        // Build sessions-remaining map for this event's service
-        if (serviceCode && enrollment.status === "active" && enrollment.package?.status === "active") {
-          const cid = String(enrollment.customerID?._id ?? enrollment.customerID ?? "");
-          const svc = (enrollment.package?.services ?? []).find((s) => s.serviceCode === serviceCode);
-          if (cid && svc != null) {
-            const prev = sMap[cid];
-            // keep the highest remaining count across multiple active packages
-            if (prev == null || svc.sessionsRemaining > prev) {
-              sMap[cid] = svc.sessionsRemaining;
-            }
-          }
-        }
-      });
-      setGroupCustomerIds(ids);
-      setSessionMap(sMap);
-      if (customersRes.success) setAllCustomers(customersRes.data);
+      await loadRosterData();
       await fetchEnrolled();
       setLoadingRoster(false);
     }
@@ -257,6 +272,18 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
     return () => document.removeEventListener("mousedown", handler);
   }, [addOpen]);
 
+  useEffect(() => {
+    if (!sellOpen) return;
+    const handler = (e) => {
+      if (sellDropRef.current && !sellDropRef.current.contains(e.target)) {
+        setSellOpen(false);
+        setSellQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [sellOpen]);
+
   const currentIds = new Set(enrolled.map((c) => String(c._id)));
 
   const eligibleToAdd = allCustomers.filter(
@@ -268,6 +295,25 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
         (c.name || c.email || "").toLowerCase().includes(query.toLowerCase()),
       )
     : eligibleToAdd;
+
+  // Customers without any group package — candidates for selling a group class to
+  const sellCandidates = allCustomers.filter(
+    (c) => !groupCustomerIds.has(String(c._id)),
+  );
+  const sellFiltered = sellQuery.trim()
+    ? sellCandidates.filter((c) =>
+        (c.name || c.email || "").toLowerCase().includes(sellQuery.toLowerCase()),
+      )
+    : sellCandidates;
+
+  const handleSellSuccess = async () => {
+    const customer = pendingSellRef.current;
+    pendingSellRef.current = null;
+    if (customer && !currentIds.has(String(customer._id))) {
+      await confirmAdd(customer, []);
+    }
+    await loadRosterData();
+  };
 
   const handleAdd = (customer) => {
     if ((customer.members || []).length > 0) {
@@ -438,6 +484,58 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
           <Users className="h-3.5 w-3.5" />
           Students ({enrolled.length})
         </label>
+        <div className="flex items-center gap-1.5">
+        <div ref={sellDropRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setSellOpen((v) => !v)}
+            className="flex items-center gap-1 h-6 px-2 rounded-md border border-primary/40 bg-primary/5 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Plus className="h-3 w-3" /> Sell Group Class
+          </button>
+          {sellOpen && (
+            <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-60 rounded-xl border border-border bg-popover shadow-lg overflow-hidden">
+              <div className="p-2 border-b border-border">
+                <input
+                  autoFocus
+                  type="text"
+                  value={sellQuery}
+                  onChange={(e) => setSellQuery(e.target.value)}
+                  placeholder="Search students without a group package…"
+                  className="h-7 w-full rounded-md border border-border bg-muted/30 px-2.5 text-[11px] text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/50"
+                />
+              </div>
+              <div className="max-h-48 overflow-y-auto py-1">
+                {sellFiltered.length === 0 ? (
+                  <p className="px-3 py-2 text-[11px] text-muted-foreground">
+                    {sellCandidates.length === 0
+                      ? "Everyone already has a group package"
+                      : "No results"}
+                  </p>
+                ) : (
+                  sellFiltered.map((c) => (
+                    <button
+                      key={String(c._id)}
+                      type="button"
+                      onClick={() => {
+                        pendingSellRef.current = c;
+                        setSellCustomer(c);
+                        setSellOpen(false);
+                        setSellQuery("");
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-foreground hover:bg-muted/40 transition-colors"
+                    >
+                      <span className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
+                        {(c.name || "?").charAt(0).toUpperCase()}
+                      </span>
+                      <span className="truncate">{c.name || c.email}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         <div ref={dropRef} className="relative">
           <button
             type="button"
@@ -499,18 +597,20 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
             </div>
           )}
         </div>
+        </div>
       </div>
 
       {enrolled.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-muted/10 px-3 py-4 text-center">
           <p className="text-[12px] text-muted-foreground">No students enrolled yet</p>
-          <p className="text-[11px] text-muted-foreground/60 mt-0.5">Add students with group service packages</p>
+          <p className="text-[11px] text-muted-foreground/60 mt-0.5">Add a group package, or sell one to a new student</p>
         </div>
       ) : (
         <div className="space-y-2 mt-1">
           {enrolled.map((c) => {
             const cid = String(c._id);
-            const remaining = sessionMap[cid];
+            const session = sessionMap[cid];
+            const remaining = session?.sessionsRemaining;
             const isCharged = chargedIds.has(cid);
             const attendingMemberIds = enrolledMemberMap[cid] || [];
             const attendingMembers = (c.members || []).filter((m) => attendingMemberIds.includes(String(m._id)));
@@ -527,6 +627,7 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-semibold text-foreground truncate">{displayName}</p>
+                {session?.packageName && <p className="text-[11px] text-muted-foreground truncate">{session.packageName}</p>}
                 {c.email && <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>}
               </div>
               {remaining != null && !(remaining === 0 && isCharged) && (
@@ -619,6 +720,15 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
           })}
         </div>
       )}
+
+      <CreateEnrollmentSheet
+        open={!!sellCustomer}
+        customerID={sellCustomer?._id}
+        customerName={sellCustomer?.name}
+        allowedServiceCodes={groupServiceCodes}
+        onClose={() => setSellCustomer(null)}
+        onSuccess={handleSellSuccess}
+      />
     </div>
   );
 }

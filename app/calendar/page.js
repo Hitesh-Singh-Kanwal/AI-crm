@@ -230,7 +230,8 @@ function deriveEffectiveStatus(appt) {
 function transformAppointments(appointments, colorMap, memberSelections = {}) {
   // Track session order per (customerID + enrollmentID) for all package billing types.
   // Key: `${customerId}::${enrollmentId}`, value: sorted array of appointment IDs by date.
-  const flexSessionOrder = {};
+  // Used to figure out each session's chronological position so we can decide which
+  // sessions are covered by the credits paid so far.
   const pkgSessionOrder = {};
 
   appointments.forEach((appt) => {
@@ -243,19 +244,12 @@ function transformAppointments(appointments, colorMap, memberSelections = {}) {
       : [];
     customerIds.forEach((cid) => {
       const key = `${cid}::${enrollmentId}`;
-      // flexible tracking (existing)
-      if (appt.packageBillingType === "flexible") {
-        if (!flexSessionOrder[key]) flexSessionOrder[key] = [];
-        flexSessionOrder[key].push({ id: String(appt._id), date: new Date(appt.startDateTime) });
-      }
-      // all-package tracking for credit balance display
       if (!pkgSessionOrder[key]) pkgSessionOrder[key] = [];
       pkgSessionOrder[key].push({ id: String(appt._id), date: new Date(appt.startDateTime) });
     });
   });
 
   // Sort each group chronologically
-  Object.values(flexSessionOrder).forEach((arr) => arr.sort((a, b) => a.date - b.date));
   Object.values(pkgSessionOrder).forEach((arr) => arr.sort((a, b) => a.date - b.date));
 
   return appointments.map((appt) => {
@@ -305,12 +299,17 @@ function transformAppointments(appointments, colorMap, memberSelections = {}) {
     let totalSessions = null;
     let sessionsPaidFor = null;
     let sessionsUsedForPaidCheck = null;
+    let pkgFullyPaid = false;
     if (Array.isArray(appt.charges) && appt.charges.length > 0) {
       const pkgCharge = appt.charges.find((c) => c.method === "package");
       if (pkgCharge) {
         const billingType = appt.packageBillingType ?? null;
         const enrollmentPkg = pkgCharge?.enrollmentID?.package ?? null;
         const amountCollected = enrollmentPkg?.amountCollected ?? 0;
+        const totalPaid = enrollmentPkg?.totalPaid ?? 0;
+        pkgFullyPaid =
+          enrollmentPkg?.paymentStatus === "paid" ||
+          (amountCollected > 0 && amountCollected >= totalPaid);
 
         const resolveSessionsPaidFor = (svc) => {
           if (svc.isChargeable === false) return null;
@@ -347,27 +346,6 @@ function transformAppointments(appointments, colorMap, memberSelections = {}) {
       }
     }
 
-    let flexibleCoveredByCredits = false;
-    if (appt.packageBillingType === "flexible" && sessionsPaidFor != null) {
-      const pkgChargeForOrder = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
-      const enrollmentId = String(pkgChargeForOrder?.enrollmentID?._id ?? pkgChargeForOrder?.enrollmentID ?? "");
-      const customerIds = Array.isArray(appt.customerIDs)
-        ? appt.customerIDs.map((c) => String(c._id ?? c))
-        : [];
-      const apptId = String(appt._id);
-      for (const cid of customerIds) {
-        const key = `${cid}::${enrollmentId}`;
-        const order = flexSessionOrder[key];
-        if (order) {
-          const sessionNumber = order.findIndex((e) => e.id === apptId) + 1; // 1-indexed
-          if (sessionNumber > 0 && sessionNumber <= sessionsPaidFor) {
-            flexibleCoveredByCredits = true;
-            break;
-          }
-        }
-      }
-    }
-
     // Determine this event's chronological session number within its enrollment
     let pkgSessionNumber = null;
     {
@@ -386,10 +364,30 @@ function transformAppointments(appointments, colorMap, memberSelections = {}) {
       }
     }
 
+    // Credits available for this specific session = sessions paid for minus the
+    // sessions that come chronologically before it. A session is "paid" once it
+    // has at least ~one full credit (≥ 0.9, allowing for rounding). This unifies
+    // every billing type: one-time/upfront packages pay for all sessions at
+    // purchase (full credits), while flexible/payment-plan accrue credits as
+    // money is collected.
+    const sessionsBefore = pkgSessionNumber != null
+      ? pkgSessionNumber - 1
+      : (totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0);
+    const coveredByCredits = sessionsPaidFor != null && sessionsPaidFor - sessionsBefore >= 0.9;
+    // A package charge whose service is free/non-chargeable has nothing to pay.
+    const freePackageService =
+      appt.chargeMethod === "package" && sessionsRemaining != null && sessionsPaidFor == null;
+
     const _isActuallyPaid =
       appt.payment?.collected ||
-      (appt.chargeMethod === "package" && appt.packageBillingType !== "flexible") ||
-      flexibleCoveredByCredits ||
+      // Non-installment packages (one-time, pay-per-session) are settled at
+      // purchase/booking — only flexible & payment-plan accrue credits over time.
+      (appt.chargeMethod === "package" &&
+        appt.packageBillingType !== "flexible" &&
+        appt.packageBillingType !== "payment_plan") ||
+      pkgFullyPaid ||
+      coveredByCredits ||
+      freePackageService ||
       appt.chargeMethod === "credits" ||
       appt.chargeMethod === "direct" ||
       appt.chargeMethod === "mixed";
@@ -1297,7 +1295,6 @@ function AppointmentTimedEventRows({ event, compact = false }) {
             {sessionsLabel} left
           </span>
         )}
-        {!compact && <TypeBadge type={eventType} />}
       </div>
     </div>
   );

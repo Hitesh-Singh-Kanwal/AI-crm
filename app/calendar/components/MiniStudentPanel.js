@@ -182,7 +182,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
       setTotalSessionsRemaining(totalRemaining);
       const forms = {};
       due.forEach((e) => {
-        const outstanding = Math.max(0, (e.package.dueAmount ?? e.package.totalPaid) - (e.package.amountCollected ?? 0));
+        const col = e.package.amountCollected ?? 0;
+        const rem = Math.max(0, (e.package.totalPaid ?? 0) - col);
+        const outstanding = rem;
         forms[String(e._id)] = { mode: null, payType: "full", sessions: 1, amount: outstanding.toFixed(2), method: "cash", dueDate: e.package.dueDate ? new Date(e.package.dueDate).toISOString().slice(0, 10) : "", saving: false, error: null };
       });
       setFlexPayForms(forms);
@@ -194,7 +196,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
     allEnr
       .filter((e) => e.package?.billingType === "flexible" && e.package?.paymentStatus !== "paid" && e.status === "active")
       .forEach((e) => {
-        const outstanding = Math.max(0, (e.package.dueAmount ?? e.package.totalPaid) - (e.package.amountCollected ?? 0));
+        const col = e.package.amountCollected ?? 0;
+        const rem = Math.max(0, (e.package.totalPaid ?? 0) - col);
+        const outstanding = rem;
         const chargeableService = (e.package.services ?? []).find((s) => s.pricePerSession > 0);
         upcoming.push({
           type: "flexible",
@@ -382,7 +386,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
         setTotalSessionsRemaining(totalRemaining);
         const forms = {};
         due.forEach((e) => {
-          const outstanding = Math.max(0, (e.package.dueAmount ?? e.package.totalPaid) - (e.package.amountCollected ?? 0));
+          const col = e.package.amountCollected ?? 0;
+          const rem = Math.max(0, (e.package.totalPaid ?? 0) - col);
+          const outstanding = rem;
           forms[String(e._id)] = {
             mode: null,
             amount: outstanding.toFixed(2),
@@ -403,7 +409,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
       allEnr
         .filter((e) => e.package?.billingType === "flexible" && e.package?.paymentStatus !== "paid" && e.status === "active")
         .forEach((e) => {
-          const outstanding = Math.max(0, (e.package.dueAmount ?? e.package.totalPaid) - (e.package.amountCollected ?? 0));
+          const col = e.package.amountCollected ?? 0;
+          const rem = Math.max(0, (e.package.totalPaid ?? 0) - col);
+          const outstanding = rem;
           const chargeableService = (e.package.services ?? []).find((s) => s.pricePerSession > 0);
           upcoming.push({
             type: "flexible",

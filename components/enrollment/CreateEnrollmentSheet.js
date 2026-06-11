@@ -14,6 +14,8 @@ export default function CreateEnrollmentSheet({
   /** When set, student is fixed and the selector is hidden. */
   customerID: fixedCustomerID = null,
   customerName = '',
+  /** When set, only group/specific service lines are sellable and only packages containing them are listed. */
+  allowedServiceCodes = null,
   onSuccess,
 }) {
   const [error, setError] = useState('')
@@ -26,6 +28,13 @@ export default function CreateEnrollmentSheet({
   const resolvedCustomerID = fixedCustomerID
     ? String(fixedCustomerID)
     : selectedCustomerID
+
+  const sellablePackages = useMemo(() => {
+    if (!allowedServiceCodes) return packageTemplates
+    return packageTemplates.filter((p) =>
+      (p.services || []).some((s) => allowedServiceCodes.has(s.serviceCode)),
+    )
+  }, [packageTemplates, allowedServiceCodes])
 
   useEffect(() => {
     if (!open) return
@@ -145,13 +154,27 @@ export default function CreateEnrollmentSheet({
         payload.billingType === 'one_time'
           ? { method: payload.billing?.method || 'cash' }
           : payload.billingType === 'payment_plan'
-            ? {
-                numberOfInstallments: Number(payload.billing?.numberOfInstallments || 0),
+            ? (() => {
+              const totalAmount = (payload.services || []).reduce(
+                (sum, s) => sum + Number(s.finalAmount || 0),
+                0,
+              )
+              const mode = payload.billing?.installmentMode || 'count'
+              const numberOfInstallments =
+                mode === 'amount'
+                  ? Math.ceil(totalAmount / Number(payload.billing?.installmentAmount || 1))
+                  : Number(payload.billing?.numberOfInstallments || 0)
+              return {
+                installmentMode: mode,
+                numberOfInstallments,
+                installmentAmount:
+                  mode === 'amount' ? Number(payload.billing?.installmentAmount) : undefined,
                 frequency: payload.billing?.frequency,
                 startDate: payload.billing?.startDate,
               }
-            : payload.billingType === 'pay_per_session'
-              ? {}
+            })()
+            : payload.billingType === 'flexible'
+              ? { dueDate: payload.billing?.dueDate || undefined }
               : {},
       ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
       ...(payload.tip?.teacherID && payload.tip?.amount
@@ -169,6 +192,22 @@ export default function CreateEnrollmentSheet({
       setError(addRes?.error || 'Failed to add package to enrollment.')
       setSubmitting(false)
       return false
+    }
+
+    const initialPayment = Number(payload.billing?.initialPayment || 0)
+    if (payload.billingType === 'flexible' && initialPayment > 0) {
+      const payRes = await api.post('/api/payment', {
+        customerID: resolvedCustomerID,
+        enrollmentID,
+        type: 'package_purchase',
+        amount: initialPayment,
+        method: payload.billing?.initialPaymentMethod || 'cash',
+      })
+      if (!payRes?.success) {
+        setError(payRes?.error || 'Enrollment created but initial payment failed.')
+        setSubmitting(false)
+        return false
+      }
     }
 
     setSubmitting(false)
@@ -222,7 +261,8 @@ export default function CreateEnrollmentSheet({
 
           <NewEnrollmentPackageInline
             teacherOptions={teacherOptions}
-            packageTemplates={packageTemplates}
+            packageTemplates={sellablePackages}
+            allowedServiceCodes={allowedServiceCodes}
             onCancel={handleClose}
             onSubmit={handleCreateEnrollmentAndPackage}
           />

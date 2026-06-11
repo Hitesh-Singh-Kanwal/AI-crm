@@ -21,7 +21,8 @@ const BLANK_FORM = {
     installmentMode: "count",
     installmentAmount: "",
     dueDate: "",
-    dueAmount: "",
+    initialPayment: "",
+    initialPaymentMethod: "cash",
   },
   tip: {
     enabled: false,
@@ -763,31 +764,48 @@ export default function NewEnrollmentPackageInline({
                 <p className="text-[11px] text-muted-foreground">
                   No schedule set. A due date is recorded and payment can be collected at any time.
                 </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Date <span className="text-rose-500">*</span></label>
-                    <input
-                      type="date"
-                      value={form.billing.dueDate}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, billing: { ...p.billing, dueDate: e.target.value } }))
-                      }
-                      className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Amount</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder={total.toFixed(2)}
-                      value={form.billing.dueAmount}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, billing: { ...p.billing, dueAmount: e.target.value } }))
-                      }
-                      className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
-                    />
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Date <span className="text-rose-500">*</span></label>
+                  <input
+                    type="date"
+                    value={form.billing.dueDate}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, billing: { ...p.billing, dueDate: e.target.value } }))
+                    }
+                    className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                  />
+                </div>
+                <div className="space-y-2 pt-2 border-t border-border">
+                  <p className="text-[10px] font-medium text-muted-foreground">Initial Payment (optional)</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={form.billing.initialPayment}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, billing: { ...p.billing, initialPayment: e.target.value } }))
+                        }
+                        className="w-full rounded-md border border-border bg-background pl-6 pr-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                      />
+                    </div>
+                    <div className="relative">
+                      <select
+                        value={form.billing.initialPaymentMethod}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, billing: { ...p.billing, initialPaymentMethod: e.target.value } }))
+                        }
+                        className="w-full appearance-none rounded-md border border-border bg-background px-2.5 pr-7 py-1.5 text-[11px] capitalize focus:outline-none focus:ring-1 focus:ring-brand"
+                      >
+                        {PAYMENT_METHODS.map((m) => (
+                          <option key={m} value={m} className="capitalize">{m}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between pt-2 border-t border-border">

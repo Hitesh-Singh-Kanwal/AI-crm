@@ -1047,7 +1047,8 @@ const BLANK_ADD_FORM = {
     frequency: "monthly",
     startDate: "",
     dueDate: "",
-    dueAmount: "",
+    initialPayment: "",
+    initialPaymentMethod: "cash",
     installmentMode: "count",
     installmentAmount: "",
   },
@@ -2655,21 +2656,38 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                 startDate: addForm.billing.startDate,
               }
             : addForm.billingType === "flexible"
-              ? {
-                  dueDate: addForm.billing.dueDate || undefined,
-                  dueAmount: addForm.billing.dueAmount ? Number(addForm.billing.dueAmount) : undefined,
-                }
+              ? { dueDate: addForm.billing.dueDate || undefined }
               : {},
     };
     if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate;
     const res = await api.post("/api/customer-package/add", payload);
-    if (res.success) {
-      toast.success("Package added.");
-      setAddTargetEnrollment(null);
-      load();
-    } else {
+    if (!res.success) {
       toast.error(res.error || "Failed to add package.");
+      setAdding(false);
+      return;
     }
+
+    const initialPayment = Number(addForm.billing.initialPayment || 0);
+    if (addForm.billingType === "flexible" && initialPayment > 0) {
+      const payRes = await api.post("/api/payment", {
+        customerID,
+        enrollmentID: targetEnrollmentID,
+        type: "package_purchase",
+        amount: initialPayment,
+        method: addForm.billing.initialPaymentMethod || "cash",
+      });
+      if (!payRes.success) {
+        toast.error(payRes.error || "Package added, but initial payment failed.");
+        setAddTargetEnrollment(null);
+        load();
+        setAdding(false);
+        return;
+      }
+    }
+
+    toast.success("Package added.");
+    setAddTargetEnrollment(null);
+    load();
     setAdding(false);
   }
 
@@ -4034,27 +4052,39 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                       <p className="text-[11px] text-muted-foreground">
                         No schedule set. Payment can be collected at any time.
                       </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Date</label>
-                          <input
-                            type="date"
-                            value={addForm.billing.dueDate}
-                            onChange={(e) => setEnrBilling("dueDate", e.target.value)}
-                            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] outline-none focus:border-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Amount</label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder={enrTotalAmount.toFixed(2)}
-                            value={addForm.billing.dueAmount}
-                            onChange={(e) => setEnrBilling("dueAmount", e.target.value)}
-                            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] outline-none focus:border-primary"
-                          />
+                      <div>
+                        <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Date</label>
+                        <input
+                          type="date"
+                          value={addForm.billing.dueDate}
+                          onChange={(e) => setEnrBilling("dueDate", e.target.value)}
+                          className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div className="space-y-2 pt-2 border-t border-border">
+                        <p className="text-[10px] font-medium text-muted-foreground">Initial Payment (optional)</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={addForm.billing.initialPayment}
+                              onChange={(e) => setEnrBilling("initialPayment", e.target.value)}
+                              className="w-full rounded-md border border-border bg-background pl-6 pr-2.5 py-1.5 text-[11px] outline-none focus:border-primary"
+                            />
+                          </div>
+                          <select
+                            value={addForm.billing.initialPaymentMethod}
+                            onChange={(e) => setEnrBilling("initialPaymentMethod", e.target.value)}
+                            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] capitalize outline-none focus:border-primary"
+                          >
+                            {["cash", "card", "online", "cheque", "other"].map((m) => (
+                              <option key={m} value={m} className="capitalize">{m}</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                       <div className="flex items-center justify-between pt-2 border-t border-border">
@@ -4150,11 +4180,9 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
 function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
   const cp = enr.package;
-  const outstanding = Math.max(
-    0,
-    (cp.dueAmount ?? cp.totalPaid) - (cp.amountCollected ?? 0),
-  );
-  const isOverdue = cp.dueDate && new Date(cp.dueDate) < new Date();
+  const collected = cp.amountCollected ?? 0;
+  const outstanding = Math.max(0, (cp.totalPaid ?? 0) - collected);
+  const isOverdue = cp.dueDate && outstanding > 0 && new Date(cp.dueDate) < new Date();
   const [mode, setMode] = useState(null); // "pay" | "change-date"
   const [amount, setAmount] = useState(String(outstanding.toFixed(2)));
   const [method, setMethod] = useState("cash");
