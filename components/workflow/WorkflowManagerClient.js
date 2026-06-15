@@ -1,6 +1,6 @@
 'use client'
 
-import { GitBranch, RefreshCw } from 'lucide-react'
+import { GitBranch, LayoutTemplate, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import api from '@/lib/api'
@@ -211,17 +211,26 @@ export default function WorkflowManagerClient({ detailPathBase = '/ai-automation
           </div>
 
           {view === 'list' && (
-            <button
-              type="button"
-              onClick={() => {
-                setListSuccessMsg('')
-                loadWorkflows()
-              }}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-[14px] font-semibold text-foreground hover:bg-muted/40"
-            >
-              <RefreshCw className={cn('h-4 w-4', loadingList && 'animate-spin')} />
-              Refresh
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/ai-automation/workflows/builder"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 text-[14px] font-semibold text-primary hover:bg-primary/15"
+              >
+                <LayoutTemplate className="h-4 w-4" />
+                Visual builder
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setListSuccessMsg('')
+                  loadWorkflows()
+                }}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-[14px] font-semibold text-foreground hover:bg-muted/40"
+              >
+                <RefreshCw className={cn('h-4 w-4', loadingList && 'animate-spin')} />
+                Refresh
+              </button>
+            </div>
           )}
         </div>
       </div>
