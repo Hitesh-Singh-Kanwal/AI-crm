@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
+import CustomerMembershipsTab from "@/components/membership/CustomerMembershipsTab";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import api from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
@@ -230,6 +231,7 @@ const TABS = [
     label: " Enrollments",
     Icon: ClipboardList,
   },
+  { id: "memberships", label: "Memberships", Icon: CreditCard },
   { id: "payments", label: "Payment History", Icon: Receipt },
   { id: "lessons", label: "Lessons", Icon: BookOpen },
   { id: "notes", label: "Notes", Icon: StickyNote },
@@ -863,6 +865,274 @@ function ProfileTab({ customer, locations, onUpdated }) {
       {/* end inner grid */}
     </div>
   );
+}
+
+// ─── PaymentSchedule ─────────────────────────────────────────────────────────
+
+function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate }) {
+  const [open, setOpen] = useState(false)
+
+  if (!plan) return null
+
+  const paidCount = plan.installments.filter((i) => i.status === "paid").length
+
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-full"
+      >
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform shrink-0 ${open ? '' : '-rotate-90'}`} />
+        Payment Schedule
+        <div className="flex items-center gap-2 ml-1">
+          <span className={`normal-case font-normal inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+            plan.status === "completed" ? "bg-emerald-500/10 text-emerald-600"
+              : plan.status === "cancelled" ? "bg-muted text-muted-foreground"
+              : "bg-violet-500/10 text-violet-600"
+          }`}>
+            {plan.status}
+          </span>
+          <span className="normal-case font-normal text-muted-foreground text-[11px]">
+            {paidCount} / {plan.numberOfInstallments} paid
+          </span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="mt-3">
+          <div className="rounded-lg border border-border overflow-hidden">
+            {plan.installments.map((inst, idx) => {
+              const isLast = idx === plan.installments.length - 1
+              const hasDiscount = isLast && plan.installmentAmount > inst.amount
+              return (
+                <div
+                  key={idx}
+                  className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${inst.status === "paid" ? "bg-emerald-500/5" : ""}`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                      inst.status === "paid" ? "bg-emerald-600 text-white"
+                        : inst.status === "failed" ? "bg-rose-600 text-white"
+                        : "bg-muted text-muted-foreground"
+                    }`}>
+                      {inst.status === "paid" ? "✓" : idx + 1}
+                    </div>
+                    <div>
+                      <p className="text-[12px] text-foreground font-medium">
+                        Payment {idx + 1}
+                        {inst.status === "paid" && <span className="ml-1.5 text-[11px] font-normal text-emerald-600">Paid</span>}
+                        {inst.status === "failed" && <span className="ml-1.5 text-[11px] font-normal text-rose-600">Failed</span>}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Due {new Date(inst.dueDate).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasDiscount && (
+                      <span className="text-[11px] text-muted-foreground line-through">
+                        ${Number(plan.installmentAmount).toFixed(2)}
+                      </span>
+                    )}
+                    <p className="text-[13px] font-semibold text-foreground">
+                      ${Number(inst.amount).toFixed(2)}
+                    </p>
+                    {hasDiscount && (
+                      <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                        discount
+                      </span>
+                    )}
+                    {inst.status === "pending" && plan.status === "active" && cpStatus === "active" && (
+                      <>
+                        <Button size="sm" variant="outline" className="h-7 px-2.5 text-[11px]"
+                          onClick={() => onChangeDate({ plan, index: idx })}>
+                          Change Date
+                        </Button>
+                        <Button size="sm" className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() => onPayInstallment({ plan, index: idx })}>
+                          Pay
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {plan.nextPaymentDate && plan.status === "active" && (
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              Next payment due: {new Date(plan.nextPaymentDate).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── PaymentTimeline ─────────────────────────────────────────────────────────
+
+function PaymentTimeline({ customerID, enrollmentID }) {
+  const [open, setOpen] = useState(false)
+  const [payments, setPayments] = useState(null) // null = not yet loaded
+  const [loading, setLoading] = useState(false)
+  const toast = useToast()
+
+  async function load() {
+    if (payments !== null) return // already loaded
+    setLoading(true)
+    const res = await api.get(
+      `/api/payment/customer/${customerID}?enrollmentID=${enrollmentID}&limit=100`,
+    )
+    if (res.success) setPayments(Array.isArray(res.data) ? res.data : [])
+    else toast.error('Failed to load payment history')
+    setLoading(false)
+  }
+
+  function toggle() {
+    if (!open) load()
+    setOpen((v) => !v)
+  }
+
+  const typeLabel = {
+    package_purchase: 'Package Purchase',
+    credit_topup: 'Credit Top-up',
+    refund: 'Refund',
+    session_payment: 'Session Payment',
+    membership_purchase: 'Membership Purchase',
+    membership_renewal: 'Membership Renewal',
+  }
+
+  const methodIcon = { cash: '💵', card: '💳', online: '🌐', cheque: '📝', other: '•' }
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <button
+        type="button"
+        onClick={toggle}
+        className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-full"
+      >
+        <ChevronDown
+          className={`h-3.5 w-3.5 transition-transform shrink-0 ${open ? '' : '-rotate-90'}`}
+        />
+        Payment Timeline
+        {payments !== null && (
+          <span className="ml-1 normal-case font-normal">
+            ({payments.length} record{payments.length !== 1 ? 's' : ''})
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="mt-3">
+          {loading && (
+            <p className="text-[12px] text-muted-foreground py-4 text-center">Loading…</p>
+          )}
+          {!loading && payments !== null && payments.length === 0 && (
+            <p className="text-[12px] text-muted-foreground py-4 text-center">
+              No payment records yet.
+            </p>
+          )}
+          {!loading && payments !== null && payments.length > 0 && (
+            <div className="relative pl-5">
+              {/* vertical line */}
+              <div className="absolute left-2 top-2 bottom-2 w-px bg-border" />
+
+              {payments.map((p, i) => {
+                const isRefund = p.type === 'refund'
+                const date = new Date(p.createdAt)
+                return (
+                  <div key={p._id} className={`relative mb-3 last:mb-0 ${i === 0 ? '' : ''}`}>
+                    {/* dot */}
+                    <div
+                      className={`absolute -left-3 top-2 h-2.5 w-2.5 rounded-full border-2 border-background shrink-0 ${
+                        p.status === 'failed'
+                          ? 'bg-rose-500'
+                          : isRefund
+                            ? 'bg-amber-500'
+                            : 'bg-emerald-500'
+                      }`}
+                    />
+
+                    <div className="rounded-lg border border-border bg-card px-3 py-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-[12px] font-medium text-foreground">
+                              {typeLabel[p.type] ?? p.type}
+                            </p>
+                            {p.enrollmentID && (
+                              <span className="text-[10px] font-medium bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border">
+                                Enrollment #{p.enrollmentID.enrollmentNumber ?? '—'}
+                                {p.enrollmentID.label ? ` · ${p.enrollmentID.label}` : ''}
+                              </span>
+                            )}
+                            {p.enrollmentID?.package?.packageName && (
+                              <span className="text-[10px] font-medium bg-blue-500/10 text-blue-600 px-1.5 py-0.5 rounded border border-blue-200">
+                                {p.enrollmentID.package.packageName}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {date.toLocaleDateString('en-AU', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                            {' · '}
+                            {date.toLocaleTimeString('en-AU', {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                            {p.processedBy?.name && ` · ${p.processedBy.name}`}
+                          </p>
+                          {p.notes && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5 italic">
+                              {p.notes}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span
+                            className={`text-[14px] font-semibold ${
+                              isRefund
+                                ? 'text-amber-600'
+                                : p.status === 'failed'
+                                  ? 'text-rose-600'
+                                  : 'text-emerald-600'
+                            }`}
+                          >
+                            {isRefund ? '−' : '+'}${Number(p.amount).toFixed(2)}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] capitalize text-muted-foreground">
+                              {methodIcon[p.method] ?? ''} {p.method}
+                            </span>
+                            {p.status !== 'completed' && (
+                              <span
+                                className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                                  p.status === 'failed'
+                                    ? 'bg-rose-500/10 text-rose-600'
+                                    : 'bg-amber-500/10 text-amber-600'
+                                }`}
+                              >
+                                {p.status}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── PayInstallmentDialog ────────────────────────────────────────────────────
@@ -1717,6 +1987,8 @@ function PackagesTab({ customerID }) {
                       </div>
                     );
                   })()}
+
+                <PaymentTimeline customerID={customerID} enrollmentID={String(enr._id)} />
               </div>
             );
           })}
@@ -3361,155 +3633,16 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                     )}
 
                     {/* Payment plan installments */}
-                    {cp.billingType === "payment_plan" &&
-                      (() => {
-                        const plan = plansMap[String(enr._id)];
-                        if (!plan) return null;
-                        const paidCount = plan.installments.filter(
-                          (i) => i.status === "paid",
-                        ).length;
-                        return (
-                          <div className="mt-5 border-t border-border pt-5">
-                            <div className="flex items-center justify-between mb-3">
-                              <p className="text-[12px] font-bold text-foreground uppercase tracking-widest">
-                                Payment Schedule
-                              </p>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                    plan.status === "completed"
-                                      ? "bg-emerald-500/10 text-emerald-600"
-                                      : plan.status === "cancelled"
-                                        ? "bg-muted text-muted-foreground"
-                                        : "bg-violet-500/10 text-violet-600"
-                                  }`}
-                                >
-                                  {plan.status}
-                                </span>
-                                <span className="text-[11px] text-muted-foreground">
-                                  {paidCount} / {plan.numberOfInstallments} paid
-                                </span>
-                              </div>
-                            </div>
-                            <div className="rounded-lg border border-border overflow-hidden">
-                              {plan.installments.map((inst, idx) => {
-                                const isLast =
-                                  idx === plan.installments.length - 1;
-                                const hasDiscount =
-                                  isLast &&
-                                  plan.installmentAmount > inst.amount;
-                                return (
-                                  <div
-                                    key={idx}
-                                    className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${inst.status === "paid" ? "bg-emerald-500/5" : ""}`}
-                                  >
-                                    <div className="flex items-center gap-2.5">
-                                      <div
-                                        className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
-                                          inst.status === "paid"
-                                            ? "bg-emerald-600 text-white"
-                                            : inst.status === "failed"
-                                              ? "bg-rose-600 text-white"
-                                              : "bg-muted text-muted-foreground"
-                                        }`}
-                                      >
-                                        {inst.status === "paid" ? "✓" : idx + 1}
-                                      </div>
-                                      <div>
-                                        <p className="text-[12px] text-foreground font-medium">
-                                          Payment {idx + 1}
-                                          {inst.status === "paid" && (
-                                            <span className="ml-1.5 text-[11px] font-normal text-emerald-600">
-                                              Paid
-                                            </span>
-                                          )}
-                                          {inst.status === "failed" && (
-                                            <span className="ml-1.5 text-[11px] font-normal text-rose-600">
-                                              Failed
-                                            </span>
-                                          )}
-                                        </p>
-                                        <p className="text-[11px] text-muted-foreground">
-                                          Due{" "}
-                                          {new Date(
-                                            inst.dueDate,
-                                          ).toLocaleDateString("en-AU", {
-                                            day: "numeric",
-                                            month: "short",
-                                            year: "numeric",
-                                          })}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      {hasDiscount && (
-                                        <span className="text-[11px] text-muted-foreground line-through">
-                                          $
-                                          {Number(
-                                            plan.installmentAmount,
-                                          ).toFixed(2)}
-                                        </span>
-                                      )}
-                                      <p className="text-[13px] font-semibold text-foreground">
-                                        ${Number(inst.amount).toFixed(2)}
-                                      </p>
-                                      {hasDiscount && (
-                                        <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
-                                          discount
-                                        </span>
-                                      )}
-                                      {inst.status === "pending" &&
-                                        plan.status === "active" &&
-                                        cp.status === "active" && (
-                                          <>
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              className="h-7 px-2.5 text-[11px]"
-                                              onClick={() =>
-                                                setChangeInstallDateTarget({
-                                                  plan,
-                                                  index: idx,
-                                                })
-                                              }
-                                            >
-                                              Change Date
-                                            </Button>
-                                            <Button
-                                              size="sm"
-                                              className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                                              onClick={() =>
-                                                setPayInstallTarget({
-                                                  plan,
-                                                  index: idx,
-                                                })
-                                              }
-                                            >
-                                              Pay
-                                            </Button>
-                                          </>
-                                        )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            {plan.nextPaymentDate &&
-                              plan.status === "active" && (
-                                <p className="text-[11px] text-muted-foreground mt-1.5">
-                                  Next payment due:{" "}
-                                  {new Date(
-                                    plan.nextPaymentDate,
-                                  ).toLocaleDateString("en-AU", {
-                                    day: "numeric",
-                                    month: "short",
-                                    year: "numeric",
-                                  })}
-                                </p>
-                              )}
-                          </div>
-                        );
-                      })()}
+                    {cp.billingType === "payment_plan" && (
+                      <PaymentSchedule
+                        plan={plansMap[String(enr._id)]}
+                        cpStatus={cp.status}
+                        onPayInstallment={setPayInstallTarget}
+                        onChangeDate={setChangeInstallDateTarget}
+                      />
+                    )}
+
+                    <PaymentTimeline customerID={customerID} enrollmentID={String(enr._id)} />
                   </div>
                 )}
               </div>
@@ -5105,6 +5238,12 @@ export default function CustomerDetailPage() {
           )}
           {tab === "active-enrollments" && (
             <EnrollmentsTab
+              customerID={customer._id}
+              customerName={customer.name || customer.email || ""}
+            />
+          )}
+          {tab === "memberships" && (
+            <CustomerMembershipsTab
               customerID={customer._id}
               customerName={customer.name || customer.email || ""}
             />
