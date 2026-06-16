@@ -38,6 +38,7 @@ const ROWS_PER_PAGE = 10
 const TABS = [
   { id: 'services', label: 'Services' },
   { id: 'packages', label: 'Packages' },
+  { id: 'memberships', label: 'Memberships' },
 ]
 
 function BoolBadge({ value }) {
@@ -59,7 +60,7 @@ function DragHandle(props) {
   )
 }
 
-function SortableServiceRow({ service, selectedIds, toggleOne, onEdit, onDelete, onToggleStatus }) {
+function SortableServiceRow({ service, selectedIds, toggleOne, onEdit, onDelete, onToggleStatus, onToggleMemberships }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: service._id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
@@ -89,13 +90,19 @@ function SortableServiceRow({ service, selectedIds, toggleOne, onEdit, onDelete,
       <TableCell className="py-3 px-4 max-w-[200px]"><p className="text-sm text-muted-foreground truncate">{service.description || '—'}</p></TableCell>
       <TableCell className="py-3 px-4"><p className="text-sm text-foreground">{service.price != null ? `$${Number(service.price).toFixed(2)}` : '—'}</p></TableCell>
       <TableCell className="py-3 px-4"><BoolBadge value={service.isChargeable} /></TableCell>
-      <TableCell className="py-3 px-4"><BoolBadge value={service.isGroup} /></TableCell>
       <TableCell className="py-3 px-4"><BoolBadge value={service.isSundry} /></TableCell>
       <TableCell className="py-3 px-4"><BoolBadge value={service.countOnCalendar} /></TableCell>
       <TableCell className="py-3 px-4">
         {service.documents?.length > 0 ? (
           <div className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-sm text-foreground">{service.documents.length}</span></div>
         ) : <span className="text-sm text-muted-foreground">—</span>}
+      </TableCell>
+      <TableCell className="py-3 px-4">
+        <Checkbox
+          checked={!!service.showOnMemberships}
+          onClick={() => onToggleMemberships(service)}
+          className="rounded border-border data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600"
+        />
       </TableCell>
       <TableCell className="py-3 px-4">
         <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', service.isActive ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'].join(' ')}>
@@ -172,6 +179,7 @@ function SortablePackageRow({ pkg, selectedIds, toggleOne, onDelete, onToggleSta
 }
 
 function ServicesTab() {
+  const [serviceType, setServiceType] = useState('private')
   const [services, setServices] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
@@ -184,10 +192,10 @@ function ServicesTab() {
   const totalPages = Math.max(1, Math.ceil(totalCount / ROWS_PER_PAGE))
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
-  const loadServices = useCallback(async (page, search) => {
+  const loadServices = useCallback(async (page, search, type) => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ page: String(page), limit: String(ROWS_PER_PAGE) })
+      const params = new URLSearchParams({ page: String(page), limit: String(ROWS_PER_PAGE), type })
       if (search) params.set('search', search)
       const result = await api.get(`/api/calendar-service?${params}`)
       if (result.success) {
@@ -197,7 +205,7 @@ function ServicesTab() {
       } else {
         toast.error('Failed to load services', { description: result.error })
       }
-    } catch (e) {
+    } catch {
       toast.error('Error', { description: 'Unable to load services' })
     } finally {
       setLoading(false)
@@ -205,7 +213,12 @@ function ServicesTab() {
     }
   }, [])
 
-  useEffect(() => { loadServices(currentPage, searchQuery) }, [currentPage, searchQuery, loadServices])
+  useEffect(() => {
+    setCurrentPage(1)
+    setSelectedIds([])
+  }, [serviceType])
+
+  useEffect(() => { loadServices(currentPage, searchQuery, serviceType) }, [currentPage, searchQuery, serviceType, loadServices])
 
   function handleDragEnd(event) {
     const { active, over } = event
@@ -224,7 +237,7 @@ function ServicesTab() {
     if (!window.confirm(`Delete "${service.serviceName}"? This cannot be undone.`)) return
     try {
       const result = await api.delete(`/api/calendar-service/${service._id}`)
-      if (result.success) { toast.success('Service deleted'); loadServices(currentPage, searchQuery) }
+      if (result.success) { toast.success('Service deleted'); loadServices(currentPage, searchQuery, serviceType) }
       else toast.error('Delete failed', { description: result.error })
     } catch { toast.error('Error', { description: 'Unable to delete service' }) }
   }
@@ -232,9 +245,19 @@ function ServicesTab() {
   async function handleToggleStatus(service) {
     try {
       const result = await api.patch(`/api/calendar-service/${service._id}/toggle`)
-      if (result.success) { toast.success(`Service ${service.isActive ? 'deactivated' : 'activated'}`); loadServices(currentPage, searchQuery) }
+      if (result.success) { toast.success(`Service ${service.isActive ? 'deactivated' : 'activated'}`); loadServices(currentPage, searchQuery, serviceType) }
       else toast.error('Failed', { description: result.error })
     } catch { toast.error('Error', { description: 'Unable to update service status' }) }
+  }
+
+  async function handleToggleMemberships(service) {
+    try {
+      const result = await api.put(`/api/calendar-service/${service._id}`, { showOnMemberships: !service.showOnMemberships })
+      if (result.success) {
+        setServices((prev) => prev.map((s) => s._id === service._id ? { ...s, showOnMemberships: !service.showOnMemberships } : s))
+        toast.success(service.showOnMemberships ? 'Removed from memberships' : 'Added to memberships')
+      } else toast.error('Failed', { description: result.error })
+    } catch { toast.error('Error', { description: 'Unable to update service' }) }
   }
 
   if (loading && services.length === 0) {
@@ -243,11 +266,28 @@ function ServicesTab() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Private / Group sub-tabs */}
+      <div className="inline-flex rounded-lg border border-border bg-background p-0.5 w-fit">
+        {[{ v: 'private', label: 'Private' }, { v: 'group', label: 'Group' }].map((opt) => (
+          <button
+            key={opt.v}
+            type="button"
+            onClick={() => setServiceType(opt.v)}
+            className={[
+              'h-8 px-5 rounded-md text-[13px] font-medium transition-colors',
+              serviceType === opt.v ? 'bg-brand text-brand-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            ].join(' ')}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex items-center justify-between gap-3">
         <div className="relative w-[220px] shrink-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search services…"
+            placeholder={`Search ${serviceType} services…`}
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
             className="pl-9 h-9 rounded-lg bg-background text-sm"
@@ -283,10 +323,10 @@ function ServicesTab() {
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Description</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Price</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Chargeable</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Group</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Sundry</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">On Calendar</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Documents</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Memberships</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Status</TableHead>
                   <TableHead className="w-12 py-3 pr-4 pl-0" />
                 </TableRow>
@@ -296,7 +336,7 @@ function ServicesTab() {
                   {services.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={14} className="py-16 text-center text-sm text-muted-foreground">
-                        {searchQuery ? 'No services match your search.' : 'No services yet. Click "Add Service" to create one.'}
+                        {searchQuery ? 'No services match your search.' : `No ${serviceType} services yet. Click "Add Service" to create one.`}
                       </TableCell>
                     </TableRow>
                   ) : services.map((service) => (
@@ -308,6 +348,7 @@ function ServicesTab() {
                       onEdit={(s) => { setEditingService(s); setDialogOpen(true) }}
                       onDelete={handleDelete}
                       onToggleStatus={handleToggleStatus}
+                      onToggleMemberships={handleToggleMemberships}
                     />
                   ))}
                 </SortableContext>
@@ -322,7 +363,7 @@ function ServicesTab() {
         </div>
       </div>
 
-      <ServiceDialog open={dialogOpen} onClose={() => setDialogOpen(false)} service={editingService} onRefresh={() => loadServices(currentPage, searchQuery)} />
+      <ServiceDialog open={dialogOpen} onClose={() => setDialogOpen(false)} service={editingService} onRefresh={() => loadServices(currentPage, searchQuery, serviceType)} />
     </div>
   )
 }
@@ -618,6 +659,201 @@ function PackagesTab() {
   )
 }
 
+function SortableMembershipRow({ membership, selectedIds, toggleOne, onDelete, onToggleStatus, router }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: membership._id })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      className="border-b border-border hover:bg-muted/30 transition-colors cursor-pointer"
+      onClick={() => router.push(`/calendar/memberships/${membership._id}`)}
+    >
+      <TableCell className="py-3 pl-2 pr-0 w-8" onClick={(e) => e.stopPropagation()}>
+        <DragHandle {...attributes} {...listeners} />
+      </TableCell>
+      <TableCell className="py-3 pl-2 pr-0" onClick={(e) => e.stopPropagation()}>
+        <Checkbox checked={selectedIds.includes(membership._id)} onClick={(e) => { e.stopPropagation(); toggleOne(membership._id) }} className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand" />
+      </TableCell>
+      <TableCell className="py-3 px-4">
+        <div className="flex items-center gap-3">
+          <span className="h-9 w-9 rounded-full shrink-0 flex items-center justify-center text-sm font-bold text-white" style={{ backgroundColor: membership.color || '#6366f1' }}>
+            {membership.membershipName.charAt(0).toUpperCase()}
+          </span>
+          <p className="text-sm font-medium text-foreground">{membership.membershipName}</p>
+        </div>
+      </TableCell>
+      <TableCell className="py-3 px-4"><p className="text-sm text-foreground">{membership.durationDays ? `${membership.durationDays} days` : '—'}</p></TableCell>
+      <TableCell className="py-3 px-4"><p className="text-sm text-foreground">${Number(membership.price ?? 0).toFixed(2)}</p></TableCell>
+      <TableCell className="py-3 px-4">
+        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-foreground">
+          {membership.services?.length ?? 0} service{(membership.services?.length ?? 0) !== 1 ? 's' : ''}
+        </span>
+      </TableCell>
+      <TableCell className="py-3 px-4">
+        <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', membership.isActive ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'].join(' ')}>
+          {membership.isActive ? 'Active' : 'Inactive'}
+        </span>
+      </TableCell>
+      <TableCell className="py-3 pr-4 pl-0" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground"><MoreHorizontal className="h-4 w-4" /></button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => router.push(`/calendar/memberships/${membership._id}`)}>Edit</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onToggleStatus(membership)}>{membership.isActive ? 'Deactivate' : 'Activate'}</DropdownMenuItem>
+            <DropdownMenuItem className="text-red-600" onClick={() => onDelete(membership)}>Delete</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
+  )
+}
+
+function MembershipsTab() {
+  const router = useRouter()
+  const [memberships, setMemberships] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [selectedIds, setSelectedIds] = useState([])
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / ROWS_PER_PAGE))
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  const loadMemberships = useCallback(async (page, search) => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: String(ROWS_PER_PAGE) })
+      if (search) params.set('search', search)
+      const result = await api.get(`/api/membership?${params}`)
+      if (result.success) {
+        setMemberships(Array.isArray(result.data) ? result.data : [])
+        setTotalCount(result.pagination?.total ?? 0)
+      } else {
+        toast.error('Failed to load memberships', { description: result.error })
+      }
+    } catch { toast.error('Error', { description: 'Unable to load memberships' }) }
+    finally { setLoading(false); setSelectedIds([]) }
+  }, [])
+
+  useEffect(() => { loadMemberships(currentPage, searchQuery) }, [currentPage, searchQuery, loadMemberships])
+
+  function handleDragEnd(event) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setMemberships((prev) => {
+      const oldIndex = prev.findIndex((m) => m._id === active.id)
+      const newIndex = prev.findIndex((m) => m._id === over.id)
+      return arrayMove(prev, oldIndex, newIndex)
+    })
+  }
+
+  const toggleOne = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+  const toggleAll = () => { if (selectedIds.length === memberships.length) setSelectedIds([]); else setSelectedIds(memberships.map((m) => m._id)) }
+
+  async function handleDelete(membership) {
+    if (!window.confirm(`Delete "${membership.membershipName}"? This cannot be undone.`)) return
+    try {
+      const result = await api.delete(`/api/membership/${membership._id}`)
+      if (result.success) { toast.success('Membership deleted'); loadMemberships(currentPage, searchQuery) }
+      else toast.error('Delete failed', { description: result.error })
+    } catch { toast.error('Error', { description: 'Unable to delete membership' }) }
+  }
+
+  async function handleToggleStatus(membership) {
+    try {
+      const result = await api.patch(`/api/membership/${membership._id}/toggle`)
+      if (result.success) { toast.success(`Membership ${membership.isActive ? 'deactivated' : 'activated'}`); loadMemberships(currentPage, searchQuery) }
+      else toast.error('Failed', { description: result.error })
+    } catch { toast.error('Error', { description: 'Unable to update membership status' }) }
+  }
+
+  if (loading && memberships.length === 0) {
+    return <div className="flex items-center justify-center h-64"><GlobalLoader variant="center" size="md" text="Loading memberships…" /></div>
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="relative w-[220px] shrink-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search memberships…"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+            className="pl-9 h-9 rounded-lg bg-background text-sm"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
+            {totalCount} {totalCount === 1 ? 'membership' : 'memberships'}
+          </span>
+          <Button
+            className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
+            onClick={() => router.push('/calendar/memberships/new')}
+          >
+            <Plus className="h-4 w-4" />
+            Add Membership
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card min-h-[480px] flex flex-col">
+        <div className="flex-1">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-border hover:bg-transparent bg-muted/30">
+                  <TableHead className="w-8 py-3 pl-2 pr-0" />
+                  <TableHead className="w-12 py-3 pl-2 pr-0">
+                    <Checkbox checked={selectedIds.length === memberships.length && memberships.length > 0} onClick={toggleAll} className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand" />
+                  </TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Membership Name</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Duration</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Price</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Services</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Status</TableHead>
+                  <TableHead className="w-12 py-3 pr-4 pl-0" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <SortableContext items={memberships.map((m) => m._id)} strategy={verticalListSortingStrategy}>
+                  {memberships.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-16 text-center text-sm text-muted-foreground">
+                        {searchQuery ? 'No memberships match your search.' : 'No memberships yet. Click "Add Membership" to create one.'}
+                      </TableCell>
+                    </TableRow>
+                  ) : memberships.map((membership) => (
+                    <SortableMembershipRow
+                      key={membership._id}
+                      membership={membership}
+                      selectedIds={selectedIds}
+                      toggleOne={toggleOne}
+                      onDelete={handleDelete}
+                      onToggleStatus={handleToggleStatus}
+                      router={router}
+                    />
+                  ))}
+                </SortableContext>
+              </TableBody>
+            </Table>
+          </DndContext>
+        </div>
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+          <button type="button" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1 || loading} className="inline-flex items-center h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed">Previous</button>
+          <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+          <button type="button" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || loading} className="inline-flex items-center h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SetupContent() {
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
@@ -660,6 +896,7 @@ function SetupContent() {
       {activeTab === 'services' && <ServicesTab />}
       {activeTab === 'lessons' && <LessonsTab />}
       {activeTab === 'packages' && <PackagesTab />}
+      {activeTab === 'memberships' && <MembershipsTab />}
     </div>
   )
 }

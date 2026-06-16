@@ -656,6 +656,134 @@ function EnrollmentServiceSelector({
   );
 }
 
+// ─── Membership → Service selector ────────────────────────────────────────────
+// A customer with an active membership has no enrollment (mutually exclusive).
+// Lists the membership's services that exist in this tab's catalog; selecting one
+// sets the calendar service so the backend charges it against the membership.
+
+function MembershipServiceSelector({
+  customerId,
+  allServices,
+  selectedServiceId,
+  onServiceSelect,
+  onHasMembershipChange,
+}) {
+  const [memberships, setMemberships] = useState([]);
+
+  useEffect(() => {
+    if (!customerId) {
+      setMemberships([]);
+      onHasMembershipChange?.(false);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get(`/api/customer-membership/customer/${customerId}?status=active`)
+      .then((res) => {
+        if (cancelled) return;
+        const data =
+          res.success && Array.isArray(res.data)
+            ? res.data.filter((m) => m.status === "active")
+            : [];
+        setMemberships(data);
+        onHasMembershipChange?.(data.length > 0);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId]);
+
+  if (!customerId || memberships.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      {memberships.map((m) => {
+        const lines = (m.services || []).filter((svc) =>
+          allServices.some((cat) => cat.serviceCode === svc.serviceCode),
+        );
+        return (
+          <div key={m._id} className="space-y-1.5">
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5">
+              <span
+                className="h-2.5 w-2.5 rounded-full shrink-0"
+                style={{ background: m.membershipID?.color || "#6366f1" }}
+              />
+              <span className="text-[11px] text-foreground font-medium truncate flex-1">
+                {m.membershipName || "Membership"}
+              </span>
+              <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium shrink-0 bg-brand/10 text-brand">
+                membership
+              </span>
+            </div>
+
+            {lines.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground px-0.5">
+                No covered services for this booking type.
+              </p>
+            ) : (
+              <>
+                <FieldLabel>Service</FieldLabel>
+                <div className="space-y-1.5">
+                  {lines.map((svc, idx) => {
+                    const serviceInfo = allServices.find(
+                      (s) => s.serviceCode === svc.serviceCode,
+                    );
+                    const serviceColor = svc.color || serviceInfo?.color;
+                    const isSelected =
+                      selectedServiceId === String(serviceInfo?._id);
+                    const isUnlimited = svc.accessType === "unlimited";
+                    const noSessionsLeft =
+                      !isUnlimited && (svc.sessionsRemaining ?? 0) <= 0;
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() =>
+                          serviceInfo &&
+                          onServiceSelect(String(serviceInfo._id), serviceColor)
+                        }
+                        className={[
+                          "flex items-center justify-between rounded-lg px-2.5 py-2 cursor-pointer border transition-colors",
+                          isSelected
+                            ? "border-brand bg-brand/10"
+                            : "border-border bg-background hover:bg-muted/40",
+                        ].join(" ")}
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {serviceColor && (
+                            <span
+                              className="h-2.5 w-2.5 rounded-full shrink-0"
+                              style={{ background: serviceColor }}
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-medium truncate">
+                              {serviceInfo?.serviceName ||
+                                svc.serviceName ||
+                                svc.serviceCode}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {isUnlimited
+                                ? "Unlimited · once per day"
+                                : noSessionsLeft
+                                  ? "No sessions remaining"
+                                  : `${svc.sessionsRemaining} / ${svc.sessionsTotal} sessions left`}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Member picker (shown when a selected customer has members) ───────────────
 
 function MemberPicker({ members, selectedIds, onChange, label = "Attending members" }) {
@@ -713,6 +841,7 @@ function WhoSection({
   const selectedCustomer = rawCustomers?.find((c) => String(c._id) === form.customer_id);
   const selectedMembers = selectedCustomer?.members || [];
   const [showNew, setShowNew] = useState(false);
+  const [hasMembership, setHasMembership] = useState(false);
 
   return (
     <div className="space-y-3">
@@ -765,6 +894,20 @@ function WhoSection({
       )}
 
       {form.customer_id && (
+        <MembershipServiceSelector
+          customerId={form.customer_id}
+          allServices={allServices}
+          selectedServiceId={form.service_id}
+          onServiceSelect={(serviceId, color) => {
+            setField("enrollment_id", "");
+            setField("service_id", serviceId);
+            if (color) setField("event_color", color);
+          }}
+          onHasMembershipChange={setHasMembership}
+        />
+      )}
+
+      {form.customer_id && !hasMembership && (
         <EnrollmentServiceSelector
           customerId={form.customer_id}
           enrollments={enrollments[form.customer_id] || []}

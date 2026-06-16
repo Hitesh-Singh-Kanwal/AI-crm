@@ -1061,6 +1061,7 @@ export default function EventDetailPanel({
                         <span className="text-[11px] text-emerald-600 font-medium">
                           {event.chargeMethod === "package" && event.packageBillingType !== "pay_per_session" && "Paid · Package"}
                           {event.chargeMethod === "package" && event.packageBillingType === "pay_per_session" && "Paid · Per session"}
+                          {event.chargeMethod === "membership" && "Covered · Membership"}
                           {event.chargeMethod === "credits" && `$${Number(event.calendarServiceID.price).toFixed(2)} deducted from credits`}
                           {event.chargeMethod === "mixed" && "Charged via package + credits"}
                           {event.chargeMethod === "none" && "Charged"}

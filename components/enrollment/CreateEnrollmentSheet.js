@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import NewEnrollmentPackageInline from '@/app/calendar/components/NewEnrollmentPackageInline'
+import AssignMembershipForm from '@/components/membership/AssignMembershipForm'
 import api from '@/lib/api'
 
 const SHEET_WIDTH = '640px'
@@ -20,6 +21,7 @@ export default function CreateEnrollmentSheet({
 }) {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [mode, setMode] = useState('package')
   const [selectedCustomerID, setSelectedCustomerID] = useState('')
   const [teacherOptions, setTeacherOptions] = useState([])
   const [customerOptions, setCustomerOptions] = useState([])
@@ -220,60 +222,119 @@ export default function CreateEnrollmentSheet({
     <Sheet open={open} onClose={handleClose} width={SHEET_WIDTH}>
       <SheetContent className="flex flex-col overflow-hidden p-0">
         <div className="shrink-0 border-b border-border bg-muted/30 px-5 pt-5 pb-3">
-          <p className="text-[14px] font-bold text-foreground">Create Enrollment</p>
-          <p className="text-[12px] text-muted-foreground mt-1">
-            Create enrollment and package in one go.
+          <p className="text-[14px] font-bold text-foreground">
+            {mode === 'membership' ? 'Assign Membership' : 'Create Enrollment'}
           </p>
+          <p className="text-[12px] text-muted-foreground mt-1">
+            {mode === 'membership'
+              ? 'Give this student a recurring membership.'
+              : 'Create enrollment and package in one go.'}
+          </p>
+          <div className="mt-3 inline-flex rounded-lg border border-border bg-background p-0.5">
+            {[
+              { v: 'package', label: 'Package' },
+              { v: 'membership', label: 'Membership' },
+            ].map((opt) => (
+              <button
+                key={opt.v}
+                type="button"
+                onClick={() => { setMode(opt.v); setError('') }}
+                className={[
+                  'h-8 px-4 rounded-md text-[12px] font-medium transition-colors',
+                  mode === opt.v ? 'bg-brand text-brand-foreground' : 'text-muted-foreground hover:text-foreground',
+                ].join(' ')}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          <div className="rounded-xl border border-border bg-card p-3 mb-0">
-            <p className="text-[11px] font-medium text-muted-foreground mb-1">Student</p>
-            {fixedCustomerID ? (
-              <p className="text-[12px] font-medium text-foreground truncate">
-                {selectedCustomerLabel || 'Selected student'}
-              </p>
-            ) : (
-              <>
-                <div className="relative">
-                  <select
-                    value={selectedCustomerID}
-                    onChange={(e) => setSelectedCustomerID(e.target.value)}
-                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary"
-                  >
-                    <option value="">Select student…</option>
-                    {customerOptions.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                </div>
-                {selectedCustomerLabel && (
-                  <p className="text-[10px] text-muted-foreground mt-1 truncate">
-                    Selected: {selectedCustomerLabel}
+          {mode === 'package' ? (
+            <>
+              <div className="rounded-xl border border-border bg-card p-3 mb-0">
+                <p className="text-[11px] font-medium text-muted-foreground mb-1">Student</p>
+                {fixedCustomerID ? (
+                  <p className="text-[12px] font-medium text-foreground truncate">
+                    {selectedCustomerLabel || 'Selected student'}
                   </p>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <select
+                        value={selectedCustomerID}
+                        onChange={(e) => setSelectedCustomerID(e.target.value)}
+                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary"
+                      >
+                        <option value="">Select student…</option>
+                        {customerOptions.map((c) => (
+                          <option key={c.value} value={c.value}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                    {selectedCustomerLabel && (
+                      <p className="text-[10px] text-muted-foreground mt-1 truncate">
+                        Selected: {selectedCustomerLabel}
+                      </p>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </div>
+              </div>
 
-          <NewEnrollmentPackageInline
-            teacherOptions={teacherOptions}
-            packageTemplates={sellablePackages}
-            allowedServiceCodes={allowedServiceCodes}
-            onCancel={handleClose}
-            onSubmit={handleCreateEnrollmentAndPackage}
-          />
+              <NewEnrollmentPackageInline
+                teacherOptions={teacherOptions}
+                packageTemplates={sellablePackages}
+                allowedServiceCodes={allowedServiceCodes}
+                onCancel={handleClose}
+                onSubmit={handleCreateEnrollmentAndPackage}
+              />
 
-          {error && (
-            <div className="mt-3 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-[12px] text-destructive">
-              {error}
-            </div>
-          )}
-          {submitting && (
-            <p className="mt-2 text-[11px] text-muted-foreground">Creating…</p>
+              {error && (
+                <div className="mt-3 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-[12px] text-destructive">
+                  {error}
+                </div>
+              )}
+              {submitting && (
+                <p className="mt-2 text-[11px] text-muted-foreground">Creating…</p>
+              )}
+            </>
+          ) : (
+            <>
+              {!fixedCustomerID && (
+                <div className="rounded-xl border border-border bg-card p-3 mb-4">
+                  <p className="text-[11px] font-medium text-muted-foreground mb-1">Student</p>
+                  <div className="relative">
+                    <select
+                      value={selectedCustomerID}
+                      onChange={(e) => setSelectedCustomerID(e.target.value)}
+                      className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary"
+                    >
+                      <option value="">Select student…</option>
+                      {customerOptions.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  {selectedCustomerLabel && (
+                    <p className="text-[10px] text-muted-foreground mt-1 truncate">
+                      Selected: {selectedCustomerLabel}
+                    </p>
+                  )}
+                </div>
+              )}
+              <AssignMembershipForm
+                customerID={resolvedCustomerID}
+                onSuccess={() => { handleClose(); onSuccess?.() }}
+                onCancel={handleClose}
+              />
+            </>
           )}
         </div>
       </SheetContent>
