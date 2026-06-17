@@ -3455,17 +3455,10 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                         <span className="text-[13px] font-semibold text-foreground text-right">
                                           {svcTotal > 0
                                             ? (() => {
-                                                const discount =
-                                                  Number(cp.totalDiscount) || 0;
-                                                const svcDiscount =
-                                                  totalServicePrice > 0
-                                                    ? (svcTotal /
-                                                        totalServicePrice) *
-                                                      discount
-                                                    : 0;
                                                 const svcNet =
-                                                  svcTotal - svcDiscount;
-                                                return discount > 0 ? (
+                                                  Number(svc.finalAmount) ||
+                                                  svcTotal;
+                                                return svcNet < svcTotal ? (
                                                   <>
                                                     <span className="text-[11px] text-muted-foreground line-through block">
                                                       ${svcTotal.toFixed(2)}
