@@ -24,7 +24,7 @@ export default function InvoicesTab({ payments, loading }) {
     <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center gap-2">
         <Receipt className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-sm font-semibold text-foreground">Recent Payments</h2>
+        <h2 className="text-sm font-semibold text-foreground">All Payments</h2>
       </div>
 
       {loading ? (

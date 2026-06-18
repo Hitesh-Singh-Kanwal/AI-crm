@@ -149,6 +149,71 @@ function toTimeInputValue(iso) {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+// ─── New customer form for group class ───────────────────────────────────────
+
+function NewGroupCustomerForm({ onSuccess, onCancel }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleCreate() {
+    if (!name.trim() || !email.trim()) {
+      setError("Name and email are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const res = await api.post("/api/customer", {
+      name: name.trim(),
+      email: email.trim(),
+      phoneNumber: phone.trim() || undefined,
+    });
+    if (!res.success || !res.data) {
+      setError("Failed to create customer.");
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
+    onSuccess(res.data);
+  }
+
+  const inputCls = "h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary transition-colors";
+
+  return (
+    <div className="p-6 space-y-5">
+      <div>
+        <p className="text-[15px] font-semibold text-foreground">New Customer</p>
+        <p className="text-[12px] text-muted-foreground mt-0.5">Create a customer then sell them a package</p>
+      </div>
+      <div className="space-y-3">
+        <div>
+          <p className="text-[11px] font-medium text-muted-foreground mb-1">Full Name *</p>
+          <input className={inputCls} placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div>
+          <p className="text-[11px] font-medium text-muted-foreground mb-1">Email *</p>
+          <input className={inputCls} placeholder="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div>
+          <p className="text-[11px] font-medium text-muted-foreground mb-1">Phone</p>
+          <input className={inputCls} placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </div>
+      </div>
+      {error && <p className="text-[12px] text-rose-600">{error}</p>}
+      <div className="flex gap-2 pt-2">
+        <button type="button" onClick={onCancel} className="flex-1 h-9 rounded-lg border border-border text-[13px] font-medium text-foreground hover:bg-muted/50 transition-colors">
+          Cancel
+        </button>
+        <button type="button" onClick={handleCreate} disabled={saving} className="flex-1 h-9 rounded-lg bg-primary text-[13px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+          {saving ? "Creating…" : "Next: Sell Package"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Group student roster (add / remove customers with group packages) ────────
 
 function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChanged }) {
@@ -156,6 +221,7 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
   const [enrolled, setEnrolled] = useState([]);
   const [allCustomers, setAllCustomers] = useState([]);
   const [groupCustomerIds, setGroupCustomerIds] = useState(new Set());
+  const [membershipCustomerIds, setMembershipCustomerIds] = useState(new Set());
   const [groupServiceCodes, setGroupServiceCodes] = useState(new Set());
   const [sessionMap, setSessionMap] = useState({}); // customerID -> { sessionsRemaining, packageName }
   const [chargedIds, setChargedIds] = useState(new Set()); // customerIDs that have a charge record
@@ -167,6 +233,7 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
   const [sellCustomer, setSellCustomer] = useState(null); // customer being sold a group package
   const sellDropRef = useRef(null);
   const pendingSellRef = useRef(null);
+  const [newCustomerSheetOpen, setNewCustomerSheetOpen] = useState(false);
   const [saving, setSaving] = useState(null);
   const [payingId, setPayingId] = useState(null); // student currently showing the pay form
   const [payForm, setPayForm] = useState({ amount: "", method: "cash" });
@@ -209,10 +276,11 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
   };
 
   const loadRosterData = async () => {
-    const [customersRes, pkgRes, servicesRes] = await Promise.all([
+    const [customersRes, pkgRes, servicesRes, membershipRes] = await Promise.all([
       api.get("/api/customer?limit=500"),
       api.get("/api/customer-package?limit=500"),
       api.get("/api/calendar-service?limit=200"),
+      api.get("/api/customer-membership?status=active&limit=500"),
     ]);
     const groupCodes = new Set(
       (servicesRes.success ? servicesRes.data : [])
@@ -246,6 +314,19 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
     setGroupServiceCodes(groupCodes);
     setGroupCustomerIds(ids);
     setSessionMap(sMap);
+
+    // Membership customers — those with an active membership covering this event's serviceCode
+    const membershipIds = new Set();
+    (membershipRes.success ? membershipRes.data : []).forEach((m) => {
+      if (m.status !== "active") return;
+      const covers = (m.services || []).some((s) => !serviceCode || s.serviceCode === serviceCode);
+      if (covers) {
+        const cid = String(m.customerID?._id ?? m.customerID ?? "");
+        if (cid) membershipIds.add(cid);
+      }
+    });
+    setMembershipCustomerIds(membershipIds);
+
     if (customersRes.success) setAllCustomers(customersRes.data);
   };
 
@@ -286,9 +367,10 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
 
   const currentIds = new Set(enrolled.map((c) => String(c._id)));
 
-  const eligibleToAdd = allCustomers.filter(
-    (c) => groupCustomerIds.has(String(c._id)) && !currentIds.has(String(c._id)),
-  );
+  const eligibleToAdd = allCustomers.filter((c) => {
+    const cid = String(c._id);
+    return (groupCustomerIds.has(cid) || membershipCustomerIds.has(cid)) && !currentIds.has(cid);
+  });
 
   const filtered = query.trim()
     ? eligibleToAdd.filter((c) =>
@@ -297,9 +379,10 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
     : eligibleToAdd;
 
   // Customers without any group package — candidates for selling a group class to
-  const sellCandidates = allCustomers.filter(
-    (c) => !groupCustomerIds.has(String(c._id)),
-  );
+  const sellCandidates = allCustomers.filter((c) => {
+    const cid = String(c._id);
+    return !groupCustomerIds.has(cid) && !membershipCustomerIds.has(cid);
+  });
   const sellFiltered = sellQuery.trim()
     ? sellCandidates.filter((c) =>
         (c.name || c.email || "").toLowerCase().includes(sellQuery.toLowerCase()),
@@ -513,24 +596,38 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
                       : "No results"}
                   </p>
                 ) : (
-                  sellFiltered.map((c) => (
+                  <>
+                    {sellFiltered.map((c) => (
+                      <button
+                        key={String(c._id)}
+                        type="button"
+                        onClick={() => {
+                          pendingSellRef.current = c;
+                          setSellCustomer(c);
+                          setSellOpen(false);
+                          setSellQuery("");
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-foreground hover:bg-muted/40 transition-colors"
+                      >
+                        <span className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
+                          {(c.name || "?").charAt(0).toUpperCase()}
+                        </span>
+                        <span className="truncate">{c.name || c.email}</span>
+                      </button>
+                    ))}
                     <button
-                      key={String(c._id)}
                       type="button"
                       onClick={() => {
-                        pendingSellRef.current = c;
-                        setSellCustomer(c);
                         setSellOpen(false);
                         setSellQuery("");
+                        setNewCustomerSheetOpen(true);
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-foreground hover:bg-muted/40 transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-primary font-medium hover:bg-muted/40 transition-colors border-t border-border"
                     >
-                      <span className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
-                        {(c.name || "?").charAt(0).toUpperCase()}
-                      </span>
-                      <span className="truncate">{c.name || c.email}</span>
+                      <Plus className="h-3.5 w-3.5 shrink-0" />
+                      New Customer
                     </button>
-                  ))
+                  </>
                 )}
               </div>
             </div>
@@ -583,10 +680,13 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
                             </svg>
                           ) : (c.name || "?").charAt(0).toUpperCase()}
                         </span>
-                        <span className="truncate">
+                        <span className="truncate flex items-center gap-1.5">
                           {c.name || c.email}
                           {(c.members || []).length > 0 && (
-                            <span className="ml-1 text-[10px] text-muted-foreground">& {(c.members).map((m) => m.name).join(", ")}</span>
+                            <span className="text-[10px] text-muted-foreground">& {(c.members).map((m) => m.name).join(", ")}</span>
+                          )}
+                          {membershipCustomerIds.has(String(c._id)) && (
+                            <span className="text-[9px] font-medium bg-brand/10 text-brand px-1 py-0.5 rounded shrink-0">membership</span>
                           )}
                         </span>
                       </button>
@@ -627,7 +727,10 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-semibold text-foreground truncate">{displayName}</p>
-                {session?.packageName && <p className="text-[11px] text-muted-foreground truncate">{session.packageName}</p>}
+                {membershipCustomerIds.has(cid)
+                  ? <p className="text-[11px] text-brand truncate">Membership</p>
+                  : session?.packageName && <p className="text-[11px] text-muted-foreground truncate">{session.packageName}</p>
+                }
                 {c.email && <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>}
               </div>
               {remaining != null && !(remaining === 0 && isCharged) && (
@@ -635,7 +738,7 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
                   {remaining} left
                 </span>
               )}
-              {!isCharged && (
+              {!isCharged && !membershipCustomerIds.has(cid) && (
                 <button
                   type="button"
                   onClick={() => payingId === cid ? setPayingId(null) : openPayForm(cid)}
@@ -729,6 +832,19 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
         onClose={() => setSellCustomer(null)}
         onSuccess={handleSellSuccess}
       />
+
+      <Sheet open={newCustomerSheetOpen} onOpenChange={setNewCustomerSheetOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <NewGroupCustomerForm
+            onSuccess={(newCustomer) => {
+              setNewCustomerSheetOpen(false);
+              pendingSellRef.current = newCustomer;
+              setSellCustomer(newCustomer);
+            }}
+            onCancel={() => setNewCustomerSheetOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

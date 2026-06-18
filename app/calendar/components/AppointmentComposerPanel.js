@@ -545,6 +545,14 @@ function EnrollmentServiceSelector({
           value={selectedEnrollmentId}
           onChange={(v) => {
             onEnrollmentSelect(v);
+            const enr = activeEnrollments.find((e) => String(e._id) === v);
+            const svcs = (enr?.package?.services ?? []).filter(
+              (s) => s.sessionsRemaining > 0 && allServices.some((cat) => cat.serviceCode === s.serviceCode),
+            );
+            if (svcs.length === 1) {
+              const info = allServices.find((s) => s.serviceCode === svcs[0].serviceCode);
+              if (info) onServiceSelect(String(info._id), svcs[0].color || info.color);
+            }
           }}
           options={activeEnrollments
             .filter((e) => e.package)
@@ -565,30 +573,6 @@ function EnrollmentServiceSelector({
 
       {selectedEnrollment && cp && (
         <>
-          {/* Package summary pill */}
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5">
-            {cp.packageRef?.color && (
-              <span
-                className="h-2.5 w-2.5 rounded-full shrink-0"
-                style={{ background: cp.packageRef.color }}
-              />
-            )}
-            <span className="text-[11px] text-foreground font-medium truncate flex-1">
-              {cp.packageName || cp.packageRef?.packageName || "Package"}
-            </span>
-            <span
-              className={[
-                "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium shrink-0",
-                cp.paymentStatus === "paid"
-                  ? "bg-emerald-500/10 text-emerald-600"
-                  : cp.paymentStatus === "partial"
-                    ? "bg-amber-500/10 text-amber-600"
-                    : "bg-rose-500/10 text-rose-600",
-              ].join(" ")}
-            >
-              {cp.paymentStatus || "unpaid"}
-            </span>
-          </div>
 
           {/* Services */}
           {enrollmentServices.length === 0 ? (
@@ -687,6 +671,16 @@ function MembershipServiceSelector({
             : [];
         setMemberships(data);
         onHasMembershipChange?.(data.length > 0);
+        // Auto-select if there's only one membership with one matching service
+        if (data.length === 1) {
+          const lines = (data[0].services || []).filter((svc) =>
+            allServices.some((cat) => cat.serviceCode === svc.serviceCode),
+          );
+          if (lines.length === 1) {
+            const info = allServices.find((s) => s.serviceCode === lines[0].serviceCode);
+            if (info) onServiceSelect(String(info._id), lines[0].color || info.color);
+          }
+        }
       });
     return () => {
       cancelled = true;

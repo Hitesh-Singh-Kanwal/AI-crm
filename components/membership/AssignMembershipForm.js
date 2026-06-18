@@ -165,6 +165,23 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
             <Label>Start Date *</Label>
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9" />
           </div>
+          {selected?.price > 0 && numberOfInstallments > 0 && (
+            <div className="col-span-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5">
+              <p className="text-[11px] font-semibold text-foreground">Payment Breakdown</p>
+              <div className="flex justify-between text-[12px]">
+                <span className="text-muted-foreground">Total price</span>
+                <span className="font-medium">${Number(selected.price).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-[12px]">
+                <span className="text-muted-foreground">Installments</span>
+                <span className="font-medium">{numberOfInstallments} × {frequency}</span>
+              </div>
+              <div className="flex justify-between text-[12px] border-t border-border pt-1.5">
+                <span className="text-muted-foreground">Per installment</span>
+                <span className="font-semibold text-foreground">${(Number(selected.price) / Number(numberOfInstallments)).toFixed(2)}</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

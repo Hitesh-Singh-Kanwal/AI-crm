@@ -227,7 +227,7 @@ function deriveEffectiveStatus(appt) {
   return explicit || "scheduled";
 }
 
-function transformAppointments(appointments, colorMap, memberSelections = {}) {
+function transformAppointments(appointments, colorMap, memberSelections = {}, membershipCoverageSet = new Set()) {
   // Track session order per (customerID + enrollmentID) for all package billing types.
   // Key: `${customerId}::${enrollmentId}`, value: sorted array of appointment IDs by date.
   // Used to figure out each session's chronological position so we can decide which
@@ -301,6 +301,17 @@ function transformAppointments(appointments, colorMap, memberSelections = {}) {
     let sessionsUsedForPaidCheck = null;
     let pkgFullyPaid = false;
     if (Array.isArray(appt.charges) && appt.charges.length > 0) {
+      // Membership session-type charges
+      const memCharge = appt.charges.find((c) => c.method === "membership" && c.accessType === "sessions");
+      if (memCharge?.customerMembershipID) {
+        const cm = memCharge.customerMembershipID;
+        const cmSvc = (cm.services || []).find((s) => s.serviceCode === serviceCode);
+        if (cmSvc) {
+          sessionsRemaining = cmSvc.sessionsRemaining ?? null;
+          totalSessions = (cmSvc.sessionsUsed ?? 0) + (cmSvc.sessionsRemaining ?? 0);
+        }
+      }
+
       const pkgCharge = appt.charges.find((c) => c.method === "package");
       if (pkgCharge) {
         const billingType = appt.packageBillingType ?? null;
@@ -313,13 +324,25 @@ function transformAppointments(appointments, colorMap, memberSelections = {}) {
 
         const resolveSessionsPaidFor = (svc) => {
           if (svc.isChargeable === false) return null;
-          const pps = svc.pricePerSession ?? 0;
-          if (pps <= 0) return null;
+          const n = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
           const bt = billingType ?? enrollmentPkg?.billingType;
           if (bt === "flexible" || bt === "payment_plan") {
-            return amountCollected / pps;
+            // Derive effective price per session from the package's post-discount totalPaid
+            // divided by all chargeable sessions, so discounts are reflected correctly.
+            const chargeableSessions = (enrollmentPkg?.services ?? []).reduce(
+              (sum, s) => sum + (s.isChargeable !== false && (s.pricePerSession ?? 0) > 0
+                ? (s.sessionsUsed ?? 0) + (s.sessionsRemaining ?? 0)
+                : 0),
+              0,
+            );
+            const effectivePps =
+              chargeableSessions > 0 && totalPaid > 0
+                ? totalPaid / chargeableSessions
+                : (svc.pricePerSession ?? 0);
+            if (effectivePps <= 0) return null;
+            return amountCollected / effectivePps;
           }
-          return (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
+          return n;
         };
 
         // Try customerPackageID first
@@ -373,10 +396,20 @@ function transformAppointments(appointments, colorMap, memberSelections = {}) {
     const sessionsBefore = pkgSessionNumber != null
       ? pkgSessionNumber - 1
       : (totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0);
-    const coveredByCredits = sessionsPaidFor != null && sessionsPaidFor - sessionsBefore >= 0.9;
+    const coveredByCredits = sessionsPaidFor != null && sessionsPaidFor - sessionsBefore >= 0.999;
     // A package charge whose service is free/non-chargeable has nothing to pay.
     const freePackageService =
       appt.chargeMethod === "package" && sessionsRemaining != null && sessionsPaidFor == null;
+
+    // Check if any customer on this event is covered by an active membership for this service
+    const coveredByMembership =
+      appt.chargeMethod === "membership" ||
+      (appt.chargeMethod === "none" &&
+        serviceCode &&
+        Array.isArray(appt.customerIDs) &&
+        appt.customerIDs.some((c) =>
+          membershipCoverageSet.has(`${String(c._id ?? c)}::${serviceCode}`)
+        ));
 
     const _isActuallyPaid =
       appt.payment?.collected ||
@@ -390,7 +423,8 @@ function transformAppointments(appointments, colorMap, memberSelections = {}) {
       freePackageService ||
       appt.chargeMethod === "credits" ||
       appt.chargeMethod === "direct" ||
-      appt.chargeMethod === "mixed";
+      appt.chargeMethod === "mixed" ||
+      coveredByMembership;
     const paymentCollected = _isActuallyPaid ? "paid" : "unpaid";
 
     return {
@@ -1060,12 +1094,26 @@ function showEventTooltip(e, props) {
   const pkgCharge = Array.isArray(raw.charges)
     ? raw.charges.find((c) => c.method === "package")
     : null;
+  const memCharge = Array.isArray(raw.charges)
+    ? raw.charges.find((c) => c.method === "membership" && c.accessType === "sessions")
+    : null;
 
   // Try to resolve package name from charge's customerPackageID or enrollmentID
   let packageName = null;
   let packageExpiry = null;
   let sessionsRemaining = props.sessionsRemaining ?? null;
   let totalSessions = props.totalSessions ?? null;
+
+  // Membership session-type charges
+  if (memCharge?.customerMembershipID) {
+    const cm = memCharge.customerMembershipID;
+    const cmSvc = (cm.services || []).find((s) => s.serviceCode === serviceCode);
+    if (cmSvc) {
+      sessionsRemaining = cmSvc.sessionsRemaining ?? sessionsRemaining;
+      totalSessions = (cmSvc.sessionsUsed ?? 0) + (cmSvc.sessionsRemaining ?? 0) || totalSessions;
+      packageName = cm.membershipName || "Membership";
+    }
+  }
 
   if (pkgCharge) {
     const cpkg = pkgCharge.customerPackageID;
@@ -1121,6 +1169,7 @@ function showEventTooltip(e, props) {
     chargeMethod === "credits" ||
     chargeMethod === "direct" ||
     chargeMethod === "mixed" ||
+    chargeMethod === "membership" ||
     raw.payment?.collected;
   const paymentStatus = isPaid ? "Paid" : "Unpaid";
   const paymentStatusColor = isPaid ? "#22c55e" : "#ef4444";
@@ -1146,7 +1195,9 @@ function showEventTooltip(e, props) {
     ${sessionsRemaining != null && totalSessions != null ? (() => {
       const sessionsPaidForTooltip = props.sessionsPaidFor ?? totalSessions;
       const sessionsUsedTooltip = totalSessions - sessionsRemaining;
-      const schedulableTooltip = Math.max(0, Math.floor(sessionsPaidForTooltip) - sessionsUsedTooltip);
+      // Match the booking rule (a session is covered at >= 0.999 credits) so the
+      // tooltip never disagrees with what can actually be scheduled.
+      const schedulableTooltip = Math.max(0, Math.floor(sessionsPaidForTooltip + 0.001) - sessionsUsedTooltip);
       return section("Credits", `<span style="color:${schedulableTooltip <= 1 ? "#ef4444" : "#22c55e"}">${schedulableTooltip} schedulable</span> <span style="opacity:.6">(${sessionsRemaining}/${totalSessions} remaining)</span>`);
     })() : ""}
     ${divider}
@@ -1241,10 +1292,13 @@ function AppointmentTimedEventRows({ event, compact = false }) {
     (Array.isArray(customerNames) ? customerNames.length : 0) ??
     (Array.isArray(ep.raw?.customerIDs) ? ep.raw.customerIDs.length : 0);
 
-  const sessionsLabel =
-    sessionsRemaining != null && totalSessions != null
-      ? `${sessionsRemaining}/${totalSessions}`
-      : null;
+  const sessionsLabel = (() => {
+    if (sessionsRemaining == null || totalSessions == null) return null;
+    const remaining = pkgSessionNumber != null
+      ? totalSessions - pkgSessionNumber
+      : sessionsRemaining;
+    return `${remaining}/${totalSessions}`;
+  })();
 
   const primaryLabel = isGroupClass
     ? event.title || "Group class"
@@ -1282,8 +1336,16 @@ function AppointmentTimedEventRows({ event, compact = false }) {
         {!isGroupClass && sessionsPaidFor != null && (() => {
           // Show credit balance as it was just before this session was consumed
           const sessionsBefore = pkgSessionNumber != null ? pkgSessionNumber - 1 : (totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0);
-          const creditLeft = Math.max(0, sessionsPaidFor - sessionsBefore);
-          const display = Number.isInteger(creditLeft) ? creditLeft : +creditLeft.toFixed(1);
+          const net = sessionsPaidFor - (sessionsBefore + 1);
+          // When credits run out, show the fractional remainder (e.g. 0.3) so the
+          // customer can see what they still have — don't collapse to 0.
+          const raw = net >= 0 ? net : sessionsPaidFor % 1;
+          // Snap near-integers (float dust), otherwise truncate — never round a
+          // partially-paid session up to a full, schedulable-looking credit.
+          const display =
+            Math.abs(raw - Math.round(raw)) < 0.001
+              ? Math.round(raw)
+              : Math.floor(raw * 100) / 100;
           return (
             <span className="shrink-0 text-[8px] font-semibold text-foreground/70 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
               {display} Paid
@@ -2747,7 +2809,8 @@ export default function CalendarPage() {
 
   const [events, setEvents] = useState([]);
   const [instructors, setInstructors] = useState([]);
-  const memberSelectionsRef = useRef({}); // appointmentId -> memberIds[]
+  const memberSelectionsRef = useRef({});
+  const membershipCoverageRef = useRef(new Set()); // "customerID::serviceCode" for active memberships // appointmentId -> memberIds[]
   const allTeachersRef = useRef([]);
   const [allServices, setAllServices] = useState([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
@@ -2825,7 +2888,7 @@ export default function CalendarPage() {
         merged = derived;
       }
       const colorMap = buildColorMap(merged);
-      setEvents(transformAppointments(result.data, colorMap, memberSelectionsRef.current));
+      setEvents(transformAppointments(result.data, colorMap, memberSelectionsRef.current, membershipCoverageRef.current));
       setInstructors(merged.length > 0 ? merged : derived);
     }
     setIsLoadingEvents(false);
@@ -2838,6 +2901,18 @@ export default function CalendarPage() {
   useEffect(() => {
     api.get("/api/calendar-service?limit=200").then((res) => {
       if (res.success && Array.isArray(res.data)) setAllServices(res.data);
+    });
+    api.get("/api/customer-membership?status=active&limit=1000").then((res) => {
+      if (!res.success || !Array.isArray(res.data)) return;
+      const set = new Set();
+      res.data.forEach((m) => {
+        if (m.status !== "active") return;
+        const cid = String(m.customerID?._id ?? m.customerID ?? "");
+        (m.services || []).forEach((s) => {
+          if (cid && s.serviceCode) set.add(`${cid}::${s.serviceCode}`);
+        });
+      });
+      membershipCoverageRef.current = set;
     });
   }, []);
 

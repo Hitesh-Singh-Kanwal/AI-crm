@@ -160,6 +160,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
     let allEnr = [];
     if (enrResult.success) {
       allEnr = enrResult.data || [];
+      setEnrollments(allEnr);
       const allFlex = allEnr.filter((e) => e.package?.billingType === "flexible");
       const due = allFlex.filter((e) => e.package?.paymentStatus !== "paid" && e.status === "active");
       setAllFlexEnrollments(allFlex);
@@ -168,13 +169,14 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
         .filter((e) => e.status === "active" && e.package?.status === "active")
         .reduce((sum, e) => {
           const bt = e.package?.billingType;
-          const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable !== false);
+          const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable !== false && (s.pricePerSession ?? 0) > 0);
           if (bt === "flexible" || bt === "payment_plan") {
             const collected = e.package?.amountCollected ?? 0;
-            const svc = chargeableServices.find((s) => s.pricePerSession > 0);
-            const pps = svc?.pricePerSession ?? 0;
-            const sessionsPaidFor = pps > 0 ? collected / pps : 0;
-            const sessionsUsed = svc?.sessionsUsed ?? 0;
+            const totalPaid = e.package?.totalPaid ?? 0;
+            const chargeableSessions = chargeableServices.reduce((s, sv) => s + (sv.sessionsUsed ?? 0) + (sv.sessionsRemaining ?? 0), 0);
+            const effectivePps = chargeableSessions > 0 && totalPaid > 0 ? totalPaid / chargeableSessions : (chargeableServices[0]?.pricePerSession ?? 0);
+            const sessionsPaidFor = effectivePps > 0 ? collected / effectivePps : 0;
+            const sessionsUsed = chargeableServices.reduce((s, sv) => s + (sv.sessionsUsed ?? 0), 0);
             return sum + Math.max(0, sessionsPaidFor - sessionsUsed);
           }
           return sum + chargeableServices.reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0);
@@ -372,13 +374,14 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
           .filter((e) => e.status === "active" && e.package?.status === "active")
           .reduce((sum, e) => {
             const bt = e.package?.billingType;
-            const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable !== false);
+            const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable !== false && (s.pricePerSession ?? 0) > 0);
             if (bt === "flexible" || bt === "payment_plan") {
               const collected = e.package?.amountCollected ?? 0;
-              const svc = chargeableServices.find((s) => s.pricePerSession > 0);
-              const pps = svc?.pricePerSession ?? 0;
-              const sessionsPaidFor = pps > 0 ? collected / pps : 0;
-              const sessionsUsed = svc?.sessionsUsed ?? 0;
+              const totalPaid = e.package?.totalPaid ?? 0;
+              const chargeableSessions = chargeableServices.reduce((s, sv) => s + (sv.sessionsUsed ?? 0) + (sv.sessionsRemaining ?? 0), 0);
+              const effectivePps = chargeableSessions > 0 && totalPaid > 0 ? totalPaid / chargeableSessions : (chargeableServices[0]?.pricePerSession ?? 0);
+              const sessionsPaidFor = effectivePps > 0 ? collected / effectivePps : 0;
+              const sessionsUsed = chargeableServices.reduce((s, sv) => s + (sv.sessionsUsed ?? 0), 0);
               return sum + Math.max(0, sessionsPaidFor - sessionsUsed);
             }
             return sum + chargeableServices.reduce((s2, s) => s2 + (s.sessionsRemaining ?? 0), 0);
@@ -1131,10 +1134,10 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                     </p>
                     <p className="text-[15px] font-bold text-emerald-500">
                       $
-                      {(
-                        collectedPayments.reduce((sum, e) => sum + (e.payment?.amount ?? 0), 0) +
-                        allFlexEnrollments.reduce((sum, e) => sum + (e.package?.amountCollected ?? 0), 0)
-                      ).toFixed(2)}
+                      {enrollments
+                        .filter((e) => e.package?.amountCollected > 0)
+                        .reduce((sum, e) => sum + (e.package?.amountCollected ?? 0), 0)
+                        .toFixed(2)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border bg-muted/30 px-2 py-2">
