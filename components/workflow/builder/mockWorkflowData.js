@@ -16,72 +16,60 @@ function makeNode(id, type, category, x, y, configOverrides = {}) {
   }
 }
 
+const EDGE_STYLE = {
+  type: 'smoothstep',
+  style: { stroke: '#94a3b8', strokeWidth: 2 },
+  pathOptions: { borderRadius: 20 },
+}
+
 export const DEMO_WORKFLOW_NAME = 'New lead nurture automation'
 
 export function createDemoWorkflow() {
   const nodes = [
-    makeNode('node-trigger', 'form_submitted', 'trigger', CENTER_X, 20),
-    makeNode('node-email', 'send_email', 'action', CENTER_X, 180, {
+    makeNode('node-trigger', 'form_submitted', 'trigger', CENTER_X, 20, {
+      event: 'form_submission',
+      isGenericForm: true,
+      formID: [],
+      reason: '',
+    }),
+    makeNode('node-email', 'send_email', 'action', CENTER_X, 200, {
       subject: 'Welcome to our studio!',
-      fromName: 'Studio Team',
-      emailTemplate: 'welcome',
+      emailType: 'message',
+      body: 'Hi {{first_name}}, thanks for reaching out! We can’t wait to see you in class.',
+      leadStage: 'new',
     }),
-    makeNode('node-wait', 'wait', 'wait', CENTER_X, 340, { duration: 1, unit: 'days' }),
-    makeNode('node-sms', 'send_sms', 'action', CENTER_X, 500, {
+    makeNode('node-wait-1', 'wait', 'wait', CENTER_X, 380, { days: 1, hours: 0, minutes: 0 }),
+    makeNode('node-sms', 'send_sms', 'action', CENTER_X, 560, {
       message: 'Hi {{first_name}}, ready to book your first class?',
+      leadStage: 'engaged',
     }),
-    makeNode('node-condition', 'if_else', 'condition', CENTER_X, 660, {
-      field: 'lead_stage',
-      operator: 'equals',
-      value: 'engaged',
-    }),
-    makeNode('node-task', 'create_task', 'action', 80, 880, {
-      title: 'Call lead — high intent',
-      assignee: 'Sales team',
-    }),
-    makeNode('node-ai', 'ai_agent', 'ai', 600, 880, {
-      prompt: 'Send a friendly re-engagement message and offer a trial class.',
+    makeNode('node-wait-2', 'wait', 'wait', CENTER_X, 740, { days: 1, hours: 0, minutes: 0 }),
+    makeNode('node-ai', 'ai_agent', 'ai', CENTER_X, 920, {
+      prompt: 'Call the lead, answer questions, and help them book a trial class.',
+      leadStage: 'engaged',
     }),
   ]
 
-  const edgeStyle = {
-    type: 'smoothstep',
-    style: { stroke: '#94a3b8', strokeWidth: 2 },
-    pathOptions: { borderRadius: 20 },
-  }
-
   const edges = [
-    { id: 'e-trigger-email', source: 'node-trigger', target: 'node-email', ...edgeStyle },
-    { id: 'e-email-wait', source: 'node-email', target: 'node-wait', ...edgeStyle },
-    { id: 'e-wait-sms', source: 'node-wait', target: 'node-sms', ...edgeStyle },
-    { id: 'e-sms-condition', source: 'node-sms', target: 'node-condition', ...edgeStyle },
-    {
-      id: 'e-condition-yes',
-      source: 'node-condition',
-      sourceHandle: 'yes',
-      target: 'node-task',
-      label: 'Yes',
-      labelStyle: { fill: '#059669', fontSize: 12, fontWeight: 700 },
-      labelBgStyle: { fill: '#ffffff', fillOpacity: 0.95 },
-      labelBgPadding: [6, 4],
-      labelBgBorderRadius: 4,
-      ...edgeStyle,
-      style: { stroke: '#10b981', strokeWidth: 2 },
-    },
-    {
-      id: 'e-condition-no',
-      source: 'node-condition',
-      sourceHandle: 'no',
-      target: 'node-ai',
-      label: 'No',
-      labelStyle: { fill: '#e11d48', fontSize: 12, fontWeight: 700 },
-      labelBgStyle: { fill: '#ffffff', fillOpacity: 0.95 },
-      labelBgPadding: [6, 4],
-      labelBgBorderRadius: 4,
-      ...edgeStyle,
-      style: { stroke: '#f43f5e', strokeWidth: 2 },
-    },
+    { id: 'e-trigger-email', source: 'node-trigger', target: 'node-email', ...EDGE_STYLE },
+    { id: 'e-email-wait1', source: 'node-email', target: 'node-wait-1', ...EDGE_STYLE },
+    { id: 'e-wait1-sms', source: 'node-wait-1', target: 'node-sms', ...EDGE_STYLE },
+    { id: 'e-sms-wait2', source: 'node-sms', target: 'node-wait-2', ...EDGE_STYLE },
+    { id: 'e-wait2-ai', source: 'node-wait-2', target: 'node-ai', ...EDGE_STYLE },
   ]
 
   return { nodes, edges, workflowName: DEMO_WORKFLOW_NAME }
+}
+
+/** A fresh canvas with only a trigger, used when creating a brand-new workflow. */
+export function createBlankWorkflow() {
+  const nodes = [
+    makeNode('node-trigger', 'form_submitted', 'trigger', CENTER_X, 40, {
+      event: 'form_submission',
+      isGenericForm: true,
+      formID: [],
+      reason: '',
+    }),
+  ]
+  return { nodes, edges: [], workflowName: 'Untitled automation' }
 }

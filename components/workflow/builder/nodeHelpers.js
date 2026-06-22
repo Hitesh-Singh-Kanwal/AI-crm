@@ -1,27 +1,53 @@
 import { getPaletteItem } from '@/components/workflow/builder/constants'
 
+const EVENT_LABELS = {
+  non: 'Manual / no automatic trigger',
+  form_submission: 'When a form is submitted',
+  lead_updated: 'When a lead is updated',
+  lead_moved_stage: 'When a lead changes stage',
+  custom_event: 'On a custom event',
+}
+
+function triggerSummary(config) {
+  const eventLabel = EVENT_LABELS[config.event] || 'Choose what starts this workflow'
+  if (config.event === 'form_submission') {
+    if (config.isGenericForm) return `${eventLabel} · All forms`
+    const count = Array.isArray(config.formID) ? config.formID.length : 0
+    return count > 0 ? `${eventLabel} · ${count} form${count === 1 ? '' : 's'}` : `${eventLabel} · pick a form`
+  }
+  return eventLabel
+}
+
+function waitSummary(config) {
+  const days = Number(config.days) || 0
+  const hours = Number(config.hours) || 0
+  const minutes = Number(config.minutes) || 0
+  const parts = []
+  if (days) parts.push(`${days} day${days === 1 ? '' : 's'}`)
+  if (hours) parts.push(`${hours} hr`)
+  if (minutes) parts.push(`${minutes} min`)
+  return parts.length ? `Wait ${parts.join(' ')}` : 'No delay'
+}
+
 export function getNodeSummary(paletteType, config = {}) {
   switch (paletteType) {
     case 'form_submitted':
-      return config.formName ? `Form: ${config.formName}` : 'When a form is submitted'
     case 'contact_created':
-      return config.source ? `Source: ${config.source}` : 'When a new contact is created'
     case 'appointment_booked':
-      return config.calendar ? `Calendar: ${config.calendar}` : 'When an appointment is booked'
     case 'tag_added':
-      return config.tagName ? `Tag: ${config.tagName}` : 'When a tag is added'
+      return triggerSummary(config)
     case 'send_email':
-      return config.subject ? `Subject: ${config.subject}` : 'Send an email to the contact'
+      return config.subject ? `Subject: ${config.subject}` : 'Send an email'
     case 'send_sms':
-      return config.message || 'Send an SMS to the contact'
+      return config.message ? config.message : 'Send an SMS'
+    case 'ai_agent':
+      return config.prompt ? config.prompt : 'AI call to the lead'
     case 'wait':
-      return `Wait ${config.duration ?? 1} ${config.unit ?? 'days'}`
+      return waitSummary(config)
     case 'if_else':
       return `${humanizeField(config.field)} ${humanizeOperator(config.operator)} ${config.value || '…'}`
     case 'create_task':
       return config.title || 'Create a follow-up task'
-    case 'ai_agent':
-      return config.prompt || 'Run an AI agent step'
     case 'ai_chatbot':
       return config.greeting || 'Start an AI chatbot conversation'
     case 'add_tag':

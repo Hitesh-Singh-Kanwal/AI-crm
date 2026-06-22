@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import Switch from '@/components/ui/switch'
 
-export default function WorkflowBuilderHeader() {
+export default function WorkflowBuilderHeader({ onSave, onPublish, saving = false }) {
   const workflowName = useWorkflowBuilderStore((s) => s.workflowName)
   const setWorkflowName = useWorkflowBuilderStore((s) => s.setWorkflowName)
   const zoom = useWorkflowBuilderStore((s) => s.zoom)
@@ -29,9 +29,9 @@ export default function WorkflowBuilderHeader() {
   const future = useWorkflowBuilderStore((s) => s.future)
   const undo = useWorkflowBuilderStore((s) => s.undo)
   const redo = useWorkflowBuilderStore((s) => s.redo)
-  const saveWorkflow = useWorkflowBuilderStore((s) => s.saveWorkflow)
-  const publishWorkflow = useWorkflowBuilderStore((s) => s.publishWorkflow)
   const resetToDemo = useWorkflowBuilderStore((s) => s.resetToDemo)
+
+  const busy = saving || saveStatus === 'saving'
 
   return (
     <header className="flex shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-4 py-2.5 dark:border-border dark:bg-card">
@@ -90,8 +90,8 @@ export default function WorkflowBuilderHeader() {
             Reset
           </Button>
 
-          <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5" onClick={saveWorkflow} disabled={saveStatus === 'saving'}>
-            {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5" onClick={onSave} disabled={busy}>
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             <span className="hidden sm:inline">Save</span>
           </Button>
 
@@ -99,10 +99,10 @@ export default function WorkflowBuilderHeader() {
             type="button"
             size="sm"
             className="h-9 gap-1.5 bg-[var(--studio-primary)] text-white hover:brightness-95"
-            onClick={publishWorkflow}
-            disabled={saveStatus === 'saving'}
+            onClick={onPublish}
+            disabled={busy}
           >
-            {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
             Publish
         </Button>
       </div>
