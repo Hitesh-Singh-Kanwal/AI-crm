@@ -196,14 +196,37 @@ export default function CreateEnrollmentSheet({
       return false
     }
 
-    const initialPayment = Number(payload.billing?.initialPayment || 0)
-    if (payload.billingType === 'flexible' && initialPayment > 0) {
+    const collectAmount = Number(payload.billing?.collectAmount || 0)
+    const collectNow = Boolean(payload.billing?.collectNow) && collectAmount > 0
+    const method = payload.billing?.method || 'cash'
+
+    if (collectNow && payload.billingType === 'payment_plan') {
+      const planRes = await api.get(`/api/payment-plan/customer/${resolvedCustomerID}`)
+      const plans = planRes?.success ? planRes.data || [] : []
+      const matchesEnrollment = (p) =>
+        String(p.enrollmentID?._id ?? p.enrollmentID) === String(enrollmentID)
+      const byNewest = (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      const plan =
+        plans.filter(matchesEnrollment).sort(byNewest)[0] ?? [...plans].sort(byNewest)[0]
+      const firstPending = (plan?.installments || []).findIndex((i) => i.status === 'pending')
+      if (plan && firstPending !== -1) {
+        const payRes = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
+          installmentIndex: firstPending,
+          method,
+        })
+        if (!payRes?.success) {
+          setError(payRes?.error || 'Enrollment created but first installment payment failed.')
+          setSubmitting(false)
+          return false
+        }
+      }
+    } else if (collectNow && payload.billingType === 'flexible') {
       const payRes = await api.post('/api/payment', {
         customerID: resolvedCustomerID,
         enrollmentID,
         type: 'package_purchase',
-        amount: initialPayment,
-        method: payload.billing?.initialPaymentMethod || 'cash',
+        amount: collectAmount,
+        method,
       })
       if (!payRes?.success) {
         setError(payRes?.error || 'Enrollment created but initial payment failed.')

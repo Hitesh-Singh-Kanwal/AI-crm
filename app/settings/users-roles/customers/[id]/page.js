@@ -3108,7 +3108,10 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
   const filteredEnrollments = statusFilter
     ? enrollments.filter((e) => {
-        if (statusFilter === "active") return e.status === "active";
+        if (statusFilter === "active")
+          return e.status === "active" && e.package?.status !== "cancelled";
+        if (statusFilter === "cancelled")
+          return e.package?.status === "cancelled";
         if (statusFilter === "expired") return e.package?.status === "expired";
         if (statusFilter === "completed") {
           const svcs = e.package?.services ?? [];
@@ -3123,6 +3126,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
           return (
             e.status !== "active" &&
             e.package?.status !== "expired" &&
+            e.package?.status !== "cancelled" &&
             total > 0 &&
             used >= total
           );
@@ -3154,6 +3158,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
               <option value="active">Active</option>
               <option value="completed">Completed</option>
               <option value="expired">Expired</option>
+              <option value="cancelled">Cancelled</option>
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           </div>
@@ -3201,7 +3206,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
           {isActiveTab
             ? 'No active enrollments. Click "New Enrollment" to create one.'
-            : "No completed enrollments yet."}
+            : `No ${statusFilter} enrollments.`}
         </div>
       ) : selectedEnr ? (
         <div className="space-y-4">
@@ -3404,17 +3409,24 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                           cp.billingType === "flexible" ||
                           cp.billingType === "payment_plan" ||
                           cp.billingType === "pay_per_session";
-                        // Sum of all chargeable service prices (used as denominator for proportion)
+                        // A service is "free" when it's marked non-chargeable or
+                        // fully discounted (finalAmount 0). Free services only track
+                        // sessions — no credit balance, no price.
+                        const isFreeService = (sv) =>
+                          sv.isChargeable === false ||
+                          Number(sv.finalAmount || 0) <= 0;
+                        // Sum of all chargeable service prices (denominator for proportion)
                         const chargeableSvcPriceTotal = services.reduce(
                           (s, sv) =>
                             s +
-                            (Number(sv.pricePerSession) > 0
-                              ? (sv.sessionsTotal ?? 0) *
-                                Number(sv.pricePerSession)
-                              : 0),
+                            (isFreeService(sv)
+                              ? 0
+                              : (sv.sessionsTotal ?? 0) *
+                                Number(sv.pricePerSession || 0)),
                           0,
                         );
                         const rows = services.map((svc, i) => {
+                          const isFree = isFreeService(svc);
                           const sessTotal = svc.sessionsTotal ?? 0;
                           const sessUsed =
                             svc.sessionsCompleted ?? svc.sessionsUsed ?? 0;
@@ -3423,14 +3435,17 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                             0,
                             sessTotal - sessUsed - sessSched,
                           );
-                          const pps = Number(svc.pricePerSession) || 0;
+                          const pps = isFree ? 0 : Number(svc.pricePerSession) || 0;
                           const effectivePps =
-                            sessTotal > 0 && svc.finalAmount > 0
-                              ? Number(svc.finalAmount) / sessTotal
-                              : pps;
-                          const svcTotal = sessTotal * pps;
+                            isFree
+                              ? 0
+                              : sessTotal > 0 && svc.finalAmount > 0
+                                ? Number(svc.finalAmount) / sessTotal
+                                : pps;
+                          const svcTotal = isFree ? 0 : sessTotal * pps;
                           // For deferred billing, credit = paid amount ÷ price-per-session (decimal)
                           const svcCreditSessions = (() => {
+                            if (isFree) return 0;
                             if (!isDeferred || pps <= 0) return sessRemaining;
                             // Proportion by this service's share of total chargeable price
                             const svcShare =
@@ -3458,6 +3473,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                           return {
                             svc,
                             i,
+                            isFree,
                             sessTotal,
                             sessUsed,
                             sessSched,
@@ -3506,6 +3522,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                 ({
                                   svc,
                                   i,
+                                  isFree,
                                   sessTotal,
                                   sessUsed,
                                   sessSched,
@@ -3549,6 +3566,11 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                             <span className="text-[12px] font-medium text-foreground">
                                               {svc.serviceName}
                                             </span>
+                                            {isFree && (
+                                              <span className="shrink-0 inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+                                                {svc.isChargeable === false ? "Non-chargeable" : "Free"}
+                                              </span>
+                                            )}
                                           </div>
                                           <div className="mt-1.5 pl-[28px]">
                                             <SessionBar

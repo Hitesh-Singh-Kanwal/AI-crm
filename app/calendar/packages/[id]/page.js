@@ -229,7 +229,8 @@ function emptyService() {
   }
 }
 
-function computeAmounts(svc) {
+function computeAmounts(svc, isChargeable = true) {
+  if (isChargeable === false) return { total: 0, finalAmount: 0 }
   const sessions = Number(svc.numberOfSessions) || 0
   const price = Number(svc.pricePerSession) || 0
   const total = sessions * price
@@ -253,6 +254,10 @@ export default function PackageEditPage() {
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
   const [calendarServices, setCalendarServices] = useState([])
+  // A package line is chargeable only if its catalog service is. Non-chargeable
+  // lines contribute nothing to package totals.
+  const svcChargeable = (s) =>
+    calendarServices.find((c) => c.serviceCode === s.serviceCode)?.isChargeable ?? true
 
   // Events tab state
   const [events, setEvents]           = useState([])
@@ -376,7 +381,7 @@ export default function PackageEditPage() {
     const cleanedServices = services
       .filter((s) => s.serviceName.trim())
       .map((s) => {
-        const { total, finalAmount } = computeAmounts(s)
+        const { total, finalAmount } = computeAmounts(s, svcChargeable(s))
         return {
           ...(String(s._id).startsWith('new-') || String(s._id).startsWith('svc-') ? {} : { _id: s._id }),
           serviceName: s.serviceName.trim(),
@@ -567,9 +572,9 @@ export default function PackageEditPage() {
                 </thead>
                 <tbody>
                   {services.map((svc, idx) => {
-                    const { total, finalAmount } = computeAmounts(svc)
                     const catalogSvcMatch = calendarServices.find((c) => c.serviceCode === svc.serviceCode)
                     const isChargeable = catalogSvcMatch?.isChargeable ?? true
+                    const { total, finalAmount } = computeAmounts(svc, isChargeable)
                     return (
                       <tr key={svc._id} className="border-b border-border/60 hover:bg-muted/20">
                         <td className="py-2 px-3">
@@ -695,13 +700,13 @@ export default function PackageEditPage() {
               <div className="flex items-center gap-2 text-muted-foreground">
                 <span>Total (all services):</span>
                 <span className="font-semibold text-foreground">
-                  ${fmt(services.reduce((acc, s) => acc + computeAmounts(s).total, 0))}
+                  ${fmt(services.reduce((acc, s) => acc + computeAmounts(s, svcChargeable(s)).total, 0))}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-muted-foreground">
                 <span>Final Amount:</span>
                 <span className="font-bold text-lg" style={{ color }}>
-                  ${fmt(services.reduce((acc, s) => acc + computeAmounts(s).finalAmount, 0))}
+                  ${fmt(services.reduce((acc, s) => acc + computeAmounts(s, svcChargeable(s)).finalAmount, 0))}
                 </span>
               </div>
             </div>

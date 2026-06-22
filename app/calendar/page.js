@@ -239,11 +239,14 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
     if (!pkgCharge) return;
     const enrollmentId = String(pkgCharge.enrollmentID?._id ?? pkgCharge.enrollmentID ?? "");
     if (!enrollmentId) return;
+    // Order sessions per service: a package's private-lesson credits are tracked
+    // separately from its group-class (or any other) service lines.
+    const serviceCode = pkgCharge.serviceCode ?? "";
     const customerIds = Array.isArray(appt.customerIDs)
       ? appt.customerIDs.map((c) => String(c._id ?? c))
       : [];
     customerIds.forEach((cid) => {
-      const key = `${cid}::${enrollmentId}`;
+      const key = `${cid}::${enrollmentId}::${serviceCode}`;
       if (!pkgSessionOrder[key]) pkgSessionOrder[key] = [];
       pkgSessionOrder[key].push({ id: String(appt._id), date: new Date(appt.startDateTime) });
     });
@@ -322,27 +325,37 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
           enrollmentPkg?.paymentStatus === "paid" ||
           (amountCollected > 0 && amountCollected >= totalPaid);
 
-        const resolveSessionsPaidFor = (svc) => {
-          if (svc.isChargeable === false) return null;
-          const n = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
+        // A service is "free" when non-chargeable or fully discounted — it has no
+        // credits, only sessions, and must be excluded from the paid-credit math.
+        const isFreeSvc = (s) =>
+          s.isChargeable === false || Number(s.finalAmount || 0) <= 0;
+
+        const resolveSessionsPaidFor = (svc, services) => {
+          if (isFreeSvc(svc)) return null;
+          const sessTotal = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
           const bt = billingType ?? enrollmentPkg?.billingType;
           if (bt === "flexible" || bt === "payment_plan") {
-            // Derive effective price per session from the package's post-discount totalPaid
-            // divided by all chargeable sessions, so discounts are reflected correctly.
-            const chargeableSessions = (enrollmentPkg?.services ?? []).reduce(
-              (sum, s) => sum + (s.isChargeable !== false && (s.pricePerSession ?? 0) > 0
-                ? (s.sessionsUsed ?? 0) + (s.sessionsRemaining ?? 0)
-                : 0),
+            // Mirror the customer-profile calc: split the collected amount across
+            // paid (non-free) services by their share of the package price, then
+            // convert this service's share to sessions at its post-discount price.
+            const grossOf = (s) =>
+              ((s.sessionsUsed ?? 0) + (s.sessionsRemaining ?? 0)) *
+              Number(s.pricePerSession || 0);
+            const chargeablePriceTotal = (services ?? []).reduce(
+              (sum, s) => sum + (isFreeSvc(s) ? 0 : grossOf(s)),
               0,
             );
+            const svcShare =
+              chargeablePriceTotal > 0 ? grossOf(svc) / chargeablePriceTotal : 1;
+            const svcAmountPaid = amountCollected * svcShare;
             const effectivePps =
-              chargeableSessions > 0 && totalPaid > 0
-                ? totalPaid / chargeableSessions
-                : (svc.pricePerSession ?? 0);
+              sessTotal > 0 && Number(svc.finalAmount) > 0
+                ? Number(svc.finalAmount) / sessTotal
+                : Number(svc.pricePerSession || 0);
             if (effectivePps <= 0) return null;
-            return amountCollected / effectivePps;
+            return svcAmountPaid / effectivePps;
           }
-          return n;
+          return sessTotal;
         };
 
         // Try customerPackageID first
@@ -353,7 +366,7 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
             sessionsRemaining = svc.sessionsRemaining ?? null;
             totalSessions = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
             sessionsUsedForPaidCheck = svc.sessionsUsed ?? 0;
-            sessionsPaidFor = resolveSessionsPaidFor(svc);
+            sessionsPaidFor = resolveSessionsPaidFor(svc, pkg.services);
           }
         }
         // Fall back to enrollmentID
@@ -363,7 +376,7 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
             sessionsRemaining = svc.sessionsRemaining ?? null;
             totalSessions = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
             sessionsUsedForPaidCheck = svc.sessionsUsed ?? 0;
-            sessionsPaidFor = resolveSessionsPaidFor(svc);
+            sessionsPaidFor = resolveSessionsPaidFor(svc, enrollmentPkg.services);
           }
         }
       }
@@ -375,9 +388,10 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
       const pkgCharge2 = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
       if (pkgCharge2) {
         const enrollmentId2 = String(pkgCharge2.enrollmentID?._id ?? pkgCharge2.enrollmentID ?? "");
+        const serviceCode2 = pkgCharge2.serviceCode ?? "";
         const customerIds2 = Array.isArray(appt.customerIDs) ? appt.customerIDs.map((c) => String(c._id ?? c)) : [];
         for (const cid of customerIds2) {
-          const key = `${cid}::${enrollmentId2}`;
+          const key = `${cid}::${enrollmentId2}::${serviceCode2}`;
           const order = pkgSessionOrder[key];
           if (order) {
             const idx = order.findIndex((e) => e.id === String(appt._id));

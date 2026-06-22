@@ -21,8 +21,8 @@ const BLANK_FORM = {
     installmentMode: "count",
     installmentAmount: "",
     dueDate: "",
-    initialPayment: "",
-    initialPaymentMethod: "cash",
+    collectNow: true,
+    collectAmount: "",
   },
   tip: {
     enabled: false,
@@ -153,6 +153,7 @@ export default function NewEnrollmentPackageInline({
   onSubmit,
 }) {
   const [form, setForm] = useState(BLANK_FORM);
+  const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [catalogServices, setCatalogServices] = useState([]);
@@ -293,21 +294,65 @@ export default function NewEnrollmentPackageInline({
     total,
   ]);
 
-  async function handleSubmit() {
+  const firstInstallmentAmount = installments[0]?.amount ?? 0;
+
+  const defaultCollectAmount = useMemo(() => {
+    if (form.billingType === "one_time") return total;
+    if (form.billingType === "payment_plan") return firstInstallmentAmount;
+    return 0;
+  }, [form.billingType, total, firstInstallmentAmount]);
+
+  function goToPayment() {
     if (!form.packageID) {
       setError("Please select a package.");
       return;
     }
+    if (form.services.length === 0 || total <= 0) {
+      setError("Add at least one chargeable service.");
+      return;
+    }
     if (form.billingType === "payment_plan") {
-      const { numberOfInstallments, frequency, startDate } = form.billing;
-      if (!numberOfInstallments || !frequency || !startDate) {
+      const { installmentMode, numberOfInstallments, installmentAmount, frequency, startDate } = form.billing;
+      if (!frequency || !startDate) {
+        setError("Fill all payment plan fields.");
+        return;
+      }
+      if (installmentMode === "amount" ? !Number(installmentAmount) : !Number(numberOfInstallments)) {
         setError("Fill all payment plan fields.");
         return;
       }
     }
+    if (form.billingType === "flexible" && !form.billing.dueDate) {
+      setError("Please set a due date.");
+      return;
+    }
+    setError("");
+    setForm((p) => ({
+      ...p,
+      billing: {
+        ...p.billing,
+        collectNow: p.billingType !== "flexible",
+        collectAmount: defaultCollectAmount ? String(defaultCollectAmount.toFixed(2)) : "",
+      },
+    }));
+    setStep(2);
+  }
+
+  async function handleSubmit() {
     setError("");
     setLoading(true);
-    const payload = { ...form };
+    const collect =
+      form.billingType !== "pay_per_session" &&
+      form.billing.collectNow &&
+      Number(form.billing.collectAmount) > 0;
+    const payload = {
+      ...form,
+      billing: {
+        ...form.billing,
+        collectNow: collect,
+        collectAmount: collect ? Number(form.billing.collectAmount) : 0,
+      },
+    };
     if (form.tip.enabled && form.tip.amount && form.teacherID) {
       payload.tip = { teacherID: form.teacherID, amount: form.tip.amount, method: form.tip.method };
     } else {
@@ -324,10 +369,13 @@ export default function NewEnrollmentPackageInline({
         <p className="text-[12px] font-semibold text-foreground">
           New Enrollment & Package
         </p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">
+          Step {step} of 2 · {step === 1 ? "Package & billing" : "Payment details"}
+        </p>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto mt-3 pr-1 space-y-3">
-        <div className="space-y-3 pb-1">
+        <div className="space-y-3 pb-1" hidden={step !== 1}>
           <div className="space-y-2">
             <label className="text-[11px] font-medium text-muted-foreground">
               Teacher
@@ -613,36 +661,14 @@ export default function NewEnrollmentPackageInline({
               </p>
             )}
             {form.billingType === "one_time" && (
-              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-                <div className="flex items-center justify-between border-t border-border pt-2">
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between">
                   <p className="text-[12px] text-muted-foreground">
                     Payable Balance
                   </p>
                   <p className="text-[14px] font-bold text-foreground">
                     ${total.toFixed(2)}
                   </p>
-                </div>
-                <p className="text-[11px] font-medium text-muted-foreground">
-                  Payment Method
-                </p>
-                <div className="relative">
-                  <select
-                    value={form.billing.method}
-                    onChange={(e) =>
-                      setForm((p) => ({
-                        ...p,
-                        billing: { ...p.billing, method: e.target.value },
-                      }))
-                    }
-                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
-                  >
-                    {PAYMENT_METHODS.map((m) => (
-                      <option key={m} value={m} className="capitalize">
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 </div>
               </div>
             )}
@@ -775,39 +801,6 @@ export default function NewEnrollmentPackageInline({
                     className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
                   />
                 </div>
-                <div className="space-y-2 pt-2 border-t border-border">
-                  <p className="text-[10px] font-medium text-muted-foreground">Initial Payment (optional)</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={form.billing.initialPayment}
-                        onChange={(e) =>
-                          setForm((p) => ({ ...p, billing: { ...p.billing, initialPayment: e.target.value } }))
-                        }
-                        className="w-full rounded-md border border-border bg-background pl-6 pr-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
-                      />
-                    </div>
-                    <div className="relative">
-                      <select
-                        value={form.billing.initialPaymentMethod}
-                        onChange={(e) =>
-                          setForm((p) => ({ ...p, billing: { ...p.billing, initialPaymentMethod: e.target.value } }))
-                        }
-                        className="w-full appearance-none rounded-md border border-border bg-background px-2.5 pr-7 py-1.5 text-[11px] capitalize focus:outline-none focus:ring-1 focus:ring-brand"
-                      >
-                        {PAYMENT_METHODS.map((m) => (
-                          <option key={m} value={m} className="capitalize">{m}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                    </div>
-                  </div>
-                </div>
                 <div className="flex items-center justify-between pt-2 border-t border-border">
                   <p className="text-[11px] text-muted-foreground">Payable Balance</p>
                   <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
@@ -880,10 +873,108 @@ export default function NewEnrollmentPackageInline({
           </div>
 
         </div>
+
+        {step === 2 && (
+          <div className="space-y-3 pb-1">
+            <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase">
+                  Payment Details
+                </p>
+                <span className="text-[10px] text-muted-foreground capitalize">
+                  {form.billingType.replace(/_/g, " ")}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-muted-foreground">Payable Balance</p>
+                <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
+              </div>
+
+              {form.billingType === "pay_per_session" ? (
+                <p className="text-[11px] text-muted-foreground">
+                  No upfront payment. A charge is recorded automatically each time a session is booked.
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-medium text-foreground">
+                      {form.billingType === "payment_plan"
+                        ? "Collect first installment now"
+                        : form.billingType === "flexible"
+                          ? "Collect initial payment now"
+                          : "Collect payment now"}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((p) => ({
+                          ...p,
+                          billing: { ...p.billing, collectNow: !p.billing.collectNow },
+                        }))
+                      }
+                      className={`relative h-5 w-9 rounded-full transition-colors ${
+                        form.billing.collectNow ? "bg-primary" : "bg-muted-foreground/30"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                          form.billing.collectNow ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {form.billing.collectNow && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={form.billing.collectAmount}
+                          readOnly={form.billingType === "payment_plan"}
+                          onChange={(e) =>
+                            setForm((p) => ({
+                              ...p,
+                              billing: { ...p.billing, collectAmount: e.target.value },
+                            }))
+                          }
+                          className={`h-9 w-full rounded-lg border border-border pl-6 pr-3 text-[12px] outline-none focus:border-primary ${
+                            form.billingType === "payment_plan" ? "bg-muted/30 text-muted-foreground" : "bg-background"
+                          }`}
+                        />
+                      </div>
+                      <div className="relative">
+                        <select
+                          value={form.billing.method}
+                          onChange={(e) =>
+                            setForm((p) => ({
+                              ...p,
+                              billing: { ...p.billing, method: e.target.value },
+                            }))
+                          }
+                          className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
+                        >
+                          {PAYMENT_METHODS.map((m) => (
+                            <option key={m} value={m} className="capitalize">{m}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Tip for teacher ── */}
-      {form.teacherID && (
+      {step === 2 && form.teacherID && (
         <div className="shrink-0 mt-3 rounded-lg border border-border bg-muted/20 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-medium text-muted-foreground">
@@ -959,18 +1050,29 @@ export default function NewEnrollmentPackageInline({
         <button
           type="button"
           className="h-8 px-3 rounded-lg border border-border text-[11px]"
-          onClick={onCancel}
+          onClick={step === 1 ? onCancel : () => { setError(""); setStep(1); }}
         >
-          Cancel
+          {step === 1 ? "Cancel" : "Back"}
         </button>
-        <button
-          type="button"
-          className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
-          onClick={handleSubmit}
-          disabled={loading || !form.packageID}
-        >
-          {loading ? "Creating…" : "Create Enrollment & Package"}
-        </button>
+        {step === 1 ? (
+          <button
+            type="button"
+            className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
+            onClick={goToPayment}
+            disabled={!form.packageID}
+          >
+            Next: Payment →
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
+            onClick={handleSubmit}
+            disabled={loading || !form.packageID}
+          >
+            {loading ? "Creating…" : "Create Enrollment & Package"}
+          </button>
+        )}
       </div>
     </div>
   );

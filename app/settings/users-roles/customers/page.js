@@ -450,7 +450,7 @@ export default function CustomersPage() {
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
-                        ${Number(customer.credits ?? 0).toFixed(2)}
+                        ${Number(customer.prepaidBalance ?? customer.credits ?? 0).toFixed(2)}
                       </span>
                     </TableCell>
                     <TableCell className="text-[12px] text-muted-foreground">

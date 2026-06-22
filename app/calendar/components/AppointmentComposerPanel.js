@@ -487,7 +487,9 @@ function EnrollmentServiceSelector({
 }) {
   if (!customerId) return null;
 
-  const activeEnrollments = enrollments.filter((e) => e.status === "active");
+  const activeEnrollments = enrollments.filter(
+    (e) => e.status === "active" && e.package?.status !== "cancelled",
+  );
 
   if (enrollments.length === 0) {
     return (
@@ -1989,6 +1991,51 @@ export default function AppointmentComposerPanel({
     return null;
   };
 
+  // One-time packages are settled in full at purchase via billing.method, so
+  // they need no separate record here. Payment plans collect the first
+  // installment; flexible packages collect an ad-hoc initial amount.
+  const recordInitialPayment = async (customerID, enrollmentID, payload) => {
+    const { billingType, billing } = payload;
+    if (!billing?.collectNow || !(Number(billing.collectAmount) > 0)) return;
+    const method = billing.method || "cash";
+
+    if (billingType === "payment_plan") {
+      const planRes = await api.get(`/api/payment-plan/customer/${customerID}`);
+      const plans = planRes.success ? planRes.data || [] : [];
+      const matchesEnrollment = (p) =>
+        String(p.enrollmentID?._id ?? p.enrollmentID) === String(enrollmentID);
+      const byNewest = (a, b) => new Date(b.createdAt) - new Date(a.createdAt);
+      // Prefer the plan tied to this enrollment; fall back to the most recently
+      // created plan (the one we just made) if the reference shape differs.
+      const plan =
+        plans.filter(matchesEnrollment).sort(byNewest)[0] ??
+        [...plans].sort(byNewest)[0];
+      const firstPending = (plan?.installments || []).findIndex((i) => i.status === "pending");
+      if (!plan || firstPending === -1) {
+        console.error("Initial installment not collected: no pending plan found", { enrollmentID, plans });
+        return;
+      }
+      const payRes = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
+        installmentIndex: firstPending,
+        method,
+      });
+      if (!payRes.success) {
+        console.error("pay-installment failed", payRes);
+      }
+      return;
+    }
+
+    if (billingType === "flexible") {
+      await api.post("/api/payment", {
+        customerID,
+        enrollmentID,
+        type: "package_purchase",
+        amount: Number(billing.collectAmount),
+        method,
+      });
+    }
+  };
+
   const handleNewEnrollment = async (customerID, payload = {}) => {
     if (!customerID) return null;
     const enrRes = await api.post("/api/enrollment", {
@@ -2027,16 +2074,25 @@ export default function AppointmentComposerPanel({
           ? { method: payload.billing?.method || "cash" }
           : payload.billingType === "payment_plan"
             ? {
+                installmentMode: payload.billing?.installmentMode || "count",
                 numberOfInstallments: Number(
                   payload.billing?.numberOfInstallments || 0,
                 ),
+                installmentAmount:
+                  payload.billing?.installmentMode === "amount"
+                    ? Number(payload.billing?.installmentAmount || 0)
+                    : undefined,
                 frequency: payload.billing?.frequency,
                 startDate: payload.billing?.startDate,
               }
-            : {},
+            : payload.billingType === "flexible"
+              ? { dueDate: payload.billing?.dueDate || undefined }
+              : {},
       ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
     });
     if (!addRes.success) return null;
+
+    await recordInitialPayment(customerID, enrollmentID, payload);
 
     const listRes = await api.get(`/api/enrollment?customerID=${customerID}`);
     if (listRes.success && Array.isArray(listRes.data)) {

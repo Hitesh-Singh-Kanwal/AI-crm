@@ -14,6 +14,41 @@ const TABS = [
 ];
 
 
+const PAYMENT_TYPE_LABEL = {
+  package_purchase: "Package payment",
+  session_payment: "Session payment",
+  credit_topup: "Credit top-up",
+  membership_purchase: "Membership",
+  membership_renewal: "Membership renewal",
+};
+
+// A booking is "auto-charged at booking" only when money actually moves at
+// booking time. Package lines settle at booking only for upfront billing
+// (one-time / pay-per-session) — payment_plan and flexible are paid separately
+// via installments / flexible payments, so they never auto-charge on booking.
+// Credits / direct / mixed draw at booking regardless.
+function isAutoChargedAtBooking(e) {
+  if (!e || e.chargeMethod === "none" || !e.chargeMethod) return false;
+  if (e.chargeMethod === "package") {
+    return (
+      e.packageBillingType === "one_time" ||
+      e.packageBillingType === "pay_per_session"
+    );
+  }
+  return ["credits", "direct", "mixed"].includes(e.chargeMethod) || e.chargeApplied;
+}
+
+// Collected payments come from the Payment ledger (installments, flexible,
+// session cash, memberships) — the calendar event flags only cover per-session
+// cash and miss plan installments.
+function extractCollectedPayments(payResult) {
+  const list =
+    payResult?.success && Array.isArray(payResult.data) ? payResult.data : [];
+  return list
+    .filter((p) => p.status !== "failed" && p.type !== "refund" && Number(p.amount) > 0)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
 function statusColor(status) {
   if (status === "completed") return "bg-green-500/10 text-green-400";
   if (status === "cancelled") return "bg-red-500/10 text-red-400";
@@ -141,20 +176,21 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
   }
 
   async function refreshPaymentsData() {
-    const [calResult, enrResult, planResult, custResult] = await Promise.all([
+    const [calResult, enrResult, planResult, custResult, payResult] = await Promise.all([
       api.get(`/api/calendar/customer/${customerId}`),
       api.get(`/api/enrollment?customerID=${customerId}`),
       api.get(`/api/payment-plan/customer/${customerId}`),
       api.get(`/api/customer/${customerId}`),
+      api.get(`/api/payment/customer/${customerId}?limit=200`),
     ]);
 
     if (custResult.success) setCustomer(custResult.data);
+    setCollectedPayments(extractCollectedPayments(payResult));
 
     let calEvents = [];
     if (calResult.success && Array.isArray(calResult.data)) {
       calEvents = [...calResult.data].sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime));
-      setCollectedPayments(calEvents.filter((e) => e.payment?.collected));
-      setServiceCharges(calEvents.filter((e) => e.chargeApplied));
+      setServiceCharges(calEvents.filter(isAutoChargedAtBooking));
     }
 
     let allEnr = [];
@@ -162,14 +198,14 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
       allEnr = enrResult.data || [];
       setEnrollments(allEnr);
       const allFlex = allEnr.filter((e) => e.package?.billingType === "flexible");
-      const due = allFlex.filter((e) => e.package?.paymentStatus !== "paid" && e.status === "active");
+      const due = allFlex.filter((e) => e.package?.paymentStatus !== "paid" && e.status === "active" && e.package?.status !== "cancelled");
       setAllFlexEnrollments(allFlex);
       setFlexEnrollments(due);
       const totalRemaining = allEnr
         .filter((e) => e.status === "active" && e.package?.status === "active")
         .reduce((sum, e) => {
           const bt = e.package?.billingType;
-          const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable !== false && (s.pricePerSession ?? 0) > 0);
+          const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable !== false && (s.pricePerSession ?? 0) > 0 && Number(s.finalAmount || 0) > 0);
           if (bt === "flexible" || bt === "payment_plan") {
             const collected = e.package?.amountCollected ?? 0;
             const totalPaid = e.package?.totalPaid ?? 0;
@@ -196,7 +232,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
     const now = new Date();
 
     allEnr
-      .filter((e) => e.package?.billingType === "flexible" && e.package?.paymentStatus !== "paid" && e.status === "active")
+      .filter((e) => e.package?.billingType === "flexible" && e.package?.paymentStatus !== "paid" && e.status === "active" && e.package?.status !== "cancelled")
       .forEach((e) => {
         const col = e.package.amountCollected ?? 0;
         const rem = Math.max(0, (e.package.totalPaid ?? 0) - col);
@@ -244,8 +280,13 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
     calEvents
       .filter((e) => {
         const isUpcoming = new Date(e.startDateTime) >= now;
-        const isPps = e.chargeApplied && e.chargeMethod === "package";
-        return isUpcoming && isPps;
+        // Due = a charge applies but no cash collected yet, and it isn't covered
+        // by a prepaid method (package/credits/membership are already paid).
+        const isDueSession =
+          e.chargeApplied &&
+          !e.payment?.collected &&
+          !["package", "credits", "membership"].includes(e.chargeMethod);
+        return isUpcoming && isDueSession;
       })
       .forEach((e) => {
         upcoming.push({
@@ -348,33 +389,35 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
     if (activeTab !== "payments") return;
     async function load() {
       setLoadingPayments(true);
-      const [calResult, enrResult, planResult] = await Promise.all([
+      const [calResult, enrResult, planResult, payResult] = await Promise.all([
         api.get(`/api/calendar/customer/${customerId}`),
         api.get(`/api/enrollment?customerID=${customerId}`),
         api.get(`/api/payment-plan/customer/${customerId}`),
+        api.get(`/api/payment/customer/${customerId}?limit=200`),
       ]);
+
+      setCollectedPayments(extractCollectedPayments(payResult));
 
       let calEvents = [];
       if (calResult.success && Array.isArray(calResult.data)) {
         calEvents = [...calResult.data].sort(
           (a, b) => new Date(b.startDateTime) - new Date(a.startDateTime),
         );
-        setCollectedPayments(calEvents.filter((e) => e.payment?.collected));
-        setServiceCharges(calEvents.filter((e) => e.chargeApplied));
+        setServiceCharges(calEvents.filter(isAutoChargedAtBooking));
       }
 
       let allEnr = [];
       if (enrResult.success) {
         allEnr = enrResult.data || [];
         const allFlex = allEnr.filter((e) => e.package?.billingType === "flexible");
-        const due = allFlex.filter((e) => e.package?.paymentStatus !== "paid" && e.status === "active");
+        const due = allFlex.filter((e) => e.package?.paymentStatus !== "paid" && e.status === "active" && e.package?.status !== "cancelled");
         setAllFlexEnrollments(allFlex);
         setFlexEnrollments(due);
         const totalRemaining = allEnr
           .filter((e) => e.status === "active" && e.package?.status === "active")
           .reduce((sum, e) => {
             const bt = e.package?.billingType;
-            const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable !== false && (s.pricePerSession ?? 0) > 0);
+            const chargeableServices = (e.package?.services ?? []).filter((s) => s.isChargeable !== false && (s.pricePerSession ?? 0) > 0 && Number(s.finalAmount || 0) > 0);
             if (bt === "flexible" || bt === "payment_plan") {
               const collected = e.package?.amountCollected ?? 0;
               const totalPaid = e.package?.totalPaid ?? 0;
@@ -410,7 +453,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
 
       // Flexible — unpaid due amounts
       allEnr
-        .filter((e) => e.package?.billingType === "flexible" && e.package?.paymentStatus !== "paid" && e.status === "active")
+        .filter((e) => e.package?.billingType === "flexible" && e.package?.paymentStatus !== "paid" && e.status === "active" && e.package?.status !== "cancelled")
         .forEach((e) => {
           const col = e.package.amountCollected ?? 0;
           const rem = Math.max(0, (e.package.totalPaid ?? 0) - col);
@@ -433,7 +476,7 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
       if (planResult.success) {
         const plans = planResult.data || [];
         const planForms = {};
-        plans.filter((p) => p.status === "active").forEach((plan) => {
+        plans.filter((p) => p.status === "active" && p.enrollmentID?.package?.status !== "cancelled").forEach((plan) => {
           (plan.installments || []).forEach((inst, idx) => {
             if (inst.status !== "pending") return;
             const dueDate = new Date(inst.dueDate);
@@ -460,8 +503,13 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
       calEvents
         .filter((e) => {
           const isUpcoming = new Date(e.startDateTime) >= now;
-          const isPps = e.chargeApplied && e.chargeMethod === "package";
-          return isUpcoming && isPps;
+          // Due = a charge applies but no cash collected yet, and it isn't covered
+          // by a prepaid method (package/credits/membership are already paid).
+          const isDueSession =
+            e.chargeApplied &&
+            !e.payment?.collected &&
+            !["package", "credits", "membership"].includes(e.chargeMethod);
+          return isUpcoming && isDueSession;
         })
         .forEach((e) => {
           upcoming.push({
@@ -1114,18 +1162,16 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                     </p>
                     <p className="text-[15px] font-bold text-violet-500">
                       $
-                      {allFlexEnrollments.length > 0
-                        ? "0.00"
-                        : serviceCharges
-                            .reduce(
-                              (sum, e) =>
-                                sum +
-                                (e.charges ?? [])
-                                  .filter((c) => String(c.customerID) === String(customerId))
-                                  .reduce((s, c) => s + (c.amount ?? 0), 0),
-                              0,
-                            )
-                            .toFixed(2)}
+                      {serviceCharges
+                        .reduce(
+                          (sum, e) =>
+                            sum +
+                            (e.charges ?? [])
+                              .filter((c) => String(c.customerID) === String(customerId))
+                              .reduce((s, c) => s + (c.amount ?? 0), 0),
+                          0,
+                        )
+                        .toFixed(2)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border bg-muted/30 px-2 py-2">
@@ -1379,14 +1425,13 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                                   {evt.title}
                                 </p>
                                 <div className="flex items-center gap-1.5 shrink-0">
-                                  {evt.calendarServiceID?.price > 0 && allFlexEnrollments.length === 0 && (
-                                    <span className="text-[12px] font-bold text-violet-500">
-                                      $
-                                      {Number(
-                                        evt.calendarServiceID.price,
-                                      ).toFixed(2)}
-                                    </span>
-                                  )}
+                                  <span className="text-[12px] font-bold text-violet-500">
+                                    $
+                                    {(evt.charges ?? [])
+                                      .filter((c) => String(c.customerID) === String(customerId))
+                                      .reduce((s, c) => s + (c.amount ?? 0), 0)
+                                      .toFixed(2)}
+                                  </span>
                                   <span
                                     className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${m.cls}`}
                                   >
@@ -1428,9 +1473,9 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                     {paymentView === "collected" && collectedPayments.length > 0 && (
                       <div className="space-y-1.5">
                         <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">
-                          Collected payments (cash / card)
+                          Collected payments (all methods)
                         </p>
-                        {collectedPayments.map((evt) => {
+                        {collectedPayments.map((p) => {
                           const METHOD_LABELS = {
                             cash: "Cash",
                             card: "Card",
@@ -1438,45 +1483,44 @@ export default function MiniStudentPanel({ customerId, customerName, onBack, inl
                             cheque: "Cheque",
                             other: "Other",
                           };
+                          const title =
+                            p.calendarEventID?.title ||
+                            p.enrollmentID?.label ||
+                            (p.enrollmentID?.package?.packageName) ||
+                            PAYMENT_TYPE_LABEL[p.type] ||
+                            "Payment";
                           return (
                             <div
-                              key={evt._id}
+                              key={p._id}
                               className="rounded-lg border border-border bg-muted/30 px-3 py-2 space-y-0.5"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-[12px] font-semibold text-foreground truncate">
-                                  {evt.title}
+                                  {title}
                                 </p>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   <span className="text-[12px] font-bold text-emerald-500">
-                                    ${(evt.payment?.amount ?? 0).toFixed(2)}
+                                    ${Number(p.amount ?? 0).toFixed(2)}
                                   </span>
-                                  {evt.payment?.method && (
+                                  {p.method && (
                                     <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
-                                      {METHOD_LABELS[evt.payment.method] ??
-                                        evt.payment.method}
+                                      {METHOD_LABELS[p.method] ?? p.method}
                                     </span>
                                   )}
                                 </div>
                               </div>
                               <p className="text-[10px] text-muted-foreground">
-                                {new Date(evt.startDateTime).toLocaleDateString(
-                                  "en-US",
-                                  {
-                                    weekday: "short",
-                                    month: "short",
-                                    day: "numeric",
-                                  },
-                                )}
+                                {new Date(p.createdAt).toLocaleDateString("en-US", {
+                                  weekday: "short",
+                                  month: "short",
+                                  day: "numeric",
+                                })}
                                 {" · "}
-                                {new Date(evt.startDateTime).toLocaleTimeString(
-                                  "en-US",
-                                  {
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                    hour12: true,
-                                  },
-                                )}
+                                {new Date(p.createdAt).toLocaleTimeString("en-US", {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                })}
                               </p>
                             </div>
                           );
