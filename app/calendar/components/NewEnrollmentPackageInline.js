@@ -20,6 +20,8 @@ const BLANK_FORM = {
     startDate: "",
     installmentMode: "count",
     installmentAmount: "",
+    scheduleMode: "single",
+    customInstallments: [],
     dueDate: "",
     collectNow: true,
     collectAmount: "",
@@ -237,6 +239,41 @@ export default function NewEnrollmentPackageInline({
     }));
   }
 
+  function addCustomInstallment() {
+    setForm((prev) => ({
+      ...prev,
+      billing: {
+        ...prev.billing,
+        customInstallments: [
+          ...prev.billing.customInstallments,
+          { _key: String(Date.now() + Math.random()), dueDate: "", amount: "" },
+        ],
+      },
+    }));
+  }
+
+  function updateCustomInstallment(key, field, value) {
+    setForm((prev) => ({
+      ...prev,
+      billing: {
+        ...prev.billing,
+        customInstallments: prev.billing.customInstallments.map((c) =>
+          c._key === key ? { ...c, [field]: value } : c,
+        ),
+      },
+    }));
+  }
+
+  function removeCustomInstallment(key) {
+    setForm((prev) => ({
+      ...prev,
+      billing: {
+        ...prev.billing,
+        customInstallments: prev.billing.customInstallments.filter((c) => c._key !== key),
+      },
+    }));
+  }
+
   const total = form.services.reduce(
     (sum, s) => sum + (Number(s.finalAmount) || 0),
     0,
@@ -294,13 +331,32 @@ export default function NewEnrollmentPackageInline({
     total,
   ]);
 
+  const customInstallmentsTotal = form.billing.customInstallments.reduce(
+    (sum, c) => sum + (Number(c.amount) || 0),
+    0,
+  );
+
   const firstInstallmentAmount = installments[0]?.amount ?? 0;
+
+  // Flexible billing with a custom schedule is stored as a tracked plan, so its
+  // first scheduled payment behaves like a payment-plan installment at collection.
+  const scheduledFlexible =
+    form.billingType === "flexible" && form.billing.scheduleMode === "custom";
+  const firstScheduledFlexAmount = scheduledFlexible
+    ? Number(
+        [...form.billing.customInstallments]
+          .filter((c) => c.dueDate && Number(c.amount) > 0)
+          .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0]?.amount || 0,
+      )
+    : 0;
+  const collectsFirstInstallment = form.billingType === "payment_plan" || scheduledFlexible;
 
   const defaultCollectAmount = useMemo(() => {
     if (form.billingType === "one_time") return total;
     if (form.billingType === "payment_plan") return firstInstallmentAmount;
+    if (scheduledFlexible) return firstScheduledFlexAmount;
     return 0;
-  }, [form.billingType, total, firstInstallmentAmount]);
+  }, [form.billingType, total, firstInstallmentAmount, scheduledFlexible, firstScheduledFlexAmount]);
 
   function goToPayment() {
     if (!form.packageID) {
@@ -322,16 +378,28 @@ export default function NewEnrollmentPackageInline({
         return;
       }
     }
-    if (form.billingType === "flexible" && !form.billing.dueDate) {
-      setError("Please set a due date.");
-      return;
+    if (form.billingType === "flexible") {
+      if (form.billing.scheduleMode === "custom") {
+        const valid = form.billing.customInstallments.filter((c) => c.dueDate && Number(c.amount) > 0);
+        if (valid.length === 0) {
+          setError("Add at least one scheduled payment with a date and amount.");
+          return;
+        }
+        if (Math.abs(customInstallmentsTotal - total) > 0.01) {
+          setError(`Scheduled payments total $${customInstallmentsTotal.toFixed(2)} but the balance is $${total.toFixed(2)}.`);
+          return;
+        }
+      } else if (!form.billing.dueDate) {
+        setError("Please set a due date.");
+        return;
+      }
     }
     setError("");
     setForm((p) => ({
       ...p,
       billing: {
         ...p.billing,
-        collectNow: p.billingType !== "flexible",
+        collectNow: p.billingType !== "flexible" || scheduledFlexible,
         collectAmount: defaultCollectAmount ? String(defaultCollectAmount.toFixed(2)) : "",
       },
     }));
@@ -787,24 +855,111 @@ export default function NewEnrollmentPackageInline({
             )}
             {form.billingType === "flexible" && (
               <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
-                <p className="text-[11px] text-muted-foreground">
-                  No schedule set. A due date is recorded and payment can be collected at any time.
-                </p>
-                <div>
-                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Date <span className="text-rose-500">*</span></label>
-                  <input
-                    type="date"
-                    value={form.billing.dueDate}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, billing: { ...p.billing, dueDate: e.target.value } }))
-                    }
-                    className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
-                  />
+                <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
+                  {[
+                    { v: "single", label: "Single due date" },
+                    { v: "custom", label: "Scheduled payments" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.v}
+                      type="button"
+                      onClick={() =>
+                        setForm((p) => ({ ...p, billing: { ...p.billing, scheduleMode: opt.v } }))
+                      }
+                      className={`h-7 px-3 rounded-md text-[11px] font-medium transition-colors ${
+                        form.billing.scheduleMode === opt.v
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
-                <div className="flex items-center justify-between pt-2 border-t border-border">
-                  <p className="text-[11px] text-muted-foreground">Payable Balance</p>
-                  <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
-                </div>
+
+                {form.billing.scheduleMode === "custom" ? (
+                  <>
+                    <p className="text-[11px] text-muted-foreground">
+                      Add any number of payments, each with its own date and amount. Each is tracked and collected individually.
+                    </p>
+                    <div className="space-y-1.5">
+                      {form.billing.customInstallments.map((c, i) => (
+                        <div key={c._key} className="flex items-center gap-2">
+                          <span className="text-[11px] text-muted-foreground w-5 shrink-0">{i + 1}.</span>
+                          <input
+                            type="date"
+                            value={c.dueDate}
+                            onChange={(e) => updateCustomInstallment(c._key, "dueDate", e.target.value)}
+                            className="h-8 flex-1 rounded-lg border border-border bg-background px-2.5 text-[12px]"
+                          />
+                          <div className="relative w-28">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={c.amount}
+                              onChange={(e) => updateCustomInstallment(c._key, "amount", e.target.value)}
+                              className="h-8 w-full rounded-lg border border-border bg-background pl-5 pr-2 text-[12px]"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeCustomInstallment(c._key)}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                            aria-label="Remove payment"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addCustomInstallment}
+                      className="flex items-center gap-1 h-7 px-2 rounded border border-dashed border-border bg-background text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+                    >
+                      <Plus className="h-3 w-3" /> Add Payment
+                    </button>
+                    <div className="space-y-1 pt-2 border-t border-border">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] text-muted-foreground">Scheduled total</p>
+                        <p className={`text-[12px] font-semibold ${Math.abs(customInstallmentsTotal - total) > 0.01 ? "text-destructive" : "text-foreground"}`}>
+                          ${customInstallmentsTotal.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] text-muted-foreground">Payable Balance</p>
+                        <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
+                      </div>
+                      {Math.abs(customInstallmentsTotal - total) > 0.01 && (
+                        <p className="text-[10px] text-destructive">Scheduled payments must add up to the payable balance.</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[11px] text-muted-foreground">
+                      No schedule set. A due date is recorded and payment can be collected at any time.
+                    </p>
+                    <div>
+                      <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Date <span className="text-rose-500">*</span></label>
+                      <input
+                        type="date"
+                        value={form.billing.dueDate}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, billing: { ...p.billing, dueDate: e.target.value } }))
+                        }
+                        className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-border">
+                      <p className="text-[11px] text-muted-foreground">Payable Balance</p>
+                      <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
+                    </div>
+                  </>
+                )}
               </div>
             )}
             {form.billingType === "pay_per_session" && (
@@ -899,7 +1054,7 @@ export default function NewEnrollmentPackageInline({
                 <>
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-medium text-foreground">
-                      {form.billingType === "payment_plan"
+                      {collectsFirstInstallment
                         ? "Collect first installment now"
                         : form.billingType === "flexible"
                           ? "Collect initial payment now"
@@ -935,7 +1090,7 @@ export default function NewEnrollmentPackageInline({
                           step="0.01"
                           placeholder="0.00"
                           value={form.billing.collectAmount}
-                          readOnly={form.billingType === "payment_plan"}
+                          readOnly={collectsFirstInstallment}
                           onChange={(e) =>
                             setForm((p) => ({
                               ...p,
@@ -943,7 +1098,7 @@ export default function NewEnrollmentPackageInline({
                             }))
                           }
                           className={`h-9 w-full rounded-lg border border-border pl-6 pr-3 text-[12px] outline-none focus:border-primary ${
-                            form.billingType === "payment_plan" ? "bg-muted/30 text-muted-foreground" : "bg-background"
+                            collectsFirstInstallment ? "bg-muted/30 text-muted-foreground" : "bg-background"
                           }`}
                         />
                       </div>

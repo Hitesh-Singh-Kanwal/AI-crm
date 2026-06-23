@@ -261,7 +261,11 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
     );
     const teacherName = appt.teacherID?.name || "";
     const color =
-      appt.color || colorMap[teacherId] || appt.lessonID?.color || CALENDAR_PALETTE[0];
+      appt.color ||
+      appt.calendarServiceID?.color ||
+      colorMap[teacherId] ||
+      appt.lessonID?.color ||
+      CALENDAR_PALETTE[0];
 
     const start = new Date(appt.startDateTime);
     const end = new Date(appt.endDateTime);
@@ -1081,9 +1085,122 @@ function getTooltipEl() {
   return _tooltipEl;
 }
 
+function showGroupEventTooltip(e, props, raw) {
+  const tip = getTooltipEl();
+
+  const teacher = raw.teacherID?.name || props.tutorName || "";
+  const svc = raw.calendarServiceID || {};
+  const serviceName = svc.serviceName || props.serviceCode || "";
+  const serviceCode = svc.serviceCode || props.serviceCode || "";
+  const servicePrice = svc.price > 0 ? `$${svc.price.toFixed(2)}/session` : null;
+
+  const customers = Array.isArray(raw.customerIDs)
+    ? raw.customerIDs.filter((c) => typeof c === "object")
+    : [];
+  const charges = Array.isArray(raw.charges) ? raw.charges : [];
+  const memberIds = new Set(
+    (raw.memberIDs || []).map((m) => String(m?._id ?? m)),
+  );
+
+  const status = props.effectiveStatus || raw.status || "scheduled";
+  const statusColors = {
+    scheduled: "#3b82f6", completed: "#22c55e",
+    cancelled_no_charge: "#6b7280", cancelled_charged: "#ef4444",
+    no_show_no_charge: "#f97316", no_show_charged: "#f97316",
+  };
+  const statusColor = statusColors[status] || "#6b7280";
+  const statusLabel = status.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+
+  const divider = `<div style="border-top:1px solid hsl(var(--border));margin:6px 0"></div>`;
+  const section = (label, value) =>
+    value ? `<div style="display:flex;justify-content:space-between;gap:12px;margin:2px 0">
+      <span style="color:hsl(var(--muted-foreground));white-space:nowrap">${label}</span>
+      <span style="font-weight:600;text-align:right">${value}</span>
+    </div>` : "";
+
+  const renderStudent = (c) => {
+    const cid = String(c._id);
+    const charge = charges.find((ch) => String(ch.customerID) === cid);
+    const attending = (c.members || [])
+      .filter((m) => memberIds.has(String(m._id)))
+      .map((m) => m.name)
+      .filter(Boolean);
+    const name = (c.name || c.email || "—") +
+      (attending.length ? ` <span style="opacity:.6">& ${attending.join(", ")}</span>` : "");
+
+    let credits = "";
+    const svcEntry = (() => {
+      if (charge?.method === "package") {
+        const code = charge.serviceCode || serviceCode;
+        const services =
+          charge.customerPackageID?.services ||
+          charge.enrollmentID?.package?.services;
+        if (services) {
+          return (
+            services.find((s) => s.serviceCode === code) ??
+            services.find((s) => (s.pricePerSession ?? 0) > 0)
+          );
+        }
+      }
+      if (charge?.method === "membership" && charge.customerMembershipID?.services) {
+        const code = charge.serviceCode || serviceCode;
+        return charge.customerMembershipID.services.find((s) => s.serviceCode === code);
+      }
+      return null;
+    })();
+    if (svcEntry?.sessionsRemaining != null) {
+      const r = svcEntry.sessionsRemaining;
+      credits = `<span style="color:${r <= 1 ? "#ef4444" : "#22c55e"};font-size:10px">${r} left</span>`;
+    }
+
+    const paid = Boolean(charge);
+    const methodLabel = charge
+      ? charge.method === "package" ? "Package"
+        : charge.method === "membership" ? "Membership"
+        : charge.method === "credits" ? "Credits"
+        : charge.method === "direct" ? "Direct"
+        : "Paid"
+      : null;
+    const dot = paid ? "#22c55e" : "#ef4444";
+
+    return `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
+      <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dot};flex-shrink:0"></span>
+      <span style="font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
+      ${credits}
+      <span style="color:hsl(var(--muted-foreground));font-size:10px;white-space:nowrap">${methodLabel || "Unpaid"}</span>
+    </div>`;
+  };
+
+  const html = `
+    <div style="font-weight:700;font-size:12px;margin-bottom:2px">${raw.title || "Group Class"}</div>
+    <div style="color:hsl(var(--muted-foreground));font-size:10px;margin-bottom:6px">${serviceName}${serviceCode && serviceCode !== serviceName ? ` (${serviceCode})` : ""}</div>
+    ${divider}
+    ${section("Instructor", teacher)}
+    ${section("Price", servicePrice)}
+    ${divider}
+    <div style="color:hsl(var(--muted-foreground));margin-bottom:2px">Students (${customers.length})</div>
+    ${customers.length ? customers.map(renderStudent).join("") : `<div style="color:hsl(var(--muted-foreground));font-size:10px">No students enrolled</div>`}
+    ${divider}
+    <div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+      <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${statusColor};flex-shrink:0"></span>
+      <span style="font-weight:600">${statusLabel}</span>
+    </div>
+  `;
+
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  positionTooltip(e);
+}
+
 function showEventTooltip(e, props) {
   const tip = getTooltipEl();
   const raw = props.raw || {};
+
+  // Group classes get their own roster-style tooltip.
+  if (props.eventType === "lesson") {
+    showGroupEventTooltip(e, props, raw);
+    return;
+  }
 
   // ── Customer ──────────────────────────────────────────────────────────────
   const customerObjs = Array.isArray(raw.customerIDs)

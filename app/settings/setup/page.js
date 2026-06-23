@@ -553,8 +553,22 @@ function PackagesTab() {
     setPackages((prev) => {
       const oldIndex = prev.findIndex((p) => p._id === active.id)
       const newIndex = prev.findIndex((p) => p._id === over.id)
-      return arrayMove(prev, oldIndex, newIndex)
+      const reordered = arrayMove(prev, oldIndex, newIndex)
+      persistOrder(reordered)
+      return reordered
     })
+  }
+
+  async function persistOrder(ordered) {
+    const startIndex = (currentPage - 1) * ROWS_PER_PAGE
+    const result = await api.patch('/api/package/reorder', {
+      order: ordered.map((p) => p._id),
+      startIndex,
+    })
+    if (!result.success) {
+      toast.error('Failed to save order', { description: result.error })
+      loadPackages(currentPage, searchQuery)
+    }
   }
 
   const toggleOne = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])

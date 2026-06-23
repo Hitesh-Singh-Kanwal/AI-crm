@@ -1920,9 +1920,8 @@ function PackagesTab({ customerID }) {
                   </div>
                 )}
 
-                {/* Payment plan installment schedule */}
-                {pkg.billingType === "payment_plan" &&
-                  (() => {
+                {/* Payment plan / scheduled-flexible installment schedule */}
+                {(() => {
                     const plan = plansMap[String(enr._id)];
                     if (!plan) return null;
                     const paidCount = plan.installments.filter(
@@ -3771,10 +3770,13 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                         );
                       })()}
 
-                    {/* Flexible billing — payment due card */}
+                    {/* Flexible billing — single-due-date payment card.
+                        Hidden when the flexible enrollment carries a tracked
+                        schedule (rendered as installments below instead). */}
                     {cp.billingType === "flexible" &&
                       enr.status === "active" &&
-                      cp.paymentStatus !== "paid" && (
+                      cp.paymentStatus !== "paid" &&
+                      !plansMap[String(enr._id)] && (
                         <div className="mt-5 border-t border-border pt-5">
                           <p className="text-[12px] font-bold text-foreground uppercase tracking-widest mb-3">
                             Payment Due
@@ -3787,8 +3789,8 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                         </div>
                       )}
 
-                    {/* Payment plan installments */}
-                    {cp.billingType === "payment_plan" && (
+                    {/* Payment plan / scheduled-flexible installments */}
+                    {plansMap[String(enr._id)] && (
                       <PaymentSchedule
                         plan={plansMap[String(enr._id)]}
                         cpStatus={cp.status}

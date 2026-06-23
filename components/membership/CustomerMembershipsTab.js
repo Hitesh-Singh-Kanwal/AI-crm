@@ -226,8 +226,8 @@ export default function CustomerMembershipsTab({ customerID }) {
                 ))}
               </div>
 
-              {/* Payment schedule (payment plan billing) */}
-              {m.billingType === 'payment_plan' && plan && (
+              {/* Payment schedule (payment plan, or flexible billing with a tracked schedule) */}
+              {plan && (
                 <div className="mt-4 border-t border-border pt-4">
                   <div className="flex items-center justify-between mb-2.5">
                     <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Payment Schedule</p>

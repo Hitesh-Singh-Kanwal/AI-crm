@@ -157,26 +157,32 @@ export default function CreateEnrollmentSheet({
           ? { method: payload.billing?.method || 'cash' }
           : payload.billingType === 'payment_plan'
             ? (() => {
-              const totalAmount = (payload.services || []).reduce(
-                (sum, s) => sum + Number(s.finalAmount || 0),
-                0,
-              )
-              const mode = payload.billing?.installmentMode || 'count'
-              const numberOfInstallments =
-                mode === 'amount'
-                  ? Math.ceil(totalAmount / Number(payload.billing?.installmentAmount || 1))
-                  : Number(payload.billing?.numberOfInstallments || 0)
-              return {
-                installmentMode: mode,
-                numberOfInstallments,
-                installmentAmount:
-                  mode === 'amount' ? Number(payload.billing?.installmentAmount) : undefined,
-                frequency: payload.billing?.frequency,
-                startDate: payload.billing?.startDate,
-              }
-            })()
+                const totalAmount = (payload.services || []).reduce(
+                  (sum, s) => sum + Number(s.finalAmount || 0),
+                  0,
+                )
+                const mode = payload.billing?.installmentMode || 'count'
+                const numberOfInstallments =
+                  mode === 'amount'
+                    ? Math.ceil(totalAmount / Number(payload.billing?.installmentAmount || 1))
+                    : Number(payload.billing?.numberOfInstallments || 0)
+                return {
+                  installmentMode: mode,
+                  numberOfInstallments,
+                  installmentAmount:
+                    mode === 'amount' ? Number(payload.billing?.installmentAmount) : undefined,
+                  frequency: payload.billing?.frequency,
+                  startDate: payload.billing?.startDate,
+                }
+              })()
             : payload.billingType === 'flexible'
-              ? { dueDate: payload.billing?.dueDate || undefined }
+              ? payload.billing?.scheduleMode === 'custom'
+                ? {
+                    customInstallments: (payload.billing?.customInstallments || [])
+                      .filter((c) => c.dueDate && Number(c.amount) > 0)
+                      .map((c) => ({ dueDate: c.dueDate, amount: Number(c.amount) })),
+                  }
+                : { dueDate: payload.billing?.dueDate || undefined }
               : {},
       ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
       ...(payload.tip?.teacherID && payload.tip?.amount
@@ -200,7 +206,10 @@ export default function CreateEnrollmentSheet({
     const collectNow = Boolean(payload.billing?.collectNow) && collectAmount > 0
     const method = payload.billing?.method || 'cash'
 
-    if (collectNow && payload.billingType === 'payment_plan') {
+    const isScheduledFlexible =
+      payload.billingType === 'flexible' && payload.billing?.scheduleMode === 'custom'
+
+    if (collectNow && (payload.billingType === 'payment_plan' || isScheduledFlexible)) {
       const planRes = await api.get(`/api/payment-plan/customer/${resolvedCustomerID}`)
       const plans = planRes?.success ? planRes.data || [] : []
       const matchesEnrollment = (p) =>
@@ -220,7 +229,7 @@ export default function CreateEnrollmentSheet({
           return false
         }
       }
-    } else if (collectNow && payload.billingType === 'flexible') {
+    } else if (collectNow && payload.billingType === 'flexible' && !isScheduledFlexible) {
       const payRes = await api.post('/api/payment', {
         customerID: resolvedCustomerID,
         enrollmentID,

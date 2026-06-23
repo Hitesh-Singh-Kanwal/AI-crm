@@ -1,19 +1,27 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ArrowLeft, Pencil, Trash2, Plus, X, Users } from "lucide-react";
+import {
+  ChevronDown,
+  ArrowLeft,
+  Pencil,
+  Trash2,
+  Plus,
+  X,
+  Users,
+} from "lucide-react";
 import api from "@/lib/api";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MiniStudentPanel from "./MiniStudentPanel";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 
 const STATUS_OPTIONS = [
-  { value: "scheduled",           label: "Scheduled" },
-  { value: "completed",           label: "Completed" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "completed", label: "Completed" },
   { value: "cancelled_no_charge", label: "Cancelled – No Charge" },
-  { value: "cancelled_charged",   label: "Cancelled – Charged" },
-  { value: "no_show_no_charge",   label: "No Show – No Charge" },
-  { value: "no_show_charged",     label: "No Show – Charged" },
+  { value: "cancelled_charged", label: "Cancelled – Charged" },
+  { value: "no_show_no_charge", label: "No Show – No Charge" },
+  { value: "no_show_charged", label: "No Show – Charged" },
 ];
 
 const TYPE_OPTIONS = [
@@ -102,18 +110,32 @@ function Select({ value, onChange, options }) {
 }
 
 const STATUS_META = {
-  scheduled:           { cls: "bg-blue-500/10 text-blue-400",    label: "Scheduled" },
-  completed:           { cls: "bg-emerald-500/10 text-emerald-400", label: "Completed" },
-  cancelled_no_charge: { cls: "bg-zinc-500/10 text-zinc-400",    label: "Cancelled" },
-  cancelled_charged:   { cls: "bg-red-500/10 text-red-400",      label: "Cancelled – Charged" },
-  no_show_no_charge:   { cls: "bg-orange-500/10 text-orange-400",label: "No Show" },
-  no_show_charged:     { cls: "bg-orange-500/10 text-orange-500",label: "No Show – Charged" },
+  scheduled: { cls: "bg-blue-500/10 text-blue-400", label: "Scheduled" },
+  completed: { cls: "bg-emerald-500/10 text-emerald-400", label: "Completed" },
+  cancelled_no_charge: {
+    cls: "bg-zinc-500/10 text-zinc-400",
+    label: "Cancelled",
+  },
+  cancelled_charged: {
+    cls: "bg-red-500/10 text-red-400",
+    label: "Cancelled – Charged",
+  },
+  no_show_no_charge: {
+    cls: "bg-orange-500/10 text-orange-400",
+    label: "No Show",
+  },
+  no_show_charged: {
+    cls: "bg-orange-500/10 text-orange-500",
+    label: "No Show – Charged",
+  },
 };
 
 function StatusBadge({ status }) {
   const meta = STATUS_META[status];
   return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${meta?.cls || "bg-muted text-muted-foreground"}`}>
+    <span
+      className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${meta?.cls || "bg-muted text-muted-foreground"}`}
+    >
       {meta?.label || status}
     </span>
   );
@@ -179,34 +201,70 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
     onSuccess(res.data);
   }
 
-  const inputCls = "h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary transition-colors";
+  const inputCls =
+    "h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary transition-colors";
 
   return (
     <div className="p-6 space-y-5">
       <div>
-        <p className="text-[15px] font-semibold text-foreground">New Customer</p>
-        <p className="text-[12px] text-muted-foreground mt-0.5">Create a customer then sell them a package</p>
+        <p className="text-[15px] font-semibold text-foreground">
+          New Customer
+        </p>
+        <p className="text-[12px] text-muted-foreground mt-0.5">
+          Create a customer then sell them a package
+        </p>
       </div>
       <div className="space-y-3">
         <div>
-          <p className="text-[11px] font-medium text-muted-foreground mb-1">Full Name *</p>
-          <input className={inputCls} placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
+          <p className="text-[11px] font-medium text-muted-foreground mb-1">
+            Full Name *
+          </p>
+          <input
+            className={inputCls}
+            placeholder="Full name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </div>
         <div>
-          <p className="text-[11px] font-medium text-muted-foreground mb-1">Email *</p>
-          <input className={inputCls} placeholder="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <p className="text-[11px] font-medium text-muted-foreground mb-1">
+            Email *
+          </p>
+          <input
+            className={inputCls}
+            placeholder="Email address"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
         </div>
         <div>
-          <p className="text-[11px] font-medium text-muted-foreground mb-1">Phone</p>
-          <input className={inputCls} placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <p className="text-[11px] font-medium text-muted-foreground mb-1">
+            Phone
+          </p>
+          <input
+            className={inputCls}
+            placeholder="Phone number"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
         </div>
       </div>
       {error && <p className="text-[12px] text-rose-600">{error}</p>}
       <div className="flex gap-2 pt-2">
-        <button type="button" onClick={onCancel} className="flex-1 h-9 rounded-lg border border-border text-[13px] font-medium text-foreground hover:bg-muted/50 transition-colors">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 h-9 rounded-lg border border-border text-[13px] font-medium text-foreground hover:bg-muted/50 transition-colors"
+        >
           Cancel
         </button>
-        <button type="button" onClick={handleCreate} disabled={saving} className="flex-1 h-9 rounded-lg bg-primary text-[13px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+        <button
+          type="button"
+          onClick={handleCreate}
+          disabled={saving}
+          className="flex-1 h-9 rounded-lg bg-primary text-[13px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+        >
           {saving ? "Creating…" : "Next: Sell Package"}
         </button>
       </div>
@@ -216,7 +274,12 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
 
 // ─── Group student roster (add / remove customers with group packages) ────────
 
-function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChanged }) {
+function GroupStudentRoster({
+  eventId,
+  serviceCode,
+  servicePrice,
+  onRosterChanged,
+}) {
   // Fetch everything from scratch so we always have the live server state
   const [enrolled, setEnrolled] = useState([]);
   const [allCustomers, setAllCustomers] = useState([]);
@@ -255,11 +318,17 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
     );
     setEventMemberIds(persistedMemberIds);
     const charged = new Set(
-      (evRes.data?.charges || []).map((ch) => String(ch.customerID))
+      (evRes.data?.charges || []).map((ch) => String(ch.customerID)),
     );
     setChargedIds(charged);
-    if (customerIds.length === 0) { setEnrolled([]); setEnrolledMemberMap({}); return; }
-    const results = await Promise.all(customerIds.map((id) => api.get(`/api/customer/${id}`)));
+    if (customerIds.length === 0) {
+      setEnrolled([]);
+      setEnrolledMemberMap({});
+      return;
+    }
+    const results = await Promise.all(
+      customerIds.map((id) => api.get(`/api/customer/${id}`)),
+    );
     const customers = results.filter((r) => r.success).map((r) => r.data);
     setEnrolled(customers);
     // Seed the per-customer member map from persisted memberIDs so existing
@@ -276,12 +345,13 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
   };
 
   const loadRosterData = async () => {
-    const [customersRes, pkgRes, servicesRes, membershipRes] = await Promise.all([
-      api.get("/api/customer?limit=500"),
-      api.get("/api/customer-package?limit=500"),
-      api.get("/api/calendar-service?limit=200"),
-      api.get("/api/customer-membership?status=active&limit=500"),
-    ]);
+    const [customersRes, pkgRes, servicesRes, membershipRes] =
+      await Promise.all([
+        api.get("/api/customer?limit=500"),
+        api.get("/api/customer-package?limit=500"),
+        api.get("/api/calendar-service?limit=200"),
+        api.get("/api/customer-membership?status=active&limit=500"),
+      ]);
     const groupCodes = new Set(
       (servicesRes.success ? servicesRes.data : [])
         .filter((s) => s.type === "group")
@@ -292,20 +362,34 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
     (pkgRes.success ? pkgRes.data : []).forEach((enrollment) => {
       const pkgServices = enrollment.package?.services ?? [];
       if (pkgServices.some((s) => groupCodes.has(s.serviceCode))) {
-        const cid = String(enrollment.customerID?._id ?? enrollment.customerID ?? "");
+        const cid = String(
+          enrollment.customerID?._id ?? enrollment.customerID ?? "",
+        );
         if (cid) ids.add(cid);
       }
       // Build sessions-remaining map for this event's service
-      if (serviceCode && enrollment.status === "active" && enrollment.package?.status === "active") {
-        const cid = String(enrollment.customerID?._id ?? enrollment.customerID ?? "");
-        const svc = (enrollment.package?.services ?? []).find((s) => s.serviceCode === serviceCode);
+      if (
+        serviceCode &&
+        enrollment.status === "active" &&
+        enrollment.package?.status === "active"
+      ) {
+        const cid = String(
+          enrollment.customerID?._id ?? enrollment.customerID ?? "",
+        );
+        const svc = (enrollment.package?.services ?? []).find(
+          (s) => s.serviceCode === serviceCode,
+        );
         if (cid && svc != null) {
+          const heldSince = new Date(
+            enrollment.purchaseDate ?? enrollment.createdAt ?? 0,
+          ).getTime();
           const prev = sMap[cid];
-          // keep the entry with the highest remaining count across multiple active packages
-          if (prev == null || svc.sessionsRemaining > prev.sessionsRemaining) {
+          if (prev == null || heldSince < prev.heldSince) {
             sMap[cid] = {
+              heldSince,
               sessionsRemaining: svc.sessionsRemaining,
-              packageName: enrollment.package?.packageName || svc.serviceName || "",
+              packageName:
+                enrollment.package?.packageName || svc.serviceName || "",
             };
           }
         }
@@ -319,7 +403,9 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
     const membershipIds = new Set();
     (membershipRes.success ? membershipRes.data : []).forEach((m) => {
       if (m.status !== "active") return;
-      const covers = (m.services || []).some((s) => !serviceCode || s.serviceCode === serviceCode);
+      const covers = (m.services || []).some(
+        (s) => !serviceCode || s.serviceCode === serviceCode,
+      );
       if (covers) {
         const cid = String(m.customerID?._id ?? m.customerID ?? "");
         if (cid) membershipIds.add(cid);
@@ -338,7 +424,7 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
       setLoadingRoster(false);
     }
     load();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   useEffect(() => {
@@ -369,7 +455,10 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
 
   const eligibleToAdd = allCustomers.filter((c) => {
     const cid = String(c._id);
-    return (groupCustomerIds.has(cid) || membershipCustomerIds.has(cid)) && !currentIds.has(cid);
+    return (
+      (groupCustomerIds.has(cid) || membershipCustomerIds.has(cid)) &&
+      !currentIds.has(cid)
+    );
   });
 
   const filtered = query.trim()
@@ -385,7 +474,9 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
   });
   const sellFiltered = sellQuery.trim()
     ? sellCandidates.filter((c) =>
-        (c.name || c.email || "").toLowerCase().includes(sellQuery.toLowerCase()),
+        (c.name || c.email || "")
+          .toLowerCase()
+          .includes(sellQuery.toLowerCase()),
       )
     : sellCandidates;
 
@@ -420,12 +511,17 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
     const body = { customerIDs: newIds, memberIDs: mergedMemberIds };
     const res = await api.put(`/api/calendar/${eventId}`, body);
     if (res.success) {
-      const charged = new Set((res.data?.charges || []).map((ch) => String(ch.customerID)));
+      const charged = new Set(
+        (res.data?.charges || []).map((ch) => String(ch.customerID)),
+      );
       setChargedIds(charged);
       setEnrolled((prev) => [...prev, customer]);
       setEventMemberIds(mergedMemberIds);
       if (memberIds.length > 0) {
-        setEnrolledMemberMap((prev) => ({ ...prev, [cid]: memberIds.map(String) }));
+        setEnrolledMemberMap((prev) => ({
+          ...prev,
+          [cid]: memberIds.map(String),
+        }));
       }
       const memberNames = (customer.members || [])
         .filter((m) => memberIds.map(String).includes(String(m._id)))
@@ -457,7 +553,9 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
       memberIDs: newMemberIds,
     });
     if (res.success) {
-      const charged = new Set((res.data?.charges || []).map((ch) => String(ch.customerID)));
+      const charged = new Set(
+        (res.data?.charges || []).map((ch) => String(ch.customerID)),
+      );
       setChargedIds(charged);
       setEnrolled((prev) => prev.filter((c) => String(c._id) !== customerId));
       setEventMemberIds(newMemberIds);
@@ -473,7 +571,10 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
 
   const openPayForm = (cid) => {
     setPayingId(cid);
-    setPayForm({ amount: servicePrice != null ? String(servicePrice) : "", method: "cash" });
+    setPayForm({
+      amount: servicePrice != null ? String(servicePrice) : "",
+      method: "cash",
+    });
   };
 
   const handleDirectPay = async (cid) => {
@@ -499,9 +600,24 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
   if (loadingRoster) {
     return (
       <div className="flex items-center gap-2 py-3 text-[12px] text-muted-foreground">
-        <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        <svg
+          className="h-3.5 w-3.5 animate-spin"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+          />
         </svg>
         Loading students…
       </div>
@@ -513,7 +629,13 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
       {pendingAdd && (
         <div className="mb-3 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 space-y-2">
           <p className="text-[12px] font-semibold text-foreground">
-            Adding <span className="text-primary">{pendingAdd.customer.name}</span> — select attending members <span className="text-muted-foreground font-normal">(optional)</span>:
+            Adding{" "}
+            <span className="text-primary">{pendingAdd.customer.name}</span> —
+            select attending members{" "}
+            <span className="text-muted-foreground font-normal">
+              (optional)
+            </span>
+            :
           </p>
           <div className="flex flex-wrap gap-1.5">
             {(pendingAdd.customer.members || []).map((m) => {
@@ -524,7 +646,9 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
                   type="button"
                   onClick={() => {
                     const set = new Set(pendingAdd.memberIds);
-                    selected ? set.delete(String(m._id)) : set.add(String(m._id));
+                    selected
+                      ? set.delete(String(m._id))
+                      : set.add(String(m._id));
                     setPendingAdd((p) => ({ ...p, memberIds: [...set] }));
                   }}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors ${
@@ -537,7 +661,11 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
                     {(m.name || "?").charAt(0).toUpperCase()}
                   </span>
                   {m.name}
-                  {m.relationship && <span className="opacity-60 capitalize">· {m.relationship}</span>}
+                  {m.relationship && (
+                    <span className="opacity-60 capitalize">
+                      · {m.relationship}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -545,11 +673,15 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
           <div className="flex gap-2 pt-0.5">
             <button
               type="button"
-              onClick={() => confirmAdd(pendingAdd.customer, pendingAdd.memberIds)}
+              onClick={() =>
+                confirmAdd(pendingAdd.customer, pendingAdd.memberIds)
+              }
               disabled={saving === String(pendingAdd.customer._id)}
               className="h-7 px-3 rounded-md bg-primary text-[11px] font-semibold text-white disabled:opacity-50"
             >
-              {saving === String(pendingAdd.customer._id) ? "Adding…" : "Confirm & Add"}
+              {saving === String(pendingAdd.customer._id)
+                ? "Adding…"
+                : "Confirm & Add"}
             </button>
             <button
               type="button"
@@ -568,142 +700,167 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
           Students ({enrolled.length})
         </label>
         <div className="flex items-center gap-1.5">
-        <div ref={sellDropRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setSellOpen((v) => !v)}
-            className="flex items-center gap-1 h-6 px-2 rounded-md border border-primary/40 bg-primary/5 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
-          >
-            <Plus className="h-3 w-3" /> Sell Group Class
-          </button>
-          {sellOpen && (
-            <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-60 rounded-xl border border-border bg-popover shadow-lg overflow-hidden">
-              <div className="p-2 border-b border-border">
-                <input
-                  autoFocus
-                  type="text"
-                  value={sellQuery}
-                  onChange={(e) => setSellQuery(e.target.value)}
-                  placeholder="Search students without a group package…"
-                  className="h-7 w-full rounded-md border border-border bg-muted/30 px-2.5 text-[11px] text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/50"
-                />
-              </div>
-              <div className="max-h-48 overflow-y-auto py-1">
-                {sellFiltered.length === 0 ? (
-                  <p className="px-3 py-2 text-[11px] text-muted-foreground">
-                    {sellCandidates.length === 0
-                      ? "Everyone already has a group package"
-                      : "No results"}
-                  </p>
-                ) : (
-                  <>
-                    {sellFiltered.map((c) => (
+          <div ref={sellDropRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setSellOpen((v) => !v)}
+              className="flex items-center gap-1 h-6 px-2 rounded-md border border-primary/40 bg-primary/5 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
+            >
+              <Plus className="h-3 w-3" /> Sell Group Class
+            </button>
+            {sellOpen && (
+              <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-60 rounded-xl border border-border bg-popover shadow-lg overflow-hidden">
+                <div className="p-2 border-b border-border">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={sellQuery}
+                    onChange={(e) => setSellQuery(e.target.value)}
+                    placeholder="Search students without a group package…"
+                    className="h-7 w-full rounded-md border border-border bg-muted/30 px-2.5 text-[11px] text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/50"
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto py-1">
+                  {sellFiltered.length === 0 ? (
+                    <p className="px-3 py-2 text-[11px] text-muted-foreground">
+                      {sellCandidates.length === 0
+                        ? "Everyone already has a group package"
+                        : "No results"}
+                    </p>
+                  ) : (
+                    <>
+                      {sellFiltered.map((c) => (
+                        <button
+                          key={String(c._id)}
+                          type="button"
+                          onClick={() => {
+                            pendingSellRef.current = c;
+                            setSellCustomer(c);
+                            setSellOpen(false);
+                            setSellQuery("");
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-foreground hover:bg-muted/40 transition-colors"
+                        >
+                          <span className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
+                            {(c.name || "?").charAt(0).toUpperCase()}
+                          </span>
+                          <span className="truncate">{c.name || c.email}</span>
+                        </button>
+                      ))}
                       <button
-                        key={String(c._id)}
                         type="button"
                         onClick={() => {
-                          pendingSellRef.current = c;
-                          setSellCustomer(c);
                           setSellOpen(false);
                           setSellQuery("");
+                          setNewCustomerSheetOpen(true);
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-foreground hover:bg-muted/40 transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-primary font-medium hover:bg-muted/40 transition-colors border-t border-border"
                       >
-                        <span className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
-                          {(c.name || "?").charAt(0).toUpperCase()}
-                        </span>
-                        <span className="truncate">{c.name || c.email}</span>
+                        <Plus className="h-3.5 w-3.5 shrink-0" />
+                        New Customer
                       </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSellOpen(false);
-                        setSellQuery("");
-                        setNewCustomerSheetOpen(true);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-primary font-medium hover:bg-muted/40 transition-colors border-t border-border"
-                    >
-                      <Plus className="h-3.5 w-3.5 shrink-0" />
-                      New Customer
-                    </button>
-                  </>
-                )}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-        <div ref={dropRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setAddOpen((v) => !v)}
-            className="flex items-center gap-1 h-6 px-2 rounded-md border border-border bg-background text-[11px] font-medium text-foreground hover:bg-muted/50 transition-colors"
-          >
-            <Plus className="h-3 w-3" /> Add Student
-          </button>
-          {addOpen && (
-            <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-56 rounded-xl border border-border bg-popover shadow-lg overflow-hidden">
-              <div className="p-2 border-b border-border">
-                <input
-                  autoFocus
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search students…"
-                  className="h-7 w-full rounded-md border border-border bg-muted/30 px-2.5 text-[11px] text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/50"
-                />
+            )}
+          </div>
+          <div ref={dropRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setAddOpen((v) => !v)}
+              className="flex items-center gap-1 h-6 px-2 rounded-md border border-border bg-background text-[11px] font-medium text-foreground hover:bg-muted/50 transition-colors"
+            >
+              <Plus className="h-3 w-3" /> Add Student
+            </button>
+            {addOpen && (
+              <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-56 rounded-xl border border-border bg-popover shadow-lg overflow-hidden">
+                <div className="p-2 border-b border-border">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search students…"
+                    className="h-7 w-full rounded-md border border-border bg-muted/30 px-2.5 text-[11px] text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/50"
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto py-1">
+                  {filtered.length === 0 ? (
+                    <p className="px-3 py-2 text-[11px] text-muted-foreground">
+                      {eligibleToAdd.length === 0
+                        ? "No eligible students (need group package)"
+                        : "No results"}
+                    </p>
+                  ) : (
+                    filtered.map((c) => {
+                      const cid = String(c._id);
+                      const isAdding = saving === cid;
+                      return (
+                        <button
+                          key={cid}
+                          type="button"
+                          disabled={isAdding}
+                          onClick={() => handleAdd(c)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-foreground hover:bg-muted/40 transition-colors disabled:opacity-50"
+                        >
+                          <span className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
+                            {isAdding ? (
+                              <svg
+                                className="h-3 w-3 animate-spin"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                />
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                                />
+                              </svg>
+                            ) : (
+                              (c.name || "?").charAt(0).toUpperCase()
+                            )}
+                          </span>
+                          <span className="truncate flex items-center gap-1.5">
+                            {c.name || c.email}
+                            {(c.members || []).length > 0 && (
+                              <span className="text-[10px] text-muted-foreground">
+                                & {c.members.map((m) => m.name).join(", ")}
+                              </span>
+                            )}
+                            {membershipCustomerIds.has(String(c._id)) && (
+                              <span className="text-[9px] font-medium bg-brand/10 text-brand px-1 py-0.5 rounded shrink-0">
+                                membership
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               </div>
-              <div className="max-h-48 overflow-y-auto py-1">
-                {filtered.length === 0 ? (
-                  <p className="px-3 py-2 text-[11px] text-muted-foreground">
-                    {eligibleToAdd.length === 0
-                      ? "No eligible students (need group package)"
-                      : "No results"}
-                  </p>
-                ) : (
-                  filtered.map((c) => {
-                    const cid = String(c._id);
-                    const isAdding = saving === cid;
-                    return (
-                      <button
-                        key={cid}
-                        type="button"
-                        disabled={isAdding}
-                        onClick={() => handleAdd(c)}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-foreground hover:bg-muted/40 transition-colors disabled:opacity-50"
-                      >
-                        <span className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
-                          {isAdding ? (
-                            <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                            </svg>
-                          ) : (c.name || "?").charAt(0).toUpperCase()}
-                        </span>
-                        <span className="truncate flex items-center gap-1.5">
-                          {c.name || c.email}
-                          {(c.members || []).length > 0 && (
-                            <span className="text-[10px] text-muted-foreground">& {(c.members).map((m) => m.name).join(", ")}</span>
-                          )}
-                          {membershipCustomerIds.has(String(c._id)) && (
-                            <span className="text-[9px] font-medium bg-brand/10 text-brand px-1 py-0.5 rounded shrink-0">membership</span>
-                          )}
-                        </span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
         </div>
       </div>
 
       {enrolled.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-muted/10 px-3 py-4 text-center">
-          <p className="text-[12px] text-muted-foreground">No students enrolled yet</p>
-          <p className="text-[11px] text-muted-foreground/60 mt-0.5">Add a group package, or sell one to a new student</p>
+          <p className="text-[12px] text-muted-foreground">
+            No students enrolled yet
+          </p>
+          <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+            Add a group package, or sell one to a new student
+          </p>
         </div>
       ) : (
         <div className="space-y-2 mt-1">
@@ -713,112 +870,168 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
             const remaining = session?.sessionsRemaining;
             const isCharged = chargedIds.has(cid);
             const attendingMemberIds = enrolledMemberMap[cid] || [];
-            const attendingMembers = (c.members || []).filter((m) => attendingMemberIds.includes(String(m._id)));
-            const displayName = attendingMembers.length > 0
-              ? `${c.name || "—"} & ${attendingMembers.map((m) => m.name).join(", ")}`
-              : c.name || "—";
+            const attendingMembers = (c.members || []).filter((m) =>
+              attendingMemberIds.includes(String(m._id)),
+            );
+            const displayName =
+              attendingMembers.length > 0
+                ? `${c.name || "—"} & ${attendingMembers.map((m) => m.name).join(", ")}`
+                : c.name || "—";
             return (
-            <div key={cid}>
-            <div
-              className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center gap-2"
-            >
-              <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                {(c.name || "?").charAt(0).toUpperCase()}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-foreground truncate">{displayName}</p>
-                {membershipCustomerIds.has(cid)
-                  ? <p className="text-[11px] text-brand truncate">Membership</p>
-                  : session?.packageName && <p className="text-[11px] text-muted-foreground truncate">{session.packageName}</p>
-                }
-                {c.email && <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>}
-              </div>
-              {remaining != null && !(remaining === 0 && isCharged) && (
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${remaining <= 2 ? "bg-red-500/10 text-red-500" : "bg-primary/10 text-primary"}`}>
-                  {remaining} left
-                </span>
-              )}
-              {!isCharged && !membershipCustomerIds.has(cid) && (
-                <button
-                  type="button"
-                  onClick={() => payingId === cid ? setPayingId(null) : openPayForm(cid)}
-                  className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors"
-                >
-                  Unpaid
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={saving === cid}
-                onClick={() => handleRemove(cid)}
-                className="shrink-0 h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40"
-                aria-label="Remove student"
-              >
-                {saving === cid ? (
-                  <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                  </svg>
-                ) : (
-                  <X className="h-3 w-3" />
-                )}
-              </button>
-            </div>{/* end student row */}
-            {payingId === cid && (
-              <div className="mt-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 space-y-2">
-                <p className="text-[11px] font-semibold text-amber-600">Record session payment</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block mb-1 text-[10px] font-medium text-muted-foreground">Amount ($)</label>
-                    <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={payForm.amount}
-                        onChange={(e) => setPayForm((p) => ({ ...p, amount: e.target.value }))}
-                        placeholder="0.00"
-                        className="h-8 w-full rounded-md border border-border bg-background pl-5 pr-2 text-[11px] text-foreground outline-none focus:border-amber-500"
-                      />
-                    </div>
+              <div key={cid}>
+                <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center gap-2">
+                  <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                    {(c.name || "?").charAt(0).toUpperCase()}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-foreground truncate">
+                      {displayName}
+                    </p>
+                    {membershipCustomerIds.has(cid) ? (
+                      <p className="text-[11px] text-brand truncate">
+                        Membership
+                      </p>
+                    ) : (
+                      session?.packageName && (
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {session.packageName}
+                        </p>
+                      )
+                    )}
+                    {c.email && (
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {c.email}
+                      </p>
+                    )}
                   </div>
-                  <div>
-                    <label className="block mb-1 text-[10px] font-medium text-muted-foreground">Method</label>
-                    <div className="relative">
-                      <select
-                        value={payForm.method}
-                        onChange={(e) => setPayForm((p) => ({ ...p, method: e.target.value }))}
-                        className="h-8 w-full appearance-none rounded-md border border-border bg-background px-2 pr-6 text-[11px] text-foreground outline-none focus:border-amber-500"
-                      >
-                        {["cash", "card", "online", "cheque", "other"].map((m) => (
-                          <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPayingId(null)}
-                    className="flex-1 h-7 rounded-md border border-border bg-background text-[11px] font-medium text-muted-foreground hover:bg-muted/40"
-                  >
-                    Cancel
-                  </button>
+                  {remaining != null && !(remaining === 0 && isCharged) && (
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${remaining <= 2 ? "bg-red-500/10 text-red-500" : "bg-primary/10 text-primary"}`}
+                    >
+                      {remaining} left
+                    </span>
+                  )}
+                  {!isCharged && !membershipCustomerIds.has(cid) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        payingId === cid ? setPayingId(null) : openPayForm(cid)
+                      }
+                      className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors"
+                    >
+                      Unpaid
+                    </button>
+                  )}
                   <button
                     type="button"
                     disabled={saving === cid}
-                    onClick={() => handleDirectPay(cid)}
-                    className="flex-1 h-7 rounded-md bg-amber-500 text-[11px] font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+                    onClick={() => handleRemove(cid)}
+                    className="shrink-0 h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40"
+                    aria-label="Remove student"
                   >
-                    {saving === cid ? "Charging…" : "Charge"}
+                    {saving === cid ? (
+                      <svg
+                        className="h-3 w-3 animate-spin"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                        />
+                      </svg>
+                    ) : (
+                      <X className="h-3 w-3" />
+                    )}
                   </button>
                 </div>
+                {/* end student row */}
+                {payingId === cid && (
+                  <div className="mt-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 space-y-2">
+                    <p className="text-[11px] font-semibold text-amber-600">
+                      Record session payment
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block mb-1 text-[10px] font-medium text-muted-foreground">
+                          Amount ($)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+                            $
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={payForm.amount}
+                            onChange={(e) =>
+                              setPayForm((p) => ({
+                                ...p,
+                                amount: e.target.value,
+                              }))
+                            }
+                            placeholder="0.00"
+                            className="h-8 w-full rounded-md border border-border bg-background pl-5 pr-2 text-[11px] text-foreground outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block mb-1 text-[10px] font-medium text-muted-foreground">
+                          Method
+                        </label>
+                        <div className="relative">
+                          <select
+                            value={payForm.method}
+                            onChange={(e) =>
+                              setPayForm((p) => ({
+                                ...p,
+                                method: e.target.value,
+                              }))
+                            }
+                            className="h-8 w-full appearance-none rounded-md border border-border bg-background px-2 pr-6 text-[11px] text-foreground outline-none focus:border-amber-500"
+                          >
+                            {["cash", "card", "online", "cheque", "other"].map(
+                              (m) => (
+                                <option key={m} value={m}>
+                                  {m.charAt(0).toUpperCase() + m.slice(1)}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPayingId(null)}
+                        className="flex-1 h-7 rounded-md border border-border bg-background text-[11px] font-medium text-muted-foreground hover:bg-muted/40"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving === cid}
+                        onClick={() => handleDirectPay(cid)}
+                        className="flex-1 h-7 rounded-md bg-amber-500 text-[11px] font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+                      >
+                        {saving === cid ? "Charging…" : "Charge"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-            </div>
             );
           })}
         </div>
@@ -834,7 +1047,10 @@ function GroupStudentRoster({ eventId, serviceCode, servicePrice, onRosterChange
       />
 
       <Sheet open={newCustomerSheetOpen} onOpenChange={setNewCustomerSheetOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-md overflow-y-auto"
+        >
           <NewGroupCustomerForm
             onSuccess={(newCustomer) => {
               setNewCustomerSheetOpen(false);
@@ -888,7 +1104,8 @@ export default function EventDetailPanel({
     type: event.type || "",
     notes: event.notes || "",
     payment_collected: event.payment?.collected || false,
-    payment_amount: event.payment?.amount != null ? String(event.payment.amount) : "",
+    payment_amount:
+      event.payment?.amount != null ? String(event.payment.amount) : "",
     payment_method: event.payment?.method || "",
   });
 
@@ -965,7 +1182,10 @@ export default function EventDetailPanel({
       notes: form.notes || undefined,
       payment: form.payment_collected
         ? {
-            amount: form.payment_amount !== "" ? Number(form.payment_amount) : undefined,
+            amount:
+              form.payment_amount !== ""
+                ? Number(form.payment_amount)
+                : undefined,
             method: form.payment_method || undefined,
             collected: true,
           }
@@ -989,7 +1209,9 @@ export default function EventDetailPanel({
   const handleQuickStatus = async (newStatus) => {
     setError(null);
     setIsSaving(true);
-    const result = await api.put(`/api/calendar/${event._id}`, { status: newStatus });
+    const result = await api.put(`/api/calendar/${event._id}`, {
+      status: newStatus,
+    });
     if (result.success) {
       onUpdated?.();
       onClose();
@@ -1017,441 +1239,494 @@ export default function EventDetailPanel({
   return (
     <Sheet open={open} onClose={onClose}>
       <SheetContent onClose={onClose} className="flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-5 py-4 shrink-0">
-        {selectedStudentId ? (
-          <button
-            type="button"
-            onClick={() => { setSelectedStudentId(null); setSelectedStudentName(""); }}
-            className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4 text-muted-foreground" />
-            {selectedStudentName}
-          </button>
-        ) : (
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="truncate text-[14px] font-semibold text-foreground">
-              {event.title}
-            </span>
-            <StatusBadge status={event.effectiveStatus || event.status} />
-          </div>
-        )}
-        {!selectedStudentId && !isEditing && (
-          <button
-            type="button"
-            onClick={() => setIsEditing(true)}
-            className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Edit event"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
-        {selectedStudentId ? (
-          <MiniStudentPanel
-            customerId={selectedStudentId}
-            customerName={selectedStudentName}
-            onBack={() => { setSelectedStudentId(null); setSelectedStudentName(""); }}
-            inline
-            onPaymentSuccess={onPaymentSuccess}
-          />
-        ) : (<>
-        {isEditing ? (
-          <>
-            <Field label="Title">
-              <Input
-                value={form.title}
-                onChange={(v) => setField("title", v)}
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Status">
-                <Select
-                  value={form.status}
-                  onChange={(v) => setField("status", v)}
-                  options={STATUS_OPTIONS}
-                />
-              </Field>
-              <Field label="Type">
-                <Select
-                  value={form.type}
-                  onChange={(v) => setField("type", v)}
-                  options={TYPE_OPTIONS}
-                />
-              </Field>
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border px-5 py-4 shrink-0">
+          {selectedStudentId ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedStudentId(null);
+                setSelectedStudentName("");
+              }}
+              className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4 text-muted-foreground" />
+              {selectedStudentName}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="truncate text-[14px] font-semibold text-foreground">
+                {event.title}
+              </span>
+              <StatusBadge status={event.effectiveStatus || event.status} />
             </div>
-            <Field label="Date">
-              <DateInput
-                value={form.date}
-                onChange={(v) => setField("date", v)}
-              />
-            </Field>
-            <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-              <Field label="Start time">
-                <TimeInput
-                  value={form.start_time}
-                  onChange={(v) => setField("start_time", v)}
-                />
-              </Field>
-              <span className="pb-1 text-[12px] text-muted-foreground">to</span>
-              <Field label="End time">
-                <TimeInput
-                  value={form.end_time}
-                  onChange={(v) => setField("end_time", v)}
-                />
-              </Field>
-            </div>
-            <Field label="Teacher">
-              <Select
-                value={form.teacherID}
-                onChange={(v) => setField("teacherID", v)}
-                options={teacherOptions}
-              />
-            </Field>
-            <Field label="Customer">
-              <Select
-                value={form.customerID}
-                onChange={(v) => setField("customerID", v)}
-                options={customerOptions}
-              />
-            </Field>
-            <Field label="Notes">
-              <textarea
-                rows={3}
-                value={form.notes}
-                onChange={(e) => setField("notes", e.target.value)}
-                className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] text-foreground outline-none focus:border-primary"
-              />
-            </Field>
+          )}
+          {!selectedStudentId && !isEditing && (
+            <button
+              type="button"
+              onClick={() => setIsEditing(true)}
+              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Edit event"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
 
-          </>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <Field label="Date">
-                <ReadValue>{formatDisplayDate(event.startDateTime)}</ReadValue>
-              </Field>
-              <Field label="Type">
-                <ReadValue>
-                  {event.type
-                    ? event.type.charAt(0).toUpperCase() + event.type.slice(1)
-                    : "—"}
-                </ReadValue>
-              </Field>
-              <Field label="Start">
-                <ReadValue>{formatDisplayTime(event.startDateTime)}</ReadValue>
-              </Field>
-              <Field label="End">
-                <ReadValue>{formatDisplayTime(event.endDateTime)}</ReadValue>
-              </Field>
-            </div>
-
-            {/* Service info */}
-            {event.calendarServiceID && (
-              <div>
-                <Label>Service</Label>
-                <div className="mt-1 rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-foreground truncate">
-                      {event.calendarServiceID.serviceName}
-                    </p>
-                    {event.calendarServiceID.serviceCode && (
-                      <p className="text-[10px] text-muted-foreground">{event.calendarServiceID.serviceCode}</p>
-                    )}
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {selectedStudentId ? (
+            <MiniStudentPanel
+              customerId={selectedStudentId}
+              customerName={selectedStudentName}
+              onBack={() => {
+                setSelectedStudentId(null);
+                setSelectedStudentName("");
+              }}
+              inline
+              onPaymentSuccess={onPaymentSuccess}
+            />
+          ) : (
+            <>
+              {isEditing ? (
+                <>
+                  <Field label="Title">
+                    <Input
+                      value={form.title}
+                      onChange={(v) => setField("title", v)}
+                    />
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Status">
+                      <Select
+                        value={form.status}
+                        onChange={(v) => setField("status", v)}
+                        options={STATUS_OPTIONS}
+                      />
+                    </Field>
+                    <Field label="Type">
+                      <Select
+                        value={form.type}
+                        onChange={(v) => setField("type", v)}
+                        options={TYPE_OPTIONS}
+                      />
+                    </Field>
                   </div>
-                  {event.calendarServiceID.isChargeable && event.calendarServiceID.price > 0 && (
-                    <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
-                      ${Number(event.calendarServiceID.price).toFixed(2)} / session
+                  <Field label="Date">
+                    <DateInput
+                      value={form.date}
+                      onChange={(v) => setField("date", v)}
+                    />
+                  </Field>
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+                    <Field label="Start time">
+                      <TimeInput
+                        value={form.start_time}
+                        onChange={(v) => setField("start_time", v)}
+                      />
+                    </Field>
+                    <span className="pb-1 text-[12px] text-muted-foreground">
+                      to
                     </span>
-                  )}
-                </div>
-                {/* Billing status */}
-                {event.calendarServiceID.isChargeable && (
-                  <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
-                    {event.chargeApplied ? (
-                      <>
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                        <span className="text-[11px] text-emerald-600 font-medium">
-                          {event.chargeMethod === "package" && event.packageBillingType !== "pay_per_session" && "Paid · Package"}
-                          {event.chargeMethod === "package" && event.packageBillingType === "pay_per_session" && "Paid · Per session"}
-                          {event.chargeMethod === "membership" && "Covered · Membership"}
-                          {event.chargeMethod === "credits" && `$${Number(event.calendarServiceID.price).toFixed(2)} deducted from credits`}
-                          {event.chargeMethod === "mixed" && "Charged via package + credits"}
-                          {event.chargeMethod === "none" && "Charged"}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
-                        <span className="text-[11px] text-muted-foreground">Not charged (refunded or waived)</span>
-                      </>
-                    )}
+                    <Field label="End time">
+                      <TimeInput
+                        value={form.end_time}
+                        onChange={(v) => setField("end_time", v)}
+                      />
+                    </Field>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* Teacher details */}
-            <div>
-              <Label>Teacher</Label>
-              {!teacherDetail ? (
-                <p className="text-[13px] text-muted-foreground">—</p>
+                  <Field label="Teacher">
+                    <Select
+                      value={form.teacherID}
+                      onChange={(v) => setField("teacherID", v)}
+                      options={teacherOptions}
+                    />
+                  </Field>
+                  <Field label="Customer">
+                    <Select
+                      value={form.customerID}
+                      onChange={(v) => setField("customerID", v)}
+                      options={customerOptions}
+                    />
+                  </Field>
+                  <Field label="Notes">
+                    <textarea
+                      rows={3}
+                      value={form.notes}
+                      onChange={(e) => setField("notes", e.target.value)}
+                      className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-[12px] text-foreground outline-none focus:border-primary"
+                    />
+                  </Field>
+                </>
               ) : (
-                <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5 mt-1">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                      {(teacherDetail.name || "?").charAt(0).toUpperCase()}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-semibold text-foreground truncate">
-                        {teacherDetail.name}
-                      </p>
-                      {teacherDetail.specialties?.length > 0 && (
-                        <p className="text-[10px] text-muted-foreground truncate">
-                          {teacherDetail.specialties.join(", ")}
-                        </p>
+                <>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <Field label="Date">
+                      <ReadValue>
+                        {formatDisplayDate(event.startDateTime)}
+                      </ReadValue>
+                    </Field>
+                    <Field label="Type">
+                      <ReadValue>
+                        {event.type
+                          ? event.type.charAt(0).toUpperCase() +
+                            event.type.slice(1)
+                          : "—"}
+                      </ReadValue>
+                    </Field>
+                    <Field label="Start">
+                      <ReadValue>
+                        {formatDisplayTime(event.startDateTime)}
+                      </ReadValue>
+                    </Field>
+                    <Field label="End">
+                      <ReadValue>
+                        {formatDisplayTime(event.endDateTime)}
+                      </ReadValue>
+                    </Field>
+                  </div>
+
+                  {/* Service info */}
+                  {event.calendarServiceID && (
+                    <div>
+                      <Label>Service</Label>
+                      <div className="mt-1 rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-semibold text-foreground truncate">
+                            {event.calendarServiceID.serviceName}
+                          </p>
+                          {event.calendarServiceID.serviceCode && (
+                            <p className="text-[10px] text-muted-foreground">
+                              {event.calendarServiceID.serviceCode}
+                            </p>
+                          )}
+                        </div>
+                        {event.calendarServiceID.isChargeable &&
+                          event.calendarServiceID.price > 0 && (
+                            <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
+                              $
+                              {Number(event.calendarServiceID.price).toFixed(2)}{" "}
+                              / session
+                            </span>
+                          )}
+                      </div>
+                      {/* Billing status */}
+                      {event.calendarServiceID.isChargeable && (
+                        <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
+                          {event.chargeApplied ? (
+                            <>
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                              <span className="text-[11px] text-emerald-600 font-medium">
+                                {event.chargeMethod === "package" &&
+                                  event.packageBillingType !==
+                                    "pay_per_session" &&
+                                  "Paid · Package"}
+                                {event.chargeMethod === "package" &&
+                                  event.packageBillingType ===
+                                    "pay_per_session" &&
+                                  "Paid · Per session"}
+                                {event.chargeMethod === "membership" &&
+                                  "Covered · Membership"}
+                                {event.chargeMethod === "credits" &&
+                                  `$${Number(event.calendarServiceID.price).toFixed(2)} deducted from credits`}
+                                {event.chargeMethod === "mixed" &&
+                                  "Charged via package + credits"}
+                                {event.chargeMethod === "none" && "Charged"}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+                              <span className="text-[11px] text-muted-foreground">
+                                Not charged (refunded or waived)
+                              </span>
+                            </>
+                          )}
+                        </div>
                       )}
                     </div>
-                  </div>
-                  {teacherDetail.email && (
-                    <p className="text-[11px] text-muted-foreground truncate">
-                      {teacherDetail.email}
-                    </p>
                   )}
-                  {teacherDetail.phoneNumber && (
-                    <p className="text-[11px] text-muted-foreground">
-                      {teacherDetail.phoneNumber}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
 
-            {/* Customer details */}
-            {event.type === "lesson" ? (
-              <GroupStudentRoster eventId={event._id} serviceCode={event.calendarServiceID?.serviceCode} servicePrice={event.calendarServiceID?.price} onRosterChanged={onRosterChanged} />
-            ) : (
-              <div>
-                <Label>Customer{customerDetails.length !== 1 ? "s" : ""}</Label>
-                {customerDetails.length === 0 ? (
-                  <p className="text-[13px] text-muted-foreground">—</p>
-                ) : (
-                  <div className="space-y-2 mt-1">
-                    {customerDetails.map((c) => (
-                      <div
-                        key={c._id}
-                        className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div
-                            className="flex items-center gap-2 min-w-0 cursor-pointer group"
-                            onClick={() => { setSelectedStudentId(String(c._id)); setSelectedStudentName(c.name || "Student"); }}
-                          >
-                            <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                              {(c.name || "?").charAt(0).toUpperCase()}
-                            </span>
-                            <span className="text-[13px] font-semibold text-foreground truncate group-hover:text-primary group-hover:underline">
-                              {c.name || "—"}
-                            </span>
-                          </div>
-                          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                            ${Number(c.credits ?? 0).toFixed(2)}
+                  {/* Teacher details */}
+                  <div>
+                    <Label>Teacher</Label>
+                    {!teacherDetail ? (
+                      <p className="text-[13px] text-muted-foreground">—</p>
+                    ) : (
+                      <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5 mt-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                            {(teacherDetail.name || "?")
+                              .charAt(0)
+                              .toUpperCase()}
                           </span>
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-semibold text-foreground truncate">
+                              {teacherDetail.name}
+                            </p>
+                            {teacherDetail.specialties?.length > 0 && (
+                              <p className="text-[10px] text-muted-foreground truncate">
+                                {teacherDetail.specialties.join(", ")}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        {c.email && (
+                        {teacherDetail.email && (
                           <p className="text-[11px] text-muted-foreground truncate">
-                            {c.email}
+                            {teacherDetail.email}
                           </p>
                         )}
-                        {c.phoneNumber && (
+                        {teacherDetail.phoneNumber && (
                           <p className="text-[11px] text-muted-foreground">
-                            {c.phoneNumber}
+                            {teacherDetail.phoneNumber}
                           </p>
                         )}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
-            )}
 
-            {event.notes && (
-              <Field label="Notes">
-                <p className="text-[12px] text-foreground whitespace-pre-wrap">
-                  {event.notes}
-                </p>
-              </Field>
-            )}
-
-            {event.payment?.collected && (
-              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-[11px] font-semibold text-emerald-600">Payment Collected</p>
-                  {event.payment.method && (
-                    <p className="text-[10px] text-muted-foreground capitalize">{event.payment.method}</p>
+                  {/* Customer details */}
+                  {event.type === "lesson" ? (
+                    <GroupStudentRoster
+                      eventId={event._id}
+                      serviceCode={event.calendarServiceID?.serviceCode}
+                      servicePrice={event.calendarServiceID?.price}
+                      onRosterChanged={onRosterChanged}
+                    />
+                  ) : (
+                    <div>
+                      <Label>
+                        Customer{customerDetails.length !== 1 ? "s" : ""}
+                      </Label>
+                      {customerDetails.length === 0 ? (
+                        <p className="text-[13px] text-muted-foreground">—</p>
+                      ) : (
+                        <div className="space-y-2 mt-1">
+                          {customerDetails.map((c) => (
+                            <div
+                              key={c._id}
+                              className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div
+                                  className="flex items-center gap-2 min-w-0 cursor-pointer group"
+                                  onClick={() => {
+                                    setSelectedStudentId(String(c._id));
+                                    setSelectedStudentName(c.name || "Student");
+                                  }}
+                                >
+                                  <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                                    {(c.name || "?").charAt(0).toUpperCase()}
+                                  </span>
+                                  <span className="text-[13px] font-semibold text-foreground truncate group-hover:text-primary group-hover:underline">
+                                    {c.name || "—"}
+                                  </span>
+                                </div>
+                                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                  ${Number(c.credits ?? 0).toFixed(2)}
+                                </span>
+                              </div>
+                              {c.email && (
+                                <p className="text-[11px] text-muted-foreground truncate">
+                                  {c.email}
+                                </p>
+                              )}
+                              {c.phoneNumber && (
+                                <p className="text-[11px] text-muted-foreground">
+                                  {c.phoneNumber}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
+
+                  {event.notes && (
+                    <Field label="Notes">
+                      <p className="text-[12px] text-foreground whitespace-pre-wrap">
+                        {event.notes}
+                      </p>
+                    </Field>
+                  )}
+
+                  {event.payment?.collected && (
+                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-[11px] font-semibold text-emerald-600">
+                          Payment Collected
+                        </p>
+                        {event.payment.method && (
+                          <p className="text-[10px] text-muted-foreground capitalize">
+                            {event.payment.method}
+                          </p>
+                        )}
+                      </div>
+                      {event.payment.amount != null && (
+                        <span className="text-[14px] font-bold text-emerald-600">
+                          ${Number(event.payment.amount).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {error && (
+                <div className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+                  {error}
                 </div>
-                {event.payment.amount != null && (
-                  <span className="text-[14px] font-bold text-emerald-600">
-                    ${Number(event.payment.amount).toFixed(2)}
-                  </span>
-                )}
-              </div>
-            )}
-          </>
-        )}
+              )}
+            </>
+          )}
+        </div>
 
-        {error && (
-          <div className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
-            {error}
-          </div>
-        )}
-        </>)}
-      </div>
-
-      {/* Footer — hidden when viewing mini student panel */}
-      {!selectedStudentId && <div className="border-t border-border p-5 space-y-2 shrink-0">
-        {isEditing ? (
-          <div className="space-y-2">
-            {isRecurring && (
-              <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-medium">
-                <button
-                  type="button"
-                  onClick={() => setUpdateScope("this")}
-                  className={`flex-1 py-1.5 transition-colors ${updateScope === "this" ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
-                >
-                  This event only
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUpdateScope("all")}
-                  className={`flex-1 py-1.5 transition-colors ${updateScope === "all" ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
-                >
-                  All in series
-                </button>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditing(false);
-                  setError(null);
-                }}
-                className="h-9 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40"
-              >
-                Discard
-              </button>
-              <button
-                type="button"
-                onClick={handleUpdate}
-                disabled={isSaving}
-                className="h-9 rounded-lg bg-brand text-[12px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60"
-              >
-                {isSaving ? "Saving…" : "Save Changes"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Quick record-payment button — hidden for pay_per_session (auto-charged at booking) */}
-
-            {/* Quick status actions — only shown when event is still scheduled */}
-            {event.effectiveStatus === "scheduled" || event.status === "scheduled" ? (
-              <div className="space-y-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Mark as</p>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickStatus("cancelled_no_charge")}
-                    disabled={isSaving}
-                    className="h-9 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-background text-[11px] font-semibold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors"
-                  >
-                    Cancel – No Charge
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickStatus("cancelled_charged")}
-                    disabled={isSaving}
-                    className="h-9 rounded-lg border border-red-300 dark:border-red-800 bg-background text-[11px] font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 transition-colors"
-                  >
-                    Cancel – Charged
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickStatus("no_show_no_charge")}
-                    disabled={isSaving}
-                    className="h-9 rounded-lg border border-orange-300 dark:border-orange-800 bg-background text-[11px] font-semibold text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/40 disabled:opacity-50 transition-colors"
-                  >
-                    No Show – No Charge
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickStatus("no_show_charged")}
-                    disabled={isSaving}
-                    className="h-9 rounded-lg border border-orange-400 dark:border-orange-700 bg-background text-[11px] font-semibold text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/40 disabled:opacity-50 transition-colors"
-                  >
-                    No Show – Charged
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Delete */}
-            {confirmDelete ? (
+        {/* Footer — hidden when viewing mini student panel */}
+        {!selectedStudentId && (
+          <div className="border-t border-border p-5 space-y-2 shrink-0">
+            {isEditing ? (
               <div className="space-y-2">
                 {isRecurring && (
                   <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-medium">
                     <button
                       type="button"
-                      onClick={() => setDeleteScope("this")}
-                      className={`flex-1 py-1.5 transition-colors ${deleteScope === "this" ? "bg-destructive text-white" : "text-muted-foreground hover:bg-muted/40"}`}
+                      onClick={() => setUpdateScope("this")}
+                      className={`flex-1 py-1.5 transition-colors ${updateScope === "this" ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
                     >
                       This event only
                     </button>
                     <button
                       type="button"
-                      onClick={() => setDeleteScope("all")}
-                      className={`flex-1 py-1.5 transition-colors ${deleteScope === "all" ? "bg-destructive text-white" : "text-muted-foreground hover:bg-muted/40"}`}
+                      onClick={() => setUpdateScope("all")}
+                      className={`flex-1 py-1.5 transition-colors ${updateScope === "all" ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
                     >
                       All in series
                     </button>
                   </div>
                 )}
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setConfirmDelete(false)}
-                    className="flex-1 h-9 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setError(null);
+                    }}
+                    className="h-9 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40"
                   >
-                    Keep
+                    Discard
                   </button>
                   <button
                     type="button"
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className="flex-1 h-9 rounded-lg bg-destructive text-[12px] font-semibold text-white hover:bg-destructive/90 disabled:opacity-60"
+                    onClick={handleUpdate}
+                    disabled={isSaving}
+                    className="h-9 rounded-lg bg-brand text-[12px] font-semibold text-brand-foreground hover:bg-brand-dark disabled:opacity-60"
                   >
-                    {isDeleting ? "Deleting…" : "Confirm Delete"}
+                    {isSaving ? "Saving…" : "Save Changes"}
                   </button>
                 </div>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                className="w-full h-9 rounded-lg border border-destructive/40 text-[12px] font-semibold text-destructive hover:bg-destructive/10 flex items-center justify-center gap-1.5"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete Permanently
-              </button>
+              <>
+                {/* Quick record-payment button — hidden for pay_per_session (auto-charged at booking) */}
+
+                {/* Quick status actions — only shown when event is still scheduled */}
+                {event.effectiveStatus === "scheduled" ||
+                event.status === "scheduled" ? (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Mark as
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleQuickStatus("cancelled_no_charge")}
+                        disabled={isSaving}
+                        className="h-9 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-background text-[11px] font-semibold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                      >
+                        Cancel – No Charge
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickStatus("cancelled_charged")}
+                        disabled={isSaving}
+                        className="h-9 rounded-lg border border-red-300 dark:border-red-800 bg-background text-[11px] font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 transition-colors"
+                      >
+                        Cancel – Charged
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickStatus("no_show_no_charge")}
+                        disabled={isSaving}
+                        className="h-9 rounded-lg border border-orange-300 dark:border-orange-800 bg-background text-[11px] font-semibold text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/40 disabled:opacity-50 transition-colors"
+                      >
+                        No Show – No Charge
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickStatus("no_show_charged")}
+                        disabled={isSaving}
+                        className="h-9 rounded-lg border border-orange-400 dark:border-orange-700 bg-background text-[11px] font-semibold text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/40 disabled:opacity-50 transition-colors"
+                      >
+                        No Show – Charged
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Delete */}
+                {confirmDelete ? (
+                  <div className="space-y-2">
+                    {isRecurring && (
+                      <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-medium">
+                        <button
+                          type="button"
+                          onClick={() => setDeleteScope("this")}
+                          className={`flex-1 py-1.5 transition-colors ${deleteScope === "this" ? "bg-destructive text-white" : "text-muted-foreground hover:bg-muted/40"}`}
+                        >
+                          This event only
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteScope("all")}
+                          className={`flex-1 py-1.5 transition-colors ${deleteScope === "all" ? "bg-destructive text-white" : "text-muted-foreground hover:bg-muted/40"}`}
+                        >
+                          All in series
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(false)}
+                        className="flex-1 h-9 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40"
+                      >
+                        Keep
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDelete}
+                        disabled={isDeleting}
+                        className="flex-1 h-9 rounded-lg bg-destructive text-[12px] font-semibold text-white hover:bg-destructive/90 disabled:opacity-60"
+                      >
+                        {isDeleting ? "Deleting…" : "Confirm Delete"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="w-full h-9 rounded-lg border border-destructive/40 text-[12px] font-semibold text-destructive hover:bg-destructive/10 flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete Permanently
+                  </button>
+                )}
+              </>
             )}
-          </>
+          </div>
         )}
-      </div>}
       </SheetContent>
     </Sheet>
   );
