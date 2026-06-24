@@ -294,8 +294,7 @@ export default function MembershipEditPage() {
             </h2>
           </div>
           <p className="mb-4 text-[12px] text-muted-foreground">
-            Select the services included in this membership. Each can be attended{' '}
-            <span className="font-medium text-foreground">once per day</span>. Tick services below, then choose
+            Select the services included in this membership. Tick services below, then choose
             {' '}<span className="font-medium text-foreground">Unlimited</span> (open daily access) or
             {' '}<span className="font-medium text-foreground">Sessions</span> (fixed count).
             {(privateServices.length === 0 && groupServices.length === 0) && (
@@ -329,6 +328,35 @@ export default function MembershipEditPage() {
               {/* Accordion body */}
               {groupOpen[key] && (
                 <div className="divide-y divide-border">
+                  {/* Select all row */}
+                  <div className="px-4 py-2 flex items-center gap-2 bg-muted/10">
+                    <Checkbox
+                      checked={items.every((s) => selectedCodes.has(s.serviceCode))}
+                      onClick={() => {
+                        const allSelected = items.every((s) => selectedCodes.has(s.serviceCode))
+                        if (!allSelected) {
+                          setSelections((sel) => {
+                            const next = { ...sel }
+                            items.forEach((s) => { next[s.serviceCode] = makeSelection(s, sel[s.serviceCode]) })
+                            return next
+                          })
+                          setSelectedCodes((prev) => {
+                            const next = new Set(prev)
+                            items.forEach((s) => next.add(s.serviceCode))
+                            return next
+                          })
+                        } else {
+                          setSelectedCodes((prev) => {
+                            const next = new Set(prev)
+                            items.forEach((s) => next.delete(s.serviceCode))
+                            return next
+                          })
+                        }
+                      }}
+                      className="rounded border-border data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600 shrink-0"
+                    />
+                    <span className="text-[12px] text-muted-foreground select-none">Select all</span>
+                  </div>
                   {items.map((svc) => {
                     const isSelected = selectedCodes.has(svc.serviceCode)
                     const sel = selections[svc.serviceCode] || {}

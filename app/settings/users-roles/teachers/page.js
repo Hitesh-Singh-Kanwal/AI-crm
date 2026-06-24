@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, MoreHorizontal, Trash2, Pencil, X, ChevronDown, CalendarDays } from 'lucide-react'
+import { Search, Plus, MoreHorizontal, Trash2, Pencil, X, ChevronDown, CalendarDays, User } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -373,14 +373,17 @@ export default function TeachersPage() {
                 teachers.map((teacher) => (
                   <TableRow key={teacher._id} className="hover:bg-muted/20">
                     <TableCell>
-                      <div className="flex items-center gap-3">
+                      <div
+                        className="flex items-center gap-3 cursor-pointer group"
+                        onClick={() => router.push(`/settings/users-roles/teachers/${teacher._id}`)}
+                      >
                         <Avatar className="h-8 w-8">
                           <AvatarFallback className="text-[11px] font-semibold bg-primary/10 text-primary">
                             {getInitials(teacher.name)}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="text-[13px] font-medium text-foreground">{teacher.name}</p>
+                          <p className="text-[13px] font-medium text-foreground group-hover:text-primary group-hover:underline">{teacher.name}</p>
                           {teacher.bio && (
                             <p className="text-[11px] text-muted-foreground line-clamp-1 max-w-[200px]">{teacher.bio}</p>
                           )}
@@ -430,6 +433,10 @@ export default function TeachersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => router.push(`/settings/users-roles/teachers/${teacher._id}`)}>
+                            <User className="mr-2 h-3.5 w-3.5" />
+                            View Profile
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => router.push(`/calendar?teacherID=${teacher._id}`)}>
                             <CalendarDays className="mr-2 h-3.5 w-3.5" />
                             View on Calendar

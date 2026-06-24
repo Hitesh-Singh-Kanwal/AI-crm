@@ -123,7 +123,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
                 <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.color || '#6366f1' }} />
                 <span className="text-foreground">{s.serviceName}</span>
                 <span className="ml-auto text-muted-foreground">
-                  {s.accessType === 'unlimited' ? 'Unlimited · once/day' : `${s.numberOfSessions} sessions`}
+                  {s.accessType === 'unlimited' ? 'Unlimited' : `${s.numberOfSessions} sessions`}
                 </span>
               </div>
             ))}

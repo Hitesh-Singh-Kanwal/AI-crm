@@ -760,7 +760,7 @@ function MembershipServiceSelector({
                             </p>
                             <p className="text-[10px] text-muted-foreground">
                               {isUnlimited
-                                ? "Unlimited · once per day"
+                                ? "Unlimited"
                                 : noSessionsLeft
                                   ? "No sessions remaining"
                                   : `${svc.sessionsRemaining} / ${svc.sessionsTotal} sessions left`}
@@ -2306,13 +2306,29 @@ export default function AppointmentComposerPanel({
         <NewEnrollmentPackageInline
           teacherOptions={instructorOptions}
           packageTemplates={packageTemplates}
-          allowedServiceCodes={wizardAllowedServiceCodes}
           onCancel={() => setShowEnrollmentWizard(false)}
           onSubmit={async (payload) => {
             const createdId = await handleNewEnrollment(form.customer_id, payload);
             if (createdId) {
               setField("enrollment_id", String(createdId));
-              setField("service_id", "");
+              // Auto-select the service if exactly one package service matches the current tab's catalog
+              const matchingServices = (payload.services || []).filter((s) =>
+                tabCatalogServices.some((cat) => cat.serviceCode === s.serviceCode),
+              );
+              if (matchingServices.length === 1) {
+                const catalogSvc = tabCatalogServices.find(
+                  (cat) => cat.serviceCode === matchingServices[0].serviceCode,
+                );
+                if (catalogSvc) {
+                  setField("service_id", String(catalogSvc._id));
+                  const color = matchingServices[0].color || catalogSvc.color;
+                  if (color) setField("event_color", color);
+                } else {
+                  setField("service_id", "");
+                }
+              } else {
+                setField("service_id", "");
+              }
               setShowEnrollmentWizard(false);
               return true;
             }

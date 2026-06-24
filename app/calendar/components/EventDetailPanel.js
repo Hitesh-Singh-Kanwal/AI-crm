@@ -288,6 +288,7 @@ function GroupStudentRoster({
   const [groupServiceCodes, setGroupServiceCodes] = useState(new Set());
   const [sessionMap, setSessionMap] = useState({}); // customerID -> { sessionsRemaining, packageName }
   const [chargedIds, setChargedIds] = useState(new Set()); // customerIDs that have a charge record
+  const [noShowIds, setNoShowIds] = useState(new Set()); // customerIDs marked as no-show
   const [loadingRoster, setLoadingRoster] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -321,6 +322,10 @@ function GroupStudentRoster({
       (evRes.data?.charges || []).map((ch) => String(ch.customerID)),
     );
     setChargedIds(charged);
+    const noShows = new Set(
+      (evRes.data?.noShowIDs || []).map((id) => String(id?._id ?? id)),
+    );
+    setNoShowIds(noShows);
     if (customerIds.length === 0) {
       setEnrolled([]);
       setEnrolledMemberMap({});
@@ -467,11 +472,9 @@ function GroupStudentRoster({
       )
     : eligibleToAdd;
 
-  // Customers without any group package — candidates for selling a group class to
-  const sellCandidates = allCustomers.filter((c) => {
-    const cid = String(c._id);
-    return !groupCustomerIds.has(cid) && !membershipCustomerIds.has(cid);
-  });
+  const sellCandidates = allCustomers.filter(
+    (c) => !currentIds.has(String(c._id)),
+  );
   const sellFiltered = sellQuery.trim()
     ? sellCandidates.filter((c) =>
         (c.name || c.email || "")
@@ -564,6 +567,20 @@ function GroupStudentRoster({
         delete next[String(customerId)];
         return next;
       });
+      onRosterChanged?.();
+    }
+    setSaving(null);
+  };
+
+  const handleNoShow = async (cid) => {
+    setSaving(cid);
+    const next = new Set(noShowIds);
+    next.has(cid) ? next.delete(cid) : next.add(cid);
+    const res = await api.put(`/api/calendar/${eventId}`, {
+      noShowIDs: [...next],
+    });
+    if (res.success) {
+      setNoShowIds(next);
       onRosterChanged?.();
     }
     setSaving(null);
@@ -724,7 +741,7 @@ function GroupStudentRoster({
                   {sellFiltered.length === 0 ? (
                     <p className="px-3 py-2 text-[11px] text-muted-foreground">
                       {sellCandidates.length === 0
-                        ? "Everyone already has a group package"
+                        ? "All customers are already enrolled"
                         : "No results"}
                     </p>
                   ) : (
@@ -922,6 +939,18 @@ function GroupStudentRoster({
                       Unpaid
                     </button>
                   )}
+                  <button
+                    type="button"
+                    disabled={saving === cid}
+                    onClick={() => handleNoShow(cid)}
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+                      noShowIds.has(cid)
+                        ? "bg-orange-500/15 text-orange-500 hover:bg-orange-500/25"
+                        : "bg-muted text-muted-foreground hover:bg-orange-500/10 hover:text-orange-500"
+                    }`}
+                  >
+                    {noShowIds.has(cid) ? "No Show" : "No Show?"}
+                  </button>
                   <button
                     type="button"
                     disabled={saving === cid}

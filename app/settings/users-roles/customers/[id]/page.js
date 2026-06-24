@@ -869,7 +869,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
 
 // ─── PaymentSchedule ─────────────────────────────────────────────────────────
 
-function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate }) {
+function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAddInstallment, billingType }) {
   const [open, setOpen] = useState(false);
 
   if (!plan) return null;
@@ -1004,6 +1004,16 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate }) {
                 year: "numeric",
               })}
             </p>
+          )}
+          {billingType === "flexible" && plan.status !== "cancelled" && cpStatus === "active" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3 h-7 px-3 text-[11px] w-full"
+              onClick={() => onAddInstallment(plan)}
+            >
+              + Add Payment
+            </Button>
           )}
         </div>
       )}
@@ -1297,14 +1307,16 @@ function ChangeInstallmentDateDialog({
   onSuccess,
 }) {
   const [dueDate, setDueDate] = useState("");
+  const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
   const installment = plan?.installments?.[installmentIndex];
 
   useEffect(() => {
-    if (installment?.dueDate) {
-      setDueDate(new Date(installment.dueDate).toISOString().slice(0, 10));
+    if (installment) {
+      setDueDate(installment.dueDate ? new Date(installment.dueDate).toISOString().slice(0, 10) : "");
+      setAmount(Number(installment.amount).toFixed(2));
     }
   }, [installment]);
 
@@ -1312,16 +1324,19 @@ function ChangeInstallmentDateDialog({
     e.preventDefault();
     if (!dueDate) return;
     setSaving(true);
+    const body = { dueDate };
+    const parsedAmount = Number(amount);
+    if (!isNaN(parsedAmount) && parsedAmount > 0) body.amount = parsedAmount;
     const res = await api.patch(
       `/api/payment-plan/${plan._id}/installment/${installmentIndex}/due-date`,
-      { dueDate },
+      body,
     );
     if (res.success) {
-      toast.success("Due date updated.");
+      toast.success("Installment updated.");
       onSuccess();
       onClose();
     } else {
-      toast.error(res.error || "Failed to update due date.");
+      toast.error(res.error || "Failed to update installment.");
     }
     setSaving(false);
   }
@@ -1335,22 +1350,29 @@ function ChangeInstallmentDateDialog({
     >
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Change Due Date</DialogTitle>
+          <DialogTitle>Edit Installment</DialogTitle>
         </DialogHeader>
         {installment && (
           <p className="text-[12px] text-muted-foreground -mt-1">
-            Payment {installmentIndex + 1} of {plan.numberOfInstallments} ·{" "}
-            <span className="text-foreground font-medium">
-              ${Number(installment.amount).toFixed(2)}
-            </span>
+            Payment {installmentIndex + 1} of {plan.numberOfInstallments}
           </p>
         )}
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          <FormField label="New Due Date" required>
+          <FormField label="Due Date" required>
             <input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
+          </FormField>
+          <FormField label="Amount ($)" required>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
               className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
             />
           </FormField>
@@ -1361,10 +1383,77 @@ function ChangeInstallmentDateDialog({
             <Button
               type="submit"
               size="sm"
-              disabled={saving || !dueDate}
+              disabled={saving || !dueDate || !amount}
               className="bg-brand hover:opacity-90 text-white"
             >
               {saving ? "Saving…" : "Update"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── AddInstallmentDialog ─────────────────────────────────────────────────────
+
+function AddInstallmentDialog({ open, onClose, plan, onSuccess }) {
+  const [dueDate, setDueDate] = useState("");
+  const [amount, setAmount] = useState("");
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (open) { setDueDate(""); setAmount(""); }
+  }, [open]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!dueDate || !amount) return;
+    setSaving(true);
+    const res = await api.post(`/api/payment-plan/${plan._id}/installment`, {
+      dueDate,
+      amount: Number(amount),
+    });
+    if (res.success) {
+      toast.success("Payment added.");
+      onSuccess();
+      onClose();
+    } else {
+      toast.error(res.error || "Failed to add payment.");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Add Scheduled Payment</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <FormField label="Due Date" required>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
+          </FormField>
+          <FormField label="Amount ($)" required>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
+          </FormField>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={saving || !dueDate || !amount} className="bg-brand hover:opacity-90 text-white">
+              {saving ? "Saving…" : "Add Payment"}
             </Button>
           </div>
         </form>
@@ -1445,7 +1534,7 @@ function PackagesTab({ customerID }) {
         setDetailsMap(detMap);
 
         const hasPlanPkgs = list.some(
-          (enr) => enr.package?.billingType === "payment_plan",
+          (enr) => enr.package?.billingType === "payment_plan" || enr.package?.billingType === "flexible",
         );
         if (hasPlanPkgs) {
           const plansRes = await api.get(
@@ -2754,6 +2843,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
   const [extending, setExtending] = useState(false);
   const [payInstallTarget, setPayInstallTarget] = useState(null);
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null);
+  const [addInstallTarget, setAddInstallTarget] = useState(null);
   const [expandedServices, setExpandedServices] = useState(new Set());
 
   function toggleService(key) {
@@ -2790,7 +2880,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         });
         setDetailsMap(detMap);
         const hasPlan = withPkg.some(
-          (e) => e.package?.billingType === "payment_plan",
+          (e) => e.package?.billingType === "payment_plan" || e.package?.billingType === "flexible",
         );
         if (hasPlan) {
           const plansRes = await api.get(
@@ -3794,8 +3884,10 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                       <PaymentSchedule
                         plan={plansMap[String(enr._id)]}
                         cpStatus={cp.status}
+                        billingType={cp.billingType}
                         onPayInstallment={setPayInstallTarget}
                         onChangeDate={setChangeInstallDateTarget}
+                        onAddInstallment={setAddInstallTarget}
                       />
                     )}
 
@@ -3866,6 +3958,14 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Add installment dialog — flexible plans only */}
+      <AddInstallmentDialog
+        open={Boolean(addInstallTarget)}
+        onClose={() => setAddInstallTarget(null)}
+        plan={addInstallTarget}
+        onSuccess={load}
+      />
 
       {/* Extend expiry */}
       <Dialog
@@ -5097,10 +5197,10 @@ function LessonsTab({ customer }) {
   const [activeFilters, setActiveFilters] = useState(new Set());
   const [showFilters, setShowFilters] = useState(false);
   const [sortOrder, setSortOrder] = useState("new_to_old");
+  const custId = String(customer?._id ?? "");
 
   useEffect(() => {
     if (!customer?._id) return;
-    const custId = String(customer._id);
     const past = new Date();
     past.setFullYear(past.getFullYear() - 2);
     const future = new Date();
@@ -5115,7 +5215,7 @@ function LessonsTab({ customer }) {
         const filtered = res.data
           .filter((ev) => {
             const ids = Array.isArray(ev.customerIDs) ? ev.customerIDs : [];
-            return ids.some((c) => String(c?._id ?? c) === custId);
+            return ids.some((c) => String(c?._id ?? c) === String(customer._id));
           })
           .sort(
             (a, b) => new Date(b.startDateTime) - new Date(a.startDateTime),
@@ -5272,6 +5372,9 @@ function LessonsTab({ customer }) {
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           {filteredEvents.map((ev, i) => {
             const status = deriveEventStatus(ev);
+            const isPersonalNoShow = (ev.noShowIDs || []).some(
+              (id) => String(id?._id ?? id) === custId,
+            );
             const date = new Date(ev.startDateTime);
             const end = ev.endDateTime ? new Date(ev.endDateTime) : null;
             const instructor = ev.teacherID?.name;
@@ -5333,6 +5436,11 @@ function LessonsTab({ customer }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {isPersonalNoShow && (
+                    <span className="rounded-full px-2.5 py-0.5 text-[11px] font-medium bg-orange-500/10 text-orange-500">
+                      No Show
+                    </span>
+                  )}
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${eventStatusBadge(status)}`}
                   >

@@ -217,7 +217,7 @@ export default function CustomerMembershipsTab({ customerID }) {
                     <span className="text-foreground">{s.serviceName}</span>
                     <span className="ml-auto flex items-center gap-1 text-muted-foreground">
                       {s.accessType === 'unlimited' ? (
-                        <><InfinityIcon className="h-3.5 w-3.5" /> once / day</>
+                        <><InfinityIcon className="h-3.5 w-3.5" /> Unlimited</>
                       ) : (
                         <span className="font-medium text-foreground">{s.sessionsRemaining} / {s.sessionsTotal} left</span>
                       )}

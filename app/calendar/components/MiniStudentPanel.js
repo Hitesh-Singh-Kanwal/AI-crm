@@ -106,6 +106,8 @@ export default function MiniStudentPanel({
   const [flexPayForms, setFlexPayForms] = useState({});
   const [upcomingPayments, setUpcomingPayments] = useState([]); // unified sorted list
   const [planPayForms, setPlanPayForms] = useState({}); // planId_installmentIdx → { method, saving, error }
+  const [addInstallForms, setAddInstallForms] = useState({}); // planId → { open, dueDate, amount, saving, error }
+  const [flexiblePlans, setFlexiblePlans] = useState([]); // plans with billingType=flexible for Add Payment button
   const [paymentView, setPaymentView] = useState("due");
 
   const [msgMode, setMsgMode] = useState("sms"); // "sms" | "email"
@@ -366,6 +368,13 @@ export default function MiniStudentPanel({
           });
         });
       setPlanPayForms(planForms);
+      setFlexiblePlans(
+        plans.filter(
+          (p) =>
+            p.enrollmentID?.package?.billingType === "flexible" &&
+            p.status !== "cancelled",
+        ),
+      );
     }
 
     calEvents
@@ -1973,6 +1982,9 @@ export default function MiniStudentPanel({
                                               .toISOString()
                                               .slice(0, 10)
                                           : "",
+                                        changeAmount: item.amount != null
+                                          ? Number(item.amount).toFixed(2)
+                                          : "",
                                       })
                                     }
                                     className="rounded-md border border-border bg-background hover:bg-muted text-[10px] font-medium px-2 py-1 text-foreground"
@@ -1994,9 +2006,12 @@ export default function MiniStudentPanel({
                                   if (!pf.changeDate) return;
                                   updatePlan({ saving: true, error: null });
                                   try {
-                                    const res = await api.patch(
+                                    const body = { dueDate: pf.changeDate };
+                                    const parsedAmt = Number(pf.changeAmount);
+                                    if (!isNaN(parsedAmt) && parsedAmt > 0) body.amount = parsedAmt;
+                                  const res = await api.patch(
                                       `/api/payment-plan/${item.planId}/installment/${item.installmentIdx}/due-date`,
-                                      { dueDate: pf.changeDate },
+                                      body,
                                     );
                                     if (res.success) {
                                       await refreshPaymentsData();
@@ -2015,11 +2030,23 @@ export default function MiniStudentPanel({
                                 }}
                                 className="space-y-1.5 pt-1.5 border-t border-border/40"
                               >
+                                <label className="block text-[10px] text-muted-foreground mb-0.5">Due Date</label>
                                 <input
                                   type="date"
                                   value={pf.changeDate ?? ""}
                                   onChange={(e) =>
                                     updatePlan({ changeDate: e.target.value })
+                                  }
+                                  className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary"
+                                />
+                                <label className="block text-[10px] text-muted-foreground mb-0.5 mt-1">Amount ($)</label>
+                                <input
+                                  type="number"
+                                  min="0.01"
+                                  step="0.01"
+                                  value={pf.changeAmount ?? ""}
+                                  onChange={(e) =>
+                                    updatePlan({ changeAmount: e.target.value })
                                   }
                                   className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary"
                                 />
@@ -2033,7 +2060,7 @@ export default function MiniStudentPanel({
                                   </button>
                                   <button
                                     type="submit"
-                                    disabled={pf.saving || !pf.changeDate}
+                                    disabled={pf.saving || !pf.changeDate || !pf.changeAmount}
                                     className="flex-1 h-7 rounded-md bg-brand hover:opacity-90 text-white text-[10px] font-semibold disabled:opacity-50"
                                   >
                                     {pf.saving ? "Saving…" : "Update"}
@@ -2041,6 +2068,45 @@ export default function MiniStudentPanel({
                                 </div>
                               </form>
                             )}
+                            {/* Add Payment — flexible plans only, shown on last installment */}
+                            {item.plan?.enrollmentID?.package?.billingType === "flexible" &&
+                              item.installmentNumber === item.totalInstallments &&
+                              !pf.open && pf.mode !== "change-date" && (() => {
+                                const af = addInstallForms[item.planId] ?? { open: false, dueDate: "", amount: "", saving: false, error: null };
+                                const updateAdd = (patch) => setAddInstallForms((prev) => ({ ...prev, [item.planId]: { ...prev[item.planId], ...patch } }));
+                                return af.open ? (
+                                  <form
+                                    onSubmit={async (e) => {
+                                      e.preventDefault();
+                                      if (!af.dueDate || !af.amount) return;
+                                      updateAdd({ saving: true, error: null });
+                                      const res = await api.post(`/api/payment-plan/${item.planId}/installment`, { dueDate: af.dueDate, amount: Number(af.amount) });
+                                      if (res.success) {
+                                        updateAdd({ open: false, dueDate: "", amount: "", saving: false });
+                                        await refreshPaymentsData();
+                                      } else {
+                                        updateAdd({ saving: false, error: res.error || "Failed to add payment." });
+                                      }
+                                    }}
+                                    className="space-y-1.5 pt-1.5 border-t border-border/40"
+                                  >
+                                    <label className="block text-[10px] text-muted-foreground mb-0.5">Due Date</label>
+                                    <input type="date" value={af.dueDate} onChange={(e) => updateAdd({ dueDate: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
+                                    <label className="block text-[10px] text-muted-foreground mb-0.5 mt-1">Amount ($)</label>
+                                    <input type="number" min="0.01" step="0.01" value={af.amount} onChange={(e) => updateAdd({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
+                                    {af.error && <p className="text-[10px] text-rose-500">{af.error}</p>}
+                                    <div className="flex gap-1.5">
+                                      <button type="button" onClick={() => updateAdd({ open: false })} className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
+                                      <button type="submit" disabled={af.saving || !af.dueDate || !af.amount} className="flex-1 h-7 rounded-md bg-brand hover:opacity-90 text-white text-[10px] font-semibold disabled:opacity-50">{af.saving ? "Saving…" : "Add"}</button>
+                                    </div>
+                                  </form>
+                                ) : (
+                                  <button type="button" onClick={() => updateAdd({ open: true, dueDate: "", amount: "" })} className="w-full h-7 rounded-md border border-dashed border-border text-[10px] text-muted-foreground hover:text-foreground hover:border-foreground transition-colors mt-1">
+                                    + Add Payment
+                                  </button>
+                                );
+                              })()}
+
                             {pf.open && (
                               <form
                                 onSubmit={async (e) => {
@@ -2159,6 +2225,49 @@ export default function MiniStudentPanel({
                     })}
                   </div>
                 )}
+
+              {/* Add Payment button for flexible plans with no pending installments */}
+              {paymentView === "due" && !loadingPayments && flexiblePlans.filter(
+                (p) => !upcomingPayments.some((item) => item.type === "plan" && item.planId === String(p._id))
+              ).map((plan) => {
+                const af = addInstallForms[String(plan._id)] ?? { open: false, dueDate: "", amount: "", saving: false, error: null };
+                const updateAdd = (patch) => setAddInstallForms((prev) => ({ ...prev, [String(plan._id)]: { ...prev[String(plan._id)], ...patch } }));
+                return (
+                  <div key={String(plan._id)} className="rounded-lg border border-dashed border-border bg-muted/10 px-3 py-2.5">
+                    <p className="text-[11px] font-semibold text-foreground mb-1.5">
+                      {plan.enrollmentID?.package?.packageName ?? "Package"} · Flexible
+                    </p>
+                    {af.open ? (
+                      <form onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (!af.dueDate || !af.amount) return;
+                        updateAdd({ saving: true, error: null });
+                        const res = await api.post(`/api/payment-plan/${plan._id}/installment`, { dueDate: af.dueDate, amount: Number(af.amount) });
+                        if (res.success) {
+                          updateAdd({ open: false, dueDate: "", amount: "", saving: false });
+                          await refreshPaymentsData();
+                        } else {
+                          updateAdd({ saving: false, error: res.error || "Failed to add payment." });
+                        }
+                      }} className="space-y-1.5">
+                        <label className="block text-[10px] text-muted-foreground mb-0.5">Due Date</label>
+                        <input type="date" value={af.dueDate} onChange={(e) => updateAdd({ dueDate: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
+                        <label className="block text-[10px] text-muted-foreground mb-0.5 mt-1">Amount ($)</label>
+                        <input type="number" min="0.01" step="0.01" value={af.amount} onChange={(e) => updateAdd({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
+                        {af.error && <p className="text-[10px] text-rose-500">{af.error}</p>}
+                        <div className="flex gap-1.5 mt-1.5">
+                          <button type="button" onClick={() => updateAdd({ open: false })} className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
+                          <button type="submit" disabled={af.saving || !af.dueDate || !af.amount} className="flex-1 h-7 rounded-md bg-brand hover:opacity-90 text-white text-[10px] font-semibold disabled:opacity-50">{af.saving ? "Saving…" : "Add"}</button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button type="button" onClick={() => updateAdd({ open: true, dueDate: "", amount: "" })} className="w-full h-7 rounded-md border border-dashed border-border text-[10px] text-muted-foreground hover:text-foreground hover:border-foreground transition-colors">
+                        + Add Payment
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
 
               {loadingPayments ? (
                 <p className="text-[12px] text-muted-foreground animate-pulse">
