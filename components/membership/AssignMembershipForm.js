@@ -22,6 +22,9 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   const [customInstallments, setCustomInstallments] = useState([])
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [walletBalance, setWalletBalance] = useState(null)
+  const [useWallet, setUseWallet] = useState(false)
+  const [walletAmount, setWalletAmount] = useState('')
 
   useEffect(() => {
     api.get('/api/membership?isActive=true&limit=200').then((res) => {
@@ -29,8 +32,22 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
     })
   }, [])
 
+  useEffect(() => {
+    if (!customerID) { setWalletBalance(null); return }
+    api.get(`/api/wallet/${customerID}/balance`).then((res) => {
+      if (res.success) setWalletBalance(Number(res.data?.balance ?? 0))
+    })
+  }, [customerID])
+
   const selected = templates.find((t) => t._id === membershipID)
   const price = Number(selected?.price ?? 0)
+
+  // How much of the one-time price is paid from the wallet vs. the chosen method.
+  const walletEligible = billingType === 'one_time' && useWallet && walletBalance != null
+  const walletEntered = walletEligible ? Number(walletAmount) || 0 : 0
+  const walletApplied = Math.min(walletEntered, price, walletBalance ?? 0)
+  const remaining = Math.max(0, price - walletApplied)
+  const walletOver = walletEligible && walletEntered > (walletBalance ?? 0)
 
   const customTotal = useMemo(
     () => customInstallments.reduce((sum, c) => sum + (Number(c.amount) || 0), 0),
@@ -53,9 +70,16 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   async function handleSubmit() {
     if (!customerID) { toast.error('Select a student first'); return }
     if (!membershipID) { toast.error('Select a membership'); return }
+    if (walletOver) {
+      toast.error('Insufficient wallet balance', { description: `Wallet has $${walletBalance.toFixed(2)} but you entered $${walletEntered.toFixed(2)}.` })
+      return
+    }
 
     const billing = {}
-    if (billingType === 'one_time') billing.method = method
+    if (billingType === 'one_time') {
+      billing.method = method
+      if (walletApplied > 0) billing.walletAmount = walletApplied
+    }
     else if (billingType === 'flexible') {
       if (scheduleMode === 'custom') {
         const valid = customInstallments.filter((c) => c.dueDate && Number(c.amount) > 0)
@@ -154,15 +178,66 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
       </div>
 
       {billingType === 'one_time' && (
-        <div className="flex flex-col gap-1.5">
-          <Label>Payment Method</Label>
-          <select
-            value={method}
-            onChange={(e) => setMethod(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background text-sm px-2.5 focus:outline-none focus:ring-2 focus:ring-brand/30 capitalize"
-          >
-            {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
+        <div className="space-y-3">
+          {walletBalance != null && walletBalance > 0 && (
+            <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+              <label className="flex items-center justify-between gap-2 cursor-pointer">
+                <span className="text-[12px] font-medium text-foreground">
+                  Use wallet balance
+                  <span className="text-muted-foreground font-normal"> (${walletBalance.toFixed(2)} available)</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={useWallet}
+                  onChange={(e) => {
+                    setUseWallet(e.target.checked)
+                    setWalletAmount(e.target.checked ? String(Math.min(price, walletBalance).toFixed(2)) : '')
+                  }}
+                  className="h-4 w-4 accent-brand"
+                />
+              </label>
+              {useWallet && (
+                <>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">$</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      max={Math.min(price, walletBalance)}
+                      value={walletAmount}
+                      onChange={(e) => setWalletAmount(e.target.value)}
+                      className="h-8 pl-5"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">From wallet</span>
+                    <span className="font-medium text-foreground">${walletApplied.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">Remaining ({method})</span>
+                    <span className="font-semibold text-foreground">${remaining.toFixed(2)}</span>
+                  </div>
+                  {walletOver && (
+                    <p className="text-[10px] text-destructive">Amount exceeds wallet balance.</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {remaining > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label>{walletApplied > 0 ? 'Remaining payment method' : 'Payment Method'}</Label>
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+                className="h-9 rounded-lg border border-border bg-background text-sm px-2.5 focus:outline-none focus:ring-2 focus:ring-brand/30 capitalize"
+              >
+                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -244,7 +319,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
 
       <div className="flex justify-end gap-2 pt-2">
         {onCancel && <Button variant="outline" onClick={onCancel} disabled={submitting}>Cancel</Button>}
-        <Button onClick={handleSubmit} disabled={submitting} className="bg-brand hover:bg-brand-dark text-brand-foreground">
+        <Button onClick={handleSubmit} disabled={submitting || walletOver} className="bg-brand hover:bg-brand-dark text-brand-foreground">
           {submitting ? 'Assigning…' : 'Assign Membership'}
         </Button>
       </div>

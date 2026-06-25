@@ -25,6 +25,8 @@ const BLANK_FORM = {
     dueDate: "",
     collectNow: true,
     collectAmount: "",
+    useWallet: false,
+    walletAmount: "",
   },
   tip: {
     enabled: false,
@@ -151,6 +153,8 @@ export default function NewEnrollmentPackageInline({
   packageTemplates = [],
   /** When set, only package lines whose `serviceCode` is in this set are included. */
   allowedServiceCodes,
+  /** Student the package is being sold to — used to read wallet balance. */
+  customerID,
   onCancel,
   onSubmit,
 }) {
@@ -159,12 +163,20 @@ export default function NewEnrollmentPackageInline({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [catalogServices, setCatalogServices] = useState([]);
+  const [walletBalance, setWalletBalance] = useState(null);
 
   useEffect(() => {
     api.get("/api/calendar-service?limit=200").then((res) => {
       if (res.success && Array.isArray(res.data)) setCatalogServices(res.data);
     });
   }, []);
+
+  useEffect(() => {
+    if (!customerID) { setWalletBalance(null); return; }
+    api.get(`/api/wallet/${customerID}/balance`).then((res) => {
+      if (res.success) setWalletBalance(Number(res.data?.balance ?? 0));
+    });
+  }, [customerID]);
 
   const selectedPkg = useMemo(
     () =>
@@ -283,6 +295,32 @@ export default function NewEnrollmentPackageInline({
       Number(s.numberOfSessions || 0) * Number(s.pricePerSession || 0);
     return sum + Math.max(0, gross - (Number(s.finalAmount) || 0));
   }, 0);
+
+  // Wallet split is offered only for one-time billing (the path wired for it).
+  const collectAmt = Number(form.billing.collectAmount || 0);
+  const walletEligible =
+    form.billingType === "one_time" &&
+    form.billing.collectNow &&
+    form.billing.useWallet &&
+    walletBalance != null;
+  const walletEntered = walletEligible ? Number(form.billing.walletAmount) || 0 : 0;
+  const walletApplied = Math.min(walletEntered, collectAmt, walletBalance ?? 0);
+  const walletRemaining = Math.max(0, collectAmt - walletApplied);
+  const walletOver = walletEligible && walletEntered > (walletBalance ?? 0);
+
+  // One-time uses the wallet-split control below, so wallet is excluded from the
+  // method dropdown there. Other billing types collect a single payment, so they
+  // can pay it straight from the wallet by choosing it as the method.
+  const collectMethodOptions =
+    form.billingType === "one_time" ? PAYMENT_METHODS : [...PAYMENT_METHODS, "wallet"];
+
+  // Non-one-time collection paid directly from the wallet via the method dropdown.
+  const collectFromWallet =
+    form.billingType !== "one_time" &&
+    form.billing.collectNow &&
+    form.billing.method === "wallet" &&
+    walletBalance != null;
+  const collectWalletShort = collectFromWallet && collectAmt > walletBalance;
 
   const chargeableServices = form.services.filter((s) => s.isChargeable !== false);
   const canPayPerSession = chargeableServices.length === 1;
@@ -1113,7 +1151,7 @@ export default function NewEnrollmentPackageInline({
                           }
                           className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
                         >
-                          {PAYMENT_METHODS.map((m) => (
+                          {collectMethodOptions.map((m) => (
                             <option key={m} value={m} className="capitalize">{m}</option>
                           ))}
                         </select>
@@ -1121,6 +1159,74 @@ export default function NewEnrollmentPackageInline({
                       </div>
                     </div>
                   )}
+                  {collectFromWallet && (
+                    <p className={`text-[11px] ${collectWalletShort ? "text-destructive" : "text-muted-foreground"}`}>
+                      Wallet balance: ${walletBalance.toFixed(2)}
+                      {collectWalletShort && ` — not enough to cover $${collectAmt.toFixed(2)}`}
+                    </p>
+                  )}
+                  {form.billingType === "one_time" &&
+                    form.billing.collectNow &&
+                    walletBalance != null &&
+                    walletBalance > 0 && (
+                      <div className="rounded-lg border border-border bg-muted/20 p-2.5 space-y-2">
+                        <label className="flex items-center justify-between gap-2 cursor-pointer">
+                          <span className="text-[11px] font-medium text-foreground">
+                            Use wallet balance
+                            <span className="text-muted-foreground font-normal"> (${walletBalance.toFixed(2)} available)</span>
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={form.billing.useWallet}
+                            onChange={(e) =>
+                              setForm((p) => ({
+                                ...p,
+                                billing: {
+                                  ...p.billing,
+                                  useWallet: e.target.checked,
+                                  walletAmount: e.target.checked
+                                    ? String(Math.min(collectAmt, walletBalance).toFixed(2))
+                                    : "",
+                                },
+                              }))
+                            }
+                            className="h-3.5 w-3.5 accent-primary"
+                          />
+                        </label>
+                        {form.billing.useWallet && (
+                          <>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                max={Math.min(collectAmt, walletBalance)}
+                                value={form.billing.walletAmount}
+                                onChange={(e) =>
+                                  setForm((p) => ({
+                                    ...p,
+                                    billing: { ...p.billing, walletAmount: e.target.value },
+                                  }))
+                                }
+                                className="h-8 w-full rounded-md border border-border bg-background pl-5 pr-2.5 text-[12px] outline-none focus:border-primary"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-muted-foreground">From wallet</span>
+                              <span className="font-medium text-foreground">${walletApplied.toFixed(2)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-muted-foreground">Remaining ({form.billing.method})</span>
+                              <span className="font-semibold text-foreground">${walletRemaining.toFixed(2)}</span>
+                            </div>
+                            {walletOver && (
+                              <p className="text-[10px] text-destructive">Amount exceeds wallet balance.</p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                 </>
               )}
             </div>
@@ -1223,7 +1329,7 @@ export default function NewEnrollmentPackageInline({
             type="button"
             className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
             onClick={handleSubmit}
-            disabled={loading || !form.packageID}
+            disabled={loading || !form.packageID || walletOver || collectWalletShort}
           >
             {loading ? "Creating…" : "Create Enrollment & Package"}
           </button>

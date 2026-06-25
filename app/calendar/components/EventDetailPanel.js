@@ -1029,7 +1029,7 @@ function GroupStudentRoster({
                             }
                             className="h-8 w-full appearance-none rounded-md border border-border bg-background px-2 pr-6 text-[11px] text-foreground outline-none focus:border-amber-500"
                           >
-                            {["cash", "card", "online", "cheque", "other"].map(
+                            {["cash", "card", "online", "cheque", "other", "wallet"].map(
                               (m) => (
                                 <option key={m} value={m}>
                                   {m.charAt(0).toUpperCase() + m.slice(1)}

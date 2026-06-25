@@ -9,7 +9,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import AssignMembershipForm from './AssignMembershipForm'
 
-const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other']
+const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other', 'wallet']
 
 const STATUS_COLORS = {
   active: 'bg-emerald-500/10 text-emerald-600',

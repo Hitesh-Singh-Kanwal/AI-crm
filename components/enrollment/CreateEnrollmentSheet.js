@@ -154,7 +154,12 @@ export default function CreateEnrollmentSheet({
       billingType: payload.billingType,
       billing:
         payload.billingType === 'one_time'
-          ? { method: payload.billing?.method || 'cash' }
+          ? {
+              method: payload.billing?.method || 'cash',
+              ...(payload.billing?.useWallet && Number(payload.billing?.walletAmount) > 0
+                ? { walletAmount: Number(payload.billing.walletAmount) }
+                : {}),
+            }
           : payload.billingType === 'payment_plan'
             ? (() => {
                 const totalAmount = (payload.services || []).reduce(
@@ -321,6 +326,7 @@ export default function CreateEnrollmentSheet({
                 teacherOptions={teacherOptions}
                 packageTemplates={sellablePackages}
                 allowedServiceCodes={allowedServiceCodes}
+                customerID={resolvedCustomerID}
                 onCancel={handleClose}
                 onSubmit={handleCreateEnrollmentAndPackage}
               />

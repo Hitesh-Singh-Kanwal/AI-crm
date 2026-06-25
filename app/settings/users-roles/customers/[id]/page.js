@@ -17,6 +17,7 @@ import {
   ArrowUpDown,
   X,
   CreditCard,
+  Wallet,
   RotateCcw,
   Receipt,
   ClipboardList,
@@ -36,6 +37,7 @@ import {
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 import CustomerMembershipsTab from "@/components/membership/CustomerMembershipsTab";
+import CustomerWalletTab from "@/components/wallet/CustomerWalletTab";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import api from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
@@ -80,7 +82,7 @@ function paymentTypeBadge(type) {
   );
 }
 
-const PAYMENT_METHODS = ["cash", "card", "online", "cheque", "other"];
+const PAYMENT_METHODS = ["cash", "card", "online", "cheque", "other", "wallet"];
 
 function SessionBar({ used, total }) {
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
@@ -232,6 +234,7 @@ const TABS = [
     Icon: ClipboardList,
   },
   { id: "memberships", label: "Memberships", Icon: CreditCard },
+  { id: "wallet", label: "Wallet", Icon: Wallet },
   { id: "payments", label: "Payment History", Icon: Receipt },
   { id: "lessons", label: "Lessons", Icon: BookOpen },
   { id: "notes", label: "Notes", Icon: StickyNote },
@@ -4903,7 +4906,7 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
               onChange={(e) => setMethod(e.target.value)}
               className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary capitalize"
             >
-              {["cash", "card", "online", "cheque", "other"].map((m) => (
+              {PAYMENT_METHODS.map((m) => (
                 <option key={m} value={m} className="capitalize">
                   {m}
                 </option>
@@ -5701,6 +5704,7 @@ export default function CustomerDetailPage() {
               customerName={customer.name || customer.email || ""}
             />
           )}
+          {tab === "wallet" && <CustomerWalletTab customerID={customer._id} />}
           {tab === "payments" && <PaymentsTab customerID={customer._id} />}
           {tab === "lessons" && <LessonsTab customer={customer} />}
           {tab === "notes" && <NotesTab customer={customer} onUpdated={load} />}
