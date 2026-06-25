@@ -21,7 +21,10 @@ export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded })
   const [description, setDescription] = useState('')
   const [file, setFile] = useState(null)
 
-  const canUpload = useMemo(() => !!file && !!normalize(name), [file, name])
+  const canUpload = useMemo(
+    () => !!file && !!normalize(name) && !!normalize(description),
+    [file, name, description],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -70,22 +73,22 @@ export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded })
 
         <div className="mt-5 space-y-4">
           <div className="space-y-1.5">
-            <p className="text-sm font-medium">Name</p>
+            <p className="text-sm font-medium">Name <span className="text-red-500">*</span></p>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. AiScriptCallFile" disabled={saving} />
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-sm font-medium">Description</p>
+            <p className="text-sm font-medium">Description <span className="text-red-500">*</span></p>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description"
+              placeholder="Enter a description"
               disabled={saving}
             />
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">File</p>
+            <p className="text-sm font-medium">File <span className="text-red-500">*</span></p>
             <input
               ref={fileInputRef}
               type="file"
