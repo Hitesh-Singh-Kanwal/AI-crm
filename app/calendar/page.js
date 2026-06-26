@@ -469,6 +469,7 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
         sessionsPaidFor,
         pkgSessionNumber,
         paymentCollected,
+        coveredByMembership,
         studentCount: Array.isArray(appt.customerIDs) ? appt.customerIDs.length : 0,
         // Inject effectiveStatus into raw so EventDetailPanel sees the correct status
         raw: { ...appt, effectiveStatus },
@@ -1380,6 +1381,7 @@ function AppointmentTimedEventRows({ event, compact = false }) {
     sessionsPaidFor,
     pkgSessionNumber,
     paymentCollected,
+    coveredByMembership,
     studentCount: studentCountProp,
   } = ep;
   const cancelled =
@@ -1459,6 +1461,12 @@ function AppointmentTimedEventRows({ event, compact = false }) {
         className={`flex items-center gap-1 shrink-0 mt-auto min-w-0 pt-px ${compact ? "flex-nowrap overflow-hidden pr-[54px]" : "flex-wrap"}`}
       >
         <PaymentStatusBadge collected={paymentCollected} />
+        {coveredByMembership && (
+          <span className="shrink-0 inline-flex items-center gap-0.5 text-[8px] font-semibold rounded px-1 py-0.5 leading-none bg-violet-500/20 text-violet-700 dark:text-violet-300">
+            Membership
+            {sessionsRemaining == null && <span className="text-[10px] leading-none">∞</span>}
+          </span>
+        )}
         {isGroupClass && (
           <span className="shrink-0 text-[8px] font-semibold text-foreground/80 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 leading-none">
             {studentCount} student{studentCount === 1 ? "" : "s"}

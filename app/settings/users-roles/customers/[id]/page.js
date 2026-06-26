@@ -912,9 +912,6 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
         <div className="mt-3">
           <div className="rounded-lg border border-border overflow-hidden">
             {plan.installments.map((inst, idx) => {
-              const isLast = idx === plan.installments.length - 1;
-              const hasDiscount =
-                isLast && plan.installmentAmount > inst.amount;
               return (
                 <div
                   key={idx}
@@ -957,19 +954,9 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {hasDiscount && (
-                      <span className="text-[11px] text-muted-foreground line-through">
-                        ${Number(plan.installmentAmount).toFixed(2)}
-                      </span>
-                    )}
                     <p className="text-[13px] font-semibold text-foreground">
                       ${Number(inst.amount).toFixed(2)}
                     </p>
-                    {hasDiscount && (
-                      <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
-                        discount
-                      </span>
-                    )}
                     {inst.status === "pending" &&
                       plan.status === "active" &&
                       cpStatus === "active" && (
@@ -1212,19 +1199,36 @@ function PayInstallmentDialog({
   onSuccess,
 }) {
   const [method, setMethod] = useState("cash");
+  const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
   const installment = plan?.installments?.[installmentIndex];
 
+  useEffect(() => {
+    if (installment) setAmount(Number(installment.amount).toFixed(2));
+  }, [installment]);
+
+  function validatedAmount() {
+    const num = Number(amount);
+    if (isNaN(num) || num <= 0) {
+      toast.error("Enter a valid amount.");
+      return null;
+    }
+    return num;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
+    const num = validatedAmount();
+    if (num === null) return;
     setSaving(true);
     const res = await api.post(
       `/api/payment-plan/${plan._id}/pay-installment`,
       {
         installmentIndex,
         method,
+        amount: num,
       },
     );
     if (res.success) {
@@ -1233,6 +1237,27 @@ function PayInstallmentDialog({
       onClose();
     } else {
       toast.error(res.error || "Failed to record payment.");
+    }
+    setSaving(false);
+  }
+
+  async function handleSaveAmount() {
+    const num = validatedAmount();
+    if (num === null) return;
+    setSaving(true);
+    const res = await api.patch(
+      `/api/payment-plan/${plan._id}/installment/${installmentIndex}/due-date`,
+      {
+        dueDate: new Date(installment.dueDate).toISOString().slice(0, 10),
+        amount: num,
+      },
+    );
+    if (res.success) {
+      toast.success("Amount updated.");
+      onSuccess();
+      onClose();
+    } else {
+      toast.error(res.error || "Failed to update amount.");
     }
     setSaving(false);
   }
@@ -1263,6 +1288,16 @@ function PayInstallmentDialog({
           </p>
         )}
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <FormField label="Amount" required>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
+          </FormField>
           <FormField label="Payment Method" required>
             <div className="relative">
               <select
@@ -1284,6 +1319,15 @@ function PayInstallmentDialog({
               Cancel
             </Button>
             <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={handleSaveAmount}
+            >
+              Save
+            </Button>
+            <Button
               type="submit"
               size="sm"
               disabled={saving}
@@ -1291,7 +1335,7 @@ function PayInstallmentDialog({
             >
               {saving
                 ? "Recording…"
-                : `Pay $${Number(installment?.amount ?? 0).toFixed(2)}`}
+                : `Pay $${(Number(amount) || 0).toFixed(2)}`}
             </Button>
           </div>
         </form>
@@ -1310,7 +1354,6 @@ function ChangeInstallmentDateDialog({
   onSuccess,
 }) {
   const [dueDate, setDueDate] = useState("");
-  const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -1319,7 +1362,6 @@ function ChangeInstallmentDateDialog({
   useEffect(() => {
     if (installment) {
       setDueDate(installment.dueDate ? new Date(installment.dueDate).toISOString().slice(0, 10) : "");
-      setAmount(Number(installment.amount).toFixed(2));
     }
   }, [installment]);
 
@@ -1327,12 +1369,9 @@ function ChangeInstallmentDateDialog({
     e.preventDefault();
     if (!dueDate) return;
     setSaving(true);
-    const body = { dueDate };
-    const parsedAmount = Number(amount);
-    if (!isNaN(parsedAmount) && parsedAmount > 0) body.amount = parsedAmount;
     const res = await api.patch(
       `/api/payment-plan/${plan._id}/installment/${installmentIndex}/due-date`,
-      body,
+      { dueDate },
     );
     if (res.success) {
       toast.success("Installment updated.");
@@ -1353,7 +1392,7 @@ function ChangeInstallmentDateDialog({
     >
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Edit Installment</DialogTitle>
+          <DialogTitle>Change Due Date</DialogTitle>
         </DialogHeader>
         {installment && (
           <p className="text-[12px] text-muted-foreground -mt-1">
@@ -1369,16 +1408,6 @@ function ChangeInstallmentDateDialog({
               className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
             />
           </FormField>
-          <FormField label="Amount ($)" required>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-            />
-          </FormField>
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Cancel
@@ -1386,7 +1415,7 @@ function ChangeInstallmentDateDialog({
             <Button
               type="submit"
               size="sm"
-              disabled={saving || !dueDate || !amount}
+              disabled={saving || !dueDate}
               className="bg-brand hover:opacity-90 text-white"
             >
               {saving ? "Saving…" : "Update"}
@@ -5252,10 +5281,11 @@ function LessonsTab({ customer }) {
       const status = deriveEventStatus(ev);
       const isPaid =
         (ev.chargeMethod === "package" &&
-          ev.packageBillingType === "pay_per_session") ||
+          ev.packageBillingType !== "flexible") ||
         ev.chargeMethod === "credits" ||
         ev.chargeMethod === "direct" ||
         ev.chargeMethod === "mixed" ||
+        ev.chargeMethod === "membership" ||
         ev.payment?.collected;
       const isCancelledNoCharge =
         status === "cancelled_no_charge" || status === "no_show_no_charge";
@@ -5386,10 +5416,11 @@ function LessonsTab({ customer }) {
               ev.calendarServiceID?.serviceCode ?? ev.type ?? "";
             const isPaid =
               (ev.chargeMethod === "package" &&
-                ev.packageBillingType === "pay_per_session") ||
+                ev.packageBillingType !== "flexible") ||
               ev.chargeMethod === "credits" ||
               ev.chargeMethod === "direct" ||
               ev.chargeMethod === "mixed" ||
+              ev.chargeMethod === "membership" ||
               ev.payment?.collected;
             const isCancelledNoCharge =
               status === "cancelled_no_charge" ||

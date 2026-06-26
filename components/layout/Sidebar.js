@@ -40,7 +40,17 @@ const navItems = [
       { name: 'SMS Builder', href: '/marketing/sms-builder' },
     ],
   },
-  { name: 'Reports', href: '/reports', iconSrc: '/figma/sidebar/reports.svg', iconSize: 20, labelStyle: 'regular' },
+  {
+    name: 'Reports',
+    href: '/reports',
+    iconSrc: '/figma/sidebar/reports.svg',
+    iconSize: 20,
+    labelStyle: 'regular',
+    children: [
+      { name: 'Overview', href: '/reports' },
+      { name: "Teacher's Commissions", href: '/reports/teacher-commissions' },
+    ],
+  },
   {
     name: 'AI & Automation',
     href: '/ai-automation/workflows',

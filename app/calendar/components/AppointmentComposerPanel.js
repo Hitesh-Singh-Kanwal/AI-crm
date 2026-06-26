@@ -122,6 +122,7 @@ const EMPTY_FORM = {
   customer_id: "",
   customer_ids: [],
   enrollment_id: "",
+  customer_membership_id: "",
   date: "",
   start_time: "",
   end_time: "",
@@ -643,15 +644,17 @@ function EnrollmentServiceSelector({
 }
 
 // ─── Membership → Service selector ────────────────────────────────────────────
-// A customer with an active membership has no enrollment (mutually exclusive).
-// Lists the membership's services that exist in this tab's catalog; selecting one
-// sets the calendar service so the backend charges it against the membership.
+// Lists each active membership and its services that exist in this tab's catalog.
+// Selecting a line identifies both the membership and the service so the backend
+// charges that exact membership — distinguishing two memberships that cover the
+// same service. Shown alongside the package selector so either can be chosen.
 
 function MembershipServiceSelector({
   customerId,
   allServices,
   selectedServiceId,
-  onServiceSelect,
+  selectedMembershipId,
+  onSelect,
   onHasMembershipChange,
 }) {
   const [memberships, setMemberships] = useState([]);
@@ -680,7 +683,8 @@ function MembershipServiceSelector({
           );
           if (lines.length === 1) {
             const info = allServices.find((s) => s.serviceCode === lines[0].serviceCode);
-            if (info) onServiceSelect(String(info._id), lines[0].color || info.color);
+            if (info)
+              onSelect(String(data[0]._id), String(info._id), lines[0].color || info.color);
           }
         }
       });
@@ -692,90 +696,110 @@ function MembershipServiceSelector({
 
   if (!customerId || memberships.length === 0) return null;
 
+  const selectedMembership = memberships.find(
+    (m) => String(m._id) === selectedMembershipId,
+  );
+  const lines = (selectedMembership?.services ?? []).filter((svc) =>
+    allServices.some((cat) => cat.serviceCode === svc.serviceCode),
+  );
+
   return (
     <div className="space-y-2">
-      {memberships.map((m) => {
-        const lines = (m.services || []).filter((svc) =>
-          allServices.some((cat) => cat.serviceCode === svc.serviceCode),
-        );
-        return (
-          <div key={m._id} className="space-y-1.5">
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5">
-              <span
-                className="h-2.5 w-2.5 rounded-full shrink-0"
-                style={{ background: m.membershipID?.color || "#6366f1" }}
-              />
-              <span className="text-[11px] text-foreground font-medium truncate flex-1">
-                {m.membershipName || "Membership"}
-              </span>
-              <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium shrink-0 bg-brand/10 text-brand">
-                membership
-              </span>
-            </div>
+      <div>
+        <FieldLabel>Memberships</FieldLabel>
+        <StyledSelect
+          value={selectedMembershipId}
+          onChange={(v) => {
+            const m = memberships.find((x) => String(x._id) === v);
+            const svcs = (m?.services ?? []).filter((svc) =>
+              allServices.some((cat) => cat.serviceCode === svc.serviceCode),
+            );
+            if (svcs.length === 1) {
+              const info = allServices.find(
+                (s) => s.serviceCode === svcs[0].serviceCode,
+              );
+              onSelect(
+                v,
+                info ? String(info._id) : "",
+                svcs[0].color || info?.color,
+              );
+            } else {
+              onSelect(v, "", "");
+            }
+          }}
+          options={memberships.map((m) => ({
+            value: String(m._id),
+            label: m.membershipName || "Membership",
+          }))}
+          placeholder="Select membership…"
+        />
+      </div>
 
-            {lines.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground px-0.5">
-                No covered services for this booking type.
-              </p>
-            ) : (
-              <>
-                <FieldLabel>Service</FieldLabel>
-                <div className="space-y-1.5">
-                  {lines.map((svc, idx) => {
-                    const serviceInfo = allServices.find(
-                      (s) => s.serviceCode === svc.serviceCode,
-                    );
-                    const serviceColor = svc.color || serviceInfo?.color;
-                    const isSelected =
-                      selectedServiceId === String(serviceInfo?._id);
-                    const isUnlimited = svc.accessType === "unlimited";
-                    const noSessionsLeft =
-                      !isUnlimited && (svc.sessionsRemaining ?? 0) <= 0;
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() =>
-                          serviceInfo &&
-                          onServiceSelect(String(serviceInfo._id), serviceColor)
-                        }
-                        className={[
-                          "flex items-center justify-between rounded-lg px-2.5 py-2 cursor-pointer border transition-colors",
-                          isSelected
-                            ? "border-brand bg-brand/10"
-                            : "border-border bg-background hover:bg-muted/40",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {serviceColor && (
-                            <span
-                              className="h-2.5 w-2.5 rounded-full shrink-0"
-                              style={{ background: serviceColor }}
-                            />
-                          )}
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-medium truncate">
-                              {serviceInfo?.serviceName ||
-                                svc.serviceName ||
-                                svc.serviceCode}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground">
-                              {isUnlimited
-                                ? "Unlimited"
-                                : noSessionsLeft
-                                  ? "No sessions remaining"
-                                  : `${svc.sessionsRemaining} / ${svc.sessionsTotal} sessions left`}
-                            </p>
-                          </div>
-                        </div>
+      {selectedMembership &&
+        (lines.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground px-0.5">
+            No covered services for this booking type.
+          </p>
+        ) : (
+          <div className="space-y-1">
+            <FieldLabel>Service</FieldLabel>
+            <div className="space-y-1.5">
+              {lines.map((svc, idx) => {
+                const serviceInfo = allServices.find(
+                  (s) => s.serviceCode === svc.serviceCode,
+                );
+                const serviceColor = svc.color || serviceInfo?.color;
+                const isSelected =
+                  selectedServiceId === String(serviceInfo?._id);
+                const isUnlimited = svc.accessType === "unlimited";
+                const noSessionsLeft =
+                  !isUnlimited && (svc.sessionsRemaining ?? 0) <= 0;
+                return (
+                  <div
+                    key={idx}
+                    onClick={() =>
+                      serviceInfo &&
+                      onSelect(
+                        String(selectedMembership._id),
+                        String(serviceInfo._id),
+                        serviceColor,
+                      )
+                    }
+                    className={[
+                      "flex items-center justify-between rounded-lg px-2.5 py-2 cursor-pointer border transition-colors",
+                      isSelected
+                        ? "border-brand bg-brand/10"
+                        : "border-border bg-background hover:bg-muted/40",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      {serviceColor && (
+                        <span
+                          className="h-2.5 w-2.5 rounded-full shrink-0"
+                          style={{ background: serviceColor }}
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium truncate">
+                          {serviceInfo?.serviceName ||
+                            svc.serviceName ||
+                            svc.serviceCode}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {isUnlimited
+                            ? "Unlimited"
+                            : noSessionsLeft
+                              ? "No sessions remaining"
+                              : `${svc.sessionsRemaining} / ${svc.sessionsTotal} sessions left`}
+                        </p>
                       </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        );
-      })}
+        ))}
     </div>
   );
 }
@@ -837,7 +861,6 @@ function WhoSection({
   const selectedCustomer = rawCustomers?.find((c) => String(c._id) === form.customer_id);
   const selectedMembers = selectedCustomer?.members || [];
   const [showNew, setShowNew] = useState(false);
-  const [hasMembership, setHasMembership] = useState(false);
 
   return (
     <div className="space-y-3">
@@ -852,6 +875,7 @@ function WhoSection({
             setField("member_ids", []);
             onOpenEnrollmentWizard?.(false);
             setField("enrollment_id", "");
+            setField("customer_membership_id", "");
             setField("service_id", "");
             setField("event_color", "");
           }}
@@ -894,26 +918,30 @@ function WhoSection({
           customerId={form.customer_id}
           allServices={allServices}
           selectedServiceId={form.service_id}
-          onServiceSelect={(serviceId, color) => {
+          selectedMembershipId={form.customer_membership_id}
+          onSelect={(membershipId, serviceId, color) => {
             setField("enrollment_id", "");
+            setField("session_payment_method", "");
+            setField("customer_membership_id", membershipId);
             setField("service_id", serviceId);
             if (color) setField("event_color", color);
           }}
-          onHasMembershipChange={setHasMembership}
         />
       )}
 
-      {form.customer_id && !hasMembership && (
+      {form.customer_id && (
         <EnrollmentServiceSelector
           customerId={form.customer_id}
           enrollments={enrollments[form.customer_id] || []}
           selectedEnrollmentId={form.enrollment_id}
           onEnrollmentSelect={(v) => {
+            setField("customer_membership_id", "");
             setField("enrollment_id", v);
             setField("service_id", "");
             setField("session_payment_method", "");
           }}
           onServiceSelect={(serviceId, color) => {
+            setField("customer_membership_id", "");
             setField("service_id", serviceId);
             if (color) setField("event_color", color);
           }}
@@ -1833,6 +1861,7 @@ export default function AppointmentComposerPanel({
       service_id: "",
       lesson_id: "",
       enrollment_id: "",
+      customer_membership_id: "",
       event_color: "",
     }));
     setError(null);
@@ -2143,6 +2172,8 @@ export default function AppointmentComposerPanel({
       lessonID: form.lesson_id || undefined,
       calendarServiceID: form.service_id || undefined,
       enrollmentID: activeTab === "Group Class" ? undefined : form.enrollment_id || undefined,
+      customerMembershipID:
+        activeTab === "Group Class" ? undefined : form.customer_membership_id || undefined,
       packageID: packageTemplateId || undefined,
       color: form.event_color || undefined,
       notes:

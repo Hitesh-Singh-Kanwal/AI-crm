@@ -1967,7 +1967,14 @@ export default function MiniStudentPanel({
                                 <div className="flex flex-col gap-1 shrink-0">
                                   <button
                                     type="button"
-                                    onClick={() => updatePlan({ open: true })}
+                                    onClick={() =>
+                                      updatePlan({
+                                        open: true,
+                                        payAmount: item.amount != null
+                                          ? Number(item.amount).toFixed(2)
+                                          : "",
+                                      })
+                                    }
                                     className="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold px-2 py-1"
                                   >
                                     Pay Now
@@ -1981,9 +1988,6 @@ export default function MiniStudentPanel({
                                           ? new Date(item.dueDate)
                                               .toISOString()
                                               .slice(0, 10)
-                                          : "",
-                                        changeAmount: item.amount != null
-                                          ? Number(item.amount).toFixed(2)
                                           : "",
                                       })
                                     }
@@ -2006,12 +2010,9 @@ export default function MiniStudentPanel({
                                   if (!pf.changeDate) return;
                                   updatePlan({ saving: true, error: null });
                                   try {
-                                    const body = { dueDate: pf.changeDate };
-                                    const parsedAmt = Number(pf.changeAmount);
-                                    if (!isNaN(parsedAmt) && parsedAmt > 0) body.amount = parsedAmt;
-                                  const res = await api.patch(
+                                    const res = await api.patch(
                                       `/api/payment-plan/${item.planId}/installment/${item.installmentIdx}/due-date`,
-                                      body,
+                                      { dueDate: pf.changeDate },
                                     );
                                     if (res.success) {
                                       await refreshPaymentsData();
@@ -2039,17 +2040,6 @@ export default function MiniStudentPanel({
                                   }
                                   className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary"
                                 />
-                                <label className="block text-[10px] text-muted-foreground mb-0.5 mt-1">Amount ($)</label>
-                                <input
-                                  type="number"
-                                  min="0.01"
-                                  step="0.01"
-                                  value={pf.changeAmount ?? ""}
-                                  onChange={(e) =>
-                                    updatePlan({ changeAmount: e.target.value })
-                                  }
-                                  className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary"
-                                />
                                 <div className="flex gap-1.5">
                                   <button
                                     type="button"
@@ -2060,7 +2050,7 @@ export default function MiniStudentPanel({
                                   </button>
                                   <button
                                     type="submit"
-                                    disabled={pf.saving || !pf.changeDate || !pf.changeAmount}
+                                    disabled={pf.saving || !pf.changeDate}
                                     className="flex-1 h-7 rounded-md bg-brand hover:opacity-90 text-white text-[10px] font-semibold disabled:opacity-50"
                                   >
                                     {pf.saving ? "Saving…" : "Update"}
@@ -2111,12 +2101,18 @@ export default function MiniStudentPanel({
                               <form
                                 onSubmit={async (e) => {
                                   e.preventDefault();
+                                  const num = Number(pf.payAmount);
+                                  if (isNaN(num) || num <= 0) {
+                                    updatePlan({ error: "Enter a valid amount." });
+                                    return;
+                                  }
                                   updatePlan({ saving: true, error: null });
                                   const res = await api.post(
                                     `/api/payment-plan/${item.planId}/pay-installment`,
                                     {
                                       installmentIndex: item.installmentIdx,
                                       method: pf.method,
+                                      amount: num,
                                     },
                                   );
                                   if (res.success) {
@@ -2130,6 +2126,17 @@ export default function MiniStudentPanel({
                                 }}
                                 className="space-y-1.5 pt-1.5 border-t border-border/40"
                               >
+                                <label className="block text-[10px] text-muted-foreground mb-0.5">Amount ($)</label>
+                                <input
+                                  type="number"
+                                  min="0.01"
+                                  step="0.01"
+                                  value={pf.payAmount ?? ""}
+                                  onChange={(e) =>
+                                    updatePlan({ payAmount: e.target.value })
+                                  }
+                                  className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary"
+                                />
                                 <select
                                   value={pf.method}
                                   onChange={(e) =>
@@ -2159,12 +2166,12 @@ export default function MiniStudentPanel({
                                   </button>
                                   <button
                                     type="submit"
-                                    disabled={pf.saving}
+                                    disabled={pf.saving || !pf.payAmount}
                                     className="flex-1 h-7 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold disabled:opacity-50"
                                   >
                                     {pf.saving
                                       ? "Saving…"
-                                      : `Pay $${Number(item.amount).toFixed(2)}`}
+                                      : `Pay $${(Number(pf.payAmount) || 0).toFixed(2)}`}
                                   </button>
                                 </div>
                               </form>

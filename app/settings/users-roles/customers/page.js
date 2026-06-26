@@ -305,6 +305,8 @@ export default function CustomersPage() {
   const router = useRouter()
   const [customers, setCustomers] = useState([])
   const [locations, setLocations] = useState([])
+  const [teachers, setTeachers] = useState([])
+  const [teacherFilter, setTeacherFilter] = useState('')
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -324,6 +326,9 @@ export default function CustomersPage() {
     api.get('/api/location?limit=200').then((res) => {
       if (res.success) setLocations(res.data || [])
     })
+    api.get('/api/teacher?limit=200&status=active').then((res) => {
+      if (res.success) setTeachers(res.data || [])
+    })
   }, [])
 
   useEffect(() => {
@@ -331,12 +336,13 @@ export default function CustomersPage() {
     return () => clearTimeout(timer)
   }, [search])
 
-  useEffect(() => { setCurrentPage(1) }, [debouncedSearch])
+  useEffect(() => { setCurrentPage(1) }, [debouncedSearch, teacherFilter])
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true)
     const params = new URLSearchParams({ page: currentPage, limit })
     if (debouncedSearch) params.set('search', debouncedSearch)
+    if (teacherFilter) params.set('teacherID', teacherFilter)
     const result = await api.get(`/api/customer?${params}`)
     if (result.success) {
       setCustomers(result.data || [])
@@ -345,7 +351,7 @@ export default function CustomersPage() {
       setTotalPages(Math.max(1, Math.ceil(t / limit)))
     }
     setLoading(false)
-  }, [currentPage, debouncedSearch])
+  }, [currentPage, debouncedSearch, teacherFilter])
 
   useEffect(() => { fetchCustomers() }, [fetchCustomers])
 
@@ -393,6 +399,19 @@ export default function CustomersPage() {
               placeholder="Search customers…"
               className="pl-9 h-9 text-[13px]"
             />
+          </div>
+          <div className="relative">
+            <select
+              value={teacherFilter}
+              onChange={(e) => setTeacherFilter(e.target.value)}
+              className="h-9 appearance-none rounded-lg border border-border bg-background pl-3 pr-8 text-[13px] text-foreground outline-none focus:border-primary"
+            >
+              <option value="">All teachers</option>
+              {teachers.map((t) => (
+                <option key={t._id} value={t._id}>{t.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           </div>
         </div>
 

@@ -104,8 +104,6 @@ export default function CustomerMembershipsTab({ customerID }) {
 
   useEffect(() => { load() }, [load])
 
-  const hasActive = memberships.some((m) => m.status === 'active')
-
   async function handleCancel(m) {
     if (!window.confirm(`Cancel "${m.membershipName}"? This stops auto-renewal and ends access.`)) return
     setBusyId(m._id)
@@ -143,12 +141,10 @@ export default function CustomerMembershipsTab({ customerID }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Memberships</h2>
-          <p className="text-[12px] text-muted-foreground">A customer can hold one membership at a time (not combinable with packages).</p>
+          <p className="text-[12px] text-muted-foreground">A customer can hold multiple memberships (not combinable with packages).</p>
         </div>
         <Button
           onClick={() => setAssignOpen(true)}
-          disabled={hasActive}
-          title={hasActive ? 'This customer already has an active membership' : undefined}
           className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2"
         >
           <Plus className="h-4 w-4" />
