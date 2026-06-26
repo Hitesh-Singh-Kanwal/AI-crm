@@ -26,28 +26,28 @@ const HIDDEN_PROMPT_PLACEHOLDER = 'managed-by-system'
 const ACTION_INSTRUCTION_FIELDS = [
   {
     key: 'welcome_with_name',
-    label: 'Welcome message — name known',
-    help: "First message sent when the lead's name is already known.",
+    label: 'First message — when the name is known',
+    help: "How the agent should open the very first message when the lead's name is already known. Use {{name}} to insert their name.",
   },
   {
     key: 'welcome_ask_name',
-    label: 'Welcome message — ask for name',
-    help: "First message sent when the lead's name is unknown.",
+    label: 'First message — when the name is unknown',
+    help: "How the agent should open the very first message when the lead's name is unknown, including how to ask for their name.",
   },
   {
     key: 'handle_price_briefly_then_qualify',
-    label: 'Pricing question response',
-    help: 'How to respond when a lead asks about pricing during qualification.',
+    label: 'When the lead asks about pricing',
+    help: 'How the agent should respond if a lead asks about pricing during qualification — acknowledge briefly, then steer back to the next qualification question.',
   },
   {
     key: 'handle_group_class_inquiry',
-    label: 'Group class inquiry response',
-    help: 'How to respond when a lead asks about group classes.',
+    label: 'When the lead asks about group classes',
+    help: 'How the agent should respond if a lead asks about group classes during qualification — confirm availability, then continue qualifying.',
   },
   {
     key: 'ask_next_qualification_question',
-    label: 'After qualification question',
-    help: 'How to ask the next qualification question naturally.',
+    label: 'How to ask the next qualification question',
+    help: 'How the agent should naturally move the conversation forward by asking the next qualification question without sounding scripted.',
   },
 ]
 
@@ -171,21 +171,21 @@ function PromptDialog({ open, onClose, prompt, onRefresh }) {
           </div>
 
           <FieldTextarea
-            label="Qualification questions"
-            help="Studio-specific context the agent uses during the qualification phase."
+            label="Qualification system prompt"
+            help="The system prompt that guides the agent while it qualifies a new lead — discovering their goals, experience, and what they're looking for."
             value={form.qualSystemPrompt}
             onChange={(v) => setForm((p) => ({ ...p, qualSystemPrompt: v }))}
             rows={5}
-            placeholder="Add studio-specific context for the qualification phase…"
+            placeholder="Define how the agent should behave during the qualification phase…"
           />
 
           <FieldTextarea
-            label="Sales phase context"
-            help="Studio-specific context the agent uses during the sales phase."
+            label="Sales system prompt"
+            help="The system prompt that guides the agent during the sales phase — recommending programs, handling objections, and moving the lead toward booking."
             value={form.salesSystemPrompt}
             onChange={(v) => setForm((p) => ({ ...p, salesSystemPrompt: v }))}
             rows={5}
-            placeholder="Add studio-specific context for the sales phase…"
+            placeholder="Define how the agent should behave during the sales phase…"
           />
 
           <FieldTextarea
@@ -199,9 +199,9 @@ function PromptDialog({ open, onClose, prompt, onRefresh }) {
 
           <div className="space-y-4 rounded-xl border border-border bg-muted/30 p-4">
             <div>
-              <h4 className="text-sm font-semibold text-foreground">Action instructions</h4>
+              <h4 className="text-sm font-semibold text-foreground">Action instructions — prompts</h4>
               <p className="text-xs text-muted-foreground">
-                Instructions for how the agent should respond in specific situations.
+                Prompts that tell the agent how to respond in specific situations.
               </p>
             </div>
             {ACTION_INSTRUCTION_FIELDS.map((f) => (
@@ -261,12 +261,12 @@ function ViewDialog({ open, onClose, prompt }) {
           <DialogDescription>Full prompt configuration</DialogDescription>
         </DialogHeader>
         <div className="space-y-5 py-4">
-          <ViewSection title="Qualification questions" content={prompt.qualSystemPrompt} />
-          <ViewSection title="Sales phase context" content={prompt.salesSystemPrompt} />
+          <ViewSection title="Qualification system prompt" content={prompt.qualSystemPrompt} />
+          <ViewSection title="Sales system prompt" content={prompt.salesSystemPrompt} />
           <ViewSection title="Conversation examples" content={prompt.conversationExamples} />
 
           <div className="space-y-4 rounded-xl border border-border bg-muted/30 p-4">
-            <h4 className="text-sm font-semibold text-foreground">Action instructions</h4>
+            <h4 className="text-sm font-semibold text-foreground">Action instructions — prompts</h4>
             {ACTION_INSTRUCTION_FIELDS.map((f) => (
               <ViewSection key={f.key} title={f.label} content={actionInstructions[f.key]} />
             ))}
