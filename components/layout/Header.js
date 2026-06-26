@@ -255,9 +255,9 @@ export default function Header({
     : null;
   const rawMessagingView = searchParams?.get("view");
   const aiMessagingView = isAIMessaging
-    ? rawMessagingView === "prompt"
-      ? "prompt"
-      : "embeddings"
+    ? ["prompt", "knowledge-base", "playbook"].includes(rawMessagingView)
+      ? rawMessagingView
+      : "prompt"
     : null;
 
   const setInboxFilter = (value) => {
@@ -453,8 +453,9 @@ export default function Header({
               <div className="flex h-[44px] items-center">
                 <div className="flex w-max items-center gap-5 rounded-full bg-muted px-4 py-2 sm:gap-8 sm:px-6">
                   {[
-                    { value: "embeddings", label: "Embeddings" },
                     { value: "prompt", label: "Prompt" },
+                    { value: "knowledge-base", label: "Knowledge base" },
+                    { value: "playbook", label: "Conversation playbook" },
                   ].map(({ value, label }) => {
                     const isActive = aiMessagingView === value;
                     return (
