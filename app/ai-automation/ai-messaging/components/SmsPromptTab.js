@@ -18,32 +18,119 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 
+// The backend still requires a `prompt` field, but it is not used. We send a
+// placeholder so the form stays clean and this field is never shown in the UI.
+const HIDDEN_PROMPT_PLACEHOLDER = 'managed-by-system'
+
+// Fixed action-instruction keys the backend expects, with friendly labels/help.
+const ACTION_INSTRUCTION_FIELDS = [
+  {
+    key: 'welcome_with_name',
+    label: 'Welcome message — name known',
+    help: "First message sent when the lead's name is already known.",
+  },
+  {
+    key: 'welcome_ask_name',
+    label: 'Welcome message — ask for name',
+    help: "First message sent when the lead's name is unknown.",
+  },
+  {
+    key: 'handle_price_briefly_then_qualify',
+    label: 'Pricing question response',
+    help: 'How to respond when a lead asks about pricing during qualification.',
+  },
+  {
+    key: 'handle_group_class_inquiry',
+    label: 'Group class inquiry response',
+    help: 'How to respond when a lead asks about group classes.',
+  },
+  {
+    key: 'ask_next_qualification_question',
+    label: 'After qualification question',
+    help: 'How to ask the next qualification question naturally.',
+  },
+]
+
+const EMPTY_ACTION_INSTRUCTIONS = ACTION_INSTRUCTION_FIELDS.reduce((acc, f) => {
+  acc[f.key] = ''
+  return acc
+}, {})
+
+function FieldTextarea({ label, help, value, onChange, rows = 4, placeholder }) {
+  return (
+    <div>
+      <label className="mb-1 block text-sm font-medium">{label}</label>
+      {help && <p className="mb-1.5 text-xs text-muted-foreground">{help}</p>}
+      <Textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={rows}
+        placeholder={placeholder}
+        className="resize-y text-sm"
+      />
+    </div>
+  )
+}
+
 function PromptDialog({ open, onClose, prompt, onRefresh }) {
   const toast = useToast()
   const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({ name: '', prompt: '' })
+  const [form, setForm] = useState({
+    name: '',
+    qualSystemPrompt: '',
+    salesSystemPrompt: '',
+    conversationExamples: '',
+    actionInstructions: { ...EMPTY_ACTION_INSTRUCTIONS },
+  })
 
   useEffect(() => {
     if (!open) return
     if (prompt) {
-      setForm({ name: prompt.name, prompt: prompt.prompt || '' })
+      setForm({
+        name: prompt.name || '',
+        qualSystemPrompt: prompt.qualSystemPrompt || '',
+        salesSystemPrompt: prompt.salesSystemPrompt || '',
+        conversationExamples: prompt.conversationExamples || '',
+        actionInstructions: {
+          ...EMPTY_ACTION_INSTRUCTIONS,
+          ...(prompt.actionInstructions || {}),
+        },
+      })
     } else {
-      setForm({ name: '', prompt: '' })
+      setForm({
+        name: '',
+        qualSystemPrompt: '',
+        salesSystemPrompt: '',
+        conversationExamples: '',
+        actionInstructions: { ...EMPTY_ACTION_INSTRUCTIONS },
+      })
     }
   }, [open, prompt])
 
   const isEdit = !!prompt
 
+  const setActionInstruction = (key, val) =>
+    setForm((p) => ({ ...p, actionInstructions: { ...p.actionInstructions, [key]: val } }))
+
   async function save() {
-    if (!form.name.trim() || !form.prompt.trim()) {
-      toast.error({ title: 'Validation', message: 'Name and prompt text are required' })
+    if (!form.name.trim()) {
+      toast.error({ title: 'Validation', message: 'Name is required' })
       return
     }
     setLoading(true)
     try {
+      const body = {
+        name: form.name.trim(),
+        prompt: prompt?.prompt || HIDDEN_PROMPT_PLACEHOLDER,
+        qualSystemPrompt: form.qualSystemPrompt,
+        salesSystemPrompt: form.salesSystemPrompt,
+        conversationExamples: form.conversationExamples,
+        actionInstructions: form.actionInstructions,
+      }
+
       const result = isEdit
-        ? await api.put(`/api/sms-prompt/${prompt._id}`, { name: form.name.trim(), prompt: form.prompt.trim() })
-        : await api.post('/api/sms-prompt', { name: form.name.trim(), prompt: form.prompt.trim() })
+        ? await api.put(`/api/sms-prompt/${prompt._id}`, body)
+        : await api.post('/api/sms-prompt', body)
 
       if (result.success) {
         toast.success({
@@ -68,10 +155,12 @@ function PromptDialog({ open, onClose, prompt, onRefresh }) {
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit Prompt' : 'New Prompt'}</DialogTitle>
           <DialogDescription>
-            {isEdit ? 'Update the prompt name or content.' : 'Create a new AI SMS prompt.'}
+            {isEdit
+              ? 'Update the prompt configuration for the AI sales agent.'
+              : 'Configure a new prompt for the AI sales agent.'}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-5 py-4">
           <div>
             <label className="mb-1 block text-sm font-medium">Name *</label>
             <Input
@@ -80,15 +169,51 @@ function PromptDialog({ open, onClose, prompt, onRefresh }) {
               placeholder="e.g. sales-v2"
             />
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium">Prompt *</label>
-            <Textarea
-              value={form.prompt}
-              onChange={(e) => setForm((p) => ({ ...p, prompt: e.target.value }))}
-              rows={16}
-              placeholder="Enter the full system prompt…"
-              className="min-h-[200px] resize-y font-mono text-sm"
-            />
+
+          <FieldTextarea
+            label="Qualification questions"
+            help="Studio-specific context the agent uses during the qualification phase."
+            value={form.qualSystemPrompt}
+            onChange={(v) => setForm((p) => ({ ...p, qualSystemPrompt: v }))}
+            rows={5}
+            placeholder="Add studio-specific context for the qualification phase…"
+          />
+
+          <FieldTextarea
+            label="Sales phase context"
+            help="Studio-specific context the agent uses during the sales phase."
+            value={form.salesSystemPrompt}
+            onChange={(v) => setForm((p) => ({ ...p, salesSystemPrompt: v }))}
+            rows={5}
+            placeholder="Add studio-specific context for the sales phase…"
+          />
+
+          <FieldTextarea
+            label="Conversation examples"
+            help="Example conversations that guide the agent's tone and flow."
+            value={form.conversationExamples}
+            onChange={(v) => setForm((p) => ({ ...p, conversationExamples: v }))}
+            rows={10}
+            placeholder={'## Example 1 — …\n    Lead: …\n    Agent: …'}
+          />
+
+          <div className="space-y-4 rounded-xl border border-border bg-muted/30 p-4">
+            <div>
+              <h4 className="text-sm font-semibold text-foreground">Action instructions</h4>
+              <p className="text-xs text-muted-foreground">
+                Instructions for how the agent should respond in specific situations.
+              </p>
+            </div>
+            {ACTION_INSTRUCTION_FIELDS.map((f) => (
+              <FieldTextarea
+                key={f.key}
+                label={f.label}
+                help={f.help}
+                value={form.actionInstructions[f.key] || ''}
+                onChange={(v) => setActionInstruction(f.key, v)}
+                rows={3}
+              />
+            ))}
           </div>
         </div>
         <DialogFooter>
@@ -104,8 +229,27 @@ function PromptDialog({ open, onClose, prompt, onRefresh }) {
   )
 }
 
+function ViewSection({ title, content }) {
+  const text = (content || '').trim()
+  return (
+    <div>
+      <h4 className="mb-1.5 text-sm font-semibold text-foreground">{title}</h4>
+      {text ? (
+        <pre className="whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-4 text-sm text-foreground">
+          {text}
+        </pre>
+      ) : (
+        <p className="rounded-lg border border-dashed border-border p-4 text-sm italic text-muted-foreground">
+          Not set
+        </p>
+      )}
+    </div>
+  )
+}
+
 function ViewDialog({ open, onClose, prompt }) {
   if (!prompt) return null
+  const actionInstructions = prompt.actionInstructions || {}
   return (
     <Dialog open={open} onClose={onClose} maxWidth="4xl">
       <DialogContent onClose={onClose} className="max-h-[90vh] overflow-y-auto">
@@ -114,12 +258,19 @@ function ViewDialog({ open, onClose, prompt }) {
             {prompt.isLocked && <Lock className="h-4 w-4 text-amber-500" />}
             {prompt.name}
           </DialogTitle>
-          <DialogDescription>Full prompt content</DialogDescription>
+          <DialogDescription>Full prompt configuration</DialogDescription>
         </DialogHeader>
-        <div className="py-4">
-          <pre className="h-[60vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-4 font-mono text-sm text-foreground">
-            {prompt.prompt}
-          </pre>
+        <div className="space-y-5 py-4">
+          <ViewSection title="Qualification questions" content={prompt.qualSystemPrompt} />
+          <ViewSection title="Sales phase context" content={prompt.salesSystemPrompt} />
+          <ViewSection title="Conversation examples" content={prompt.conversationExamples} />
+
+          <div className="space-y-4 rounded-xl border border-border bg-muted/30 p-4">
+            <h4 className="text-sm font-semibold text-foreground">Action instructions</h4>
+            {ACTION_INSTRUCTION_FIELDS.map((f) => (
+              <ViewSection key={f.key} title={f.label} content={actionInstructions[f.key]} />
+            ))}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
