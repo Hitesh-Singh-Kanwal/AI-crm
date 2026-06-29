@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Copy, Eye, Loader2, Trash2, Workflow } from 'lucide-react'
+import { Copy, Loader2, Pencil, Trash2, Workflow } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { flattenWorkflowSteps } from '@/lib/workflow-normalize'
 
@@ -40,11 +40,11 @@ export default function WorkflowCard({
 
         <div className="mt-auto grid grid-cols-3 gap-2 pt-4">
           <Link
-            href={`${detailPathBase}/${id}`}
+            href={`${detailPathBase}/builder?id=${id}`}
             className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-border bg-background text-[11px] font-medium text-muted-foreground hover:bg-muted/50"
           >
-            <Eye className="h-3.5 w-3.5 shrink-0" />
-            View
+            <Pencil className="h-3.5 w-3.5 shrink-0" />
+            Open
           </Link>
           <button
             type="button"

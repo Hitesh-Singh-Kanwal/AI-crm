@@ -55,6 +55,7 @@ function createNodeFromPalette(paletteType, position) {
 const demo = createDemoWorkflow()
 
 export const useWorkflowBuilderStore = create((set, get) => ({
+  workflowId: null,
   workflowName: demo.workflowName,
   nodes: demo.nodes,
   edges: demo.edges,
@@ -65,6 +66,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
   isPublished: false,
   isActive: true,
   saveStatus: 'saved',
+  options: { forms: [], reasons: [] },
   past: [],
   future: [],
 
@@ -109,6 +111,28 @@ export const useWorkflowBuilderStore = create((set, get) => ({
 
   setIsActive: (isActive) => {
     set({ isActive, saveStatus: 'unsaved' })
+  },
+
+  setWorkflowId: (workflowId) => set({ workflowId }),
+
+  setOptions: (options) => set({ options: { forms: [], reasons: [], ...(options || {}) } }),
+
+  setSaveStatus: (saveStatus) => set({ saveStatus }),
+
+  /** Replace the whole canvas with a graph loaded from the API (or a blank/new flow). */
+  loadWorkflowGraph: ({ workflowId = null, workflowName, nodes = [], edges = [], isActive = true }) => {
+    set({
+      workflowId,
+      workflowName: workflowName ?? get().workflowName,
+      nodes,
+      edges,
+      isActive,
+      selectedNodeId: null,
+      isPublished: false,
+      saveStatus: 'saved',
+      past: [],
+      future: [],
+    })
   },
 
   setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),

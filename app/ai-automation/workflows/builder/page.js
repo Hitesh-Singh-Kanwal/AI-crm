@@ -7,7 +7,7 @@ export default function WorkflowBuilderPage() {
   return (
     <MainLayout
       title="Workflow Builder"
-      subtitle="Visual automation prototype"
+      subtitle="Build and manage automations"
       mainClassName="overflow-hidden !p-2 sm:!p-3"
     >
       <WorkflowBuilderClient />

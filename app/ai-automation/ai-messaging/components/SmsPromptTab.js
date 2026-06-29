@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, CheckCircle, Lock, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2, CheckCircle, Lock, Search, Brain, Zap, DollarSign, Loader2, CheckCircle2 } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { useToast, toast as pushToast } from '@/components/ui/toast'
@@ -169,6 +170,140 @@ function ViewDialog({ open, onClose, prompt }) {
   )
 }
 
+// ─── Model selector ───────────────────────────────────────────────────────────
+
+const SMS_MODELS = [
+  {
+    value: 'gpt-4o',
+    label: 'GPT-4o',
+    badge: 'Recommended',
+    badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300',
+    description: 'Best reasoning and context understanding. Handles budget constraints, timelines, and complex scenarios naturally.',
+    icon: Brain,
+    iconClass: 'text-emerald-600 dark:text-emerald-400',
+  },
+  {
+    value: 'gpt-4o-mini',
+    label: 'GPT-4o Mini',
+    badge: 'Balanced',
+    badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300',
+    description: 'Faster and cheaper than GPT-4o. Good for straightforward conversations with clear prompts.',
+    icon: Zap,
+    iconClass: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    value: 'gpt-3.5-turbo',
+    label: 'GPT-3.5 Turbo',
+    badge: 'Budget',
+    badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
+    description: 'Most affordable option. Works for simple Q&A but may miss context in nuanced conversations.',
+    icon: DollarSign,
+    iconClass: 'text-amber-600 dark:text-amber-400',
+  },
+]
+
+function ModelSelector() {
+  const toast = useToast()
+  const [selectedModel, setSelectedModel] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.get('/api/ai-settings')
+      .then((r) => { if (r.success) setSelectedModel(r.data?.smsModel || 'gpt-4o') })
+      .catch(() => setSelectedModel('gpt-4o'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleSave = async (value) => {
+    if (value === selectedModel) return
+    setSaving(true)
+    try {
+      const result = await api.put('/api/ai-settings', { smsModel: value })
+      if (result.success) {
+        setSelectedModel(value)
+        toast.success({ title: 'Model updated', message: `SMS agent will now use ${SMS_MODELS.find((m) => m.value === value)?.label}` })
+      } else {
+        toast.error({ title: 'Error', message: result.error || 'Unable to update model' })
+      }
+    } catch {
+      toast.error({ title: 'Error', message: 'Unexpected error' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-sm">
+      <CardContent className="p-4 sm:p-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">SMS Agent Model</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Choose the AI model powering your texting agent. Takes effect on the next conversation.
+            </p>
+          </div>
+          {saving && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Saving…
+            </div>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="flex h-24 items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {SMS_MODELS.map(({ value, label, badge, badgeClass, description, icon: Icon, iconClass }) => {
+              const isSelected = selectedModel === value
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={saving}
+                  onClick={() => handleSave(value)}
+                  className={cn(
+                    'group relative flex flex-col gap-3 rounded-xl border p-4 text-left transition-all duration-150',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    isSelected
+                      ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
+                      : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
+                    saving && 'cursor-not-allowed opacity-60',
+                  )}
+                >
+                  {isSelected && (
+                    <span className="absolute right-3 top-3">
+                      <CheckCircle2 className="h-4 w-4 text-primary" />
+                    </span>
+                  )}
+                  <div className={cn(
+                    'flex h-9 w-9 items-center justify-center rounded-lg',
+                    isSelected ? 'bg-primary/10' : 'bg-muted',
+                  )}>
+                    <Icon className={cn('h-4 w-4', isSelected ? 'text-primary' : iconClass)} />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-sm font-semibold text-foreground">{label}</span>
+                      <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', badgeClass)}>
+                        {badge}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Main tab component ───────────────────────────────────────────────────────
 
 export default function SmsPromptTab({ activeView = 'embeddings' }) {
@@ -257,6 +392,11 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
             One active prompt at a time. Studio facts come from the Knowledge Base PDF; conversation
             tone from the Playbook PDF — both are auto-injected into every reply.
           </p>
+        </div>
+
+        {/* Model selector */}
+        <div className="mb-6">
+          <ModelSelector />
         </div>
 
         {/* Toolbar */}

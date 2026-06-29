@@ -66,6 +66,13 @@ export const PALETTE_CATEGORIES = [
         category: 'action',
       },
       {
+        type: 'ai_agent',
+        label: 'AI Call',
+        description: 'Let an AI agent call the lead',
+        icon: Sparkles,
+        category: 'ai',
+      },
+      {
         type: 'add_tag',
         label: 'Add Tag',
         description: 'Tag the contact for segmentation',
@@ -157,26 +164,66 @@ export const NODE_STYLES = {
   },
 }
 
+export const LEAD_STAGE_OPTIONS = [
+  'new',
+  'engaged',
+  'cold',
+  'booked',
+  'actualized',
+  'no show',
+  'qualified',
+  'disqualified',
+  'human intervention',
+]
+
+const SCHEDULE_DEFAULTS = { leadStage: 'new', description: '' }
+
 export const DEFAULT_NODE_CONFIG = {
-  form_submitted: { formName: 'Lead capture form' },
-  contact_created: { source: 'Website' },
-  appointment_booked: { calendar: 'Main calendar' },
-  tag_added: { tagName: 'New lead' },
+  // Triggers map to the backend `event` (+ form targeting for form submissions).
+  form_submitted: { event: 'form_submission', formID: [], isGenericForm: false, reason: '' },
+  contact_created: { event: 'custom_event', formID: [], isGenericForm: false, reason: '' },
+  appointment_booked: { event: 'custom_event', formID: [], isGenericForm: false, reason: '' },
+  tag_added: { event: 'lead_updated', formID: [], isGenericForm: false, reason: '' },
+  // Actions that the backend can persist as steps.
   send_email: {
+    ...SCHEDULE_DEFAULTS,
+    emailType: 'message',
     subject: '',
-    fromName: 'Studio Team',
-    emailTemplate: 'welcome',
+    body: '',
+    htmlBody: '',
+    emailTemplateId: '',
+    emailTemplateSubject: '',
   },
-  send_sms: { message: '' },
+  send_sms: { ...SCHEDULE_DEFAULTS, message: '', smsTemplateId: '', smsTemplateName: '' },
+  ai_agent: { ...SCHEDULE_DEFAULTS, prompt: '' },
+  wait: { days: 1, hours: 0, minutes: 0 },
+  // Visual-only steps (not stored by the current backend).
   add_tag: { tagName: '' },
   create_task: { title: '', assignee: 'Unassigned' },
   webhook: { url: '', method: 'POST' },
-  wait: { duration: 1, unit: 'days' },
   if_else: { field: 'lead_stage', operator: 'equals', value: 'engaged' },
   split: { paths: 2 },
   goal: { name: 'Conversion goal' },
-  ai_agent: { prompt: 'Follow up with the lead professionally.' },
   ai_chatbot: { greeting: 'Hi! How can I help you today?' },
+}
+
+/** Builder node types that map directly to a backend workflow step. */
+export const BACKEND_STEP_NODES = new Set(['send_email', 'send_sms', 'ai_agent'])
+
+/** Node types the backend can understand (trigger config, schedulable steps, and wait offsets). */
+export const BACKEND_AWARE_NODES = new Set([
+  'form_submitted',
+  'contact_created',
+  'appointment_booked',
+  'tag_added',
+  'send_email',
+  'send_sms',
+  'ai_agent',
+  'wait',
+])
+
+export function isBackendSupportedNode(paletteType) {
+  return BACKEND_AWARE_NODES.has(paletteType)
 }
 
 export const EMAIL_TEMPLATE_OPTIONS = [

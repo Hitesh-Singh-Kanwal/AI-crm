@@ -1,6 +1,10 @@
-import WorkflowDetailsClient from '@/components/workflow/WorkflowDetailsClient'
+import { redirect } from 'next/navigation'
 
 export default async function WorkflowDetailPage({ params }) {
   const resolvedParams = await params
-  return <WorkflowDetailsClient id={resolvedParams?.id} listHref="/ai-automation/workflows" />
+  const id = resolvedParams?.id
+  if (id) {
+    redirect(`/ai-automation/workflows/builder?id=${id}`)
+  }
+  redirect('/ai-automation/workflows')
 }
