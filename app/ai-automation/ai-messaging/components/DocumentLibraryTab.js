@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Pencil, Search, FileText, CheckCircle, ChevronLeft, ChevronRight, Power } from 'lucide-react'
+import { Plus, Pencil, Search, FileText, CheckCircle, ChevronLeft, ChevronRight, Power, Eye, Trash2 } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { getToken } from '@/lib/auth'
 import { useToast, toast as pushToast } from '@/components/ui/toast'
 import {
   Dialog,
@@ -223,6 +224,7 @@ export default function DocumentLibraryTab({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingDoc, setEditingDoc] = useState(null)
   const [togglingId, setTogglingId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -247,6 +249,26 @@ export default function DocumentLibraryTab({
       setLoading(false)
     }
   }, [endpoint, page, search])
+
+  const handleViewFile = async (doc) => {
+    try {
+      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080').replace(/\/$/, '')
+      const token = getToken()
+      const response = await fetch(`${baseUrl}${endpoint}/${doc._id}/file`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!response.ok) {
+        pushToast.error('Error', { description: 'Unable to load file. Try re-uploading the document.' })
+        return
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch {
+      pushToast.error('Error', { description: 'Failed to open file.' })
+    }
+  }
 
   const handleToggleActive = async (doc) => {
     const next = !doc.isActive
@@ -273,6 +295,24 @@ export default function DocumentLibraryTab({
       toast.error({ title: 'Error', message: 'Unexpected error' })
     } finally {
       setTogglingId(null)
+    }
+  }
+
+  const handleDelete = async (doc) => {
+    if (!window.confirm(`Delete "${doc.name}"? This cannot be undone.`)) return
+    setDeletingId(doc._id)
+    try {
+      const result = await api.delete(`${endpoint}/${doc._id}`)
+      if (result.success) {
+        toast.success({ title: 'Deleted', message: `"${doc.name}" has been deleted` })
+        load()
+      } else {
+        toast.error({ title: 'Error', message: result.error || 'Unable to delete document' })
+      }
+    } catch {
+      toast.error({ title: 'Error', message: 'Unexpected error' })
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -376,41 +416,70 @@ export default function DocumentLibraryTab({
                   </div>
                 </div>
 
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  {/* View */}
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 gap-1 text-xs"
+                    title="View document"
+                    className="h-8 w-8 p-0"
+                    onClick={() => handleViewFile(d)}
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </Button>
+
+                  {/* Edit */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    title="Edit"
+                    className="h-8 w-8 p-0"
                     onClick={() => {
                       setEditingDoc(d)
                       setDialogOpen(true)
                     }}
                   >
-                    <Pencil className="h-3 w-3" /> Edit
+                    <Pencil className="h-3.5 w-3.5" />
                   </Button>
+
+                  {/* Activate / Deactivate */}
                   {d.isActive ? (
                     requireActive ? null : (
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 gap-1 text-xs"
+                        title="Deactivate"
+                        className="h-8 w-8 p-0"
                         onClick={() => handleToggleActive(d)}
                         disabled={togglingId === d._id}
                       >
-                        <Power className="h-3 w-3" />
-                        {togglingId === d._id ? 'Updating…' : 'Deactivate'}
+                        <Power className="h-3.5 w-3.5" />
                       </Button>
                     )
                   ) : (
                     <Button
                       variant="gradient"
                       size="sm"
-                      className="h-8 gap-1 text-xs"
+                      className="h-8 gap-1.5 px-3 text-xs"
                       onClick={() => handleToggleActive(d)}
                       disabled={togglingId === d._id}
                     >
-                      <CheckCircle className="h-3 w-3" />
+                      <CheckCircle className="h-3.5 w-3.5" />
                       {togglingId === d._id ? 'Activating…' : 'Set active'}
+                    </Button>
+                  )}
+
+                  {/* Delete — hidden for active docs */}
+                  {!d.isActive && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      title="Delete"
+                      className="h-8 w-8 p-0 text-red-500 hover:border-red-300 hover:text-red-600"
+                      onClick={() => handleDelete(d)}
+                      disabled={deletingId === d._id}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>

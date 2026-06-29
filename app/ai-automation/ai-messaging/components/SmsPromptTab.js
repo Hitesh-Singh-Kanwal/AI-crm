@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, CheckCircle, Lock, Search, Brain, Zap, DollarSign, Loader2, CheckCircle2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, CheckCircle, Lock, Search, Brain, Zap, DollarSign, Loader2, CheckCircle2, Eye } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -471,11 +471,13 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
                 </div>
 
                 {/* Right: actions */}
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  {/* View */}
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 text-xs"
+                    title="View prompt"
+                    className="h-8 w-8 p-0"
                     disabled={viewLoading}
                     onClick={async () => {
                       setViewLoading(true)
@@ -492,14 +494,16 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
                       }
                     }}
                   >
-                    View
+                    <Eye className="h-3.5 w-3.5" />
                   </Button>
 
+                  {/* Edit */}
                   {!p.isLocked && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 gap-1 text-xs"
+                      title="Edit"
+                      className="h-8 w-8 p-0"
                       onClick={async () => {
                         const result = await api.get(`/api/sms-prompt/${p._id}`)
                         if (result.success) {
@@ -510,15 +514,16 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
                         }
                       }}
                     >
-                      <Pencil className="h-3 w-3" /> Edit
+                      <Pencil className="h-3.5 w-3.5" />
                     </Button>
                   )}
 
+                  {/* Set active — keep text */}
                   {!p.isActive && (
                     <Button
                       size="sm"
                       variant="gradient"
-                      className="h-8 text-xs"
+                      className="h-8 px-3 text-xs"
                       onClick={() => handleActivate(p)}
                       disabled={activatingId === p._id}
                     >
@@ -526,11 +531,13 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
                     </Button>
                   )}
 
+                  {/* Delete */}
                   {!p.isLocked && !p.isActive && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 text-red-600 hover:border-red-300 hover:text-red-700 dark:text-red-400"
+                      title="Delete"
+                      className="h-8 w-8 p-0 text-red-500 hover:border-red-300 hover:text-red-600"
                       onClick={() => handleDelete(p)}
                       disabled={deletingId === p._id}
                     >
