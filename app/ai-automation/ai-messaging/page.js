@@ -45,6 +45,7 @@ function AiMessagingPageInner() {
             subheading="Upload studio PDFs (locations, classes, pricing, policies) the AI agent can reference."
             entityLabel="document"
             entityPlural="documents"
+            requireActive
           />
           <DocumentLibraryTab
             activeView={activeTab}

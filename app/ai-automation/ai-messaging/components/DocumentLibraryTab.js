@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Pencil, Search, FileText, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Pencil, Search, FileText, CheckCircle, ChevronLeft, ChevronRight, Power } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -210,7 +210,9 @@ export default function DocumentLibraryTab({
   subheading,
   entityLabel,
   entityPlural,
+  requireActive = false,
 }) {
+  const toast = useToast()
   const [docs, setDocs] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -220,6 +222,7 @@ export default function DocumentLibraryTab({
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingDoc, setEditingDoc] = useState(null)
+  const [togglingId, setTogglingId] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -244,6 +247,34 @@ export default function DocumentLibraryTab({
       setLoading(false)
     }
   }, [endpoint, page, search])
+
+  const handleToggleActive = async (doc) => {
+    const next = !doc.isActive
+    setTogglingId(doc._id)
+    try {
+      const result = await api.put(`${endpoint}/${doc._id}`, { isActive: next })
+      if (!result.success) {
+        toast.error({ title: 'Error', message: result.error || result.message || 'Unable to update status' })
+        return
+      }
+
+      // Enforce a single active document: deactivate any other active ones in view.
+      if (next) {
+        const others = docs.filter((d) => d._id !== doc._id && d.isActive)
+        await Promise.all(others.map((d) => api.put(`${endpoint}/${d._id}`, { isActive: false })))
+      }
+
+      toast.success({
+        title: next ? 'Activated' : 'Deactivated',
+        message: next ? `"${doc.name}" is now the active ${entityLabel}` : `"${doc.name}" is no longer active`,
+      })
+      load()
+    } catch {
+      toast.error({ title: 'Error', message: 'Unexpected error' })
+    } finally {
+      setTogglingId(null)
+    }
+  }
 
   useEffect(() => {
     if (activeView !== tabValue) return
@@ -357,6 +388,31 @@ export default function DocumentLibraryTab({
                   >
                     <Pencil className="h-3 w-3" /> Edit
                   </Button>
+                  {d.isActive ? (
+                    requireActive ? null : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 text-xs"
+                        onClick={() => handleToggleActive(d)}
+                        disabled={togglingId === d._id}
+                      >
+                        <Power className="h-3 w-3" />
+                        {togglingId === d._id ? 'Updating…' : 'Deactivate'}
+                      </Button>
+                    )
+                  ) : (
+                    <Button
+                      variant="gradient"
+                      size="sm"
+                      className="h-8 gap-1 text-xs"
+                      onClick={() => handleToggleActive(d)}
+                      disabled={togglingId === d._id}
+                    >
+                      <CheckCircle className="h-3 w-3" />
+                      {togglingId === d._id ? 'Activating…' : 'Set active'}
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
