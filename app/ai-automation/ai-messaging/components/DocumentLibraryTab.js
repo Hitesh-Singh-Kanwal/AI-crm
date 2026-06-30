@@ -280,12 +280,6 @@ export default function DocumentLibraryTab({
         return
       }
 
-      // Enforce a single active document: deactivate any other active ones in view.
-      if (next) {
-        const others = docs.filter((d) => d._id !== doc._id && d.isActive)
-        await Promise.all(others.map((d) => api.put(`${endpoint}/${d._id}`, { isActive: false })))
-      }
-
       toast.success({
         title: next ? 'Activated' : 'Deactivated',
         message: next ? `"${doc.name}" is now the active ${entityLabel}` : `"${doc.name}" is no longer active`,
