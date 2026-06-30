@@ -6,11 +6,17 @@ import api from "@/lib/api";
 
 const PAYMENT_METHODS = ["cash", "card", "online", "cheque", "other"];
 
+function todayISO() {
+  const d = new Date();
+  const offset = d.getTimezoneOffset();
+  return new Date(d.getTime() - offset * 60 * 1000).toISOString().slice(0, 10);
+}
+
 const BLANK_FORM = {
   teacherID: "",
   label: "",
   packageID: "",
-  purchaseDate: "",
+  purchaseDate: todayISO(),
   services: [],
   billingType: "one_time",
   billing: {
@@ -158,7 +164,10 @@ export default function NewEnrollmentPackageInline({
   onCancel,
   onSubmit,
 }) {
-  const [form, setForm] = useState(BLANK_FORM);
+  const [form, setForm] = useState(() => ({
+    ...BLANK_FORM,
+    purchaseDate: todayISO(),
+  }));
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -962,9 +971,9 @@ export default function NewEnrollmentPackageInline({
                     </button>
                     <div className="space-y-1 pt-2 border-t border-border">
                       <div className="flex items-center justify-between">
-                        <p className="text-[11px] text-muted-foreground">Scheduled total</p>
+                        <p className="text-[11px] text-muted-foreground">Remaining to schedule</p>
                         <p className={`text-[12px] font-semibold ${Math.abs(customInstallmentsTotal - total) > 0.01 ? "text-destructive" : "text-foreground"}`}>
-                          ${customInstallmentsTotal.toFixed(2)}
+                          ${(total - customInstallmentsTotal).toFixed(2)}
                         </p>
                       </div>
                       <div className="flex items-center justify-between">

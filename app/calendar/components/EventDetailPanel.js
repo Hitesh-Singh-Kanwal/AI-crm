@@ -1114,6 +1114,17 @@ export default function EventDetailPanel({
   const [selectedStudentName, setSelectedStudentName] = useState("");
   const isRecurring = Boolean(event.recurrenceGroupID);
 
+  // Reset to the appointment view whenever the panel is closed so reopening a
+  // booking always lands on the appointment details rather than a previously
+  // opened student account.
+  useEffect(() => {
+    if (!open) {
+      setSelectedStudentId(null);
+      setSelectedStudentName("");
+      setIsEditing(false);
+    }
+  }, [open]);
+
   const [teacherOptions, setTeacherOptions] = useState([]);
   const [customerOptions, setCustomerOptions] = useState([]);
   const [customerDetails, setCustomerDetails] = useState([]);

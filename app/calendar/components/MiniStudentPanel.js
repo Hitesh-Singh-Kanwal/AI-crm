@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, Pin, Plus, Trash2, ChevronDown } from "lucide-react";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  Pin,
+  Plus,
+  Trash2,
+  ChevronDown,
+  ExternalLink,
+} from "lucide-react";
 import api from "@/lib/api";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 
@@ -2550,6 +2558,13 @@ export default function MiniStudentPanel({
               <p className="text-[11px] text-muted-foreground">
                 Student Account
               </p>
+              <Link
+                href={`/settings/users-roles/customers/${customerId}`}
+                className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Full Account
+              </Link>
             </div>
           )}
           {tabs}
@@ -2579,6 +2594,13 @@ export default function MiniStudentPanel({
             </p>
             <p className="text-[10px] text-muted-foreground">Student Account</p>
           </div>
+          <Link
+            href={`/settings/users-roles/customers/${customerId}`}
+            className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Full Account
+          </Link>
         </div>
         {tabs}
         {body}
