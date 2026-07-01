@@ -525,6 +525,7 @@ export default function MiniStudentPanel({
       let allEnr = [];
       if (enrResult.success) {
         allEnr = enrResult.data || [];
+        setEnrollments(allEnr);
         const allFlex = allEnr.filter(
           (e) => e.package?.billingType === "flexible",
         );
