@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink } from 'lucide-react'
+import { Search, Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink, SlidersHorizontal, X } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -10,6 +10,8 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import FilterSheet from '@/components/customers/FilterSheet'
+import { describeFilter } from '@/lib/customerFilters'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -306,6 +308,8 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState([])
   const [locations, setLocations] = useState([])
   const [teachers, setTeachers] = useState([])
+  const [memberships, setMemberships] = useState([])
+  const [tagOptions, setTagOptions] = useState([])
   const [teacherFilter, setTeacherFilter] = useState('')
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -320,6 +324,10 @@ export default function CustomersPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
 
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false)
+  const [savedFilters, setSavedFilters] = useState([])
+  const [activeFilterId, setActiveFilterId] = useState(null)
+
   const toast = useToast()
 
   useEffect(() => {
@@ -329,6 +337,12 @@ export default function CustomersPage() {
     api.get('/api/teacher?limit=200&status=active').then((res) => {
       if (res.success) setTeachers(res.data || [])
     })
+    api.get('/api/membership?limit=200').then((res) => {
+      if (res.success) setMemberships(res.data || [])
+    })
+    api.get('/api/customer/tags').then((res) => {
+      if (res.success) setTagOptions(res.data || [])
+    })
   }, [])
 
   useEffect(() => {
@@ -336,13 +350,19 @@ export default function CustomersPage() {
     return () => clearTimeout(timer)
   }, [search])
 
-  useEffect(() => { setCurrentPage(1) }, [debouncedSearch, teacherFilter])
+  const activeFilter = savedFilters.find((f) => f.id === activeFilterId) || null
+
+  useEffect(() => { setCurrentPage(1) }, [debouncedSearch, teacherFilter, activeFilterId])
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true)
     const params = new URLSearchParams({ page: currentPage, limit })
     if (debouncedSearch) params.set('search', debouncedSearch)
     if (teacherFilter) params.set('teacherID', teacherFilter)
+    if (activeFilter) {
+      params.set('filterMode', activeFilter.mode)
+      params.set('filters', JSON.stringify(activeFilter.filters))
+    }
     const result = await api.get(`/api/customer?${params}`)
     if (result.success) {
       setCustomers(result.data || [])
@@ -351,7 +371,7 @@ export default function CustomersPage() {
       setTotalPages(Math.max(1, Math.ceil(t / limit)))
     }
     setLoading(false)
-  }, [currentPage, debouncedSearch, teacherFilter])
+  }, [currentPage, debouncedSearch, teacherFilter, activeFilter])
 
   useEffect(() => { fetchCustomers() }, [fetchCustomers])
 
@@ -372,6 +392,17 @@ export default function CustomersPage() {
   const locationName = (id) => {
     const loc = locations.find((l) => String(l._id) === String(id))
     return loc?.name || '—'
+  }
+
+  const handleApplyFilter = ({ mode, filters }) => {
+    const id = `filter-${Date.now()}`
+    setSavedFilters((prev) => [...prev, { id, mode, filters }])
+    setActiveFilterId(id)
+  }
+
+  const removeFilter = (id) => {
+    setSavedFilters((prev) => prev.filter((f) => f.id !== id))
+    setActiveFilterId((current) => (current === id ? null : current))
   }
 
   return (
@@ -413,7 +444,50 @@ export default function CustomersPage() {
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           </div>
+          <Button variant="outline" size="sm" className="h-9" onClick={() => setFilterSheetOpen(true)}>
+            <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+            Filter
+          </Button>
         </div>
+
+        {/* Saved filter tabs */}
+        {savedFilters.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveFilterId(null)}
+              className={`h-8 rounded-lg border px-3 text-[12px] font-medium transition-colors ${
+                activeFilterId === null
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-background text-muted-foreground hover:bg-muted/40'
+              }`}
+            >
+              All customers
+            </button>
+            {savedFilters.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setActiveFilterId(f.id)}
+                className={`group flex h-8 items-center gap-1.5 rounded-lg border pl-3 pr-2 text-[12px] font-medium transition-colors ${
+                  activeFilterId === f.id
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background text-muted-foreground hover:bg-muted/40'
+                }`}
+                title={describeFilter(f, locations)}
+              >
+                <span className="max-w-[220px] truncate">{describeFilter(f, locations)}</span>
+                <span
+                  role="button"
+                  onClick={(e) => { e.stopPropagation(); removeFilter(f.id) }}
+                  className="rounded-full p-0.5 hover:bg-muted"
+                >
+                  <X className="h-3 w-3" />
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Table */}
         <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -532,6 +606,16 @@ export default function CustomersPage() {
         onSaved={fetchCustomers}
         initial={editingCustomer}
         locations={locations}
+      />
+
+      {/* Filter Sheet */}
+      <FilterSheet
+        open={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        onApply={handleApplyFilter}
+        locations={locations}
+        membershipNames={[...new Set(memberships.map((m) => m.membershipName).filter(Boolean))]}
+        tagOptions={tagOptions}
       />
 
       {/* Delete Confirm */}

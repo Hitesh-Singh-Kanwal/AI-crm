@@ -24,6 +24,7 @@ import {
   Users,
   FileText,
   Send,
+  Tag,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -38,6 +39,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 import CustomerMembershipsTab from "@/components/membership/CustomerMembershipsTab";
 import CustomerWalletTab from "@/components/wallet/CustomerWalletTab";
+import CancelRefundDialog from "@/components/shared/CancelRefundDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import api from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
@@ -241,6 +243,125 @@ const TABS = [
   { id: "members", label: "Members", Icon: Users },
   { id: "contracts", label: "Contracts", Icon: FileText },
 ];
+
+// ─── Tags ────────────────────────────────────────────────────────────────────
+
+function TagsEditor({ customer, onUpdated }) {
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [orgTags, setOrgTags] = useState([]);
+  const toast = useToast();
+  const tags = customer.tags || [];
+
+  useEffect(() => {
+    api.get("/api/customer/tags").then((res) => {
+      if (res.success) setOrgTags(res.data || []);
+    });
+  }, []);
+
+  async function saveTags(nextTags) {
+    setSaving(true);
+    const res = await api.put(`/api/customer/${customer._id}`, { tags: nextTags });
+    if (res.success) {
+      onUpdated();
+      setOrgTags((prev) => [...new Set([...prev, ...nextTags])].sort());
+    } else {
+      toast.error(res.error || "Failed to update tags.");
+    }
+    setSaving(false);
+  }
+
+  function addTag(e) {
+    e.preventDefault();
+    const value = draft.trim();
+    if (!value || tags.includes(value)) return;
+    setDraft("");
+    saveTags([...tags, value]);
+  }
+
+  function removeTag(tag) {
+    saveTags(tags.filter((t) => t !== tag));
+  }
+
+  const suggestions = orgTags.filter((t) => !tags.includes(t));
+  const autoTags = customer.autoTags || [];
+
+  return (
+    <div>
+      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        Tags
+      </p>
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {tags.length === 0 && autoTags.length === 0 && (
+          <p className="text-[13px] text-muted-foreground">No tags yet.</p>
+        )}
+        {autoTags.map((tag) => (
+          <span
+            key={`auto-${tag}`}
+            title="Automatically applied — recomputed nightly"
+            className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
+          >
+            <Tag className="h-3 w-3" />
+            {tag}
+          </span>
+        ))}
+        {tags.map((tag) => (
+          <span
+            key={tag}
+            className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary"
+          >
+            <Tag className="h-3 w-3" />
+            {tag}
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => removeTag(tag)}
+              className="ml-0.5 rounded-full p-0.5 hover:bg-primary/20"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {suggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {suggestions.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              disabled={saving}
+              onClick={() => saveTags([...tags, tag])}
+              className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:border-primary hover:text-primary"
+            >
+              <Plus className="h-3 w-3" />
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={addTag} className="flex gap-2">
+        <input
+          type="text"
+          list="tag-suggestions"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Add a tag…"
+          className="h-8 flex-1 max-w-[200px] rounded-lg border border-border bg-background px-2.5 text-[12px] text-foreground outline-none focus:border-primary"
+        />
+        <datalist id="tag-suggestions">
+          {orgTags.map((tag) => (
+            <option key={tag} value={tag} />
+          ))}
+        </datalist>
+        <Button type="submit" size="sm" variant="outline" className="h-8 px-2.5" disabled={saving || !draft.trim()}>
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </form>
+    </div>
+  );
+}
 
 // ─── Profile Tab ─────────────────────────────────────────────────────────────
 
@@ -748,6 +869,11 @@ function ProfileTab({ customer, locations, onUpdated }) {
                   );
                 })()}
               </div>
+
+              <div className="border-t border-border" />
+
+              {/* Tags */}
+              <TagsEditor customer={customer} onUpdated={onUpdated} />
             </div>
           )}
         </div>
@@ -1754,11 +1880,12 @@ function PackagesTab({ customerID }) {
     setAdding(false);
   }
 
-  async function handleCancel() {
+  async function handleCancel(refundOption, refundAmount) {
     if (!cancelTarget) return;
     setCancelling(true);
     const res = await api.patch(
       `/api/customer-package/${cancelTarget._id}/cancel`,
+      { refundOption, refundAmount },
     );
     if (res.success) {
       toast.success("Package cancelled.");
@@ -1895,6 +2022,7 @@ function PackagesTab({ customerID }) {
                           setCancelTarget({
                             _id: enr._id,
                             packageName: pkg.packageName,
+                            maxRefundable: Math.max(0, collected - refunded),
                           })
                         }
                       >
@@ -2222,42 +2350,15 @@ function PackagesTab({ customerID }) {
       />
 
       {/* Cancel confirm */}
-      <Dialog
+      <CancelRefundDialog
         open={Boolean(cancelTarget)}
-        onOpenChange={(v) => {
-          if (!v) setCancelTarget(null);
-        }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Cancel Package</DialogTitle>
-          </DialogHeader>
-          <p className="text-[13px] text-muted-foreground mt-1">
-            Cancel{" "}
-            <span className="font-semibold text-foreground">
-              {cancelTarget?.packageName}
-            </span>
-            ? Sessions will no longer be used for new bookings.
-          </p>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCancelTarget(null)}
-            >
-              Keep
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={cancelling}
-              onClick={handleCancel}
-            >
-              {cancelling ? "Cancelling…" : "Cancel Package"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        onClose={() => setCancelTarget(null)}
+        title="Cancel Package"
+        itemName={cancelTarget?.packageName}
+        maxRefundable={cancelTarget?.maxRefundable ?? 0}
+        submitting={cancelling}
+        onConfirm={handleCancel}
+      />
 
       {/* Extend expiry */}
       <Dialog
@@ -2877,6 +2978,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null);
   const [addInstallTarget, setAddInstallTarget] = useState(null);
   const [expandedServices, setExpandedServices] = useState(new Set());
+  const [calendarEvents, setCalendarEvents] = useState([]);
 
   function toggleService(key) {
     setExpandedServices((prev) => {
@@ -2891,10 +2993,13 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [enrRes, allRes] = await Promise.all([
+    const [enrRes, allRes, calRes] = await Promise.all([
       api.get(`/api/enrollment?customerID=${customerID}`),
       api.get("/api/package?limit=200&isActive=true"),
+      api.get(`/api/calendar/customer/${customerID}`),
     ]);
+    if (calRes.success && Array.isArray(calRes.data))
+      setCalendarEvents(calRes.data);
     if (allRes.success) setAllPkgs(allRes.data || []);
     if (enrRes.success) {
       const list = enrRes.data || [];
@@ -3188,11 +3293,12 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     setAdding(false);
   }
 
-  async function handleEnrCancel() {
+  async function handleEnrCancel(refundOption, refundAmount) {
     if (!cancelTarget) return;
     setCancelling(true);
     const res = await api.patch(
       `/api/customer-package/${cancelTarget.enrollmentId}/cancel`,
+      { refundOption, refundAmount },
     );
     if (res.success) {
       toast.success("Package cancelled.");
@@ -3466,6 +3572,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                               setCancelTarget({
                                 enrollmentId: enr._id,
                                 packageName: cp.packageName,
+                                maxRefundable: Math.max(0, collected - refunded),
                               })
                             }
                           >
@@ -3752,133 +3859,114 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                       </div>
                                       {isExpanded && (
                                         <div className="border-t border-border/50 bg-muted/10 px-4 py-4 pl-10">
-                                          <div className="grid grid-cols-3 gap-0 divide-x divide-border rounded-lg border border-border overflow-hidden">
-                                            {/* Pricing */}
-                                            <div className="px-4 py-3">
-                                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">
-                                                Pricing
-                                              </p>
-                                              <div className="space-y-2">
-                                                <div className="flex justify-between items-center gap-4">
-                                                  <span className="text-[12px] text-muted-foreground">
-                                                    Price / session
-                                                  </span>
-                                                  <span className="text-[12px] font-semibold text-foreground">
-                                                    $
-                                                    {Number(
-                                                      svc.pricePerSession || 0,
-                                                    ).toFixed(2)}
-                                                  </span>
-                                                </div>
-                                                <div className="flex justify-between items-center gap-4">
-                                                  <span className="text-[12px] text-muted-foreground">
-                                                    Sessions × {sessTotal}
-                                                  </span>
-                                                  <span className="text-[12px] font-semibold text-foreground">
-                                                    ${svcTotal.toFixed(2)}
-                                                  </span>
-                                                </div>
-                                                {(() => {
-                                                  const svcDiscount = Math.max(
-                                                    0,
-                                                    svcTotal -
-                                                      (Number(
-                                                        svc.finalAmount,
-                                                      ) || 0),
-                                                  );
-                                                  return svcDiscount > 0 ? (
-                                                    <div className="flex justify-between items-center gap-4 pt-1 border-t border-border/50">
-                                                      <span className="text-[12px] text-muted-foreground">
-                                                        Discount
-                                                      </span>
-                                                      <span className="text-[12px] font-semibold text-amber-500">
-                                                        -$
-                                                        {svcDiscount.toFixed(2)}
-                                                      </span>
-                                                    </div>
-                                                  ) : null;
-                                                })()}
-                                              </div>
-                                            </div>
-                                            {/* Sessions */}
-                                            <div className="px-4 py-3">
-                                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">
-                                                Sessions
-                                              </p>
-                                              <div className="space-y-2">
-                                                {[
-                                                  {
-                                                    label: "Enrolled",
-                                                    value: sessTotal,
-                                                    cls: "text-foreground",
-                                                  },
-                                                  {
-                                                    label: "Completed",
-                                                    value: sessUsed,
-                                                    cls: "text-blue-500",
-                                                  },
-                                                  {
-                                                    label: "Scheduled",
-                                                    value: sessSched,
-                                                    cls: "text-violet-500",
-                                                  },
-                                                  {
-                                                    label: "Remaining",
-                                                    value: sessRemaining,
-                                                    cls: "text-emerald-500",
-                                                  },
-                                                ].map(
-                                                  ({ label, value, cls }) => (
-                                                    <div
-                                                      key={label}
-                                                      className="flex justify-between items-center gap-4"
-                                                    >
-                                                      <span className="text-[12px] text-muted-foreground">
-                                                        {label}
-                                                      </span>
+                                          {(() => {
+                                            const svcEvents = calendarEvents
+                                              .filter((e) => {
+                                                const cs = e.calendarServiceID;
+                                                if (!cs) return false;
+                                                const matchesService = svc.serviceCode
+                                                  ? cs.serviceCode === svc.serviceCode
+                                                  : cs.serviceName === svc.serviceName;
+                                                if (!matchesService) return false;
+                                                const charge = (e.charges || []).find(
+                                                  (c) =>
+                                                    String(c.customerID) ===
+                                                      String(customerID) &&
+                                                    c.method === "package",
+                                                );
+                                                if (!charge) return false;
+                                                const chargedEnrId =
+                                                  charge.enrollmentID?._id ??
+                                                  charge.enrollmentID;
+                                                return (
+                                                  String(chargedEnrId) ===
+                                                  String(enr._id)
+                                                );
+                                              })
+                                              .sort(
+                                                (a, b) =>
+                                                  new Date(b.startDateTime) -
+                                                  new Date(a.startDateTime),
+                                              );
+                                            if (svcEvents.length === 0)
+                                              return (
+                                                <p className="text-[12px] text-muted-foreground px-1 py-2">
+                                                  No lessons scheduled yet for
+                                                  this service.
+                                                </p>
+                                              );
+                                            return (
+                                              <div className="rounded-lg border border-border overflow-hidden">
+                                                <div className="grid grid-cols-[1fr_140px_150px] gap-2 bg-muted/50 border-b border-border px-3 py-2">
+                                                  {["Date & Time", "Teacher", "Status"].map(
+                                                    (h) => (
                                                       <span
-                                                        className={`text-[12px] font-semibold ${cls}`}
+                                                        key={h}
+                                                        className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider"
                                                       >
-                                                        {value}
+                                                        {h}
                                                       </span>
-                                                    </div>
-                                                  ),
-                                                )}
-                                              </div>
-                                            </div>
-                                            {/* Value */}
-                                            <div className="px-4 py-3">
-                                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">
-                                                Value
-                                              </p>
-                                              <div className="space-y-2">
-                                                <div className="flex justify-between items-center gap-4">
-                                                  <span className="text-[12px] text-muted-foreground">
-                                                    Completed ({sessUsed} sess)
-                                                  </span>
-                                                  <span className="text-[12px] font-semibold text-blue-500">
-                                                    $
-                                                    {(
-                                                      sessUsed * effectivePps
-                                                    ).toFixed(2)}
-                                                  </span>
+                                                    ),
+                                                  )}
                                                 </div>
-                                                <div className="flex justify-between items-center gap-4">
-                                                  <span className="text-[12px] text-muted-foreground">
-                                                    Remaining ({sessRemaining}{" "}
-                                                    sess)
-                                                  </span>
-                                                  <span className="text-[12px] font-semibold text-emerald-500">
-                                                    $
-                                                    {(
-                                                      sessRemaining *
-                                                      effectivePps
-                                                    ).toFixed(2)}
-                                                  </span>
-                                                </div>
+                                                {svcEvents.map((ev, idx) => (
+                                                  <div
+                                                    key={ev._id}
+                                                    className={`grid grid-cols-[1fr_140px_150px] gap-2 items-center px-3 py-2 ${idx > 0 ? "border-t border-border/50" : ""}`}
+                                                  >
+                                                    <span className="text-[12px] text-foreground">
+                                                      {new Date(
+                                                        ev.startDateTime,
+                                                      ).toLocaleDateString(
+                                                        "en-US",
+                                                        {
+                                                          weekday: "short",
+                                                          month: "short",
+                                                          day: "numeric",
+                                                          year: "numeric",
+                                                        },
+                                                      )}{" "}
+                                                      ·{" "}
+                                                      {new Date(
+                                                        ev.startDateTime,
+                                                      ).toLocaleTimeString(
+                                                        "en-US",
+                                                        {
+                                                          hour: "numeric",
+                                                          minute: "2-digit",
+                                                          hour12: true,
+                                                        },
+                                                      )}
+                                                    </span>
+                                                    <span className="text-[12px] text-muted-foreground truncate">
+                                                      {ev.teacherID?.name ||
+                                                        "—"}
+                                                    </span>
+                                                    <span
+                                                      className={`inline-flex w-fit max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase leading-tight whitespace-normal text-center ${
+                                                        ev.status ===
+                                                        "completed"
+                                                          ? "bg-blue-500/10 text-blue-500"
+                                                          : ev.status?.startsWith(
+                                                                "cancelled",
+                                                              )
+                                                            ? "bg-red-500/10 text-red-400"
+                                                            : ev.status ===
+                                                                "no_show"
+                                                              ? "bg-orange-500/10 text-orange-500"
+                                                              : "bg-violet-500/10 text-violet-500"
+                                                      }`}
+                                                    >
+                                                      {(ev.status || "scheduled").replace(
+                                                        /_/g,
+                                                        " ",
+                                                      )}
+                                                    </span>
+                                                  </div>
+                                                ))}
                                               </div>
-                                            </div>
-                                          </div>
+                                            );
+                                          })()}
                                         </div>
                                       )}
                                     </div>
@@ -3954,42 +4042,15 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
       />
 
       {/* Cancel confirm */}
-      <Dialog
+      <CancelRefundDialog
         open={Boolean(cancelTarget)}
-        onOpenChange={(v) => {
-          if (!v) setCancelTarget(null);
-        }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Cancel Package</DialogTitle>
-          </DialogHeader>
-          <p className="text-[13px] text-muted-foreground mt-1">
-            Cancel{" "}
-            <span className="font-semibold text-foreground">
-              {cancelTarget?.packageName}
-            </span>
-            ? Sessions will no longer be used for new bookings.
-          </p>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCancelTarget(null)}
-            >
-              Keep
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={cancelling}
-              onClick={handleEnrCancel}
-            >
-              {cancelling ? "Cancelling…" : "Cancel Package"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        onClose={() => setCancelTarget(null)}
+        title="Cancel Package"
+        itemName={cancelTarget?.packageName}
+        maxRefundable={cancelTarget?.maxRefundable ?? 0}
+        submitting={cancelling}
+        onConfirm={handleEnrCancel}
+      />
 
       {/* Add installment dialog — flexible plans only */}
       <AddInstallmentDialog

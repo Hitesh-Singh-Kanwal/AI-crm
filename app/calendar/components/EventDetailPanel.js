@@ -274,6 +274,10 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
 
 // ─── Group student roster (add / remove customers with group packages) ────────
 
+function getFundingOptionId(opt) {
+  return opt.customerMembershipID || opt.enrollmentID || opt.customerPackageID;
+}
+
 function GroupStudentRoster({
   eventId,
   serviceCode,
@@ -301,9 +305,14 @@ function GroupStudentRoster({
   const [saving, setSaving] = useState(null);
   const [payingId, setPayingId] = useState(null); // student currently showing the pay form
   const [payForm, setPayForm] = useState({ amount: "", method: "cash" });
-  const [pendingAdd, setPendingAdd] = useState(null); // { customer, memberIds: [] } - waiting for member selection
+  const [pendingAdd, setPendingAdd] = useState(null); // { customer, memberIds: [], absent } - waiting for member selection
+  const [editingMembersId, setEditingMembersId] = useState(null); // customerId currently editing attending members
+  const [editingMemberIds, setEditingMemberIds] = useState([]); // draft member selection while editing
+  const [editingAbsent, setEditingAbsent] = useState(false); // draft "customer not attending" flag while editing
   const [enrolledMemberMap, setEnrolledMemberMap] = useState({}); // customerId -> [memberId, ...]
   const [eventMemberIds, setEventMemberIds] = useState([]); // flat list of persisted member subdoc ids
+  const [absentCustomerIds, setAbsentCustomerIds] = useState(new Set()); // customerIDs whose member attends in their place
+  const [fundingChoicePrompt, setFundingChoicePrompt] = useState(null); // { context: 'add' | 'edit', options }
 
   const dropRef = useRef(null);
 
@@ -326,6 +335,13 @@ function GroupStudentRoster({
       (evRes.data?.noShowIDs || []).map((id) => String(id?._id ?? id)),
     );
     setNoShowIds(noShows);
+    setAbsentCustomerIds(
+      new Set(
+        (evRes.data?.absentCustomerIDs || []).map((id) =>
+          String(id?._id ?? id),
+        ),
+      ),
+    );
     if (customerIds.length === 0) {
       setEnrolled([]);
       setEnrolledMemberMap({});
@@ -493,16 +509,22 @@ function GroupStudentRoster({
   };
 
   const handleAdd = (customer) => {
+    setFundingChoicePrompt(null);
     if ((customer.members || []).length > 0) {
-      setPendingAdd({ customer, memberIds: [] });
+      setPendingAdd({ customer, memberIds: [], absent: false });
       setAddOpen(false);
       setQuery("");
       return;
     }
-    confirmAdd(customer, []);
+    confirmAdd(customer, [], false);
   };
 
-  const confirmAdd = async (customer, memberIds) => {
+  const confirmAdd = async (
+    customer,
+    memberIds,
+    absent = false,
+    fundingChoice = null,
+  ) => {
     const cid = String(customer._id);
     setSaving(cid);
     const newIds = [...currentIds, cid];
@@ -511,7 +533,15 @@ function GroupStudentRoster({
     const mergedMemberIds = Array.from(
       new Set([...eventMemberIds.map(String), ...memberIds.map(String)]),
     );
-    const body = { customerIDs: newIds, memberIDs: mergedMemberIds };
+    const mergedAbsentIds = Array.from(
+      new Set([...[...absentCustomerIds].map(String), ...(absent ? [cid] : [])]),
+    );
+    const body = {
+      customerIDs: newIds,
+      memberIDs: mergedMemberIds,
+      absentCustomerIDs: mergedAbsentIds,
+      ...(fundingChoice ? { fundingChoice } : {}),
+    };
     const res = await api.put(`/api/calendar/${eventId}`, body);
     if (res.success) {
       const charged = new Set(
@@ -526,6 +556,11 @@ function GroupStudentRoster({
           [cid]: memberIds.map(String),
         }));
       }
+      if (absent) {
+        setAbsentCustomerIds(
+          (prev) => new Set([...prev, cid]),
+        );
+      }
       const memberNames = (customer.members || [])
         .filter((m) => memberIds.map(String).includes(String(m._id)))
         .map((m) => m.name)
@@ -535,9 +570,17 @@ function GroupStudentRoster({
           ? { eventId, customerId: cid, memberNames }
           : null,
       );
+      setFundingChoicePrompt(null);
+      setPendingAdd(null);
+    } else if (res.errorData?.needsFundingChoice) {
+      setFundingChoicePrompt({
+        context: "add",
+        options: res.errorData.options || [],
+      });
+    } else {
+      setPendingAdd(null);
     }
     setSaving(null);
-    setPendingAdd(null);
   };
 
   const handleRemove = async (customerId) => {
@@ -551,9 +594,13 @@ function GroupStudentRoster({
     const newMemberIds = eventMemberIds.filter(
       (id) => !removedMemberIds.has(String(id)),
     );
+    const newAbsentIds = [...absentCustomerIds].filter(
+      (id) => id !== customerId,
+    );
     const res = await api.put(`/api/calendar/${eventId}`, {
       customerIDs: newIds,
       memberIDs: newMemberIds,
+      absentCustomerIDs: newAbsentIds,
     });
     if (res.success) {
       const charged = new Set(
@@ -562,12 +609,68 @@ function GroupStudentRoster({
       setChargedIds(charged);
       setEnrolled((prev) => prev.filter((c) => String(c._id) !== customerId));
       setEventMemberIds(newMemberIds);
+      setAbsentCustomerIds(new Set(newAbsentIds));
       setEnrolledMemberMap((prev) => {
         const next = { ...prev };
         delete next[String(customerId)];
         return next;
       });
       onRosterChanged?.();
+    }
+    setSaving(null);
+  };
+
+  const startEditMembers = (customerId) => {
+    setFundingChoicePrompt(null);
+    setEditingMembersId(customerId);
+    setEditingMemberIds(enrolledMemberMap[customerId] || []);
+    setEditingAbsent(absentCustomerIds.has(customerId));
+  };
+
+  const confirmEditMembers = async (fundingChoice = null) => {
+    if (editingAbsent && editingMemberIds.length === 0) return;
+    const cid = editingMembersId;
+    setSaving(cid);
+    const otherMemberIds = eventMemberIds.filter((id) => {
+      const owner = enrolled.find((c) =>
+        (c.members || []).some((m) => String(m._id) === String(id)),
+      );
+      return owner && String(owner._id) !== String(cid);
+    });
+    const newMemberIds = Array.from(
+      new Set([...otherMemberIds, ...editingMemberIds].map(String)),
+    );
+    const newAbsentIds = editingAbsent
+      ? Array.from(new Set([...absentCustomerIds, cid]))
+      : [...absentCustomerIds].filter((id) => id !== cid);
+    const res = await api.put(`/api/calendar/${eventId}`, {
+      memberIDs: newMemberIds,
+      absentCustomerIDs: newAbsentIds,
+      ...(fundingChoice ? { fundingChoice } : {}),
+    });
+    if (res.success) {
+      setEventMemberIds(newMemberIds);
+      setAbsentCustomerIds(new Set(newAbsentIds));
+      setEnrolledMemberMap((prev) => {
+        const next = { ...prev };
+        if (editingMemberIds.length > 0) next[cid] = editingMemberIds;
+        else delete next[cid];
+        return next;
+      });
+      onRosterChanged?.();
+      setFundingChoicePrompt(null);
+      setEditingMembersId(null);
+      setEditingMemberIds([]);
+      setEditingAbsent(false);
+    } else if (res.errorData?.needsFundingChoice) {
+      setFundingChoicePrompt({
+        context: "edit",
+        options: res.errorData.options || [],
+      });
+    } else {
+      setEditingMembersId(null);
+      setEditingMemberIds([]);
+      setEditingAbsent(false);
     }
     setSaving(null);
   };
@@ -687,11 +790,54 @@ function GroupStudentRoster({
               );
             })}
           </div>
+          {pendingAdd.memberIds.length > 0 && (
+            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={pendingAdd.absent}
+                onChange={(e) =>
+                  setPendingAdd((p) => ({ ...p, absent: e.target.checked }))
+                }
+              />
+              {pendingAdd.customer.name} is not attending — member(s) attend
+              alone
+            </label>
+          )}
+          {fundingChoicePrompt?.context === "add" && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-2.5 py-2 space-y-1.5">
+              <p className="text-[11px] font-semibold text-amber-600">
+                Multiple ways to pay — choose one:
+              </p>
+              <div className="flex flex-col gap-1">
+                {fundingChoicePrompt.options.map((opt) => (
+                  <button
+                    key={getFundingOptionId(opt)}
+                    type="button"
+                    onClick={() =>
+                      confirmAdd(
+                        pendingAdd.customer,
+                        pendingAdd.memberIds,
+                        pendingAdd.absent,
+                        { source: opt.source, id: getFundingOptionId(opt) },
+                      )
+                    }
+                    className="h-7 px-2.5 rounded-md border border-border bg-background text-left text-[11px] font-medium text-foreground hover:bg-muted/50"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex gap-2 pt-0.5">
             <button
               type="button"
               onClick={() =>
-                confirmAdd(pendingAdd.customer, pendingAdd.memberIds)
+                confirmAdd(
+                  pendingAdd.customer,
+                  pendingAdd.memberIds,
+                  pendingAdd.absent,
+                )
               }
               disabled={saving === String(pendingAdd.customer._id)}
               className="h-7 px-3 rounded-md bg-primary text-[11px] font-semibold text-white disabled:opacity-50"
@@ -702,7 +848,7 @@ function GroupStudentRoster({
             </button>
             <button
               type="button"
-              onClick={() => confirmAdd(pendingAdd.customer, [])}
+              onClick={() => confirmAdd(pendingAdd.customer, [], false)}
               disabled={saving === String(pendingAdd.customer._id)}
               className="h-7 px-3 rounded-md border border-border text-[11px] font-medium text-foreground hover:bg-muted/50 disabled:opacity-50"
             >
@@ -890,20 +1036,44 @@ function GroupStudentRoster({
             const attendingMembers = (c.members || []).filter((m) =>
               attendingMemberIds.includes(String(m._id)),
             );
+            const isAbsent = absentCustomerIds.has(cid);
+            const memberNamesJoined = attendingMembers
+              .map((m) => m.name)
+              .join(", ");
             const displayName =
               attendingMembers.length > 0
-                ? `${c.name || "—"} & ${attendingMembers.map((m) => m.name).join(", ")}`
+                ? isAbsent
+                  ? memberNamesJoined
+                  : `${c.name || "—"} & ${memberNamesJoined}`
                 : c.name || "—";
             return (
               <div key={cid}>
                 <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center gap-2">
                   <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                    {(c.name || "?").charAt(0).toUpperCase()}
+                    {(
+                      (isAbsent && attendingMembers[0]?.name) ||
+                      c.name ||
+                      "?"
+                    )
+                      .charAt(0)
+                      .toUpperCase()}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold text-foreground truncate">
-                      {displayName}
-                    </p>
+                    <div className="flex items-center gap-1">
+                      <p className="text-[13px] font-semibold text-foreground truncate">
+                        {displayName}
+                      </p>
+                      {(c.members || []).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => startEditMembers(cid)}
+                          className="shrink-0 text-muted-foreground hover:text-primary"
+                          aria-label="Edit attending members"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                     {membershipCustomerIds.has(cid) ? (
                       <p className="text-[11px] text-brand truncate">
                         Membership
@@ -984,6 +1154,111 @@ function GroupStudentRoster({
                   </button>
                 </div>
                 {/* end student row */}
+                {editingMembersId === cid && (
+                  <div className="mt-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 space-y-2">
+                    <p className="text-[12px] font-semibold text-foreground">
+                      Attending members{" "}
+                      <span className="text-muted-foreground font-normal">
+                        (select who is attending alongside {c.name})
+                      </span>
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(c.members || []).map((m) => {
+                        const selected = editingMemberIds.includes(
+                          String(m._id),
+                        );
+                        return (
+                          <button
+                            key={m._id}
+                            type="button"
+                            onClick={() => {
+                              const set = new Set(editingMemberIds);
+                              selected
+                                ? set.delete(String(m._id))
+                                : set.add(String(m._id));
+                              setEditingMemberIds([...set]);
+                            }}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors ${
+                              selected
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border bg-background text-muted-foreground hover:bg-muted/50"
+                            }`}
+                          >
+                            <span className="h-4 w-4 rounded-full bg-current/20 flex items-center justify-center text-[8px] font-bold shrink-0">
+                              {(m.name || "?").charAt(0).toUpperCase()}
+                            </span>
+                            {m.name}
+                            {m.relationship && (
+                              <span className="opacity-60 capitalize">
+                                · {m.relationship}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {editingMemberIds.length > 0 && (
+                      <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={editingAbsent}
+                          onChange={(e) => setEditingAbsent(e.target.checked)}
+                        />
+                        {c.name} is not attending — member(s) attend alone
+                      </label>
+                    )}
+                    {fundingChoicePrompt?.context === "edit" && (
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-2.5 py-2 space-y-1.5">
+                        <p className="text-[11px] font-semibold text-amber-600">
+                          Multiple ways to pay — choose one:
+                        </p>
+                        <div className="flex flex-col gap-1">
+                          {fundingChoicePrompt.options.map((opt) => (
+                            <button
+                              key={getFundingOptionId(opt)}
+                              type="button"
+                              onClick={() =>
+                                confirmEditMembers({
+                                  source: opt.source,
+                                  id: getFundingOptionId(opt),
+                                })
+                              }
+                              className="h-7 px-2.5 rounded-md border border-border bg-background text-left text-[11px] font-medium text-foreground hover:bg-muted/50"
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => confirmEditMembers()}
+                        disabled={
+                          saving === cid ||
+                          (editingAbsent && editingMemberIds.length === 0)
+                        }
+                        className="h-7 px-3 rounded-md bg-primary text-[11px] font-semibold text-white disabled:opacity-50"
+                      >
+                        {saving === cid ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingMembersId(null);
+                          setEditingMemberIds([]);
+                          setEditingAbsent(false);
+                          setFundingChoicePrompt(null);
+                        }}
+                        disabled={saving === cid}
+                        className="h-7 px-3 rounded-md border border-border text-[11px] font-medium text-foreground hover:bg-muted/50 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {payingId === cid && (
                   <div className="mt-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 space-y-2">
                     <p className="text-[11px] font-semibold text-amber-600">

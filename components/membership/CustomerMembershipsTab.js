@@ -1,20 +1,24 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, RotateCcw, X, Infinity as InfinityIcon } from 'lucide-react'
+import { Plus, RotateCcw, X, Infinity as InfinityIcon, ChevronDown, Snowflake } from 'lucide-react'
 import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import CancelRefundDialog from '@/components/shared/CancelRefundDialog'
+import FreezeMembershipDialog from '@/components/shared/FreezeMembershipDialog'
 import AssignMembershipForm from './AssignMembershipForm'
 
 const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other', 'wallet']
+const ANNUAL_FREEZE_CAP_DAYS = 60
 
 const STATUS_COLORS = {
   active: 'bg-emerald-500/10 text-emerald-600',
   expired: 'bg-muted text-muted-foreground',
   cancelled: 'bg-red-500/10 text-red-600',
+  frozen: 'bg-sky-500/10 text-sky-600',
 }
 const PAYMENT_STATUS_COLORS = {
   paid: 'bg-emerald-500/10 text-emerald-600',
@@ -77,16 +81,33 @@ export default function CustomerMembershipsTab({ customerID }) {
   const [assignOpen, setAssignOpen] = useState(false)
   const [busyId, setBusyId] = useState(null)
   const [payTarget, setPayTarget] = useState(null)
+  const [cancelTarget, setCancelTarget] = useState(null)
+  const [cancelling, setCancelling] = useState(false)
+  const [freezeTarget, setFreezeTarget] = useState(null)
+  const [freezing, setFreezing] = useState(false)
+  const [calendarEvents, setCalendarEvents] = useState([])
+  const [expandedServices, setExpandedServices] = useState(new Set())
+
+  function toggleService(key) {
+    setExpandedServices((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [memRes, planRes] = await Promise.all([
+      const [memRes, planRes, calRes] = await Promise.all([
         api.get(`/api/customer-membership/customer/${customerID}`),
         api.get(`/api/payment-plan/customer/${customerID}`),
+        api.get(`/api/calendar/customer/${customerID}`),
       ])
       if (memRes.success) setMemberships(Array.isArray(memRes.data) ? memRes.data : [])
       else toast.error('Failed to load memberships', { description: memRes.error })
+      if (calRes.success && Array.isArray(calRes.data)) setCalendarEvents(calRes.data)
 
       const map = {}
       if (planRes.success && Array.isArray(planRes.data)) {
@@ -104,12 +125,31 @@ export default function CustomerMembershipsTab({ customerID }) {
 
   useEffect(() => { load() }, [load])
 
-  async function handleCancel(m) {
-    if (!window.confirm(`Cancel "${m.membershipName}"? This stops auto-renewal and ends access.`)) return
+  async function handleCancel(refundOption, refundAmount) {
+    if (!cancelTarget) return
+    setCancelling(true)
+    try {
+      const r = await api.patch(`/api/customer-membership/${cancelTarget._id}/cancel`, { refundOption, refundAmount })
+      if (r.success) { toast.success('Membership cancelled'); setCancelTarget(null); load() }
+      else toast.error('Failed', { description: r.error })
+    } finally { setCancelling(false) }
+  }
+
+  async function handleFreeze(startDate, endDate) {
+    if (!freezeTarget) return
+    setFreezing(true)
+    try {
+      const r = await api.patch(`/api/customer-membership/${freezeTarget._id}/freeze`, { startDate, endDate })
+      if (r.success) { toast.success('Membership frozen'); setFreezeTarget(null); load() }
+      else toast.error('Failed', { description: r.error })
+    } finally { setFreezing(false) }
+  }
+
+  async function handleUnfreeze(m) {
     setBusyId(m._id)
     try {
-      const r = await api.patch(`/api/customer-membership/${m._id}/cancel`)
-      if (r.success) { toast.success('Membership cancelled'); load() }
+      const r = await api.patch(`/api/customer-membership/${m._id}/unfreeze`)
+      if (r.success) { toast.success('Membership unfrozen'); load() }
       else toast.error('Failed', { description: r.error })
     } finally { setBusyId(null) }
   }
@@ -207,19 +247,75 @@ export default function CustomerMembershipsTab({ customerID }) {
               </div>
 
               <div className="space-y-1.5 mb-4">
-                {(m.services || []).map((s, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[12px] border-b border-border/50 last:border-0 py-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.color || '#6366f1' }} />
-                    <span className="text-foreground">{s.serviceName}</span>
-                    <span className="ml-auto flex items-center gap-1 text-muted-foreground">
-                      {s.accessType === 'unlimited' ? (
-                        <><InfinityIcon className="h-3.5 w-3.5" /> Unlimited</>
-                      ) : (
-                        <span className="font-medium text-foreground">{s.sessionsRemaining} / {s.sessionsTotal} left</span>
+                {(m.services || []).map((s, i) => {
+                  const expandKey = `${m._id}-${i}`
+                  const isExpanded = expandedServices.has(expandKey)
+                  const svcEvents = calendarEvents
+                    .filter((e) => {
+                      const cs = e.calendarServiceID
+                      if (!cs) return false
+                      const matchesService = s.serviceCode ? cs.serviceCode === s.serviceCode : cs.serviceName === s.serviceName
+                      if (!matchesService) return false
+                      const charge = (e.charges || []).find(
+                        (c) => String(c.customerID) === String(customerID) && c.method === 'membership',
+                      )
+                      if (!charge) return false
+                      const chargedMembershipId = charge.customerMembershipID?._id ?? charge.customerMembershipID
+                      return String(chargedMembershipId) === String(m._id)
+                    })
+                    .sort((a, b) => new Date(b.startDateTime) - new Date(a.startDateTime))
+                  return (
+                    <div key={i} className="border-b border-border/50 last:border-0">
+                      <div
+                        className="flex items-center gap-2 text-[12px] py-1.5 cursor-pointer hover:bg-muted/20 -mx-1 px-1 rounded"
+                        onClick={() => toggleService(expandKey)}
+                      >
+                        <ChevronDown className={`h-3 w-3 text-muted-foreground shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.color || '#6366f1' }} />
+                        <span className="text-foreground">{s.serviceName}</span>
+                        <span className="ml-auto flex items-center gap-1 text-muted-foreground">
+                          {s.accessType === 'unlimited' ? (
+                            <><InfinityIcon className="h-3.5 w-3.5" /> Unlimited</>
+                          ) : (
+                            <span className="font-medium text-foreground">{s.sessionsRemaining} / {s.sessionsTotal} left</span>
+                          )}
+                        </span>
+                      </div>
+                      {isExpanded && (
+                        <div className="pb-2 pl-5">
+                          {svcEvents.length === 0 ? (
+                            <p className="text-[11px] text-muted-foreground py-1.5">No lessons scheduled yet for this service.</p>
+                          ) : (
+                            <div className="rounded-lg border border-border overflow-hidden">
+                              <div className="grid grid-cols-[1fr_120px_130px] gap-2 bg-muted/50 border-b border-border px-2.5 py-1.5">
+                                {['Date & Time', 'Teacher', 'Status'].map((h) => (
+                                  <span key={h} className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">{h}</span>
+                                ))}
+                              </div>
+                              {svcEvents.map((ev, idx) => (
+                                <div key={ev._id} className={`grid grid-cols-[1fr_120px_130px] gap-2 items-center px-2.5 py-1.5 ${idx > 0 ? 'border-t border-border/50' : ''}`}>
+                                  <span className="text-[11px] text-foreground">
+                                    {new Date(ev.startDateTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                    {' · '}
+                                    {new Date(ev.startDateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                  </span>
+                                  <span className="text-[11px] text-muted-foreground truncate">{ev.teacherID?.name || '—'}</span>
+                                  <span className={`inline-flex w-fit max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase leading-tight whitespace-normal text-center ${
+                                    ev.status === 'completed' ? 'bg-blue-500/10 text-blue-500'
+                                      : ev.status?.startsWith('cancelled') ? 'bg-red-500/10 text-red-400'
+                                        : ev.status === 'no_show' ? 'bg-orange-500/10 text-orange-500'
+                                          : 'bg-violet-500/10 text-violet-500'}`}>
+                                    {(ev.status || 'scheduled').replace(/_/g, ' ')}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       )}
-                    </span>
-                  </div>
-                ))}
+                    </div>
+                  )
+                })}
               </div>
 
               {/* Payment schedule (payment plan, or flexible billing with a tracked schedule) */}
@@ -308,7 +404,36 @@ export default function CustomerMembershipsTab({ customerID }) {
                       variant="outline"
                       size="sm"
                       disabled={busyId === m._id}
-                      onClick={() => handleCancel(m)}
+                      onClick={() => setFreezeTarget({
+                        _id: m._id,
+                        membershipName: m.membershipName,
+                        freezeCapDays: m.durationDays >= 365 ? ANNUAL_FREEZE_CAP_DAYS : null,
+                        freezeDaysUsed: (m.freezes || []).reduce((sum, f) => sum + f.days, 0),
+                      })}
+                      className="h-8 gap-1.5 text-xs text-sky-600 hover:text-sky-700"
+                    >
+                      <Snowflake className="h-3.5 w-3.5" />
+                      Freeze
+                    </Button>
+                  )}
+                  {m.status === 'frozen' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busyId === m._id}
+                      onClick={() => handleUnfreeze(m)}
+                      className="h-8 gap-1.5 text-xs text-sky-600 hover:text-sky-700"
+                    >
+                      <Snowflake className="h-3.5 w-3.5" />
+                      Unfreeze{m.frozenUntil ? ` (until ${fmtDate(m.frozenUntil)})` : ''}
+                    </Button>
+                  )}
+                  {m.status === 'active' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busyId === m._id}
+                      onClick={() => setCancelTarget({ _id: m._id, membershipName: m.membershipName, maxRefundable: Math.max(0, collected - Number(m.totalRefunded ?? 0)) })}
                       className="h-8 gap-1.5 text-xs text-red-600 hover:text-red-700"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -339,6 +464,26 @@ export default function CustomerMembershipsTab({ customerID }) {
       </Sheet>
 
       <PayInstallmentDialog target={payTarget} onClose={() => setPayTarget(null)} onPaid={() => { setPayTarget(null); load() }} />
+
+      <CancelRefundDialog
+        open={Boolean(cancelTarget)}
+        onClose={() => setCancelTarget(null)}
+        title="Cancel Membership"
+        itemName={cancelTarget?.membershipName}
+        maxRefundable={cancelTarget?.maxRefundable ?? 0}
+        submitting={cancelling}
+        onConfirm={handleCancel}
+      />
+
+      <FreezeMembershipDialog
+        open={Boolean(freezeTarget)}
+        onClose={() => setFreezeTarget(null)}
+        itemName={freezeTarget?.membershipName}
+        freezeCapDays={freezeTarget?.freezeCapDays}
+        freezeDaysUsed={freezeTarget?.freezeDaysUsed}
+        submitting={freezing}
+        onConfirm={handleFreeze}
+      />
     </div>
   )
 }
