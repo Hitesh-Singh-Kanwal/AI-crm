@@ -283,6 +283,7 @@ function GroupStudentRoster({
   serviceCode,
   servicePrice,
   onRosterChanged,
+  onSelectStudent,
 }) {
   // Fetch everything from scratch so we always have the live server state
   const [enrolled, setEnrolled] = useState([]);
@@ -327,10 +328,36 @@ function GroupStudentRoster({
       String(m?._id ?? m),
     );
     setEventMemberIds(persistedMemberIds);
-    const charged = new Set(
-      (evRes.data?.charges || []).map((ch) => String(ch.customerID)),
-    );
+    const charges = evRes.data?.charges || [];
+    const charged = new Set(charges.map((ch) => String(ch.customerID)));
     setChargedIds(charged);
+    // Prefer the package/membership this event actually charged against — the
+    // roster's fallback (scanning all active enrollments) can pick a different,
+    // unrelated package when a customer holds more than one.
+    const chargeSMap = {};
+    charges.forEach((ch) => {
+      const cid = String(ch.customerID?._id ?? ch.customerID ?? "");
+      if (!cid) return;
+      const code = ch.serviceCode || serviceCode;
+      let svc = null;
+      let packageName = "";
+      if (ch.method === "package") {
+        const services =
+          ch.customerPackageID?.services || ch.enrollmentID?.package?.services;
+        svc = services?.find((s) => s.serviceCode === code)
+          ?? services?.find((s) => (s.pricePerSession ?? 0) > 0);
+        packageName = ch.enrollmentID?.package?.packageName || svc?.serviceName || "";
+      } else if (ch.method === "membership") {
+        svc = ch.customerMembershipID?.services?.find((s) => s.serviceCode === code);
+      }
+      if (svc) {
+        chargeSMap[cid] = {
+          sessionsRemaining: svc.sessionsRemaining,
+          packageName,
+        };
+      }
+    });
+    setSessionMap((prev) => ({ ...prev, ...chargeSMap }));
     const noShows = new Set(
       (evRes.data?.noShowIDs || []).map((id) => String(id?._id ?? id)),
     );
@@ -382,7 +409,14 @@ function GroupStudentRoster({
     const sMap = {};
     (pkgRes.success ? pkgRes.data : []).forEach((enrollment) => {
       const pkgServices = enrollment.package?.services ?? [];
-      if (pkgServices.some((s) => groupCodes.has(s.serviceCode))) {
+      const isActive =
+        enrollment.status === "active" && enrollment.package?.status === "active";
+      if (
+        isActive &&
+        pkgServices.some(
+          (s) => groupCodes.has(s.serviceCode) && (s.sessionsRemaining ?? 0) > 0,
+        )
+      ) {
         const cid = String(
           enrollment.customerID?._id ?? enrollment.customerID ?? "",
         );
@@ -573,6 +607,13 @@ function GroupStudentRoster({
       setFundingChoicePrompt(null);
       setPendingAdd(null);
     } else if (res.errorData?.needsFundingChoice) {
+      // The funding-choice prompt lives inside the pending-add panel, so a
+      // members-less customer (added via the direct confirmAdd path) needs that
+      // panel opened here or the prompt has nowhere to render and the click
+      // appears to do nothing.
+      setPendingAdd((prev) => prev || { customer, memberIds, absent });
+      setAddOpen(false);
+      setQuery("");
       setFundingChoicePrompt({
         context: "add",
         options: res.errorData.options || [],
@@ -1060,7 +1101,12 @@ function GroupStudentRoster({
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
-                      <p className="text-[13px] font-semibold text-foreground truncate">
+                      <p
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => onSelectStudent?.(cid, c.name || "Student")}
+                        className="text-[13px] font-semibold text-foreground truncate hover:text-primary hover:underline cursor-pointer"
+                      >
                         {displayName}
                       </p>
                       {(c.members || []).length > 0 && (
@@ -1807,6 +1853,10 @@ export default function EventDetailPanel({
                       serviceCode={event.calendarServiceID?.serviceCode}
                       servicePrice={event.calendarServiceID?.price}
                       onRosterChanged={onRosterChanged}
+                      onSelectStudent={(id, name) => {
+                        setSelectedStudentId(id);
+                        setSelectedStudentName(name);
+                      }}
                     />
                   ) : (
                     <div>
