@@ -62,6 +62,7 @@ const navItems = [
       { name: 'AI Calling', href: '/ai-automation/ai-calling' },
       { name: 'AI Messaging', href: '/ai-automation/ai-messaging' },
       { name: 'Workflows', href: '/ai-automation/workflows' },
+      { name: 'Dynamic Lists', href: '/ai-automation/dynamic-lists' },
       { name: 'AI Calls Data', href: '/ai-automation/ai-calling-data' },
       { name: 'Training', href: '/ai-automation/training' },
     ],

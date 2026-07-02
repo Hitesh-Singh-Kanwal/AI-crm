@@ -166,16 +166,25 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
   }
 
   const triggerConfig = triggerNode.data?.config || {}
-  const event = triggerConfig.event || 'non'
-  const isGenericForm = Boolean(triggerConfig.isGenericForm)
-  const formID = Array.isArray(triggerConfig.formID) ? triggerConfig.formID.filter(Boolean) : []
-  const reason = triggerConfig.reason || ''
+  const triggerType = triggerConfig.triggerType === 'list' || triggerConfig.listID ? 'list' : 'event'
+  const listID = String(triggerConfig.listID || '').trim()
+  const reason = String(triggerConfig.reason || '').trim()
 
-  if (isWorkflowEventFormSubmission(event) && !isGenericForm && formID.length === 0) {
-    return {
-      ok: false,
-      error: 'For a "Form submission" trigger, pick at least one form or enable "All forms".',
-      warnings,
+  if (triggerType === 'list') {
+    if (!listID) {
+      return { ok: false, error: 'Select a dynamic list for this list-based workflow trigger.', warnings }
+    }
+  } else {
+    const event = triggerConfig.event || 'non'
+    const isGenericForm = Boolean(triggerConfig.isGenericForm)
+    const formID = Array.isArray(triggerConfig.formID) ? triggerConfig.formID.filter(Boolean) : []
+
+    if (isWorkflowEventFormSubmission(event) && !isGenericForm && formID.length === 0) {
+      return {
+        ok: false,
+        error: 'For a "Form submission" trigger, pick at least one form or enable "All forms".',
+        warnings,
+      }
     }
   }
 
@@ -218,10 +227,14 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
   const payload = normalizeWorkflowForPatch({
     name,
     description: '',
-    event,
-    formID,
-    isGenericForm,
-    reason,
+    ...(triggerType === 'list'
+      ? { listID, reason }
+      : {
+          event: triggerConfig.event || 'non',
+          formID: Array.isArray(triggerConfig.formID) ? triggerConfig.formID : [],
+          isGenericForm: Boolean(triggerConfig.isGenericForm),
+          reason: isWorkflowEventFormSubmission(triggerConfig.event) ? reason : '',
+        }),
     steps,
   })
 
@@ -231,8 +244,11 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
 }
 
 function triggerNodeFromWorkflow(wf) {
+  const listID = wf.listID || ''
+  const listName = wf.listName || ''
+  const isListBased = Boolean(listID)
   const event = wf.event || 'non'
-  const paletteType = EVENT_TO_TRIGGER_NODE[event] || 'contact_created'
+  const paletteType = isListBased ? 'form_submitted' : EVENT_TO_TRIGGER_NODE[event] || 'contact_created'
   const item = getPaletteItem(paletteType)
   return {
     id: 'node-trigger',
@@ -243,6 +259,9 @@ function triggerNodeFromWorkflow(wf) {
       category: 'trigger',
       label: item?.label || 'Trigger',
       config: {
+        triggerType: isListBased ? 'list' : 'event',
+        listID,
+        listName,
         event,
         formID: Array.isArray(wf.formIDs) ? wf.formIDs : [],
         isGenericForm: Boolean(wf.isGenericForm),

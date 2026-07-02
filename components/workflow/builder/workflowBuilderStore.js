@@ -66,7 +66,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
   isPublished: false,
   isActive: true,
   saveStatus: 'saved',
-  options: { forms: [], reasons: [] },
+  options: { forms: [], reasons: [], dynamicLists: [] },
   past: [],
   future: [],
 
@@ -115,7 +115,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
 
   setWorkflowId: (workflowId) => set({ workflowId }),
 
-  setOptions: (options) => set({ options: { forms: [], reasons: [], ...(options || {}) } }),
+  setOptions: (options) => set({ options: { forms: [], reasons: [], dynamicLists: [], ...(options || {}) } }),
 
   setSaveStatus: (saveStatus) => set({ saveStatus }),
 

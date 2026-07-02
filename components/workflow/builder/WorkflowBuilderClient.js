@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 import api from '@/lib/api'
 import { useWorkflowOptions } from '@/lib/useWorkflowOptions'
+import { extractDynamicListsList } from '@/lib/dynamic-list-normalize'
 import WorkflowBuilderCanvas from '@/components/workflow/builder/WorkflowBuilderCanvas'
 import WorkflowBuilderHeader from '@/components/workflow/builder/WorkflowBuilderHeader'
 import WorkflowBuilderPropertiesPanel from '@/components/workflow/builder/WorkflowBuilderPropertiesPanel'
@@ -32,11 +33,27 @@ export default function WorkflowBuilderClient() {
   const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState('')
 
+  const [dynamicLists, setDynamicLists] = useState([])
   const { forms, reasons } = useWorkflowOptions(true)
 
   useEffect(() => {
-    setOptions({ forms, reasons })
-  }, [forms, reasons, setOptions])
+    setOptions({ forms, reasons, dynamicLists })
+  }, [forms, reasons, dynamicLists, setOptions])
+
+  useEffect(() => {
+    let cancelled = false
+    api.get('/api/dynamic-list?status=active&limit=200').then((res) => {
+      if (cancelled) return
+      if (res?.success) {
+        setDynamicLists(extractDynamicListsList(res))
+      } else {
+        setDynamicLists([])
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Load an existing workflow when ?id= is present.
   useEffect(() => {

@@ -9,6 +9,12 @@ const EVENT_LABELS = {
 }
 
 function triggerSummary(config) {
+  if (config.triggerType === 'list' || config.listID) {
+    const listLabel = config.listName || 'Dynamic list'
+    const reasonLabel = config.reason ? config.reason : 'Default (any reason)'
+    return `When lead enters list · ${listLabel} · ${reasonLabel}`
+  }
+
   const eventLabel = EVENT_LABELS[config.event] || 'Choose what starts this workflow'
   if (config.event === 'form_submission') {
     if (config.isGenericForm) return `${eventLabel} · All forms`

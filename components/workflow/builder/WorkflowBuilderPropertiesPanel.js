@@ -144,75 +144,161 @@ function ScheduleFields({ config, onChange }) {
 function TriggerFields({ config, onChange, options }) {
   const forms = options?.forms || []
   const reasons = options?.reasons || []
+  const dynamicLists = options?.dynamicLists || []
+  const triggerType = config.triggerType === 'list' || config.listID ? 'list' : 'event'
   const isFormSubmission = isWorkflowEventFormSubmission(config.event)
 
   return (
     <div className="space-y-4">
-      <Field label="Trigger event">
-        <select
-          value={config.event || 'non'}
-          onChange={(e) => {
-            const next = e.target.value
-            onChange(
-              isWorkflowEventFormSubmission(next)
-                ? { event: next }
-                : { event: next, formID: [], isGenericForm: false, reason: '' }
-            )
-          }}
-          className={selectClass}
-        >
-          {WORKFLOW_EVENT_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
+      <Field label="Trigger type">
+        <div className="inline-flex w-full rounded-lg border border-border bg-background p-1">
+          {[
+            { value: 'event', label: 'Event-based' },
+            { value: 'list', label: 'List-based' },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() =>
+                onChange(
+                  opt.value === 'list'
+                    ? {
+                        triggerType: 'list',
+                        listID: config.listID || '',
+                        listName: config.listName || '',
+                        reason: config.reason || '',
+                      }
+                    : {
+                        triggerType: 'event',
+                        listID: '',
+                        listName: '',
+                        event: config.event || 'non',
+                      }
+                )
+              }
+              className={cn(
+                'flex-1 rounded-md px-3 py-2 text-[12px] font-semibold',
+                triggerType === opt.value
+                  ? 'bg-[var(--studio-primary)] text-white'
+                  : 'text-muted-foreground hover:bg-muted/40'
+              )}
+            >
               {opt.label}
-            </option>
+            </button>
           ))}
-        </select>
+        </div>
       </Field>
 
-      {isFormSubmission && (
+      {triggerType === 'list' ? (
         <>
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="text-[12px] font-semibold text-foreground">Apply to all forms</p>
-              <p className="text-[11px] text-muted-foreground">Trigger on any form submission</p>
-            </div>
-            <Switch
-              checked={Boolean(config.isGenericForm)}
-              onCheckedChange={(checked) =>
-                onChange({ isGenericForm: checked, ...(checked ? { formID: [] } : {}) })
-              }
-            />
-          </div>
-
-          {!config.isGenericForm && (
-            <Field label="Forms">
-              <WorkflowFormMultiSelect
-                values={config.formID || []}
-                onChange={(formID) => onChange({ formID })}
-                forms={forms}
-                compact
-                placeholder="Select forms…"
-              />
-            </Field>
-          )}
-
-          <Field label="Reason (optional)">
+          <Field label="Dynamic list">
             <select
-              value={config.reason || ''}
-              onChange={(e) => onChange({ reason: e.target.value })}
+              value={config.listID || ''}
+              onChange={(e) => {
+                const nextId = e.target.value
+                const selected = dynamicLists.find((l) => (l?._id || l?.id) === nextId)
+                onChange({
+                  listID: nextId,
+                  listName: selected?.name || '',
+                })
+              }}
               className={selectClass}
             >
-              <option value="">Any reason</option>
-              {reasons.map((r) => {
-                const value = r?.reasonCode || r?.name || ''
+              <option value="">Select a list</option>
+              {dynamicLists.map((list) => {
+                const id = list?._id || list?.id
                 return (
-                  <option key={value || r?._id} value={value}>
-                    {r?.name || value}
+                  <option key={id} value={id}>
+                    {list?.name || 'Untitled list'}
                   </option>
                 )
               })}
             </select>
           </Field>
+
+          <Field label="Reason" hint="optional">
+            <Input
+              value={config.reason || ''}
+              onChange={(e) => onChange({ reason: e.target.value })}
+              placeholder="Default (any reason)"
+              className={inputClass}
+            />
+          </Field>
+
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Leave reason blank for the default fallback. You can create multiple workflows for the same list with
+            different reasons.
+          </p>
+        </>
+      ) : (
+        <>
+          <Field label="Trigger event">
+            <select
+              value={config.event || 'non'}
+              onChange={(e) => {
+                const next = e.target.value
+                onChange(
+                  isWorkflowEventFormSubmission(next)
+                    ? { event: next, triggerType: 'event' }
+                    : { event: next, formID: [], isGenericForm: false, reason: '', triggerType: 'event' }
+                )
+              }}
+              className={selectClass}
+            >
+              {WORKFLOW_EVENT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {isFormSubmission && (
+            <>
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold text-foreground">Apply to all forms</p>
+                  <p className="text-[11px] text-muted-foreground">Trigger on any form submission</p>
+                </div>
+                <Switch
+                  checked={Boolean(config.isGenericForm)}
+                  onCheckedChange={(checked) =>
+                    onChange({ isGenericForm: checked, ...(checked ? { formID: [] } : {}) })
+                  }
+                />
+              </div>
+
+              {!config.isGenericForm && (
+                <Field label="Forms">
+                  <WorkflowFormMultiSelect
+                    values={config.formID || []}
+                    onChange={(formID) => onChange({ formID })}
+                    forms={forms}
+                    compact
+                    placeholder="Select forms…"
+                  />
+                </Field>
+              )}
+
+              <Field label="Reason (optional)">
+                <select
+                  value={config.reason || ''}
+                  onChange={(e) => onChange({ reason: e.target.value })}
+                  className={selectClass}
+                >
+                  <option value="">Any reason</option>
+                  {reasons.map((r) => {
+                    const value = r?.reasonCode || r?.name || ''
+                    return (
+                      <option key={value || r?._id} value={value}>
+                        {r?.name || value}
+                      </option>
+                    )
+                  })}
+                </select>
+              </Field>
+            </>
+          )}
         </>
       )}
     </div>

@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { Copy, Loader2, Pencil, Trash2, Workflow } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { flattenWorkflowSteps } from '@/lib/workflow-normalize'
+import { flattenWorkflowSteps, normalizeWorkflowListIdFromApi, normalizeWorkflowListNameFromApi } from '@/lib/workflow-normalize'
+import { formatReasonLabel } from '@/lib/dynamic-list-normalize'
 
 export default function WorkflowCard({
   workflow,
@@ -15,6 +16,11 @@ export default function WorkflowCard({
   const id = workflow?._id || workflow?.id
   const flatSteps = flattenWorkflowSteps(workflow?.steps)
   const stepsCount = flatSteps.length || workflow?.stepsCount || 0
+  const listID = normalizeWorkflowListIdFromApi(workflow)
+  const listName = normalizeWorkflowListNameFromApi(workflow) || workflow?.listName || ''
+  const triggerLabel = listID
+    ? `List: ${listName || 'Dynamic list'} · ${formatReasonLabel(workflow?.reason)}`
+    : `Event: ${workflow?.event || '—'}`
 
   return (
     <article className="h-[220px] w-full rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -31,7 +37,7 @@ export default function WorkflowCard({
         <div className="mt-3">
           <h3 className="truncate text-[18px] font-semibold leading-7 text-foreground">{workflow?.name || '—'}</h3>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Event: {workflow?.event || '—'} • {stepsCount} steps
+            {triggerLabel} • {stepsCount} steps
           </p>
           {workflow?.description && (
             <p className="mt-2 line-clamp-2 text-[12px] text-muted-foreground">{workflow.description}</p>
