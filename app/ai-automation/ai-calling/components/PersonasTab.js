@@ -623,7 +623,7 @@ export default function PersonasTab({
       )}
 
       {/* ── DUPLICATE / EDIT MODAL ── */}
-      <Dialog open={modalOpen} onClose={closeModal} maxWidth="md">
+      <Dialog open={modalOpen} onClose={closeModal} maxWidth="2xl">
         <DialogContent onClose={closeModal}>
           <DialogHeader>
             <DialogTitle>
