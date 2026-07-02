@@ -1,18 +1,79 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, PhoneCall, Trash2, Info } from 'lucide-react'
+import { Search, PhoneCall, Trash2, Info, RefreshCw, Clock, CheckCircle2, XCircle, User } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { toast } from '@/components/ui/toast'
+
 const ROWS_PER_PAGE = 10
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+function formatDuration(startedAt, endedAt) {
+  if (!startedAt || !endedAt) return null
+  const ms = Math.max(0, new Date(endedAt) - new Date(startedAt))
+  const totalSec = Math.round(ms / 1000)
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  return m > 0 ? `${m}m ${s}s` : `${s}s`
+}
+
+function formatEndedReason(reason) {
+  if (!reason) return null
+  const map = {
+    'customer-ended-call': 'Customer ended',
+    'assistant-ended-call': 'AI ended',
+    'customer-did-not-answer': 'No answer',
+    'customer-busy': 'Line busy',
+    voicemail: 'Voicemail',
+    'max-duration-exceeded': 'Max duration',
+    'silence-timed-out': 'Silence timeout',
+    'pipeline-error': 'Pipeline error',
+    'assistant-error': 'AI error',
+    error: 'Error',
+    'exceeded-max-duration': 'Max duration',
+  }
+  return map[reason] || reason.replace(/-/g, ' ')
+}
+
+function getStatusStyle(status) {
+  const s = String(status || '').toLowerCase()
+  if (['ended', 'completed', 'done'].includes(s))
+    return { color: 'text-emerald-700 bg-emerald-50 border-emerald-200', dot: 'bg-emerald-500' }
+  if (['in-progress', 'ringing', 'queued'].includes(s))
+    return { color: 'text-amber-700 bg-amber-50 border-amber-200', dot: 'bg-amber-500' }
+  if (['failed', 'canceled', 'cancelled', 'error'].includes(s))
+    return { color: 'text-red-700 bg-red-50 border-red-200', dot: 'bg-red-500' }
+  return { color: 'text-muted-foreground bg-muted border-border', dot: 'bg-muted-foreground' }
+}
+
+function getEvalStyle(evaluation) {
+  const e = String(evaluation || '').toLowerCase()
+  if (e === 'pass' || e === 'true') return 'text-emerald-700 bg-emerald-50 border-emerald-200'
+  if (e === 'fail' || e === 'false') return 'text-red-700 bg-red-50 border-red-200'
+  return 'text-muted-foreground bg-muted border-border'
+}
+
+function getCallerName(call) {
+  return (
+    call.leadID?.name ||
+    call.customer?.name ||
+    null
+  )
+}
+
+function formatShortDate(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 
 export default function AiCallDetailPage() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -21,6 +82,7 @@ export default function AiCallDetailPage() {
   const [calls, setCalls] = useState([])
   const [loading, setLoading] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [syncingId, setSyncingId] = useState(null)
   const [selectedCall, setSelectedCall] = useState(null)
   const [selectedIds, setSelectedIds] = useState([])
   const [deletingMany, setDeletingMany] = useState(false)
@@ -86,6 +148,28 @@ export default function AiCallDetailPage() {
       toast.error('Error', { description: 'Unexpected error while deleting AI call' })
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const handleSync = async (e, call) => {
+    e.stopPropagation()
+    try {
+      setSyncingId(call._id)
+      const result = await api.post(`/api/ai-calling/${call._id}/sync`, {})
+      if (result.success) {
+        // Update the call in local state so the card refreshes immediately.
+        setCalls((prev) => prev.map((c) => (c._id === call._id ? result.data : c)))
+        // If this call is open in the detail view, update it there too.
+        setSelectedCall((prev) => (prev?._id === call._id ? result.data : prev))
+        toast.success('Call synced', { description: `Status: ${result.data?.status || '—'}` })
+      } else {
+        toast.error('Sync failed', { description: result.error || 'Could not reach Vapi for this call.' })
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('Error', { description: 'Unexpected error while syncing call.' })
+    } finally {
+      setSyncingId(null)
     }
   }
 
@@ -157,8 +241,7 @@ export default function AiCallDetailPage() {
                 </div>
               </div>
               <p className="text-sm font-normal text-muted-foreground">
-                View AI calling activity, search by call ID, number, status or summary, and remove
-                outdated records.
+                View AI calling activity — see who was called, duration, outcome, and call recording.
               </p>
             </div>
 
@@ -233,106 +316,121 @@ export default function AiCallDetailPage() {
                 <>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 flex-1">
                 {calls.map((call) => {
-                  const createdAt = call.createdAt ? new Date(call.createdAt) : null
-                  const createdLabel = createdAt ? createdAt.toLocaleString() : '-'
-                  const status = call.status || 'Unknown'
                   const isSelected = selectedIds.includes(call._id)
-
-                  const started = call.startedAt ? new Date(call.startedAt) : null
-                  const ended = call.endedAt ? new Date(call.endedAt) : null
-                  let durationLabel = '—'
-                  if (started && ended) {
-                    const ms = Math.max(0, ended.getTime() - started.getTime())
-                    const totalSeconds = Math.round(ms / 1000)
-                    const minutes = Math.floor(totalSeconds / 60)
-                    const seconds = totalSeconds % 60
-                    durationLabel =
-                      minutes > 0
-                        ? `${minutes}m ${seconds}s`
-                        : `${seconds}s`
-                  }
+                  const statusStyle = getStatusStyle(call.status)
+                  const duration = formatDuration(call.startedAt, call.endedAt)
+                  const endedReason = formatEndedReason(call.endedReason)
+                  const callerName = getCallerName(call)
+                  const callerNumber = call.customer?.number || '—'
+                  const callDate = formatShortDate(call.startedAt || call.createdAt)
+                  const evaluation = call.analysis?.successEvaluation
+                  const evalStyle = getEvalStyle(evaluation)
+                  const isPending = !call.endedAt
 
                   return (
                     <Card
                       key={call._id}
-                      className={`group cursor-pointer border-2 ${
-                        isSelected ? 'border-[#9224EF] shadow-lg' : 'border-border'
-                      } hover:border-[#9224EF]/60 hover:shadow-lg transition-all duration-200`}
+                      className={`group cursor-pointer transition-all duration-200 ${
+                        isSelected
+                          ? 'border-[#9224EF] ring-1 ring-[#9224EF]/30 shadow-md'
+                          : 'border-border hover:border-[#9224EF]/50 hover:shadow-md'
+                      }`}
                       onClick={() => handleOpenDetails(call)}
                     >
-                      <CardHeader className="pb-3 flex flex-row items-start justify-between space-y-0">
-                        <div className="flex items-start gap-3">
-                          <Checkbox
-                            checked={isSelected}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleSelectOne(call._id)
-                            }}
-                            className="mt-1 rounded border-[#CBD5E1] data-[state=checked]:bg-[#9224EF] data-[state=checked]:border-[#9224EF]"
-                            aria-label="Select call"
-                          />
-                          <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center text-foreground">
-                            <PhoneCall className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                      <CardHeader className="pb-2 pt-4 px-4">
+                        <div className="flex items-start justify-between gap-2">
+                          {/* Left: checkbox + avatar + name */}
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <Checkbox
+                              checked={isSelected}
+                              onClick={(e) => { e.stopPropagation(); toggleSelectOne(call._id) }}
+                              className="mt-0.5 shrink-0 rounded border-border data-[state=checked]:bg-[#9224EF] data-[state=checked]:border-[#9224EF]"
+                              aria-label="Select call"
+                            />
+                            <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                              <User className="h-4 w-4 text-primary" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground truncate leading-tight">
+                                {callerName || callerNumber}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground truncate">
+                                {callerName ? callerNumber : ' '}{callDate ? (callerName ? ` · ${callDate}` : callDate) : ''}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <CardTitle className="text-base">
-                              {call.callId || 'Unknown Call'}
-                            </CardTitle>
-                            <CardDescription className="text-[11px] text-muted-foreground">
-                              {createdLabel}
-                            </CardDescription>
-                          </div>
-                        </div>
-                        <Badge
-                          variant="outline"
-                          className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                        >
-                          {status}
-                        </Badge>
-                      </CardHeader>
-                      <CardContent className="pt-0 pb-4 space-y-3">
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground">Number</span>
-                          <span className="ml-2">
-                            {call.customer?.number || call.customer?.phone || '—'}
+                          {/* Status badge */}
+                          <span className={`inline-flex items-center gap-1 shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusStyle.color}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${statusStyle.dot}`} />
+                            {call.status || 'Unknown'}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                          <span className="font-medium text-foreground">Duration</span>
-                          <span className="ml-2">{durationLabel}</span>
+                      </CardHeader>
+
+                      <CardContent className="px-4 pb-4 space-y-2.5">
+                        {/* Duration + ended reason */}
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {duration || '—'}
+                          </span>
+                          {endedReason && (
+                            <span className="truncate">{endedReason}</span>
+                          )}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground">Summary</span>
-                          <p className="mt-1 line-clamp-2">
-                            {call.analysis?.summary || 'No summary available'}
-                          </p>
-                        </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-dashed border-border mt-1">
+
+                        {/* Success evaluation */}
+                        {evaluation && (
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${evalStyle}`}>
+                            {String(evaluation).toLowerCase() === 'pass' || String(evaluation).toLowerCase() === 'true'
+                              ? <CheckCircle2 className="h-3 w-3" />
+                              : <XCircle className="h-3 w-3" />}
+                            {String(evaluation).charAt(0).toUpperCase() + String(evaluation).slice(1)}
+                          </span>
+                        )}
+
+                        {/* Summary */}
+                        <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
+                          {call.analysis?.summary || (isPending ? 'Call in progress — data syncing…' : 'No summary available')}
+                        </p>
+
+                        {/* Footer actions */}
+                        <div className="flex justify-between items-center pt-1.5 border-t border-border/60">
                           <button
                             type="button"
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80"
                           >
-                            <Info className="h-3.5 w-3.5" />
+                            <Info className="h-3 w-3" />
                             View details
                           </button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDelete(call._id)
-                            }}
-                            disabled={deletingId === call._id}
-                            aria-label="Delete call"
-                          >
-                            {deletingId === call._id ? (
-                              <GlobalLoader variant="inline" size="sm" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
+                          <div className="flex items-center gap-0.5">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={`h-7 w-7 ${isPending ? 'text-amber-500 hover:bg-amber-50' : 'text-muted-foreground hover:bg-muted/60'}`}
+                              onClick={(e) => handleSync(e, call)}
+                              disabled={syncingId === call._id}
+                              title="Sync latest data from Vapi"
+                            >
+                              {syncingId === call._id
+                                ? <GlobalLoader variant="inline" size="sm" />
+                                : <RefreshCw className="h-3.5 w-3.5" />}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                              onClick={(e) => { e.stopPropagation(); handleDelete(call._id) }}
+                              disabled={deletingId === call._id}
+                              aria-label="Delete call"
+                            >
+                              {deletingId === call._id
+                                ? <GlobalLoader variant="inline" size="sm" />
+                                : <Trash2 className="h-3.5 w-3.5" />}
+                            </Button>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -368,129 +466,98 @@ export default function AiCallDetailPage() {
           )}
 
           {/* Full-width details view */}
-          {selectedCall && (
+          {selectedCall && (() => {
+            const detailStatus = getStatusStyle(selectedCall.status)
+            const detailDuration = formatDuration(selectedCall.startedAt, selectedCall.endedAt)
+            const detailEval = selectedCall.analysis?.successEvaluation
+            const detailEvalStyle = getEvalStyle(detailEval)
+            const detailName = getCallerName(selectedCall)
+            const detailReason = formatEndedReason(selectedCall.endedReason)
+
+            return (
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3 flex-wrap">
                   <button
                     type="button"
-                    className="text-xs text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 underline-offset-2 hover:underline"
+                    className="text-xs text-primary hover:text-primary/80 underline-offset-2 hover:underline"
                     onClick={handleBackToList}
                   >
-                    ← Back to all calls
+                    ← All calls
                   </button>
-                  <Badge
-                    variant="outline"
-                    className="text-[11px] font-medium px-2.5 py-0.5 rounded-full"
-                  >
+                  <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-0.5 rounded-full border ${detailStatus.color}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${detailStatus.dot}`} />
                     {selectedCall.status || 'Unknown'}
-                  </Badge>
+                  </span>
+                  {detailEval && (
+                    <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-0.5 rounded-full border ${detailEvalStyle}`}>
+                      {String(detailEval).toLowerCase() === 'pass' || String(detailEval).toLowerCase() === 'true'
+                        ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                      {String(detailEval).charAt(0).toUpperCase() + String(detailEval).slice(1)}
+                    </span>
+                  )}
                 </div>
-                <span className="text-[11px] text-muted-foreground">
-                  Created{' '}
-                  {selectedCall.createdAt
-                    ? new Date(selectedCall.createdAt).toLocaleString()
-                    : 'Unknown'}
-                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs gap-1.5"
+                  onClick={(e) => handleSync(e, selectedCall)}
+                  disabled={syncingId === selectedCall._id}
+                >
+                  {syncingId === selectedCall._id
+                    ? <GlobalLoader variant="inline" size="sm" />
+                    : <RefreshCw className="h-3.5 w-3.5" />}
+                  Sync from Vapi
+                </Button>
               </div>
 
               <Card className="border-border">
-                <CardHeader className="pb-3 flex flex-col gap-2">
-                  <div className="flex items-start justify-between gap-4">
+                {/* Header */}
+                <CardHeader className="pb-4 border-b border-border">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3">
-                      <div className="h-11 w-11 rounded-xl bg-indigo-500/10 flex items-center justify-center">
-                        <PhoneCall className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                      <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                        <User className="h-6 w-6 text-primary" />
                       </div>
                       <div>
-                        <CardTitle className="text-base text-foreground">
-                          {selectedCall.callId || 'Unknown Call'}
-                        </CardTitle>
-                        <CardDescription className="text-xs text-muted-foreground">
-                          {selectedCall.customer?.number || 'Unknown number'} ·{' '}
-                          {selectedCall.type || 'outboundPhoneCall'}
-                        </CardDescription>
+                        <p className="text-lg font-semibold text-foreground">
+                          {detailName || selectedCall.customer?.number || 'Unknown caller'}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {detailName ? selectedCall.customer?.number : null}
+                          {selectedCall.leadID?.email ? ` · ${selectedCall.leadID.email}` : ''}
+                        </p>
                       </div>
                     </div>
-                    <div className="text-right space-y-1">
-                      <p className="text-xs text-muted-foreground">
-                        Cost:{' '}
-                        <span className="font-semibold text-foreground">
-                          {typeof selectedCall.cost === 'number'
-                            ? `$${selectedCall.cost.toFixed(4)}`
-                            : '—'}
-                        </span>
-                      </p>
+                    <div className="text-right space-y-0.5">
+                      {typeof selectedCall.cost === 'number' && (
+                        <p className="text-sm font-semibold text-foreground">
+                          ${selectedCall.cost.toFixed(4)}
+                          <span className="text-xs font-normal text-muted-foreground ml-1">call cost</span>
+                        </p>
+                      )}
                       <p className="text-[11px] text-muted-foreground">
-                        Assistant ID: {selectedCall.assistantId || '—'}
+                        {selectedCall.startedAt ? new Date(selectedCall.startedAt).toLocaleString() : '—'}
                       </p>
                     </div>
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Customer Number
-                      </p>
-                      <p className="font-medium text-foreground">
-                        {selectedCall.customer?.number ||
-                          selectedCall.customer?.phone ||
-                          '—'}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Phone Number Used
-                      </p>
-                      <p className="font-medium text-foreground">
-                        {selectedCall.phoneNumberId || '—'}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Transport Provider
-                      </p>
-                      <p className="font-medium text-foreground">
-                        {selectedCall.transport?.provider || '—'}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Call SID
-                      </p>
-                      <p className="font-medium text-foreground break-all">
-                        {selectedCall.transport?.callSid || '—'}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Started At
-                      </p>
-                      <p className="font-medium text-foreground">
-                        {selectedCall.startedAt
-                          ? new Date(selectedCall.startedAt).toLocaleString()
-                          : '—'}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Ended At
-                      </p>
-                      <p className="font-medium text-foreground">
-                        {selectedCall.endedAt
-                          ? new Date(selectedCall.endedAt).toLocaleString()
-                          : '—'}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Ended Reason
-                      </p>
-                      <p className="font-medium text-foreground">
-                        {selectedCall.endedReason || '—'}
-                      </p>
-                    </div>
+                <CardContent className="space-y-6 pt-5">
+                  {/* Key stats row */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {[
+                      { label: 'Duration', value: detailDuration || '—' },
+                      { label: 'Ended reason', value: detailReason || '—' },
+                      { label: 'Started', value: selectedCall.startedAt ? new Date(selectedCall.startedAt).toLocaleTimeString() : '—' },
+                      { label: 'Ended', value: selectedCall.endedAt ? new Date(selectedCall.endedAt).toLocaleTimeString() : '—' },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="rounded-lg bg-muted/40 border border-border/50 px-3 py-2.5">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
+                        <p className="text-sm font-semibold text-foreground">{value}</p>
+                      </div>
+                    ))}
                   </div>
 
                   <div className="space-y-3">
@@ -612,7 +679,7 @@ export default function AiCallDetailPage() {
                                   } ${isUser ? 'rounded-br-sm' : isAI ? 'rounded-bl-sm' : ''}`}
                                 >
                                   <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                    {isSystem ? 'System' : isAI ? 'AI (Illias)' : 'Caller'}
+                                    {isSystem ? 'System' : isAI ? 'AI Agent' : (detailName || 'Caller')}
                                   </p>
                                   <p className="whitespace-pre-wrap">{msg.message}</p>
                                 </div>
@@ -625,7 +692,8 @@ export default function AiCallDetailPage() {
                 </CardContent>
               </Card>
             </div>
-          )}
+            )
+          })()}
         </div>
       </div>
     </MainLayout>

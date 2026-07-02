@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import GlobalLoader from '@/components/shared/GlobalLoader'
@@ -15,6 +16,16 @@ import { cn } from '@/lib/utils'
 import Switch from '@/components/ui/switch'
 import api from '@/lib/api'
 import { getToken } from '@/lib/auth'
+import {
+  DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
+  VAPI_ELEVENLABS_VOICE_DEFAULTS,
+  VAPI_ELEVENLABS_VOICE_MODEL_OPTIONS,
+  VAPI_ELEVENLABS_SPEED_MAX,
+  VAPI_ELEVENLABS_SPEED_MIN,
+  VAPI_LLM_OPTIONS,
+  clampVapiElevenLabsSpeedForUi,
+  clampVapiLlmTemperature,
+} from '@/lib/vapiVoice'
 
 const API_BASE = (
   typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL
@@ -125,6 +136,12 @@ export default function PersonasTab({
   const [voice, setVoice] = useState('')
   const [similarityBoost, setSimilarityBoost] = useState(0.5)
   const [stability, setStability] = useState(0.5)
+  const [speed, setSpeed] = useState(VAPI_ELEVENLABS_VOICE_DEFAULTS.speed)
+  const [style, setStyle] = useState(VAPI_ELEVENLABS_VOICE_DEFAULTS.style)
+  const [useSpeakerBoost, setUseSpeakerBoost] = useState(true)
+  const [ttsModelId, setTtsModelId] = useState(DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID)
+  const [llmModel, setLlmModel] = useState('gpt-4o-mini')
+  const [temperature, setTemperature] = useState(0.65)
   const [modalSaving, setModalSaving] = useState(false)
 
   // ── voice preview ──
@@ -208,11 +225,21 @@ export default function PersonasTab({
     }
   }
 
+  const loadPersonaIntoModal = (persona) => {
+    setSimilarityBoost(persona.similarityBoost ?? VAPI_ELEVENLABS_VOICE_DEFAULTS.similarityBoost)
+    setStability(persona.stability ?? VAPI_ELEVENLABS_VOICE_DEFAULTS.stability)
+    setSpeed(clampVapiElevenLabsSpeedForUi(persona.speed ?? VAPI_ELEVENLABS_VOICE_DEFAULTS.speed))
+    setStyle(persona.style ?? VAPI_ELEVENLABS_VOICE_DEFAULTS.style)
+    setUseSpeakerBoost(persona.useSpeakerBoost ?? true)
+    setTtsModelId(persona.ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID)
+    setLlmModel(persona.llmModel || 'gpt-4o-mini')
+    setTemperature(clampVapiLlmTemperature(persona.temperature ?? 0.65))
+  }
+
   const openDuplicate = (persona) => {
     setTargetPersona(persona)
     setVoice(getNextCopyName(persona.voice || 'Persona', personas))
-    setSimilarityBoost(persona.similarityBoost ?? 0.5)
-    setStability(persona.stability ?? 0.5)
+    loadPersonaIntoModal(persona)
     setModalMode('duplicate')
     setModalOpen(true)
   }
@@ -220,8 +247,7 @@ export default function PersonasTab({
   const openEdit = (persona) => {
     setTargetPersona(persona)
     setVoice(persona.voice || '')
-    setSimilarityBoost(persona.similarityBoost ?? 0.5)
-    setStability(persona.stability ?? 0.5)
+    loadPersonaIntoModal(persona)
     setModalMode('edit')
     setModalOpen(true)
   }
@@ -241,6 +267,12 @@ export default function PersonasTab({
         voice: voice.trim(),
         similarityBoost: Number(similarityBoost),
         stability: Number(stability),
+        speed: clampVapiElevenLabsSpeedForUi(Number(speed)),
+        style: Number(style),
+        useSpeakerBoost: Boolean(useSpeakerBoost),
+        ttsModelId: ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
+        llmModel: llmModel || 'gpt-4o-mini',
+        temperature: clampVapiLlmTemperature(Number(temperature)),
       }
 
       let result
@@ -426,12 +458,14 @@ export default function PersonasTab({
                     </div>
                   )}
 
-                  {/* Stats — only for 11labs personas */}
+                  {/* Voice stats — only for 11labs personas */}
                   {p.provider === '11labs' && (
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: 'Similarity', value: p.similarityBoost ?? '—' },
                         { label: 'Stability', value: p.stability ?? '—' },
+                        { label: 'Similarity', value: p.similarityBoost ?? '—' },
+                        { label: 'Speed', value: p.speed ?? '—' },
+                        { label: 'Style', value: p.style ?? '—' },
                       ].map(({ label, value }) => (
                         <div
                           key={label}
@@ -444,13 +478,24 @@ export default function PersonasTab({
                     </div>
                   )}
 
-                  {/* Model */}
-                  {p.model && (
-                    <div className="flex items-center justify-between text-xs border-t border-border/40 pt-2">
-                      <span className="text-muted-foreground">Model</span>
-                      <span className="font-mono text-foreground">{p.model}</span>
+                  {/* LLM settings — shown for all personas */}
+                  <div className="rounded-lg bg-muted/30 border border-border/40 px-3 py-2 space-y-0.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">LLM</span>
+                      <span className="font-mono text-foreground">{p.llmModel || 'gpt-4o-mini'}</span>
                     </div>
-                  )}
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Temperature</span>
+                      <span className="font-mono text-foreground">{typeof p.temperature === 'number' ? p.temperature.toFixed(2) : '0.65'}</span>
+                    </div>
+                    {p.provider === '11labs' && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">TTS model</span>
+                        <span className="font-mono text-foreground text-[11px]">{p.ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID}</span>
+                      </div>
+                    )}
+                  </div>
+
 
                   {/* Preview button — available for all personas */}
                   <div className="mt-auto pt-1 border-t border-border/50">
@@ -495,7 +540,7 @@ export default function PersonasTab({
                           Duplicate
                         </Button>
                       )}
-                      {p.provider === '11labs' && !p.isDefault && (
+                      {!p.isDefault && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -606,7 +651,7 @@ export default function PersonasTab({
                 )}
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">
                     Voice name <span className="text-destructive">*</span>
@@ -619,48 +664,131 @@ export default function PersonasTab({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                {/* LLM settings — all providers */}
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-3">
+                  <p className="text-xs font-semibold text-foreground">LLM settings</p>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Similarity boost</label>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={similarityBoost}
-                      onChange={(e) => setSimilarityBoost(Number(e.target.value))}
+                    <label className="text-xs font-medium text-foreground">Model</label>
+                    <select
+                      value={llmModel}
+                      onChange={(e) => setLlmModel(e.target.value)}
                       disabled={modalSaving}
-                      className="w-full accent-primary"
-                    />
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>0</span>
-                      <span className="font-medium text-foreground">{Number(similarityBoost).toFixed(2)}</span>
-                      <span>1</span>
-                    </div>
+                      className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs font-mono"
+                    >
+                      {VAPI_LLM_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Stability</label>
+                    <label className="text-xs font-medium text-foreground">
+                      Temperature: {Number(temperature).toFixed(2)}
+                    </label>
                     <input
                       type="range"
                       min={0}
                       max={1}
                       step={0.05}
-                      value={stability}
-                      onChange={(e) => setStability(Number(e.target.value))}
+                      value={temperature}
+                      onChange={(e) => setTemperature(Number(e.target.value))}
                       disabled={modalSaving}
                       className="w-full accent-primary"
                     />
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>0</span>
-                      <span className="font-medium text-foreground">{Number(stability).toFixed(2)}</span>
-                      <span>1</span>
+                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                      <span>0 — focused</span>
+                      <span>1 — creative</span>
                     </div>
                   </div>
                 </div>
 
+                {/* ElevenLabs voice tuning — only for 11labs personas */}
+                {targetPersona?.provider === '11labs' && (
+                  <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-3">
+                    <p className="text-xs font-semibold text-foreground">ElevenLabs voice tuning</p>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">TTS model</label>
+                      <select
+                        value={ttsModelId}
+                        onChange={(e) => setTtsModelId(e.target.value)}
+                        disabled={modalSaving}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs font-mono"
+                      >
+                        {VAPI_ELEVENLABS_VOICE_MODEL_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-foreground">
+                          Stability: {Number(stability).toFixed(2)}
+                        </label>
+                        <input
+                          type="range" min={0} max={1} step={0.05}
+                          value={stability}
+                          onChange={(e) => setStability(Number(e.target.value))}
+                          disabled={modalSaving}
+                          className="w-full accent-primary"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-foreground">
+                          Similarity: {Number(similarityBoost).toFixed(2)}
+                        </label>
+                        <input
+                          type="range" min={0} max={1} step={0.05}
+                          value={similarityBoost}
+                          onChange={(e) => setSimilarityBoost(Number(e.target.value))}
+                          disabled={modalSaving}
+                          className="w-full accent-primary"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-foreground">
+                          Speed (max {VAPI_ELEVENLABS_SPEED_MAX}): {Number(speed).toFixed(2)}
+                        </label>
+                        <input
+                          type="range"
+                          min={VAPI_ELEVENLABS_SPEED_MIN}
+                          max={VAPI_ELEVENLABS_SPEED_MAX}
+                          step={0.05}
+                          value={speed}
+                          onChange={(e) => setSpeed(clampVapiElevenLabsSpeedForUi(Number(e.target.value)))}
+                          disabled={modalSaving}
+                          className="w-full accent-primary"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-foreground">
+                          Style: {Number(style).toFixed(2)}
+                        </label>
+                        <input
+                          type="range" min={0} max={1} step={0.05}
+                          value={style}
+                          onChange={(e) => setStyle(Number(e.target.value))}
+                          disabled={modalSaving}
+                          className="w-full accent-primary"
+                        />
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
+                      <Checkbox
+                        checked={useSpeakerBoost}
+                        onClick={() => setUseSpeakerBoost((v) => !v)}
+                        disabled={modalSaving}
+                        className="h-3.5 w-3.5 rounded border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                      />
+                      Speaker boost (clearer phone audio)
+                    </label>
+                  </div>
+                )}
+
                 {modalMode === 'duplicate' && (
                   <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 border border-border/40">
-                    All other settings (voice model, provider, gender, description) will be copied from the original.
+                    Voice model, provider, gender, and description are copied from the original.
                   </p>
                 )}
               </div>
