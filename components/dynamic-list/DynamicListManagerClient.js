@@ -9,8 +9,6 @@ import { LISTS_PAGE_SIZE } from '@/lib/dynamic-list-constants'
 import {
   formatDateTime,
   formatFieldDisplayValue,
-  formatReasonLabel,
-  groupWorkflowsByListId,
   statusBadgeClass,
   summarizeConditions,
 } from '@/lib/dynamic-list-normalize'
@@ -22,7 +20,6 @@ import ConfirmDeleteDynamicListDialog from '@/components/dynamic-list/ConfirmDel
 export default function DynamicListManagerClient({ membersPathBase = '/ai-automation/dynamic-lists' }) {
   const [lists, setLists] = useState([])
   const [leadReasons, setLeadReasons] = useState([])
-  const [workflowsByListId, setWorkflowsByListId] = useState(new Map())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -39,20 +36,6 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
   const [favoritingId, setFavoritingId] = useState('')
 
   const totalPages = Math.max(1, Math.ceil(total / LISTS_PAGE_SIZE))
-
-  const loadWorkflows = useCallback(async () => {
-    const res = await api.get('/api/workflow/')
-    if (res?.success) {
-      const items = Array.isArray(res?.data)
-        ? res.data
-        : Array.isArray(res?.data?.workflows)
-        ? res.data.workflows
-        : []
-      setWorkflowsByListId(groupWorkflowsByListId(items))
-    } else {
-      setWorkflowsByListId(new Map())
-    }
-  }, [])
 
   const loadLists = useCallback(async () => {
     setLoading(true)
@@ -80,11 +63,10 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
 
   useEffect(() => {
     loadLists()
-    loadWorkflows()
     api.get('/api/lead-reasons').then((res) => {
       if (res?.success) setLeadReasons(extractLeadReasonsList(res))
     })
-  }, [loadLists, loadWorkflows])
+  }, [loadLists])
 
   const stats = useMemo(() => {
     const active = lists.filter((l) => String(l?.status).toLowerCase() === 'active').length
@@ -105,7 +87,6 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
   const handleSaved = ({ isEdit }) => {
     toast.success(isEdit ? 'Dynamic list updated' : 'Dynamic list created')
     loadLists()
-    loadWorkflows()
   }
 
   const requestDelete = (list) => {
@@ -128,7 +109,6 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
       setDeleteOpen(false)
       setDeleteTarget(null)
       await loadLists()
-      await loadWorkflows()
     } else {
       setError(res?.error || 'Failed to delete dynamic list.')
     }
@@ -187,10 +167,7 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
             </select>
             <button
               type="button"
-              onClick={() => {
-                loadLists()
-                loadWorkflows()
-              }}
+              onClick={loadLists}
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-[14px] font-semibold text-foreground hover:bg-muted/40"
             >
               <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
@@ -220,7 +197,6 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
                 <th className="px-4 py-3 font-semibold">Name</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Conditions</th>
-                <th className="px-4 py-3 font-semibold">Linked workflows</th>
                 <th className="px-4 py-3 font-semibold">Members</th>
                 <th className="px-4 py-3 font-semibold">Created</th>
                 <th className="px-4 py-3 font-semibold text-center">Favorite</th>
@@ -230,20 +206,19 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                     Loading dynamic lists…
                   </td>
                 </tr>
               ) : lists.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                     No dynamic lists yet.
                   </td>
                 </tr>
               ) : (
                 lists.map((list) => {
                   const id = list?._id || list?.id
-                  const linked = workflowsByListId.get(id) || []
                   return (
                     <tr key={id} className="border-b border-border/70 align-top">
                       <td className="px-4 py-3">
@@ -264,23 +239,6 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
                       </td>
                       <td className="max-w-[220px] px-4 py-3 text-[12px] text-foreground">
                         {summarizeConditions(list, leadReasons)}
-                      </td>
-                      <td className="max-w-[200px] px-4 py-3">
-                        {linked.length > 0 ? (
-                          <div className="space-y-1">
-                            {linked.map((wf) => (
-                              <div key={wf?._id || wf?.id} className="text-[12px] text-foreground">
-                                <span className="font-medium">{wf?.name || 'Workflow'}</span>
-                                <span className="text-muted-foreground">
-                                  {' '}
-                                  · {formatReasonLabel(wf?.reason, leadReasons)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-[12px] text-muted-foreground">No workflows linked</span>
-                        )}
                       </td>
                       <td className="px-4 py-3 font-medium text-foreground">{Number(list?.memberCount ?? 0)}</td>
                       <td className="px-4 py-3 text-muted-foreground">{formatDateTime(list?.createdAt) || '—'}</td>
