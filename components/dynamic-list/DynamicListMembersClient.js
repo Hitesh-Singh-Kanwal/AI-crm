@@ -358,33 +358,47 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
         )}
 
         {selectedLeads.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--studio-primary)]/30 bg-[var(--studio-primary)]/5 px-4 py-3">
-            <div className="text-[13px] font-medium text-foreground">
-              {selectedLeads.length} member{selectedLeads.length === 1 ? '' : 's'} selected
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-200/70 bg-gradient-to-r from-emerald-500/10 via-violet-500/10 to-sky-500/10 px-4 py-3 shadow-sm dark:border-violet-500/25">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-9 min-w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--studio-primary)] to-violet-500 px-2.5 text-[13px] font-bold text-white shadow-md shadow-violet-500/20">
+                {selectedLeads.length}
+              </span>
+              <div>
+                <div className="text-[14px] font-semibold text-foreground">
+                  {selectedLeads.length} member{selectedLeads.length === 1 ? '' : 's'} selected
+                </div>
+                <div className="text-[12px] text-muted-foreground">Choose an action to reach selected members</div>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => openSendDialog('SMS')}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-[12px] font-semibold text-foreground hover:bg-muted/40"
+                className="inline-flex h-10 items-center gap-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 text-[13px] font-semibold text-white shadow-md shadow-emerald-500/30 transition hover:brightness-105"
               >
-                <MessageSquare className="h-4 w-4" />
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 ring-1 ring-white/30">
+                  <MessageSquare className="h-4 w-4" />
+                </span>
                 Send SMS
               </button>
               <button
                 type="button"
                 onClick={() => openSendDialog('Email')}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-[12px] font-semibold text-foreground hover:bg-muted/40"
+                className="inline-flex h-10 items-center gap-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 text-[13px] font-semibold text-white shadow-md shadow-violet-500/30 transition hover:brightness-105"
               >
-                <Mail className="h-4 w-4" />
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 ring-1 ring-white/30">
+                  <Mail className="h-4 w-4" />
+                </span>
                 Send email
               </button>
               <button
                 type="button"
                 onClick={clearSelection}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground hover:bg-muted/40"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-rose-200 bg-gradient-to-r from-rose-50 to-orange-50 px-3 text-[13px] font-semibold text-rose-700 transition hover:from-rose-100 hover:to-orange-100 dark:border-rose-500/30 dark:from-rose-500/10 dark:to-orange-500/10 dark:text-rose-300"
               >
-                <X className="h-3.5 w-3.5" />
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/15 ring-1 ring-rose-500/20">
+                  <X className="h-4 w-4 text-rose-600 dark:text-rose-300" />
+                </span>
                 Clear
               </button>
             </div>
