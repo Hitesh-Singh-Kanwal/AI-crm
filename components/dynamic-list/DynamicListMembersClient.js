@@ -8,7 +8,7 @@ import {
   ChevronRight,
   Mail,
   MessageSquare,
-  MoreVertical,
+  Eye,
   RefreshCw,
   RotateCcw,
   X,
@@ -33,6 +33,7 @@ import ConfirmReEvaluateDialog from '@/components/dynamic-list/ConfirmReEvaluate
 import DynamicListMemberSendDialog from '@/components/dynamic-list/DynamicListMemberSendDialog'
 import DynamicListMembersFilterPanel from '@/components/dynamic-list/DynamicListMembersFilterPanel'
 import DynamicListMembersQuickBar from '@/components/dynamic-list/DynamicListMembersQuickBar'
+import MemberLeadViewDialog from '@/components/dynamic-list/MemberLeadViewDialog'
 
 function stageBadgeClass(stage) {
   const key = String(stage || '').toLowerCase()
@@ -96,6 +97,8 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
   const [selectingAll, setSelectingAll] = useState(false)
   const [sendDialogOpen, setSendDialogOpen] = useState(false)
   const [sendChannel, setSendChannel] = useState('SMS')
+  const [viewLeadId, setViewLeadId] = useState(null)
+  const [viewLeadOpen, setViewLeadOpen] = useState(false)
 
   const totalPages = Math.max(1, Math.ceil(total / MEMBERS_PAGE_SIZE))
   const pageStart = total === 0 ? 0 : (page - 1) * MEMBERS_PAGE_SIZE + 1
@@ -262,6 +265,12 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
     } finally {
       setSelectingAll(false)
     }
+  }
+
+  const openLeadView = (leadId) => {
+    if (!leadId) return
+    setViewLeadId(leadId)
+    setViewLeadOpen(true)
   }
 
   const openSendDialog = (channel) => {
@@ -500,10 +509,13 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
                         <td className="px-4 py-4">
                           <button
                             type="button"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50"
-                            aria-label="Row actions"
+                            onClick={() => openLeadView(leadId)}
+                            disabled={!leadId}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-[var(--studio-primary)] disabled:opacity-40"
+                            aria-label={`View ${leadName}`}
+                            title="View lead"
                           >
-                            <MoreVertical className="h-4 w-4" />
+                            <Eye className="h-4 w-4" />
                           </button>
                         </td>
                       </tr>
@@ -589,6 +601,17 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
         leads={selectedLeads}
         initialChannel={sendChannel}
         onSent={() => clearSelection()}
+      />
+
+      <MemberLeadViewDialog
+        open={viewLeadOpen}
+        leadId={viewLeadId}
+        onClose={() => {
+          setViewLeadOpen(false)
+          setViewLeadId(null)
+        }}
+        leadReasons={leadReasons}
+        locations={locations}
       />
     </div>
   )
