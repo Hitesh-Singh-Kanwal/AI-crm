@@ -61,7 +61,7 @@ export default function MakeCallsPage() {
   const [personasLoading, setPersonasLoading] = useState(false)
   const [personasError, setPersonasError] = useState(null)
   const [selectedPersonaId, setSelectedPersonaId] = useState(null)
-  const [setupMode, setSetupMode] = useState('manual') // manual | assistant
+  const [setupMode, setSetupMode] = useState('assistant') // assistant | manual
   const [assistants, setAssistants] = useState([])
   const [assistantsTotal, setAssistantsTotal] = useState(0)
   const [assistantsPage, setAssistantsPage] = useState(1)
@@ -371,6 +371,7 @@ export default function MakeCallsPage() {
     }
 
     const leadsPayload = selectedLeads.map((lead) => ({
+      _id: lead._id,
       name: String(lead.name ?? ''),
       email: String(lead.email ?? ''),
       phoneNumber: String(lead.phoneNumber ?? lead.phone ?? ''),
@@ -379,6 +380,8 @@ export default function MakeCallsPage() {
     const assistantData =
       setupMode === 'assistant' && selectedAssistant
         ? {
+            dbAssistantId: selectedAssistant._id,
+            assistantName: selectedAssistant.name || '',
             assistantID: selectedAssistant.assistantID,
             llmModel: selectedAssistant.llmModel || 'gpt-4o-mini',
             temperature: clampVapiLlmTemperature(
@@ -429,6 +432,9 @@ export default function MakeCallsPage() {
                     DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
                 }
               : {}),
+            successEvaluationEnabled: selectedAssistant.successEvaluationEnabled,
+            successEvaluationPrompt: selectedAssistant.successEvaluationPrompt || '',
+            successEvaluationRubric: selectedAssistant.successEvaluationRubric || 'PassFail',
           }
         : (() => {
             const vapiElevenLabs = selectedPersona.provider === '11labs'
@@ -743,7 +749,7 @@ export default function MakeCallsPage() {
                     Choose setup mode
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Pick a saved assistant or continue with manual persona setup.
+                    Recommended: pick a saved assistant (Booking, Promo, etc.). Manual setup is for one-off runs only.
                   </p>
                 </div>
 

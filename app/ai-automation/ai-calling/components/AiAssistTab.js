@@ -23,6 +23,9 @@ import {
   VAPI_LLM_OPTIONS,
   clampVapiElevenLabsSpeedForUi,
   clampVapiLlmTemperature,
+  VAPI_SUCCESS_EVALUATION_RUBRICS,
+  DEFAULT_SUCCESS_EVALUATION_RUBRIC,
+  DEFAULT_SUCCESS_EVALUATION_PROMPT,
 } from '@/lib/vapiVoice'
 
 const ASSISTANTS_PAGE_SIZE = 9
@@ -101,6 +104,9 @@ export default function AiAssistTab() {
   const [ttsSpeed, setTtsSpeed] = useState(VAPI_ELEVENLABS_VOICE_DEFAULTS.speed)
   const [ttsStyle, setTtsStyle] = useState(VAPI_ELEVENLABS_VOICE_DEFAULTS.style)
   const [ttsSpeakerBoost, setTtsSpeakerBoost] = useState(true)
+  const [successEvaluationEnabled, setSuccessEvaluationEnabled] = useState(true)
+  const [successEvaluationPrompt, setSuccessEvaluationPrompt] = useState(DEFAULT_SUCCESS_EVALUATION_PROMPT)
+  const [successEvaluationRubric, setSuccessEvaluationRubric] = useState(DEFAULT_SUCCESS_EVALUATION_RUBRIC)
 
   // --- preview state ---
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -228,6 +234,9 @@ export default function AiAssistTab() {
     setTtsSpeed(VAPI_ELEVENLABS_VOICE_DEFAULTS.speed)
     setTtsStyle(VAPI_ELEVENLABS_VOICE_DEFAULTS.style)
     setTtsSpeakerBoost(true)
+    setSuccessEvaluationEnabled(true)
+    setSuccessEvaluationPrompt(DEFAULT_SUCCESS_EVALUATION_PROMPT)
+    setSuccessEvaluationRubric(DEFAULT_SUCCESS_EVALUATION_RUBRIC)
   }
 
   const syncVoiceTuningFromPersona = useCallback((persona) => {
@@ -329,6 +338,15 @@ export default function AiAssistTab() {
       setTtsSpeed(clampVapiElevenLabsSpeedForUi(p.speed))
       setTtsStyle(typeof p.style === 'number' ? p.style : VAPI_ELEVENLABS_VOICE_DEFAULTS.style)
       setTtsSpeakerBoost(typeof p.useSpeakerBoost === 'boolean' ? p.useSpeakerBoost : true)
+      setSuccessEvaluationEnabled(
+        typeof full.successEvaluationEnabled === 'boolean' ? full.successEvaluationEnabled : true
+      )
+      setSuccessEvaluationPrompt(
+        typeof full.successEvaluationPrompt === 'string' && full.successEvaluationPrompt.trim()
+          ? full.successEvaluationPrompt
+          : DEFAULT_SUCCESS_EVALUATION_PROMPT
+      )
+      setSuccessEvaluationRubric(full.successEvaluationRubric || DEFAULT_SUCCESS_EVALUATION_RUBRIC)
     } catch (e) {
       console.error(e)
       toast.error({ title: 'Error', message: 'Could not load assistant details.' })
@@ -419,6 +437,9 @@ export default function AiAssistTab() {
         },
         scriptData: { script: String(selectedScript.script || '') },
         voiceMessage: String(voiceMessage || ''),
+        successEvaluationEnabled,
+        successEvaluationPrompt: String(successEvaluationPrompt || '').trim(),
+        successEvaluationRubric: String(successEvaluationRubric || DEFAULT_SUCCESS_EVALUATION_RUBRIC),
       }
 
       const isEditing = !!editingAssistant
@@ -476,8 +497,10 @@ export default function AiAssistTab() {
     <TabsContent value="assistants" className="mt-6 flex-1 min-h-0 flex flex-col gap-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          Build reusable assistants by combining persona, script, and optional knowledge base.
+        <p className="text-sm text-muted-foreground max-w-2xl">
+          Create reusable assistants (e.g. Booking, Promo, Marketing) by combining persona, script,
+          knowledge base, and success evaluator. Use them in Make Calls and review outcomes in AI
+          Calling Data filtered by assistant.
         </p>
         <Button variant="gradient" className="w-full sm:w-auto" onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" />
@@ -502,8 +525,9 @@ export default function AiAssistTab() {
             <div>
               <p className="text-sm font-medium">Voice call backend: Vapi</p>
               <p className="text-xs text-muted-foreground max-w-xl">
-                Assistants, knowledge uploads, and outbound calls now use Vapi. If a persona uses
-                ElevenLabs as its voice provider, that voice is configured inside the Vapi assistant.
+                Each assistant is the primary unit for outbound calls. Make Calls uses a saved
+                assistant by default; call records are tagged with that assistant so you can track
+                performance and success evaluation per assistant in AI Calling Data.
               </p>
             </div>
           </div>
@@ -913,6 +937,61 @@ export default function AiAssistTab() {
               )}
             </div>
 
+            <div className="rounded-lg border border-border/80 bg-muted/30 p-4 space-y-4">
+              <div>
+                <p className="text-sm font-semibold">Success evaluator</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  After each call ends, Vapi evaluates whether the call was successful using your
+                  custom criteria. Results appear in AI Calling Data.
+                </p>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={successEvaluationEnabled}
+                  onChange={() => setSuccessEvaluationEnabled((v) => !v)}
+                  disabled={editorLoading}
+                />
+                Enable success evaluation
+              </label>
+
+              {successEvaluationEnabled && (
+                <>
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium">Evaluation rubric</p>
+                    <Select
+                      value={successEvaluationRubric}
+                      onChange={(e) => setSuccessEvaluationRubric(e.target.value)}
+                      disabled={editorLoading}
+                    >
+                      {VAPI_SUCCESS_EVALUATION_RUBRICS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium">Evaluation prompt</p>
+                    <Textarea
+                      value={successEvaluationPrompt}
+                      onChange={(e) => setSuccessEvaluationPrompt(e.target.value)}
+                      placeholder="Describe what counts as a successful call for your use case…"
+                      disabled={editorLoading}
+                      rows={5}
+                      className="text-sm"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Leave blank to use Vapi&apos;s default evaluator. Customize this to match your
+                      script goals (e.g. booked trial, collected email, answered key questions).
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
               <Button
                 variant="outline"
@@ -995,6 +1074,36 @@ export default function AiAssistTab() {
                     <span className="font-medium text-foreground text-right">{val}</span>
                   </div>
                 ))}
+              </div>
+
+              {/* Success evaluator */}
+              <div className="rounded-lg border border-border p-3 space-y-1.5 text-xs">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Success evaluator
+                </p>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground shrink-0">Enabled</span>
+                  <span className="font-medium text-foreground text-right">
+                    {previewData.successEvaluationEnabled === false ? 'No' : 'Yes'}
+                  </span>
+                </div>
+                {previewData.successEvaluationEnabled !== false && (
+                  <>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground shrink-0">Rubric</span>
+                      <span className="font-medium text-foreground text-right">
+                        {previewData.successEvaluationRubric || DEFAULT_SUCCESS_EVALUATION_RUBRIC}
+                      </span>
+                    </div>
+                    <div className="pt-1">
+                      <p className="text-muted-foreground mb-1">Prompt</p>
+                      <p className="text-foreground whitespace-pre-wrap leading-relaxed">
+                        {previewData.successEvaluationPrompt?.trim() ||
+                          DEFAULT_SUCCESS_EVALUATION_PROMPT}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Knowledge files */}
