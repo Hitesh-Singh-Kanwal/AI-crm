@@ -8,17 +8,20 @@ import { cn } from '@/lib/utils'
 import { LISTS_PAGE_SIZE } from '@/lib/dynamic-list-constants'
 import {
   formatDateTime,
+  formatFieldDisplayValue,
   formatReasonLabel,
   groupWorkflowsByListId,
   statusBadgeClass,
   summarizeConditions,
 } from '@/lib/dynamic-list-normalize'
 import { toast } from '@/components/ui/toast'
+import { extractLeadReasonsList } from '@/lib/workflow-normalize'
 import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
 import ConfirmDeleteDynamicListDialog from '@/components/dynamic-list/ConfirmDeleteDynamicListDialog'
 
 export default function DynamicListManagerClient({ membersPathBase = '/ai-automation/dynamic-lists' }) {
   const [lists, setLists] = useState([])
+  const [leadReasons, setLeadReasons] = useState([])
   const [workflowsByListId, setWorkflowsByListId] = useState(new Map())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -78,6 +81,9 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
   useEffect(() => {
     loadLists()
     loadWorkflows()
+    api.get('/api/lead-reasons').then((res) => {
+      if (res?.success) setLeadReasons(extractLeadReasonsList(res))
+    })
   }, [loadLists, loadWorkflows])
 
   const stats = useMemo(() => {
@@ -253,11 +259,11 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
                             statusBadgeClass(list?.status)
                           )}
                         >
-                          {list?.status || 'unknown'}
+                          {list?.status ? formatFieldDisplayValue(list.status) : 'Unknown'}
                         </span>
                       </td>
                       <td className="max-w-[220px] px-4 py-3 text-[12px] text-foreground">
-                        {summarizeConditions(list)}
+                        {summarizeConditions(list, leadReasons)}
                       </td>
                       <td className="max-w-[200px] px-4 py-3">
                         {linked.length > 0 ? (
@@ -267,7 +273,7 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
                                 <span className="font-medium">{wf?.name || 'Workflow'}</span>
                                 <span className="text-muted-foreground">
                                   {' '}
-                                  · {formatReasonLabel(wf?.reason)}
+                                  · {formatReasonLabel(wf?.reason, leadReasons)}
                                 </span>
                               </div>
                             ))}
