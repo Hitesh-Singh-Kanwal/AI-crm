@@ -9,6 +9,7 @@ import { UserPlus, X } from 'lucide-react'
 import LocationSelector from '@/components/shared/LocationSelector'
 import RoleSelector from '@/components/shared/RoleSelector'
 import StatusSelector from '@/components/shared/StatusSelector'
+import { Switch } from '@/components/ui/switch'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
@@ -17,12 +18,14 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
   const [editingUser, setEditingUser] = useState(null)
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState('create') // 'create' or 'edit'
+  const [inviteMode, setInviteMode] = useState(false) // create-mode only: invite by email vs set password now
   const toast = useToast()
 
   useEffect(() => {
     if (!open) {
       setEditingUser(null)
       setMode('create')
+      setInviteMode(false)
       return
     }
     // if an initial user id was provided, pre-select that user for editing
@@ -47,15 +50,23 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
   function openCreate() {
     setEditingUser({ name: '', email: '', role: '', password: '', locationID: [], phoneNumber: '', status: 'active' })
     setMode('create')
+    setInviteMode(false)
   }
 
   function closeEdit() {
     setEditingUser(null)
     setMode('create')
+    setInviteMode(false)
   }
 
   async function saveUser() {
     if (!editingUser) return
+
+    if (!editingUser._id && inviteMode && (!editingUser.locationID || editingUser.locationID.length === 0)) {
+      toast.error({ title: 'Location required', message: 'Select at least one location to invite this user to' })
+      return
+    }
+
     setLoading(true)
     try {
       if (editingUser._id) {
@@ -75,8 +86,25 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
         } else {
           toast.error({ title: 'Save failed', message: result.error || 'Unable to update user' })
         }
+      } else if (inviteMode) {
+        // invite by email — no password, backend emails a set-password link
+        const result = await api.post('/api/user/invite', {
+          name: editingUser.name,
+          email: editingUser.email,
+          role: editingUser.role,
+          locationID: editingUser.locationID || [],
+          permissions: editingUser.permissions,
+        })
+        if (result.success) {
+          toast.success({ title: 'Invite sent', message: `An invite email was sent to ${editingUser.email}` })
+          closeEdit()
+          onRefresh && onRefresh()
+          onClose?.()
+        } else {
+          toast.error({ title: 'Invite failed', message: result.error || 'Unable to invite user' })
+        }
       } else {
-        // create
+        // create with password set now
         const result = await api.post('/api/user', editingUser)
         if (result.success) {
           toast.success({ title: 'Created', message: 'User created' })
@@ -117,6 +145,20 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
 
         {editingUser && (
           <div className="space-y-6 mt-6">
+            {mode === 'create' && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Invite by email</p>
+                  <p className="text-xs text-muted-foreground">
+                    {inviteMode
+                      ? 'They’ll receive an email to set their own password.'
+                      : 'You set their password now; they can log in immediately.'}
+                  </p>
+                </div>
+                <Switch checked={inviteMode} onCheckedChange={setInviteMode} aria-label="Invite by email" />
+              </div>
+            )}
+
             {/* Basic Information Section */}
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Basic Information</h3>
@@ -165,24 +207,29 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
             <div className="space-y-4 pt-4 border-t border-border">
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Account Settings</h3>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">Location</label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Location{mode === 'create' && inviteMode ? ' *' : ''}
+                </label>
                 <LocationSelector
                   multiple={true}
                   value={editingUser.locationID}
                   onChange={(locationIds) => setEditingUser((p) => ({ ...p, locationID: locationIds }))}
-                  placeholder="Select location(s) (optional)"
+                  placeholder={mode === 'create' && inviteMode ? 'Select at least one location' : 'Select location(s) (optional)'}
                   showAllOption={true}
                 />
+                {mode === 'create' && inviteMode && (
+                  <p className="mt-1 text-xs text-muted-foreground">Required to invite a staff member.</p>
+                )}
               </div>
-              {mode === 'create' && (
+              {mode === 'create' && !inviteMode && (
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">Password *</label>
-                  <Input 
-                    value={editingUser.password || ''} 
-                    onChange={(e) => setEditingUser((p) => ({ ...p, password: e.target.value }))} 
-                    placeholder="Enter password" 
-                    type="password" 
-                    required 
+                  <Input
+                    value={editingUser.password || ''}
+                    onChange={(e) => setEditingUser((p) => ({ ...p, password: e.target.value }))}
+                    placeholder="Enter password"
+                    type="password"
+                    required
                   />
                 </div>
               )}
@@ -202,7 +249,11 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
                 Cancel
               </Button>
               <Button onClick={saveUser} variant="gradient" disabled={loading}>
-                {loading ? 'Saving...' : mode === 'create' ? 'Create User' : 'Save Changes'}
+                {loading
+                  ? (inviteMode && mode === 'create' ? 'Sending invite...' : 'Saving...')
+                  : mode === 'create'
+                    ? (inviteMode ? 'Send Invite' : 'Create User')
+                    : 'Save Changes'}
               </Button>
             </div>
           </div>

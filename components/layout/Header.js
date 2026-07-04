@@ -183,8 +183,6 @@ import { useState, useEffect, useRef } from "react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
   Bell,
-  MapPin,
-  ChevronDown,
   Menu,
   Search,
   LogOut,
@@ -195,6 +193,7 @@ import {
 import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import BranchSelector from "@/components/shared/BranchSelector";
+import StaffLocationSwitcher from "@/components/shared/StaffLocationSwitcher";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 import { getCurrentUser, logout } from "@/lib/auth";
 import { getInitials, cn } from "@/lib/utils";
@@ -559,21 +558,9 @@ export default function Header({
                 </Button>
               </div>
 
-              {/* BRANCH SELECTOR */}
+              {/* BRANCH / LOCATION SELECTOR */}
               <div className="hidden md:block w-[170px] lg:w-[200px]">
-                {isSuperAdmin() ? (
-                  <BranchSelector />
-                ) : (
-                  <div className="flex items-center justify-between gap-2 h-[38px] px-3 rounded-full bg-muted">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <MapPin className="h-5 w-5 text-muted-foreground" />
-                      <span className="text-sm truncate text-muted-foreground">
-                        {user?.branchName || "All Branch"}
-                      </span>
-                    </div>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                )}
+                {isSuperAdmin() ? <BranchSelector /> : <StaffLocationSwitcher />}
               </div>
 
               {/* CREATE ENROLLMENT (desktop only) */}
