@@ -304,7 +304,7 @@ export default function Header({
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b py-3 border-border bg-background">
+      <header className="sticky top-0 z-50 border-b py-3 border-border bg-background">
         <div className="flex flex-col gap-3 px-3 sm:px-4 lg:px-6 lg:flex-row lg:items-center lg:justify-between">
           {/* LEFT SECTION — ROUTE-SPECIFIC NAV */}
           <div className="order-2 lg:order-1 w-full min-w-0 overflow-x-auto scrollbar-hide lg:flex-1 lg:pr-2">

@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink, SlidersHorizontal, X } from 'lucide-react'
+import { Search, Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink, SlidersHorizontal, X, Users, MapPin, Wallet } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import FilterSheet from '@/components/customers/FilterSheet'
 import { describeFilter } from '@/lib/customerFilters'
@@ -28,7 +27,7 @@ import {
 } from '@/components/ui/table'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
-import { getInitials, formatDate } from '@/lib/utils'
+import { getInitials, formatDate, cn } from '@/lib/utils'
 
 const EMPTY_FORM = {
   name: '',
@@ -54,6 +53,9 @@ const GENDER_OPTIONS = [
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ]
 
+const inputClass =
+  'h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15'
+
 function FormField({ label, required, children }) {
   return (
     <div className="space-y-1.5">
@@ -62,6 +64,18 @@ function FormField({ label, required, children }) {
       </label>
       {children}
     </div>
+  )
+}
+
+function FormSection({ icon: Icon, title, children }) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2 text-foreground">
+        <Icon className="h-4 w-4 text-primary" />
+        <h3 className="text-[13px] font-semibold">{title}</h3>
+      </div>
+      {children}
+    </section>
   )
 }
 
@@ -147,159 +161,163 @@ function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>{isEdit ? 'Edit Customer' : 'Add Customer'}</SheetTitle>
-        </SheetHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2 px-6">
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Name" required>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => setField('name', e.target.value)}
-                placeholder="Full name"
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-              />
-            </FormField>
-            <FormField label="Email" required>
-              <input
-                type="email"
-                value={form.email}
-                onChange={(e) => setField('email', e.target.value)}
-                placeholder="email@example.com"
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-              />
-            </FormField>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Phone">
-              <input
-                type="tel"
-                value={form.phoneNumber}
-                onChange={(e) => setField('phoneNumber', e.target.value)}
-                placeholder="+1 555 000 0000"
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-              />
-            </FormField>
-            <FormField label="Credits">
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={form.credits}
-                  onChange={(e) => setField('credits', e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background pl-6 pr-3 text-[13px] text-foreground outline-none focus:border-primary"
-                />
+    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="2xl">
+      <DialogContent onClose={saving ? undefined : onClose} className="max-h-[85vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="border-b border-border px-6 py-4">
+          <DialogTitle>{isEdit ? 'Edit Customer' : 'Add Customer'}</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+            <FormSection icon={Users} title="Basic information">
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Name" required>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setField('name', e.target.value)}
+                    placeholder="Full name"
+                    className={inputClass}
+                  />
+                </FormField>
+                <FormField label="Email" required>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setField('email', e.target.value)}
+                    placeholder="email@example.com"
+                    className={inputClass}
+                  />
+                </FormField>
+                <FormField label="Phone">
+                  <input
+                    type="tel"
+                    value={form.phoneNumber}
+                    onChange={(e) => setField('phoneNumber', e.target.value)}
+                    placeholder="+1 555 000 0000"
+                    className={inputClass}
+                  />
+                </FormField>
+                <FormField label="Date of birth">
+                  <input
+                    type="date"
+                    value={form.dateOfBirth}
+                    onChange={(e) => setField('dateOfBirth', e.target.value)}
+                    className={inputClass}
+                  />
+                </FormField>
+                <FormField label="Gender">
+                  <div className="relative">
+                    <select
+                      value={form.gender}
+                      onChange={(e) => setField('gender', e.target.value)}
+                      className={cn(inputClass, 'appearance-none pr-8')}
+                    >
+                      <option value="">Select…</option>
+                      {GENDER_OPTIONS.map((g) => (
+                        <option key={g.value} value={g.value}>{g.label}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </FormField>
               </div>
-            </FormField>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Date of Birth">
-              <input
-                type="date"
-                value={form.dateOfBirth}
-                onChange={(e) => setField('dateOfBirth', e.target.value)}
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-              />
-            </FormField>
-            <FormField label="Gender">
-              <div className="relative">
-                <select
-                  value={form.gender}
-                  onChange={(e) => setField('gender', e.target.value)}
-                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] text-foreground outline-none focus:border-primary"
-                >
-                  <option value="">Select…</option>
-                  {GENDER_OPTIONS.map((g) => (
-                    <option key={g.value} value={g.value}>{g.label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            </FormSection>
+
+            <FormSection icon={MapPin} title="Location">
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Studio location" required>
+                  <div className="relative">
+                    <select
+                      value={form.locationID}
+                      onChange={(e) => setField('locationID', e.target.value)}
+                      className={cn(inputClass, 'appearance-none pr-8')}
+                    >
+                      <option value="">Select location…</option>
+                      {locations.map((loc) => (
+                        <option key={loc._id} value={loc._id}>{loc.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </FormField>
               </div>
-            </FormField>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Street">
+                  <input
+                    type="text"
+                    value={form.address.street}
+                    onChange={(e) => setAddressField('street', e.target.value)}
+                    placeholder="123 Main St"
+                    className={inputClass}
+                  />
+                </FormField>
+                <FormField label="City">
+                  <input
+                    type="text"
+                    value={form.address.city}
+                    onChange={(e) => setAddressField('city', e.target.value)}
+                    className={inputClass}
+                  />
+                </FormField>
+                <FormField label="State">
+                  <input
+                    type="text"
+                    value={form.address.state}
+                    onChange={(e) => setAddressField('state', e.target.value)}
+                    className={inputClass}
+                  />
+                </FormField>
+                <FormField label="Zip code">
+                  <input
+                    type="text"
+                    value={form.address.zipCode}
+                    onChange={(e) => setAddressField('zipCode', e.target.value)}
+                    className={inputClass}
+                  />
+                </FormField>
+                <FormField label="Country">
+                  <input
+                    type="text"
+                    value={form.address.country}
+                    onChange={(e) => setAddressField('country', e.target.value)}
+                    className={inputClass}
+                  />
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection icon={Wallet} title="Billing">
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Credits">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={form.credits}
+                      onChange={(e) => setField('credits', e.target.value)}
+                      className={cn(inputClass, 'pl-6')}
+                    />
+                  </div>
+                </FormField>
+              </div>
+            </FormSection>
+
+            {error && (
+              <p className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>
+            )}
           </div>
 
-          <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-            <p className="text-[12px] font-semibold text-muted-foreground">Address</p>
-            <FormField label="Street">
-              <input
-                type="text"
-                value={form.address.street}
-                onChange={(e) => setAddressField('street', e.target.value)}
-                placeholder="123 Main St"
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-              />
-            </FormField>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="City">
-                <input
-                  type="text"
-                  value={form.address.city}
-                  onChange={(e) => setAddressField('city', e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-                />
-              </FormField>
-              <FormField label="State">
-                <input
-                  type="text"
-                  value={form.address.state}
-                  onChange={(e) => setAddressField('state', e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-                />
-              </FormField>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="Zip Code">
-                <input
-                  type="text"
-                  value={form.address.zipCode}
-                  onChange={(e) => setAddressField('zipCode', e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-                />
-              </FormField>
-              <FormField label="Country">
-                <input
-                  type="text"
-                  value={form.address.country}
-                  onChange={(e) => setAddressField('country', e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-                />
-              </FormField>
-            </div>
-          </div>
-
-          <FormField label="Location" required>
-            <div className="relative">
-              <select
-                value={form.locationID}
-                onChange={(e) => setField('locationID', e.target.value)}
-                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] text-foreground outline-none focus:border-primary"
-              >
-                <option value="">Select location…</option>
-                {locations.map((loc) => (
-                  <option key={loc._id} value={loc._id}>{loc.name}</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            </div>
-          </FormField>
-
-          {error && (
-            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>
-          )}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <div className="flex justify-end gap-2 border-t border-border bg-muted/20 px-6 py-4">
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
             <Button type="submit" disabled={saving}>
-              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Add Customer'}
+              {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add customer'}
             </Button>
           </div>
         </form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -511,8 +529,28 @@ export default function CustomersPage() {
                 </TableRow>
               ) : customers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-12 text-center text-[13px] text-muted-foreground">
-                    No customers found.
+                  <TableCell colSpan={6} className="py-14 text-center">
+                    <div className="mx-auto flex max-w-xs flex-col items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
+                        <Users className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[13px] font-medium text-foreground">
+                          {debouncedSearch || activeFilter ? 'No customers match this view' : 'No customers yet'}
+                        </p>
+                        <p className="text-[12px] text-muted-foreground">
+                          {debouncedSearch || activeFilter
+                            ? 'Try a different search term or clear your filters.'
+                            : "Add your studio's first customer to get started."}
+                        </p>
+                      </div>
+                      {!debouncedSearch && !activeFilter && (
+                        <Button size="sm" className="mt-1" onClick={() => { setEditingCustomer(null); setDialogOpen(true) }}>
+                          <Plus className="mr-1.5 h-3.5 w-3.5" />
+                          Add customer
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -619,8 +657,8 @@ export default function CustomersPage() {
       />
 
       {/* Delete Confirm */}
-      <Dialog open={Boolean(deleteTarget)} onOpenChange={(v) => { if (!v) setDeleteTarget(null) }}>
-        <DialogContent className="max-w-sm">
+      <Dialog open={Boolean(deleteTarget)} onClose={deleting ? undefined : () => setDeleteTarget(null)} maxWidth="sm">
+        <DialogContent onClose={deleting ? undefined : () => setDeleteTarget(null)}>
           <DialogHeader>
             <DialogTitle>Delete Customer</DialogTitle>
           </DialogHeader>
