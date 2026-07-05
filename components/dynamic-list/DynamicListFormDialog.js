@@ -13,10 +13,12 @@ import {
 import {
   buildDynamicListPayload,
   createEmptyCondition,
+  formatFieldDisplayValue,
   getFieldValueOptions,
   normalizeConditionValue,
   normalizeDynamicListFromApi,
 } from '@/lib/dynamic-list-normalize'
+import { extractLeadReasonsList } from '@/lib/workflow-normalize'
 import {
   Dialog,
   DialogContent,
@@ -36,9 +38,10 @@ function createEmptyForm() {
   }
 }
 
-function ConditionValueInput({ condition, onChange }) {
-  const options = getFieldValueOptions(condition.field)
+function ConditionValueInput({ condition, onChange, leadReasons = [] }) {
+  const rawOptions = getFieldValueOptions(condition.field, leadReasons)
   const operator = condition.operator || 'eq'
+  const labeledOptions = Array.isArray(rawOptions) ? rawOptions : null
 
   if (operator === 'in') {
     const values = Array.isArray(condition.value)
@@ -50,16 +53,24 @@ function ConditionValueInput({ condition, onChange }) {
       onChange(next)
     }
 
-    if (options) {
+    if (labeledOptions) {
+      if (labeledOptions.length === 0) {
+        return (
+          <div className="rounded-lg border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground">
+            {condition.field === 'reason' ? 'No lead reasons configured yet.' : 'No options available.'}
+          </div>
+        )
+      }
+
       return (
         <div className="flex flex-wrap gap-2">
-          {options.map((opt) => {
-            const selected = values.includes(opt)
+          {labeledOptions.map((opt) => {
+            const selected = values.includes(opt.value)
             return (
               <button
-                key={opt}
+                key={opt.value}
                 type="button"
-                onClick={() => toggleValue(opt)}
+                onClick={() => toggleValue(opt.value)}
                 className={cn(
                   'rounded-full border px-3 py-1 text-[12px] transition-colors',
                   selected
@@ -67,7 +78,7 @@ function ConditionValueInput({ condition, onChange }) {
                     : 'border-border bg-background text-muted-foreground hover:bg-muted/40'
                 )}
               >
-                {opt}
+                {opt.label}
               </button>
             )
           })}
@@ -92,7 +103,15 @@ function ConditionValueInput({ condition, onChange }) {
     )
   }
 
-  if (options) {
+  if (labeledOptions) {
+    if (labeledOptions.length === 0) {
+      return (
+        <div className="rounded-lg border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground">
+          {condition.field === 'reason' ? 'No lead reasons configured yet.' : 'No options available.'}
+        </div>
+      )
+    }
+
     return (
       <select
         value={String(condition.value || '')}
@@ -100,9 +119,9 @@ function ConditionValueInput({ condition, onChange }) {
         className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]"
       >
         <option value="">Select value</option>
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
+        {labeledOptions.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
           </option>
         ))}
       </select>
@@ -122,6 +141,8 @@ function ConditionValueInput({ condition, onChange }) {
 export default function DynamicListFormDialog({ open, onClose, list, onSaved }) {
   const isEdit = Boolean(list?._id || list?.id)
   const [form, setForm] = useState(createEmptyForm())
+  const [leadReasons, setLeadReasons] = useState([])
+  const [loadingReasons, setLoadingReasons] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -141,6 +162,24 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
       setForm(createEmptyForm())
     }
   }, [open, list])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setLoadingReasons(true)
+    api.get('/api/lead-reasons').then((res) => {
+      if (cancelled) return
+      if (res?.success) {
+        setLeadReasons(extractLeadReasonsList(res))
+      } else {
+        setLeadReasons([])
+      }
+      setLoadingReasons(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
   const canSubmit = useMemo(() => {
     if (!form.name.trim()) return false
@@ -219,7 +258,7 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
               >
                 {STATUS_OPTIONS.map((opt) => (
                   <option key={opt} value={opt}>
-                    {opt}
+                    {formatFieldDisplayValue(opt)}
                   </option>
                 ))}
               </select>
@@ -300,7 +339,11 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
                       <ConditionValueInput
                         condition={condition}
                         onChange={(value) => updateCondition(idx, { value })}
+                        leadReasons={leadReasons}
                       />
+                      {condition.field === 'reason' && loadingReasons && (
+                        <p className="mt-1 text-[11px] text-muted-foreground">Loading lead reasons…</p>
+                      )}
                     </div>
                   </div>
                   <div className="mt-3 flex justify-end">

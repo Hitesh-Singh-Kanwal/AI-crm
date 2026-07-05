@@ -1378,7 +1378,7 @@ ${gtagScript}
           payload.name = payload.name || pickFirst(payload.full_name) || pickFirst(payload.student_name) || pickFirst(payload.parent_name);
           payload.email = payload.email || pickFirst(payload.email_address) || pickFirst(payload.parent_email);
           payload.phone = payload.phone || pickFirst(payload.phone_number) || pickFirst(payload.phone);
-          payload.source = payload.source || 'Website';
+          payload.source = payload.source || 'website';
           payload.url = capturedUrl;
           payload.reason = pickFirst(payload.reason);
           // Safety: ensure backend required ids are scalar even if duplicated somehow
