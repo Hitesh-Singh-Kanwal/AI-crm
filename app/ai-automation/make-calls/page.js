@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Search, PhoneCall, ListChecks, CheckCircle2, User, FileText, Bot } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import api from '@/lib/api'
+import api, { getApiBaseUrl } from '@/lib/api'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { toast } from '@/components/ui/toast'
 import {
@@ -16,6 +16,14 @@ import {
   clampVapiElevenLabsSpeedForUi,
   clampVapiLlmTemperature,
 } from '@/lib/vapiVoice'
+import {
+  BUILTIN_BACKGROUND_SOUNDS,
+  formatBackgroundSoundLabel,
+  getSelectableBackgroundSounds,
+  normalizeBackgroundSoundSelection,
+  resolveBackgroundSoundForSave,
+  resolveBackgroundSoundOptionValue,
+} from '@/lib/backgroundSound'
 
 const WIZARD_LEADS_PAGE_SIZE = 10
 const WIZARD_PERSONAS_PAGE_SIZE = 8
@@ -25,8 +33,23 @@ const DEFAULT_ASSISTANT_OPTIONS = {
   firstMessageMode: 'assistant-speaks-first-with-model-generated-message',
   firstMessage: 'Hello.',
   voiceMessage: 'Hey, I tried calling you!',
-  backgroundSound: 'office', // 'office' | null
+  backgroundSound: 'office',
   endCallMessage: 'Goodbye.',
+}
+
+function getAssistantMessageSettings(assistant) {
+  const mode = assistant?.firstMessageMode || DEFAULT_ASSISTANT_OPTIONS.firstMessageMode
+
+  return {
+    firstMessageMode: mode,
+    firstMessage:
+      mode === 'assistant-speaks-first-with-model-generated-message'
+        ? ''
+        : String(assistant?.firstMessage || DEFAULT_ASSISTANT_OPTIONS.firstMessage),
+    voiceMessage: String(assistant?.voiceMessage || DEFAULT_ASSISTANT_OPTIONS.voiceMessage),
+    backgroundSound: resolveBackgroundSoundForSave(assistant?.backgroundSound),
+    endCallMessage: String(assistant?.endCallMessage || DEFAULT_ASSISTANT_OPTIONS.endCallMessage),
+  }
 }
 
 function getAssistantFileIds(assistant) {
@@ -61,7 +84,7 @@ export default function MakeCallsPage() {
   const [personasLoading, setPersonasLoading] = useState(false)
   const [personasError, setPersonasError] = useState(null)
   const [selectedPersonaId, setSelectedPersonaId] = useState(null)
-  const [setupMode, setSetupMode] = useState('manual') // manual | assistant
+  const [setupMode, setSetupMode] = useState('assistant') // assistant | manual
   const [assistants, setAssistants] = useState([])
   const [assistantsTotal, setAssistantsTotal] = useState(0)
   const [assistantsPage, setAssistantsPage] = useState(1)
@@ -76,6 +99,9 @@ export default function MakeCallsPage() {
   const [knowledgeFilesLoading, setKnowledgeFilesLoading] = useState(false)
   const [knowledgeFilesError, setKnowledgeFilesError] = useState(null)
   const [selectedKnowledgeFileIds, setSelectedKnowledgeFileIds] = useState([])
+  const [backgroundSounds, setBackgroundSounds] = useState([])
+  const [backgroundSoundsLoading, setBackgroundSoundsLoading] = useState(false)
+  const [backgroundSoundsError, setBackgroundSoundsError] = useState(null)
   const [firstMessageMode, setFirstMessageMode] = useState(DEFAULT_ASSISTANT_OPTIONS.firstMessageMode)
   const [firstMessage, setFirstMessage] = useState(DEFAULT_ASSISTANT_OPTIONS.firstMessage)
   const [voiceMessage, setVoiceMessage] = useState(DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
@@ -95,6 +121,11 @@ export default function MakeCallsPage() {
   const assistantsTotalPages = Math.max(
     1,
     Math.ceil((assistantsTotal || 0) / WIZARD_ASSISTANTS_PAGE_SIZE)
+  )
+
+  const selectableBackgroundSounds = useMemo(
+    () => getSelectableBackgroundSounds(backgroundSounds, getApiBaseUrl()),
+    [backgroundSounds]
   )
 
   const loadWizardLeads = useCallback(
@@ -236,6 +267,25 @@ export default function MakeCallsPage() {
     }
   }, [])
 
+  const loadBackgroundSounds = useCallback(async () => {
+    setBackgroundSoundsLoading(true)
+    setBackgroundSoundsError(null)
+    try {
+      const result = await api.get('/api/ai-background-sound/')
+      const list = result.data?.sounds || result.data
+      if (result.success && Array.isArray(list)) {
+        setBackgroundSounds(list)
+      } else {
+        setBackgroundSoundsError(result.error || 'Failed to load background sounds')
+      }
+    } catch (e) {
+      console.error(e)
+      setBackgroundSoundsError('Unable to load background sounds')
+    } finally {
+      setBackgroundSoundsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     loadWizardLeads(wizardLeadsPage, wizardLeadsSearch)
   }, [wizardLeadsPage, wizardLeadsSearch, loadWizardLeads])
@@ -251,7 +301,8 @@ export default function MakeCallsPage() {
   useEffect(() => {
     loadScripts()
     loadKnowledgeFiles()
-  }, [loadScripts, loadKnowledgeFiles])
+    loadBackgroundSounds()
+  }, [loadScripts, loadKnowledgeFiles, loadBackgroundSounds])
 
 
   const toggleWizardLead = (lead) => {
@@ -318,19 +369,6 @@ export default function MakeCallsPage() {
     setEndCallMessage(DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
   }
 
-  const applyAssistantDefaults = (assistant) => {
-    if (!assistant) return
-    setFirstMessageMode(
-      assistant.firstMessageMode || DEFAULT_ASSISTANT_OPTIONS.firstMessageMode
-    )
-    setFirstMessage(assistant.firstMessage || DEFAULT_ASSISTANT_OPTIONS.firstMessage)
-    setVoiceMessage(assistant.voiceMessage || DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
-    setBackgroundSound(
-      assistant.backgroundSound === 'office' ? 'office' : DEFAULT_ASSISTANT_OPTIONS.backgroundSound
-    )
-    setEndCallMessage(assistant.endCallMessage || DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
-  }
-
   const toggleKnowledgeFileId = (fileId) => {
     const normalizedId = String(fileId || '')
     setSelectedKnowledgeFileIds((prev) =>
@@ -371,6 +409,7 @@ export default function MakeCallsPage() {
     }
 
     const leadsPayload = selectedLeads.map((lead) => ({
+      _id: lead._id,
       name: String(lead.name ?? ''),
       email: String(lead.email ?? ''),
       phoneNumber: String(lead.phoneNumber ?? lead.phone ?? ''),
@@ -378,7 +417,11 @@ export default function MakeCallsPage() {
 
     const assistantData =
       setupMode === 'assistant' && selectedAssistant
-        ? {
+        ? (() => {
+            const msg = getAssistantMessageSettings(selectedAssistant)
+            return {
+            dbAssistantId: selectedAssistant._id,
+            assistantName: selectedAssistant.name || '',
             assistantID: selectedAssistant.assistantID,
             llmModel: selectedAssistant.llmModel || 'gpt-4o-mini',
             temperature: clampVapiLlmTemperature(
@@ -386,14 +429,11 @@ export default function MakeCallsPage() {
                 ? selectedAssistant.temperature
                 : 0.65
             ),
-            backgroundSound: backgroundSound === 'office' ? 'office' : null,
-            endCallMessage: String(endCallMessage || ''),
-            firstMessageMode: String(firstMessageMode || ''),
+            backgroundSound: msg.backgroundSound,
+            endCallMessage: msg.endCallMessage,
+            firstMessageMode: msg.firstMessageMode,
             fileIDs: getAssistantFileIds(selectedAssistant),
-            firstMessage:
-              firstMessageMode === 'assistant-speaks-first-with-model-generated-message'
-                ? ''
-                : String(firstMessage || ''),
+            firstMessage: msg.firstMessage,
             persona: {
               provider: selectedAssistant.persona?.provider,
               similarityBoost: Number(selectedAssistant.persona?.similarityBoost ?? 0.45),
@@ -421,7 +461,7 @@ export default function MakeCallsPage() {
                 : {}),
             },
             scriptData: { script: String(selectedAssistant.scriptData?.script || '') },
-            voiceMessage: String(voiceMessage || ''),
+            voiceMessage: msg.voiceMessage,
             ...(selectedAssistant.persona?.provider === '11labs'
               ? {
                   ttsModelId:
@@ -429,11 +469,15 @@ export default function MakeCallsPage() {
                     DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
                 }
               : {}),
+            successEvaluationEnabled: selectedAssistant.successEvaluationEnabled,
+            successEvaluationPrompt: selectedAssistant.successEvaluationPrompt || '',
+            successEvaluationRubric: selectedAssistant.successEvaluationRubric || 'PassFail',
           }
+          })()
         : (() => {
             const vapiElevenLabs = selectedPersona.provider === '11labs'
             return {
-              backgroundSound: backgroundSound === 'office' ? 'office' : null,
+              backgroundSound: resolveBackgroundSoundForSave(backgroundSound),
               endCallMessage: String(endCallMessage || ''),
               firstMessageMode: String(firstMessageMode || ''),
               fileIDs: selectedKnowledgeFileIds,
@@ -743,7 +787,7 @@ export default function MakeCallsPage() {
                     Choose setup mode
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Pick a saved assistant or continue with manual persona setup.
+                    Recommended: pick a saved assistant (Booking, Promo, etc.). Manual setup is for one-off runs only.
                   </p>
                 </div>
 
@@ -809,7 +853,6 @@ export default function MakeCallsPage() {
                                 type="button"
                                 onClick={() => {
                                   setSelectedAssistantId(assistant._id)
-                                  applyAssistantDefaults(assistant)
                                 }}
                                 className={`w-full rounded-xl border p-3 text-left transition-all ${
                                   selected
@@ -1011,11 +1054,11 @@ export default function MakeCallsPage() {
                 <div>
                   <p className="text-sm font-medium text-foreground flex items-center gap-2">
                     <FileText className="h-4 w-4 text-primary" />
-                    Script and assistant settings
+                    {setupMode === 'assistant' ? 'Assistant configuration' : 'Script and call settings'}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {setupMode === 'assistant'
-                      ? 'Using the selected assistant for persona/script/knowledge base. You can still customize messages below.'
+                      ? 'Your saved assistant already includes persona, script, knowledge base, and message settings.'
                       : 'Choose a script and optional knowledge base file. LLM and voice settings are taken from the selected persona.'}
                   </p>
                 </div>
@@ -1112,16 +1155,48 @@ export default function MakeCallsPage() {
                         </span>
                       </p>
                     )}
+                    {(() => {
+                      const msg = getAssistantMessageSettings(selectedAssistant)
+                      return (
+                        <>
+                          <p className="pt-1 border-t border-border/60">
+                            <span className="font-medium text-foreground">First message mode:</span>{' '}
+                            {msg.firstMessageMode}
+                          </p>
+                          {msg.firstMessageMode !== 'assistant-speaks-first-with-model-generated-message' && (
+                            <p>
+                              <span className="font-medium text-foreground">First message:</span>{' '}
+                              {msg.firstMessage || '—'}
+                            </p>
+                          )}
+                          <p>
+                            <span className="font-medium text-foreground">Voice message:</span>{' '}
+                            {msg.voiceMessage || '—'}
+                          </p>
+                          <p>
+                            <span className="font-medium text-foreground">Background sound:</span>{' '}
+                            {formatBackgroundSoundLabel(msg.backgroundSound, backgroundSounds)}
+                          </p>
+                          <p>
+                            <span className="font-medium text-foreground">End call message:</span>{' '}
+                            {msg.endCallMessage || '—'}
+                          </p>
+                          <p className="text-[10px] italic">
+                            Edit these in AI Calling → AI Assist.
+                          </p>
+                        </>
+                      )
+                    })()}
                   </div>
                 )}
 
+                {setupMode !== 'assistant' && (
                 <Card className="border-border">
                   <CardContent className="p-3 space-y-3">
-                    {setupMode !== 'assistant' && (
-                      <div>
-                        <label className="text-xs font-medium text-foreground mb-1 block">
-                          Knowledge base files (optional)
-                        </label>
+                    <div>
+                      <label className="text-xs font-medium text-foreground mb-1 block">
+                        Knowledge base files (optional)
+                      </label>
                         <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-background px-2.5 py-2 space-y-2">
                           {knowledgeFiles.length === 0 ? (
                             <p className="text-[11px] text-muted-foreground">No files available.</p>
@@ -1151,8 +1226,7 @@ export default function MakeCallsPage() {
                         {knowledgeFilesError && (
                           <p className="text-[11px] text-red-600 mt-1">{knowledgeFilesError}</p>
                         )}
-                      </div>
-                    )}
+                    </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
@@ -1187,13 +1261,34 @@ export default function MakeCallsPage() {
                           Background sound
                         </label>
                         <select
-                          value={backgroundSound === 'office' ? 'office' : 'none'}
-                          onChange={(e) => setBackgroundSound(e.target.value === 'office' ? 'office' : null)}
+                          value={normalizeBackgroundSoundSelection(backgroundSound)}
+                          onChange={(e) => setBackgroundSound(e.target.value)}
                           className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs"
                         >
-                          <option value="none">none</option>
-                          <option value="office">office background</option>
+                          {BUILTIN_BACKGROUND_SOUNDS.map((opt) => (
+                            <option key={opt.value || 'bg-none'} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                          {selectableBackgroundSounds.length > 0 && (
+                            <optgroup label="Custom sounds">
+                              {selectableBackgroundSounds.map((sound) => (
+                                <option
+                                  key={sound._id}
+                                  value={resolveBackgroundSoundOptionValue(sound, getApiBaseUrl())}
+                                >
+                                  {sound.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
+                        {backgroundSoundsLoading && (
+                          <p className="text-[10px] text-muted-foreground mt-1">Loading sounds…</p>
+                        )}
+                        {backgroundSoundsError && (
+                          <p className="text-[10px] text-red-600 mt-1">{backgroundSoundsError}</p>
+                        )}
                       </div>
                       <div>
                         <label className="text-xs font-medium text-foreground mb-1 block">
@@ -1208,7 +1303,7 @@ export default function MakeCallsPage() {
                       </div>
                     </div>
 
-                    {setupMode !== 'assistant' && selectedPersona && (
+                    {selectedPersona && (
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-1.5">
                         <p className="text-xs font-semibold text-foreground">AI settings from persona</p>
                         <p className="text-[11px] text-muted-foreground">
@@ -1265,6 +1360,7 @@ export default function MakeCallsPage() {
                     )}
                   </CardContent>
                 </Card>
+                )}
               </div>
             )}
 
@@ -1382,24 +1478,45 @@ export default function MakeCallsPage() {
                       ? getAssistantFileIds(selectedAssistant).join(', ') || 'No file'
                       : selectedKnowledgeFiles.map((f) => f.name).join(', ') || 'No file'}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    <span className="font-medium text-foreground">First message mode:</span>{' '}
-                    {firstMessageMode || '—'}
-                  </p>
-                  {firstMessageMode !== 'assistant-speaks-first-with-model-generated-message' && (
-                    <p className="text-[11px] text-muted-foreground">
-                    <span className="font-medium text-foreground">First message:</span> {firstMessage || '—'}
-                    </p>
-                  )}
-                  <p className="text-[11px] text-muted-foreground">
-                    <span className="font-medium text-foreground">Voice message:</span> {voiceMessage || '—'}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    <span className="font-medium text-foreground">Background sound:</span> {backgroundSound || '—'}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    <span className="font-medium text-foreground">End call message:</span> {endCallMessage || '—'}
-                  </p>
+                  {(() => {
+                    const msg =
+                      setupMode === 'assistant' && selectedAssistant
+                        ? getAssistantMessageSettings(selectedAssistant)
+                        : {
+                            firstMessageMode,
+                            firstMessage,
+                            voiceMessage,
+                            backgroundSound: resolveBackgroundSoundForSave(backgroundSound),
+                            endCallMessage,
+                          }
+
+                    return (
+                      <>
+                        <p className="text-[11px] text-muted-foreground">
+                          <span className="font-medium text-foreground">First message mode:</span>{' '}
+                          {msg.firstMessageMode || '—'}
+                        </p>
+                        {msg.firstMessageMode !== 'assistant-speaks-first-with-model-generated-message' && (
+                          <p className="text-[11px] text-muted-foreground">
+                            <span className="font-medium text-foreground">First message:</span>{' '}
+                            {msg.firstMessage || '—'}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-muted-foreground">
+                          <span className="font-medium text-foreground">Voice message:</span>{' '}
+                          {msg.voiceMessage || '—'}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          <span className="font-medium text-foreground">Background sound:</span>{' '}
+                          {formatBackgroundSoundLabel(msg.backgroundSound, backgroundSounds)}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          <span className="font-medium text-foreground">End call message:</span>{' '}
+                          {msg.endCallMessage || '—'}
+                        </p>
+                      </>
+                    )
+                  })()}
                   <p className="text-[11px] text-muted-foreground">
                     <span className="font-medium text-foreground">LLM (Vapi):</span>{' '}
                     {setupMode === 'assistant'
