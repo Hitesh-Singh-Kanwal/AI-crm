@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 
-const CHANNEL_TABS = ['All', 'E-mail', 'SMS', 'Call']
+const CHANNEL_TABS = ['E-mail', 'SMS', 'Call']
 
 export default function ConversationChannelTabs({ activeTab, onTabChange }) {
   return (
