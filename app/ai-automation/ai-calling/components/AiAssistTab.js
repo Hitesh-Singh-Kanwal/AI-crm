@@ -10,10 +10,10 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useToast } from '@/components/ui/toast'
+import { useToast, toast as toastApi } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import GlobalLoader from '@/components/shared/GlobalLoader'
-import api from '@/lib/api'
+import api, { getApiBaseUrl } from '@/lib/api'
 import {
   DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
   VAPI_ELEVENLABS_VOICE_DEFAULTS,
@@ -27,6 +27,15 @@ import {
   DEFAULT_SUCCESS_EVALUATION_RUBRIC,
   DEFAULT_SUCCESS_EVALUATION_PROMPT,
 } from '@/lib/vapiVoice'
+import {
+  BUILTIN_BACKGROUND_SOUNDS,
+  formatBackgroundSoundLabel,
+  getSelectableBackgroundSounds,
+  isVapiCallableBackgroundSoundUrl,
+  normalizeBackgroundSoundSelection,
+  resolveBackgroundSoundForSave,
+  resolveBackgroundSoundOptionValue,
+} from '@/lib/backgroundSound'
 
 const ASSISTANTS_PAGE_SIZE = 9
 const DEFAULT_LLM = 'gpt-4o-mini'
@@ -85,6 +94,7 @@ export default function AiAssistTab() {
   const [personas, setPersonas] = useState([])
   const [scripts, setScripts] = useState([])
   const [knowledgeFiles, setKnowledgeFiles] = useState([])
+  const [backgroundSounds, setBackgroundSounds] = useState([])
   const [optionsLoading, setOptionsLoading] = useState(false)
 
   const [name, setName] = useState('')
@@ -94,7 +104,7 @@ export default function AiAssistTab() {
   const [firstMessageMode, setFirstMessageMode] = useState(DEFAULT_ASSISTANT_OPTIONS.firstMessageMode)
   const [firstMessage, setFirstMessage] = useState(DEFAULT_ASSISTANT_OPTIONS.firstMessage)
   const [voiceMessage, setVoiceMessage] = useState(DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
-  const [backgroundSound, setBackgroundSound] = useState(DEFAULT_ASSISTANT_OPTIONS.backgroundSound)
+  const [backgroundSound, setBackgroundSound] = useState('')
   const [endCallMessage, setEndCallMessage] = useState(DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
   const [llmModel, setLlmModel] = useState(DEFAULT_LLM)
   const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE)
@@ -149,6 +159,10 @@ export default function AiAssistTab() {
   )
 
   const canSave = !!name.trim() && !!selectedPersona && !!selectedScript
+  const selectableBackgroundSounds = useMemo(
+    () => getSelectableBackgroundSounds(backgroundSounds, getApiBaseUrl()),
+    [backgroundSounds]
+  )
 
   // ── fetch assistants list ──
   const fetchAssistants = useCallback(async () => {
@@ -184,10 +198,11 @@ export default function AiAssistTab() {
   const fetchFormOptions = useCallback(async () => {
     setOptionsLoading(true)
     try {
-      const [personaRes, scriptRes, fileRes] = await Promise.all([
+      const [personaRes, scriptRes, fileRes, soundRes] = await Promise.all([
         api.get('/api/ai-persona?page=1&limit=100'),
         api.get('/api/ai-script/'),
         api.get('/api/ai-script/file/'),
+        api.get('/api/ai-background-sound/'),
       ])
 
       const personaList = Array.isArray(personaRes?.data)
@@ -195,24 +210,31 @@ export default function AiAssistTab() {
         : personaRes?.data?.personas || []
       const scriptList = scriptRes?.data?.Scripts || []
       const fileList = fileRes?.data?.files || []
+      const soundList = soundRes?.data?.sounds || soundRes?.data || []
 
       const p = Array.isArray(personaList) ? personaList : []
       const s = Array.isArray(scriptList) ? scriptList : []
       const f = Array.isArray(fileList) ? fileList : []
+      const bg = Array.isArray(soundList) ? soundList : []
 
       setPersonas(p)
       setScripts(s)
       setKnowledgeFiles(f)
+      setBackgroundSounds(bg)
 
-      return { personas: p, scripts: s, knowledgeFiles: f }
+      return { personas: p, scripts: s, knowledgeFiles: f, backgroundSounds: bg }
     } catch (e) {
       console.error(e)
-      toast.error({ title: 'Error', message: 'Could not load persona/script/knowledge data.' })
-      return { personas: [], scripts: [], knowledgeFiles: [] }
+      toastApi.error('Error', { description: 'Could not load persona/script/knowledge data.' })
+      return { personas: [], scripts: [], knowledgeFiles: [], backgroundSounds: [] }
     } finally {
       setOptionsLoading(false)
     }
-  }, [toast])
+  }, [])
+
+  useEffect(() => {
+    fetchFormOptions()
+  }, [fetchFormOptions])
 
   // ── reset editor form ──
   const resetEditorState = () => {
@@ -224,7 +246,7 @@ export default function AiAssistTab() {
     setFirstMessageMode(DEFAULT_ASSISTANT_OPTIONS.firstMessageMode)
     setFirstMessage(DEFAULT_ASSISTANT_OPTIONS.firstMessage)
     setVoiceMessage(DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
-    setBackgroundSound(DEFAULT_ASSISTANT_OPTIONS.backgroundSound)
+    setBackgroundSound('')
     setEndCallMessage(DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
     setLlmModel(DEFAULT_LLM)
     setTemperature(DEFAULT_TEMPERATURE)
@@ -272,7 +294,7 @@ export default function AiAssistTab() {
     setEditorLoading(true)
     try {
       // Fetch both in parallel
-      const [{ personas: pList, scripts: sList, knowledgeFiles: fList }, detailResult] =
+      const [{ personas: pList, scripts: sList, knowledgeFiles: fList, backgroundSounds: bgList }, detailResult] =
         await Promise.all([
           fetchFormOptions(),
           api.get(`/api/ai-assistant/${assistant._id}`),
@@ -315,7 +337,19 @@ export default function AiAssistTab() {
       setFirstMessageMode(full.firstMessageMode || DEFAULT_ASSISTANT_OPTIONS.firstMessageMode)
       setFirstMessage(full.firstMessage || DEFAULT_ASSISTANT_OPTIONS.firstMessage)
       setVoiceMessage(full.voiceMessage || DEFAULT_ASSISTANT_OPTIONS.voiceMessage)
-      setBackgroundSound(full.backgroundSound || DEFAULT_ASSISTANT_OPTIONS.backgroundSound)
+      setBackgroundSound(() => {
+        const raw = normalizeBackgroundSoundSelection(full.backgroundSound)
+        if (!raw || raw === 'office' || raw === 'static') return raw
+
+        const matched = bgList.find(
+          (sound) =>
+            sound.url === raw ||
+            sound.vapiUrl === raw ||
+            sound.previewUrl === raw ||
+            (sound.fileID && raw.includes(sound.fileID))
+        )
+        return matched?.vapiUrl || matched?.url || raw
+      })
       setEndCallMessage(full.endCallMessage || DEFAULT_ASSISTANT_OPTIONS.endCallMessage)
       setLlmModel(full.llmModel || DEFAULT_LLM)
       setTemperature(
@@ -409,11 +443,14 @@ export default function AiAssistTab() {
     try {
       const payload = {
         name: name.trim(),
-        backgroundSound: String(backgroundSound || ''),
+        backgroundSound: resolveBackgroundSoundForSave(backgroundSound),
         endCallMessage: String(endCallMessage || ''),
         firstMessageMode: String(firstMessageMode || ''),
         fileID: String(selectedKnowledgeFile?.fileID || selectedKnowledgeFileId || ''),
-        firstMessage: String(firstMessage || ''),
+        firstMessage:
+          firstMessageMode === 'assistant-speaks-first-with-model-generated-message'
+            ? ''
+            : String(firstMessage || ''),
         llmModel: String(llmModel || DEFAULT_LLM),
         temperature: clampVapiLlmTemperature(Number(temperature), DEFAULT_TEMPERATURE),
         ...(selectedPersona.provider === '11labs'
@@ -458,6 +495,16 @@ export default function AiAssistTab() {
         title: isEditing ? 'Updated' : 'Created',
         message: `Assistant ${isEditing ? 'updated' : 'created'} successfully.`,
       })
+
+      const savedBg = resolveBackgroundSoundForSave(backgroundSound)
+      if (savedBg && !isVapiCallableBackgroundSoundUrl(savedBg)) {
+        toast.info({
+          title: 'Local background sound',
+          message:
+            'Your custom sound is saved on this assistant, but Vapi cannot fetch localhost audio on live calls. Use Office/None locally, or deploy with a public HTTPS URL.',
+        })
+      }
+
       setEditorOpen(false)
       resetEditorState()
       fetchAssistants()
@@ -519,22 +566,6 @@ export default function AiAssistTab() {
         />
       </div>
 
-      <Card className="border-border/80 bg-muted/20">
-        <CardContent className="py-4 space-y-2">
-          <div>
-            <div>
-              <p className="text-sm font-medium">Voice call backend: Vapi</p>
-              <p className="text-xs text-muted-foreground max-w-xl">
-                Each assistant is the primary unit for outbound calls. Make Calls uses a saved
-                assistant by default; call records are tagged with that assistant so you can track
-                performance and success evaluation per assistant in AI Calling Data.
-              </p>
-            </div>
-          </div>
-         
-        </CardContent>
-      </Card>
-
       {/* States */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-16">
@@ -579,7 +610,7 @@ export default function AiAssistTab() {
                       </p>
                     </div>
                     <Badge variant="outline" className="text-[10px] shrink-0">
-                      {assistant.backgroundSound || 'none'}
+                      {formatBackgroundSoundLabel(assistant.backgroundSound, backgroundSounds)}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -909,20 +940,47 @@ export default function AiAssistTab() {
 
               <div className="space-y-1.5">
                 <p className="text-sm font-medium">Voice message</p>
-                <Input value={voiceMessage} onChange={(e) => setVoiceMessage(e.target.value)} disabled={editorLoading} />
+                <p className="text-[11px] text-muted-foreground">
+                  Played when the call goes to voicemail. Leave blank to skip leaving a message.
+                </p>
+                <Input value={voiceMessage} onChange={(e) => setVoiceMessage(e.target.value)} disabled={editorLoading} placeholder="Hey, I tried calling you!" />
               </div>
 
-              <div className="space-y-1.5">
-                <p className="text-sm font-medium">Background sound</p>
-                <Select
-                  value={backgroundSound || 'none'}
-                  onChange={(e) => setBackgroundSound(e.target.value)}
-                  disabled={editorLoading}
-                >
-                  <option value="none">none</option>
-                  <option value="office">office background</option>
-                </Select>
-              </div>
+                <div>
+                  <label htmlFor="assistant-bg-sound" className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Background sound
+                  </label>
+                  <Select
+                    id="assistant-bg-sound"
+                    value={backgroundSound}
+                    onChange={(e) => setBackgroundSound(e.target.value)}
+                    disabled={editorLoading}
+                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px]"
+                  >
+                    {BUILTIN_BACKGROUND_SOUNDS.map((opt) => (
+                      <option key={opt.value || 'bg-none'} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                    {selectableBackgroundSounds.length > 0 && (
+                      <optgroup label="Custom sounds">
+                        {selectableBackgroundSounds.map((sound) => (
+                          <option
+                            key={sound._id}
+                            value={resolveBackgroundSoundOptionValue(sound, getApiBaseUrl())}
+                          >
+                            {sound.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </Select>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Upload more in the <span className="font-medium">Background Sounds</span> tab. Local{' '}
+                    <code className="text-[10px]">http://localhost</code> URLs can be saved for testing; live Vapi
+                    calls need a public HTTPS URL.
+                  </p>
+                </div>
 
               <div className="space-y-1.5">
                 <p className="text-sm font-medium">End call message</p>
@@ -1041,7 +1099,7 @@ export default function AiAssistTab() {
                       Voice: {previewData.persona?.voiceId || '—'}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
-                      {previewData.backgroundSound || 'no background sound'}
+                      {formatBackgroundSoundLabel(previewData.backgroundSound, backgroundSounds)}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
                       LLM: {previewData.llmModel || DEFAULT_LLM}
@@ -1065,8 +1123,17 @@ export default function AiAssistTab() {
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Message settings</p>
                 {[
                   ['First message mode', previewData.firstMessageMode || '—'],
-                  ['First message', previewData.firstMessage || '—'],
+                  [
+                    'First message',
+                    previewData.firstMessageMode === 'assistant-speaks-first-with-model-generated-message'
+                      ? 'Generated from script by model'
+                      : (previewData.firstMessage || '—'),
+                  ],
                   ['Voice message', previewData.voiceMessage || '—'],
+                  [
+                    'Background sound',
+                    formatBackgroundSoundLabel(previewData.backgroundSound, backgroundSounds),
+                  ],
                   ['End call message', previewData.endCallMessage || '—'],
                 ].map(([label, val]) => (
                   <div key={label} className="flex justify-between gap-4">
