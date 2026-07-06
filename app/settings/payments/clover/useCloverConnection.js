@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import api from '@/lib/api'
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080').replace(/\/$/, '')
-
 const initialState = {
   status: 'loading',
   merchantId: null,
@@ -36,8 +34,13 @@ export function useCloverConnection() {
     refresh()
   }, [refresh])
 
-  const connect = useCallback(() => {
-    window.location.href = `${API_BASE}/api/payments/clover/connect`
+  const connect = useCallback(async () => {
+    const result = await api.get('/api/payments/clover/connect')
+    if (result.success && result.data?.authorizeUrl) {
+      window.location.href = result.data.authorizeUrl
+      return { success: true }
+    }
+    return { success: false, error: result.error || 'Unable to start the Clover connection.' }
   }, [])
 
   const disconnect = useCallback(async () => {

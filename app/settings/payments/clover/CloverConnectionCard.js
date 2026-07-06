@@ -10,10 +10,21 @@ import { useCloverConnection } from './useCloverConnection'
 export default function CloverConnectionCard() {
   const { status, merchantId, merchantName, connectedAt, lastError, connect, disconnect } = useCloverConnection()
   const [disconnecting, setDisconnecting] = useState(false)
+  const [connecting, setConnecting] = useState(false)
   const toast = useToast()
 
   const canWrite = hasPermission('settings', 'payments', 'write')
   const canDelete = hasPermission('settings', 'payments', 'delete')
+
+  async function handleConnect() {
+    setConnecting(true)
+    const result = await connect()
+    if (!result.success) {
+      setConnecting(false)
+      toast.error({ title: 'Connect failed', message: result.error || 'Unable to start the Clover connection.' })
+    }
+    // On success we're navigating away to Clover, so leave `connecting` true — no state update needed.
+  }
 
   async function handleDisconnect() {
     setDisconnecting(true)
@@ -67,14 +78,14 @@ export default function CloverConnectionCard() {
 
       <div className="mt-5 flex gap-3">
         {status === 'disconnected' && (
-          <Button onClick={connect} disabled={!canWrite} title={!canWrite ? 'You do not have permission to connect Clover' : undefined}>
-            Connect Clover
+          <Button onClick={handleConnect} disabled={!canWrite || connecting} title={!canWrite ? 'You do not have permission to connect Clover' : undefined}>
+            {connecting ? 'Connecting…' : 'Connect Clover'}
           </Button>
         )}
         {(status === 'connected' || status === 'error') && (
           <>
-            <Button onClick={connect} disabled={!canWrite} title={!canWrite ? 'You do not have permission to reconnect Clover' : undefined}>
-              Reconnect
+            <Button onClick={handleConnect} disabled={!canWrite || connecting} title={!canWrite ? 'You do not have permission to reconnect Clover' : undefined}>
+              {connecting ? 'Connecting…' : 'Reconnect'}
             </Button>
             <Button
               variant="outline"

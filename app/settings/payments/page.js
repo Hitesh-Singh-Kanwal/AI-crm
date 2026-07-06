@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import { useToast } from '@/components/ui/toast'
@@ -8,7 +8,7 @@ import CloverConnectionCard from './clover/CloverConnectionCard'
 
 const COMING_SOON_PROVIDERS = ['Stripe', 'Square', 'PayPal', 'Authorize.net']
 
-export default function PaymentsSettingsPage() {
+function CloverCallbackStatusHandler() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const toast = useToast()
@@ -27,8 +27,15 @@ export default function PaymentsSettingsPage() {
     router.replace('/settings/payments')
   }, [searchParams, router, toast])
 
+  return null
+}
+
+export default function PaymentsSettingsPage() {
   return (
     <MainLayout title="Payments" subtitle="Connect payment providers for this location.">
+      <Suspense fallback={null}>
+        <CloverCallbackStatusHandler />
+      </Suspense>
       <div className="space-y-4">
         <CloverConnectionCard />
         {COMING_SOON_PROVIDERS.map((name) => (
