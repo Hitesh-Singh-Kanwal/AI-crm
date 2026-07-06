@@ -22,14 +22,22 @@ frontend pieces are implemented here.
   matching the source spec. `Payments` sits alongside `Billing` and `Integrations` in the
   Settings nav. Only Clover ships now; Stripe/Square/PayPal/Authorize.net show as
   "coming soon" placeholders per the Future Expansion section.
-- **Gated by a new `payments` permission module** (with a `clover` resource) in the existing
-  RBAC schema (`Read`/`Write`/`Edit`/`Delete`), consistent with how other settings areas are
-  gated. See the RBAC bug fix in `RolesDialog.js` — the master `permissionsSchema` fetched from
-  `/api/role/permissions` must include this new section so it appears for every role.
+- **Gated by a `settings`/`payments` permission module** (`Read`/`Write`/`Edit`/`Delete`),
+  following this codebase's existing route-permission convention — `settings`/`Billings` for
+  Billing, `settings`/`integration` for Integrations. The frontend checks
+  `hasPermission('settings', 'payments', 'write'|'delete')` and `ROUTE_PERMISSIONS['/settings/payments']
+  = { category: 'settings', module: 'payments' }`. The backend's master `permissionsSchema`
+  (`/api/role/permissions`) must add a section keyed `settings` → `payments` (not a new
+  top-level `payments` section) so `hasPermission`'s lookup path
+  (`user.permissions[category].permissions[module][type]`) resolves correctly — see the RBAC
+  bug fix in `RolesDialog.js`, which already renders every section of whatever the master
+  schema returns.
 - **OAuth callback lands directly on a backend endpoint**, not a frontend page. Clover redirects
   the browser to `GET /api/payments/clover/callback` on the backend; the backend completes the
   token exchange server-side (keeping `client_secret` and tokens off the frontend entirely) and
-  then 302s the browser back to the frontend Payments page with a `status` query param.
+  then 302s the browser back to the frontend **`/settings/payments`** page (the actual page that
+  exists and handles the `?status` toast — there is no separate `/settings/payments/clover`
+  route) with a `status` query param.
 
 ## Architecture
 
@@ -50,7 +58,7 @@ Settings → Payments → Clover
                                            - validates `state` (nonce + signature)
                                            - exchanges `code` for access/refresh tokens
                                            - upserts CloverConnection keyed by locationId
-                                           - 302 → {FRONTEND_URL}/settings/payments/clover
+                                           - 302 → {FRONTEND_URL}/settings/payments
                                                      ?status=connected|error&reason=...
 
   Page reads ?status, shows toast,
@@ -113,17 +121,20 @@ Frontend only ever sees the status DTO:
 - On mount, the page checks `?status=connected|error&reason=` in the URL (set by the backend's
   post-callback redirect), shows a toast accordingly, then strips the query param via
   `router.replace` and re-fetches status.
-- Permission gating: `Connect`/`Reconnect`/`Disconnect` actions require `payments.clover` write
-  permission (via the existing permission-check hook/util used elsewhere in Settings); view-only
-  users with read permission see the status card without action buttons.
+- Permission gating: `Connect`/`Reconnect`/`Disconnect` actions require `settings`/`payments`
+  write/delete permission via `hasPermission('settings', 'payments', 'write'|'delete')` from
+  `lib/permissions.js`; view-only users with read permission see the status card without action
+  buttons.
 
 ## RBAC Schema Addition
 
-New section added to the master permissions schema (`/api/role/permissions`, backend-owned):
+New section added to the master permissions schema (`/api/role/permissions`, backend-owned),
+nested under the existing `settings` category (matching the `Billings`/`integration` module
+convention already used there — NOT a new top-level `payments` section):
 
 ```
-Payments (NEW)
-└── clover
+settings
+└── payments
     Read | Write | Edit | Delete
 ```
 
@@ -134,7 +145,7 @@ beyond the backend adding this section to its schema response.
 ## Error Handling
 
 - Connect/Reconnect/Disconnect buttons disabled with a tooltip if the current role lacks
-  `payments.clover` write permission.
+  `settings`/`payments` write/delete permission.
 - `status: "error"` (expired/revoked token) renders a distinct "Reconnect required" banner —
   never silently shown as "Connected."
 - A failed callback (backend redirects with `status=error&reason=...`) surfaces a toast with the
