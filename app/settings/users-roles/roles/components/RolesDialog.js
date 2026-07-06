@@ -57,19 +57,18 @@ export default function RolesDialog({
             const role = json.data
             const rolePermissions = JSON.parse(JSON.stringify(role.permissions || {}))
 
-            // Build schema limited to this role's sections/modules, using global schema for labels if available
-            const limitedSchema = {}
-            for (const [sectionKey, sectionVal] of Object.entries(rolePermissions)) {
-              const baseSection = permissionsSchema?.[sectionKey]
-              limitedSchema[sectionKey] = {
-                name: baseSection?.name || sectionVal.name || sectionKey,
+            // Build schema from ALL available sections/modules, overlaying this role's saved values
+            const fullSchema = {}
+            for (const [sectionKey, baseSection] of Object.entries(permissionsSchema || {})) {
+              const roleSection = rolePermissions[sectionKey]
+              fullSchema[sectionKey] = {
+                name: baseSection.name || sectionKey,
                 permissions: {},
               }
 
-              const sectionPerms = sectionVal.permissions || {}
-              for (const [permKey, actions] of Object.entries(sectionPerms)) {
-                const basePerm = baseSection?.permissions?.[permKey] || {}
-                limitedSchema[sectionKey].permissions[permKey] = {
+              for (const [permKey, basePerm] of Object.entries(baseSection.permissions || {})) {
+                const actions = roleSection?.permissions?.[permKey] || {}
+                fullSchema[sectionKey].permissions[permKey] = {
                   read: !!actions.read,
                   write: !!actions.write,
                   edit: !!actions.edit,
@@ -79,7 +78,7 @@ export default function RolesDialog({
               }
             }
 
-            setEffectiveSchema(limitedSchema)
+            setEffectiveSchema(fullSchema)
 
             setEditingRole({
               role: role.role,
