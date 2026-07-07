@@ -1,32 +1,24 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { FILTER_SIDEBAR_STYLE, FILTER_SIDEBAR_WIDTH_CLASS } from '@/lib/filter-sidebar-constants'
-import {
-  EMPTY_MEMBER_FILTERS,
-  getHiddenMemberFilterFields,
-  shouldShowFormFilter,
-  shouldShowSourceFilter,
-} from '@/lib/dynamic-list-member-filters'
+import { EMPTY_LEAD_FILTERS, shouldShowFormFilter, shouldShowSourceFilter } from '@/lib/lead-page-filters'
 import LeadAdvancedFilterFields from '@/components/shared/LeadAdvancedFilterFields'
 
-export default function DynamicListMembersFilterPanel({
+export default function LeadsFilterPanel({
   open,
   appliedFilters,
   onClose,
   onApply,
-  list = null,
   locations = [],
   forms = [],
   leadReasons = [],
   loadingOptions = false,
 }) {
   const [draft, setDraft] = useState(appliedFilters)
-  const hiddenFields = useMemo(() => getHiddenMemberFilterFields(list), [list])
-  const visibilityFilters = { ...draft, uploadType: appliedFilters.uploadType }
-  const showSource = shouldShowSourceFilter(list, visibilityFilters)
-  const showForm = shouldShowFormFilter(list, visibilityFilters)
+  const showSource = shouldShowSourceFilter(draft)
+  const showForm = shouldShowFormFilter(draft)
 
   useEffect(() => {
     if (open) setDraft(appliedFilters)
@@ -52,7 +44,7 @@ export default function DynamicListMembersFilterPanel({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setDraft(EMPTY_MEMBER_FILTERS)}
+              onClick={() => setDraft(EMPTY_LEAD_FILTERS)}
               className="text-[13px] font-medium text-[var(--studio-primary)] hover:underline"
             >
               Reset
@@ -71,7 +63,7 @@ export default function DynamicListMembersFilterPanel({
           <LeadAdvancedFilterFields
             draft={draft}
             onDraftChange={setDraft}
-            hiddenFields={hiddenFields}
+            hiddenFields={new Set()}
             showSource={showSource}
             showForm={showForm}
             locations={locations}

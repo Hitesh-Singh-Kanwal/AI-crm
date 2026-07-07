@@ -238,7 +238,7 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
                         </span>
                       </td>
                       <td className="max-w-[220px] px-4 py-3 text-[12px] text-foreground">
-                        {summarizeConditions(list, leadReasons)}
+                        {summarizeConditions(list, { leadReasons })}
                       </td>
                       <td className="px-4 py-3 font-medium text-foreground">{Number(list?.memberCount ?? 0)}</td>
                       <td className="px-4 py-3 text-muted-foreground">{formatDateTime(list?.createdAt) || '—'}</td>

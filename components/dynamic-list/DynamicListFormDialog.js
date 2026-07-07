@@ -1,24 +1,17 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
 import api from '@/lib/api'
-import { cn } from '@/lib/utils'
-import {
-  CONDITION_FIELDS,
-  CONDITION_LOGIC_OPTIONS,
-  CONDITION_OPERATORS,
-  STATUS_OPTIONS,
-} from '@/lib/dynamic-list-constants'
+import { STATUS_OPTIONS } from '@/lib/dynamic-list-constants'
 import {
   buildDynamicListPayload,
   createEmptyCondition,
   formatFieldDisplayValue,
-  getFieldValueOptions,
   normalizeConditionValue,
   normalizeDynamicListFromApi,
 } from '@/lib/dynamic-list-normalize'
-import { extractLeadReasonsList } from '@/lib/workflow-normalize'
+import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
+import LeadConditionsEditor from '@/components/shared/LeadConditionsEditor'
 import {
   Dialog,
   DialogContent,
@@ -38,111 +31,13 @@ function createEmptyForm() {
   }
 }
 
-function ConditionValueInput({ condition, onChange, leadReasons = [] }) {
-  const rawOptions = getFieldValueOptions(condition.field, leadReasons)
-  const operator = condition.operator || 'eq'
-  const labeledOptions = Array.isArray(rawOptions) ? rawOptions : null
-
-  if (operator === 'in') {
-    const values = Array.isArray(condition.value)
-      ? condition.value
-      : normalizeConditionValue('in', condition.value)
-
-    const toggleValue = (val) => {
-      const next = values.includes(val) ? values.filter((v) => v !== val) : [...values, val]
-      onChange(next)
-    }
-
-    if (labeledOptions) {
-      if (labeledOptions.length === 0) {
-        return (
-          <div className="rounded-lg border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground">
-            {condition.field === 'reason' ? 'No lead reasons configured yet.' : 'No options available.'}
-          </div>
-        )
-      }
-
-      return (
-        <div className="flex flex-wrap gap-2">
-          {labeledOptions.map((opt) => {
-            const selected = values.includes(opt.value)
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => toggleValue(opt.value)}
-                className={cn(
-                  'rounded-full border px-3 py-1 text-[12px] transition-colors',
-                  selected
-                    ? 'border-[var(--studio-primary)] bg-[var(--studio-primary)]/10 text-foreground'
-                    : 'border-border bg-background text-muted-foreground hover:bg-muted/40'
-                )}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
-      )
-    }
-
-    return (
-      <input
-        value={Array.isArray(condition.value) ? condition.value.join(', ') : String(condition.value || '')}
-        onChange={(e) =>
-          onChange(
-            e.target.value
-              .split(',')
-              .map((v) => v.trim())
-              .filter(Boolean)
-          )
-        }
-        placeholder="value1, value2"
-        className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-      />
-    )
-  }
-
-  if (labeledOptions) {
-    if (labeledOptions.length === 0) {
-      return (
-        <div className="rounded-lg border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground">
-          {condition.field === 'reason' ? 'No lead reasons configured yet.' : 'No options available.'}
-        </div>
-      )
-    }
-
-    return (
-      <select
-        value={String(condition.value || '')}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-      >
-        <option value="">Select value</option>
-        {labeledOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    )
-  }
-
-  return (
-    <input
-      value={String(condition.value || '')}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder="Enter value"
-      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-    />
-  )
-}
-
 export default function DynamicListFormDialog({ open, onClose, list, onSaved }) {
   const isEdit = Boolean(list?._id || list?.id)
   const [form, setForm] = useState(createEmptyForm())
   const [leadReasons, setLeadReasons] = useState([])
-  const [loadingReasons, setLoadingReasons] = useState(false)
+  const [locations, setLocations] = useState([])
+  const [forms, setForms] = useState([])
+  const [loadingOptions, setLoadingOptions] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -155,7 +50,8 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
         name: normalized?.name || '',
         description: normalized?.description || '',
         conditionLogic: normalized?.conditionLogic || 'AND',
-        conditions: normalized?.conditions || [createEmptyCondition()],
+        conditions:
+          normalized?.conditions?.length > 0 ? normalized.conditions : [createEmptyCondition()],
         status: normalized?.status || 'active',
       })
     } else {
@@ -166,15 +62,19 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    setLoadingReasons(true)
-    api.get('/api/lead-reasons').then((res) => {
+    setLoadingOptions(true)
+    Promise.all([
+      api.get('/api/lead-reasons'),
+      api.get('/api/location?limit=200'),
+      api.get('/api/formBuilder?page=1&limit=200'),
+    ]).then(([reasonsRes, locationsRes, formsRes]) => {
       if (cancelled) return
-      if (res?.success) {
-        setLeadReasons(extractLeadReasonsList(res))
-      } else {
-        setLeadReasons([])
+      if (reasonsRes?.success) setLeadReasons(extractLeadReasonsList(reasonsRes))
+      if (locationsRes?.success) {
+        setLocations(Array.isArray(locationsRes.data) ? locationsRes.data : [])
       }
-      setLoadingReasons(false)
+      if (formsRes?.success) setForms(extractFormTemplatesList(formsRes))
+      setLoadingOptions(false)
     })
     return () => {
       cancelled = true
@@ -191,20 +91,6 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
       return String(c.value || '').trim() !== ''
     })
   }, [form])
-
-  const updateCondition = (idx, patch) => {
-    setForm((prev) => ({
-      ...prev,
-      conditions: prev.conditions.map((c, i) => {
-        if (i !== idx) return c
-        const next = { ...c, ...patch }
-        if (patch.field && patch.field !== c.field) next.value = patch.operator === 'in' ? [] : ''
-        if (patch.operator === 'in' && c.operator !== 'in') next.value = []
-        if (patch.operator && patch.operator !== 'in' && c.operator === 'in') next.value = ''
-        return next
-      }),
-    }))
-  }
 
   const submit = async () => {
     if (!canSubmit || saving) return
@@ -276,109 +162,24 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
           </div>
 
           <div className="rounded-xl border border-border bg-background p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-[14px] font-semibold text-foreground">Conditions</div>
-                <div className="text-[12px] text-muted-foreground">
-                  Leads must match these rules to enter the list. Link workflows to this list from the workflow builder.
-                </div>
-              </div>
-              <div className="inline-flex rounded-lg border border-border bg-card p-1">
-                {CONDITION_LOGIC_OPTIONS.map((logic) => (
-                  <button
-                    key={logic}
-                    type="button"
-                    onClick={() => setForm((p) => ({ ...p, conditionLogic: logic }))}
-                    className={cn(
-                      'rounded-md px-3 py-1.5 text-[12px] font-semibold',
-                      form.conditionLogic === logic
-                        ? 'bg-[var(--studio-primary)] text-white'
-                        : 'text-muted-foreground hover:bg-muted/40'
-                    )}
-                  >
-                    {logic}
-                  </button>
-                ))}
+            <div className="mb-4">
+              <div className="text-[14px] font-semibold text-foreground">Conditions</div>
+              <div className="text-[12px] text-muted-foreground">
+                Use Equals, Exclude, or In. Combine rules with AND / OR logic.
               </div>
             </div>
 
-            <div className="mt-4 space-y-3">
-              {form.conditions.map((condition, idx) => (
-                <div key={idx} className="rounded-lg border border-border bg-card p-3">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                    <div>
-                      <label className="mb-1 block text-[11px] text-muted-foreground">Field</label>
-                      <select
-                        value={condition.field}
-                        onChange={(e) => updateCondition(idx, { field: e.target.value })}
-                        className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                      >
-                        {CONDITION_FIELDS.map((f) => (
-                          <option key={f.value} value={f.value}>
-                            {f.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[11px] text-muted-foreground">Operator</label>
-                      <select
-                        value={condition.operator}
-                        onChange={(e) => updateCondition(idx, { operator: e.target.value })}
-                        className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                      >
-                        {CONDITION_OPERATORS.map((op) => (
-                          <option key={op.value} value={op.value}>
-                            {op.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-[11px] text-muted-foreground">Value</label>
-                      <ConditionValueInput
-                        condition={condition}
-                        onChange={(value) => updateCondition(idx, { value })}
-                        leadReasons={leadReasons}
-                      />
-                      {condition.field === 'reason' && loadingReasons && (
-                        <p className="mt-1 text-[11px] text-muted-foreground">Loading lead reasons…</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setForm((p) => ({
-                          ...p,
-                          conditions:
-                            p.conditions.length === 1
-                              ? p.conditions
-                              : p.conditions.filter((_, i) => i !== idx),
-                        }))
-                      }
-                      disabled={form.conditions.length === 1}
-                      className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2 text-[11px] text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                setForm((p) => ({ ...p, conditions: [...p.conditions, createEmptyCondition()] }))
-              }
-              className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-[12px] font-medium text-foreground hover:bg-muted/40"
-            >
-              <Plus className="h-4 w-4" />
-              Add condition
-            </button>
+            <LeadConditionsEditor
+              conditions={form.conditions}
+              conditionLogic={form.conditionLogic}
+              onChangeConditions={(conditions) => setForm((p) => ({ ...p, conditions }))}
+              onChangeLogic={(conditionLogic) => setForm((p) => ({ ...p, conditionLogic }))}
+              leadReasons={leadReasons}
+              locations={locations}
+              forms={forms}
+              loadingOptions={loadingOptions}
+              compact
+            />
           </div>
 
           {error && (

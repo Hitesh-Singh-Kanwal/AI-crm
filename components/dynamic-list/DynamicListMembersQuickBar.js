@@ -35,6 +35,8 @@ const CHIP_ICONS = {
   utm_source: User,
   locationID: MapPin,
   formID: Filter,
+  isEscalated: User,
+  'condition-logic': Filter,
 }
 
 export default function DynamicListMembersQuickBar({
@@ -53,15 +55,27 @@ export default function DynamicListMembersQuickBar({
 
   const update = (key, value) => {
     const next = { ...filters, [key]: value }
-    if (key === 'uploadType' && value !== FORM_SUBMISSION_UPLOAD_TYPE) {
-      next.utm_source = ''
+    if (key === 'stage') {
+      next.stageOperator = 'eq'
+      next.stage = value
+    }
+    if (key === 'uploadType') {
+      next.uploadTypeOperator = 'eq'
+      next.uploadType = value
+      if (value !== FORM_SUBMISSION_UPLOAD_TYPE) {
+        next.utm_source = ''
+        next.sourceOperator = 'eq'
+      }
     }
     onChange(next)
   }
 
   const removeChip = (chip) => {
+    if (chip.locked) return
     onChange(removeMemberFilterKeys(filters, chip.keys))
   }
+
+  const stageValue = Array.isArray(filters.stage) ? '' : String(filters.stage || '')
 
   return (
     <div className="mt-6 space-y-4">
@@ -79,7 +93,7 @@ export default function DynamicListMembersQuickBar({
         <div className="flex flex-wrap items-center gap-2">
           {!hiddenFields.has('stage') && (
             <select
-              value={filters.stage}
+              value={stageValue}
               onChange={(e) => update('stage', e.target.value)}
               className={cn(selectClass, 'min-w-[140px]')}
             >
@@ -94,7 +108,7 @@ export default function DynamicListMembersQuickBar({
 
           {!hiddenFields.has('uploadType') && (
             <select
-              value={filters.uploadType}
+              value={Array.isArray(filters.uploadType) ? '' : String(filters.uploadType || '')}
               onChange={(e) => update('uploadType', e.target.value)}
               className={cn(selectClass, 'min-w-[160px]')}
             >
@@ -133,11 +147,12 @@ export default function DynamicListMembersQuickBar({
                 key={chip.id}
                 type="button"
                 onClick={() => removeChip(chip)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--studio-primary)]/20 bg-[var(--studio-primary)]/8 px-3 py-1.5 text-[12px] font-medium text-[var(--studio-primary)] hover:bg-[var(--studio-primary)]/12"
+                disabled={chip.locked}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--studio-primary)]/20 bg-[var(--studio-primary)]/8 px-3 py-1.5 text-[12px] font-medium text-[var(--studio-primary)] hover:bg-[var(--studio-primary)]/12 disabled:cursor-default disabled:opacity-80"
               >
                 <Icon className="h-3.5 w-3.5" />
                 {chip.label}
-                <X className="h-3.5 w-3.5" />
+                {!chip.locked && <X className="h-3.5 w-3.5" />}
               </button>
             )
           })}

@@ -315,7 +315,9 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
                 {Number(list?.memberCount ?? total)} members
               </span>
             </div>
-            <p className="mt-1 text-[14px] text-muted-foreground">{summarizeConditions(list, leadReasons)}</p>
+            <p className="mt-1 text-[14px] text-muted-foreground">
+              {summarizeConditions(list, { leadReasons, locations, forms })}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
