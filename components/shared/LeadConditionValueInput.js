@@ -24,11 +24,12 @@ export default function LeadConditionValueInput({
   const context = { leadReasons, locations, forms }
   const labeledOptions = getFieldValueOptions(field, context)
   const inputType = def?.inputType || 'text'
+  const isMulti = operator === 'in' || operator === 'ne'
 
-  if (operator === 'in') {
+  if (isMulti) {
     const values = Array.isArray(condition.value)
       ? condition.value
-      : normalizeConditionValue('in', condition.value)
+      : normalizeConditionValue(operator, condition.value)
 
     if (labeledOptions) {
       if (labeledOptions.length === 0) {
@@ -44,7 +45,7 @@ export default function LeadConditionValueInput({
           options={labeledOptions}
           values={values}
           onChange={onChange}
-          placeholder="Select one or more values"
+          placeholder={operator === 'ne' ? 'Select values to exclude' : 'Select one or more values'}
           disabled={loadingOptions && (def?.optionsKey === 'locations' || def?.optionsKey === 'forms')}
           emptyMessage={loadingOptions ? 'Loading options…' : 'No options available.'}
         />

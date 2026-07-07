@@ -1,23 +1,13 @@
 'use client'
 
 import { Calendar, Filter, ListPlus, MapPin, Search, User, X } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import {
-  FORM_SUBMISSION_UPLOAD_TYPE,
-  STAGE_OPTIONS,
-  UPLOAD_TYPE_OPTIONS,
   countAdvancedLeadFilters,
   getActiveLeadFilterChips,
   hasActiveLeadFilters,
   removeLeadFilterKeys,
 } from '@/lib/lead-page-filters'
-import { formatFieldDisplayValue } from '@/lib/dynamic-list-normalize'
-
-const selectClass =
-  'h-11 rounded-xl border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]'
-
-const searchClass =
-  'h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]'
+import QuickBarSearchControl from '@/components/shared/QuickBarSearchControl'
 
 const CHIP_ICONS = {
   search: Search,
@@ -51,23 +41,6 @@ export default function LeadsQuickBar({
   const advancedCount = countAdvancedLeadFilters(filters)
   const chips = getActiveLeadFilterChips(filters, { locations, forms, leadReasons, list: null })
 
-  const update = (key, value) => {
-    const next = { ...filters, [key]: value }
-    if (key === 'stage') {
-      next.stageOperator = 'eq'
-      next.stage = value
-    }
-    if (key === 'uploadType') {
-      next.uploadTypeOperator = 'eq'
-      next.uploadType = value
-      if (value !== FORM_SUBMISSION_UPLOAD_TYPE) {
-        next.utm_source = ''
-        next.sourceOperator = 'eq'
-      }
-    }
-    onChange(next)
-  }
-
   const removeChip = (chip) => {
     if (chip.locked) return
     onChange(removeLeadFilterKeys(filters, chip.keys))
@@ -76,43 +49,9 @@ export default function LeadsQuickBar({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={filters.search}
-            onChange={(e) => update('search', e.target.value)}
-            placeholder="Search by name, email, phone or location..."
-            className={searchClass}
-          />
-        </div>
+        <QuickBarSearchControl filters={filters} onChange={onChange} />
 
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={Array.isArray(filters.stage) ? '' : String(filters.stage || '')}
-            onChange={(e) => update('stage', e.target.value)}
-            className={cn(selectClass, 'min-w-[140px]')}
-          >
-            <option value="">All stages</option>
-            {STAGE_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>
-                {formatFieldDisplayValue(opt)}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={Array.isArray(filters.uploadType) ? '' : String(filters.uploadType || '')}
-            onChange={(e) => update('uploadType', e.target.value)}
-            className={cn(selectClass, 'min-w-[160px]')}
-          >
-            <option value="">All upload types</option>
-            {UPLOAD_TYPE_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>
-                {formatFieldDisplayValue(opt)}
-              </option>
-            ))}
-          </select>
-
           <button
             type="button"
             onClick={onOpenAdvanced}

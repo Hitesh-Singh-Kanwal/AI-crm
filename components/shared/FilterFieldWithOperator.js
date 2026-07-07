@@ -1,7 +1,7 @@
 'use client'
 
 import MultiSelectCheckboxDropdown from '@/components/shared/MultiSelectCheckboxDropdown'
-import { FILTER_OPERATOR_OPTIONS } from '@/lib/lead-flat-filters'
+import { FILTER_OPERATOR_OPTIONS, usesMultiValueOperator } from '@/lib/lead-flat-filters'
 import {
   getFlatFilterOperator,
   getFlatFilterValues,
@@ -28,7 +28,13 @@ export default function FilterFieldWithOperator({
 }) {
   const operator = getFlatFilterOperator(filters, operatorKey)
   const value = getFlatFilterValues(filters, filterKey, operatorKey)
-  const arrayValue = operator === 'in' ? (Array.isArray(value) ? value : value ? [value] : []) : []
+  const arrayValue = usesMultiValueOperator(operator)
+    ? Array.isArray(value)
+      ? value
+      : value
+        ? [value]
+        : []
+    : []
 
   const handleOperatorChange = (nextOperator) => {
     onChange(updateFlatFilterOperator(filters, filterKey, operatorKey, nextOperator))
@@ -56,12 +62,12 @@ export default function FilterFieldWithOperator({
         </select>
       </div>
 
-      {operator === 'in' ? (
+      {usesMultiValueOperator(operator) ? (
         <MultiSelectCheckboxDropdown
           options={options}
           values={arrayValue}
           onChange={handleValueChange}
-          placeholder={emptyOptionLabel}
+          placeholder={operator === 'ne' ? 'Select values to exclude' : emptyOptionLabel}
           disabled={disabled || loadingOptions}
           emptyMessage={loadingOptions ? 'Loading…' : 'No options available.'}
         />

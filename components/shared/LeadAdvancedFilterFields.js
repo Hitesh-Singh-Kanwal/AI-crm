@@ -1,10 +1,12 @@
 'use client'
 
 import { DATE_RANGE_PRESETS, applyDateRangePreset, getDateRangePresetValue } from '@/lib/dynamic-list-member-filters'
+import { STAGE_OPTIONS, UPLOAD_TYPE_OPTIONS } from '@/lib/dynamic-list-constants'
 import { getFieldValueOptions } from '@/lib/lead-filter-fields'
 import FilterFieldWithOperator from '@/components/shared/FilterFieldWithOperator'
 import FilterLogicToggle from '@/components/shared/FilterLogicToggle'
-import { getLeadReasonOptions } from '@/lib/dynamic-list-normalize'
+import { uploadFiltersIncludeFormSubmission } from '@/lib/lead-page-filters'
+import { formatFieldDisplayValue, getLeadReasonOptions } from '@/lib/dynamic-list-normalize'
 
 const selectClass =
   'h-11 w-full rounded-xl border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]'
@@ -29,6 +31,14 @@ export default function LeadAdvancedFilterFields({
   const sourceOptions = getFieldValueOptions('source', { leadReasons, locations, forms }) || []
   const locationOptions = getFieldValueOptions('locationID', { leadReasons, locations, forms }) || []
   const formOptions = getFieldValueOptions('formID', { leadReasons, locations, forms }) || []
+  const stageOptions = STAGE_OPTIONS.map((value) => ({
+    value,
+    label: formatFieldDisplayValue(value),
+  }))
+  const uploadTypeOptions = UPLOAD_TYPE_OPTIONS.map((value) => ({
+    value,
+    label: formatFieldDisplayValue(value),
+  }))
   const datePreset = getDateRangePresetValue(draft)
   const showCustomDates = datePreset === 'custom'
 
@@ -52,12 +62,44 @@ export default function LeadAdvancedFilterFields({
     onDraftChange(applyDateRangePreset(preset, draft))
   }
 
+  const handleUploadChange = (next) => {
+    if (!uploadFiltersIncludeFormSubmission(next)) {
+      onDraftChange({ ...next, utm_source: '', sourceOperator: 'eq' })
+      return
+    }
+    onDraftChange(next)
+  }
+
   return (
     <div className="space-y-4">
       <FilterLogicToggle
         value={draft.conditionLogic || 'AND'}
         onChange={(logic) => onDraftChange({ ...draft, conditionLogic: logic })}
       />
+
+      {!hiddenFields.has('stage') && (
+        <FilterFieldWithOperator
+          label="Stage"
+          filterKey="stage"
+          operatorKey="stageOperator"
+          filters={draft}
+          onChange={onDraftChange}
+          options={stageOptions}
+          emptyOptionLabel="All stages"
+        />
+      )}
+
+      {!hiddenFields.has('uploadType') && (
+        <FilterFieldWithOperator
+          label="Upload type"
+          filterKey="uploadType"
+          operatorKey="uploadTypeOperator"
+          filters={draft}
+          onChange={handleUploadChange}
+          options={uploadTypeOptions}
+          emptyOptionLabel="All upload types"
+        />
+      )}
 
       <div>
         <label className="mb-1.5 block text-[12px] font-medium text-muted-foreground">Date range</label>

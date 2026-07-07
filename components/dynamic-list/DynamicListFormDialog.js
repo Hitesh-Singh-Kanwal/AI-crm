@@ -84,8 +84,8 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
   const canSubmit = useMemo(() => {
     if (!form.name.trim()) return false
     return form.conditions.every((c) => {
-      if (c.operator === 'in') {
-        const values = normalizeConditionValue('in', c.value)
+      if (c.operator === 'in' || c.operator === 'ne') {
+        const values = normalizeConditionValue(c.operator, c.value)
         return values.length > 0
       }
       return String(c.value || '').trim() !== ''

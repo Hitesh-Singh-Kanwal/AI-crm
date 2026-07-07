@@ -31,14 +31,26 @@ export default function LeadConditionsEditor({
       if (i !== idx) return c
       const updated = { ...c, ...patch }
       if (patch.field && patch.field !== c.field) {
-        updated.value = patch.operator === 'in' || c.operator === 'in' ? [] : ''
+        updated.value =
+          patch.operator === 'in' || patch.operator === 'ne' || c.operator === 'in' || c.operator === 'ne'
+            ? []
+            : ''
         const ops = getOperatorsForField(patch.field)
         if (!ops.some((op) => op.value === updated.operator)) {
           updated.operator = 'eq'
         }
       }
-      if (patch.operator === 'in' && c.operator !== 'in') updated.value = []
-      if (patch.operator && patch.operator !== 'in' && c.operator === 'in') updated.value = ''
+      if ((patch.operator === 'in' || patch.operator === 'ne') && c.operator !== 'in' && c.operator !== 'ne') {
+        updated.value = []
+      }
+      if (
+        patch.operator &&
+        patch.operator !== 'in' &&
+        patch.operator !== 'ne' &&
+        (c.operator === 'in' || c.operator === 'ne')
+      ) {
+        updated.value = ''
+      }
       return updated
     })
     onChangeConditions?.(next)
@@ -170,8 +182,8 @@ export default function LeadConditionsEditor({
 
 export function isConditionComplete(condition) {
   const operator = condition?.operator || 'eq'
-  if (operator === 'in') {
-    const values = normalizeConditionValue('in', condition?.value)
+  if (operator === 'in' || operator === 'ne') {
+    const values = normalizeConditionValue(operator, condition?.value)
     return values.length > 0
   }
   return String(condition?.value ?? '').trim() !== ''
