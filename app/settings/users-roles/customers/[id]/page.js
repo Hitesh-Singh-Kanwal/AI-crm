@@ -42,6 +42,8 @@ import CustomerWalletTab from "@/components/wallet/CustomerWalletTab";
 import CancelRefundDialog from "@/components/shared/CancelRefundDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import api from "@/lib/api";
+import { useCloverConnection } from "@/app/settings/payments/clover/useCloverConnection";
+import CloverCardFields from "@/app/settings/payments/clover/CloverCardFields";
 import { useToast } from "@/components/ui/toast";
 import { getInitials, formatDate } from "@/lib/utils";
 
@@ -4852,19 +4854,29 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
   );
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection();
 
-  async function handlePay(e) {
-    e.preventDefault();
+  const showCloverFields = method === "card" && cloverStatus === "connected" && ecommercePublicKey;
+
+  async function submitPayment(cardToken) {
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) return;
     setSaving(true);
-    const res = await api.post("/api/payment", {
-      customerID,
-      enrollmentID: enr._id,
-      type: "package_purchase",
-      amount: num,
-      method,
-    });
+    const res = cardToken
+      ? await api.post("/api/payments/clover/charge", {
+          customerID,
+          enrollmentID: enr._id,
+          type: "package_purchase",
+          amount: num,
+          cardToken,
+        })
+      : await api.post("/api/payment", {
+          customerID,
+          enrollmentID: enr._id,
+          type: "package_purchase",
+          amount: num,
+          method,
+        });
     if (res.success) {
       toast.success(
         num >= outstanding ? "Payment recorded." : "Partial payment recorded.",
@@ -4875,6 +4887,12 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
       toast.error(res.error || "Failed to record payment.");
     }
     setSaving(false);
+  }
+
+  async function handlePay(e) {
+    e.preventDefault();
+    if (showCloverFields) return; // Clover path is submitted via CloverCardFields' onToken, not this form submit
+    await submitPayment(null);
   }
 
   async function handleChangeDate(e) {
@@ -5003,25 +5021,46 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
               ))}
             </select>
           </div>
-          <div className="flex gap-1.5">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 px-3 text-[11px]"
-              onClick={() => setMode(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              className="h-8 px-3 text-[11px]"
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Confirm Payment"}
-            </Button>
-          </div>
+          {showCloverFields ? (
+            <div className="w-full pt-2">
+              <CloverCardFields
+                ecommercePublicKey={ecommercePublicKey}
+                merchantId={cloverMerchantId}
+                amount={parseFloat(amount) || 0}
+                disabled={saving}
+                onToken={(token) => submitPayment(token)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-[11px] mt-2"
+                onClick={() => setMode(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-[11px]"
+                onClick={() => setMode(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="h-8 px-3 text-[11px]"
+                disabled={saving}
+              >
+                {saving ? "Saving…" : "Confirm Payment"}
+              </Button>
+            </div>
+          )}
         </form>
       )}
 

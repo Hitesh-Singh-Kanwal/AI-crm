@@ -8,6 +8,7 @@ const initialState = {
   merchantId: null,
   merchantName: null,
   connectedAt: null,
+  ecommercePublicKey: null,
   lastError: null,
 }
 
@@ -23,6 +24,7 @@ export function useCloverConnection() {
         merchantId: result.data.merchantId ?? null,
         merchantName: result.data.merchantName ?? null,
         connectedAt: result.data.connectedAt ?? null,
+        ecommercePublicKey: result.data.ecommercePublicKey ?? null,
         lastError: result.data.lastError ?? null,
       })
     } else {
