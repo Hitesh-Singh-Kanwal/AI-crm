@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 
 const CLOVER_JS_SRC = 'https://token-sandbox.dev.clover.com/v1/clover.js'
@@ -25,14 +25,20 @@ function loadCloverScript() {
   return cloverScriptPromise
 }
 
-export default function CloverCardFields({ ecommercePublicKey, merchantId, amount, onToken, disabled }) {
+export default function CloverCardFields({ ecommercePublicKey, merchantId, amount, onToken, disabled, resetSignal }) {
   const [ready, setReady] = useState(false)
   const [tokenizing, setTokenizing] = useState(false)
   const [fieldErrors, setFieldErrors] = useState(null)
   const cloverRef = useRef(null)
+  const uid = useId()
+  const cardNumberId = `clover-card-number-${uid}`
+  const cardDateId = `clover-card-date-${uid}`
+  const cardCvvId = `clover-card-cvv-${uid}`
+  const cardPostalCodeId = `clover-card-postal-code-${uid}`
 
   useEffect(() => {
     let cancelled = false
+    setReady(false)
     loadCloverScript()
       .then((Clover) => {
         if (cancelled) return
@@ -44,17 +50,22 @@ export default function CloverCardFields({ ecommercePublicKey, merchantId, amoun
         const cardDate = elements.create('CARD_DATE', styles)
         const cardCvv = elements.create('CARD_CVV', styles)
         const cardPostalCode = elements.create('CARD_POSTAL_CODE', styles)
-        cardNumber.mount('#clover-card-number')
-        cardDate.mount('#clover-card-date')
-        cardCvv.mount('#clover-card-cvv')
-        cardPostalCode.mount('#clover-card-postal-code')
+        cardNumber.mount(`#${cardNumberId}`)
+        cardDate.mount(`#${cardDateId}`)
+        cardCvv.mount(`#${cardCvvId}`)
+        cardPostalCode.mount(`#${cardPostalCodeId}`)
         setReady(true)
       })
       .catch(() => setFieldErrors('Unable to load the card payment form. Please refresh and try again.'))
     return () => {
       cancelled = true
     }
-  }, [ecommercePublicKey, merchantId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ecommercePublicKey, merchantId, resetSignal])
+
+  useEffect(() => {
+    if (resetSignal) setTokenizing(false)
+  }, [resetSignal])
 
   async function handlePayClick() {
     if (!cloverRef.current) return
@@ -77,10 +88,10 @@ export default function CloverCardFields({ ecommercePublicKey, merchantId, amoun
   return (
     <div className="space-y-2 rounded-lg border border-border p-3">
       <div className="grid grid-cols-2 gap-2">
-        <div id="clover-card-number" className="h-8 rounded-md border border-border bg-background px-2.5" />
-        <div id="clover-card-date" className="h-8 rounded-md border border-border bg-background px-2.5" />
-        <div id="clover-card-cvv" className="h-8 rounded-md border border-border bg-background px-2.5" />
-        <div id="clover-card-postal-code" className="h-8 rounded-md border border-border bg-background px-2.5" />
+        <div id={cardNumberId} className="h-8 rounded-md border border-border bg-background px-2.5" />
+        <div id={cardDateId} className="h-8 rounded-md border border-border bg-background px-2.5" />
+        <div id={cardCvvId} className="h-8 rounded-md border border-border bg-background px-2.5" />
+        <div id={cardPostalCodeId} className="h-8 rounded-md border border-border bg-background px-2.5" />
       </div>
       {fieldErrors && <p className="text-[11px] text-red-600">{fieldErrors}</p>}
       <Button

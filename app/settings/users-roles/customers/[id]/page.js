@@ -4853,10 +4853,12 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
     cp.dueDate ? new Date(cp.dueDate).toISOString().slice(0, 10) : "",
   );
   const [saving, setSaving] = useState(false);
+  const [cloverResetSignal, setCloverResetSignal] = useState(0);
   const toast = useToast();
   const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection();
 
   const showCloverFields = method === "card" && cloverStatus === "connected" && ecommercePublicKey;
+  const amountValid = parseFloat(amount) > 0;
 
   async function submitPayment(cardToken) {
     const num = parseFloat(amount);
@@ -4885,6 +4887,7 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
       onSuccess();
     } else {
       toast.error(res.error || "Failed to record payment.");
+      if (cardToken) setCloverResetSignal((n) => n + 1);
     }
     setSaving(false);
   }
@@ -5027,7 +5030,8 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
                 ecommercePublicKey={ecommercePublicKey}
                 merchantId={cloverMerchantId}
                 amount={parseFloat(amount) || 0}
-                disabled={saving}
+                disabled={saving || !amountValid}
+                resetSignal={cloverResetSignal}
                 onToken={(token) => submitPayment(token)}
               />
               <Button
