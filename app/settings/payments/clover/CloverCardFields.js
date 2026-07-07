@@ -3,10 +3,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 
-const CLOVER_JS_SRC = 'https://token-sandbox.dev.clover.com/v1/clover.js'
-// NOTE: sandbox-only URL, hardcoded. Before any production rollout, this must become an env-driven
-// switch (production Clover.js is served from a different host — confirm the exact URL with Clover's
-// current docs before shipping beyond sandbox testing; not verified as part of this plan).
+const CLOVER_JS_SRC = 'https://checkout.sandbox.dev.clover.com/sdk.js'
+// NOTE: sandbox-only URL, hardcoded. Production is https://checkout.clover.com/sdk.js (verified against
+// Clover's current docs) — before any production rollout, this must become an env-driven switch rather
+// than a hardcoded sandbox URL.
 
 let cloverScriptPromise = null
 function loadCloverScript() {
