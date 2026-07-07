@@ -976,7 +976,8 @@ export default function AiAssistTab() {
                     )}
                   </Select>
                   <p className="mt-1 text-[10px] text-muted-foreground">
-                    Upload more in the <span className="font-medium">Background Sounds</span> tab. Local{' '}
+                    Upload more in the <span className="font-medium">Background Sounds</span> tab. Custom
+                    sound volume is managed there and reused everywhere. Local{' '}
                     <code className="text-[10px]">http://localhost</code> URLs can be saved for testing; live Vapi
                     calls need a public HTTPS URL.
                   </p>

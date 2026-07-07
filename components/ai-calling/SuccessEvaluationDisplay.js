@@ -415,6 +415,28 @@ function ScaleStripView({ parsed }) {
   )
 }
 
+function DescriptiveView({ parsed }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        Descriptive rating
+      </p>
+      <ScaleStripView parsed={parsed} />
+    </div>
+  )
+}
+
+function LikertView({ parsed }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        Likert response
+      </p>
+      <ScaleStripView parsed={parsed} />
+    </div>
+  )
+}
+
 function StructuredView({ parsed }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
@@ -489,9 +511,8 @@ function FullEvaluation({ parsed, rubric }) {
         {parsed.type === 'passFail' && <PassFailView parsed={parsed} />}
         {parsed.type === 'numeric' && <NumericView parsed={parsed} />}
         {parsed.type === 'percentage' && <PercentageView parsed={parsed} />}
-        {(parsed.type === 'descriptive' || parsed.type === 'likert') && (
-          <ScaleStripView parsed={parsed} />
-        )}
+        {parsed.type === 'descriptive' && <DescriptiveView parsed={parsed} />}
+        {parsed.type === 'likert' && <LikertView parsed={parsed} />}
         {parsed.type === 'structured' && <StructuredView parsed={parsed} />}
         {(parsed.type === 'text' || parsed.type === 'empty') && <TextFallbackView parsed={parsed} />}
       </div>

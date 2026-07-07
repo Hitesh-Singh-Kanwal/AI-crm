@@ -7,6 +7,11 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
+import {
+  DEFAULT_BACKGROUND_SOUND_VOLUME,
+  clampBackgroundSoundVolume,
+  formatBackgroundSoundVolumeLabel,
+} from '@/lib/backgroundSound'
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024
 const ALLOWED_AUDIO_EXT = /\.(mp3|wav|ogg|m4a|webm)$/i
@@ -31,6 +36,7 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [file, setFile] = useState(null)
+  const [volume, setVolume] = useState(DEFAULT_BACKGROUND_SOUND_VOLUME)
 
   const canUpload = useMemo(() => !!file && !!normalize(name), [file, name])
 
@@ -40,6 +46,7 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
     setName('')
     setDescription('')
     setFile(null)
+    setVolume(DEFAULT_BACKGROUND_SOUND_VOLUME)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }, [open])
 
@@ -67,6 +74,7 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
       const fd = new FormData()
       fd.append('name', normalize(name))
       fd.append('description', normalize(description))
+      fd.append('volume', String(clampBackgroundSoundVolume(volume)))
       fd.append('file', file)
 
       const result = await api.request('/api/ai-background-sound/upload', {
@@ -122,6 +130,25 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
               disabled={saving}
               rows={2}
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium">
+              Default volume ({formatBackgroundSoundVolumeLabel(volume)})
+            </p>
+            <input
+              type="range"
+              min={0.05}
+              max={1}
+              step={0.05}
+              value={volume}
+              onChange={(e) => setVolume(clampBackgroundSoundVolume(Number(e.target.value)))}
+              disabled={saving}
+              className="w-full"
+            />
+            <p className="text-xs text-muted-foreground">
+              This saved volume will be used anywhere this sound is selected.
+            </p>
           </div>
 
           <div className="space-y-1.5">

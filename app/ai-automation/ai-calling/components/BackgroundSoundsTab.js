@@ -8,7 +8,11 @@ import { TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import api, { getApiBaseUrl } from '@/lib/api'
-import { resolveBackgroundSoundPlayUrl } from '@/lib/backgroundSound'
+import {
+  clampBackgroundSoundVolume,
+  formatBackgroundSoundVolumeLabel,
+  resolveBackgroundSoundPlayUrl,
+} from '@/lib/backgroundSound'
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import BackgroundSoundUploadDialog from './BackgroundSoundUploadDialog'
@@ -48,6 +52,7 @@ export default function BackgroundSoundsTab() {
   const [editingId, setEditingId] = useState(null)
   const [editingName, setEditingName] = useState('')
   const [editingDescription, setEditingDescription] = useState('')
+  const [editingVolume, setEditingVolume] = useState(0.4)
   const [savingId, setSavingId] = useState(null)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -128,35 +133,41 @@ export default function BackgroundSoundsTab() {
     setEditingId(sound._id)
     setEditingName(sound.name || '')
     setEditingDescription(sound.description || '')
+    setEditingVolume(clampBackgroundSoundVolume(sound.volume))
   }
 
   const cancelEdit = () => {
     setEditingId(null)
     setEditingName('')
     setEditingDescription('')
+    setEditingVolume(0.4)
   }
 
   const handleSaveEdit = async (sound) => {
     const name = editingName.trim()
     const description = editingDescription.trim()
+    const volume = clampBackgroundSoundVolume(editingVolume)
     if (!sound?._id || !name) return
 
     const nameUnchanged = name === String(sound.name || '').trim()
     const descriptionUnchanged = description === String(sound.description || '').trim()
-    if (nameUnchanged && descriptionUnchanged) {
+    const volumeUnchanged = volume === clampBackgroundSoundVolume(sound.volume)
+    if (nameUnchanged && descriptionUnchanged && volumeUnchanged) {
       cancelEdit()
       return
     }
 
     setSavingId(sound._id)
     try {
-      const result = await api.patch(`/api/ai-background-sound/${sound._id}`, { name, description })
+      const result = await api.patch(`/api/ai-background-sound/${sound._id}`, { name, description, volume })
       if (!result.success) {
         toast.error({ title: 'Update failed', message: result.error || 'Could not update sound.' })
         return
       }
 
-      setSounds((prev) => prev.map((s) => (s._id === sound._id ? { ...s, name, description } : s)))
+      setSounds((prev) =>
+        prev.map((s) => (s._id === sound._id ? { ...s, ...result.data, name, description, volume } : s))
+      )
       toast.success({ title: 'Updated', message: 'Background sound saved.' })
       cancelEdit()
     } catch (e) {
@@ -321,6 +332,23 @@ export default function BackgroundSoundsTab() {
                               rows={2}
                               className="text-sm resize-none"
                             />
+                            <div className="space-y-1">
+                              <p className="text-[11px] font-medium text-foreground">
+                                Volume ({formatBackgroundSoundVolumeLabel(editingVolume)})
+                              </p>
+                              <input
+                                type="range"
+                                min={0.05}
+                                max={1}
+                                step={0.05}
+                                value={editingVolume}
+                                onChange={(e) =>
+                                  setEditingVolume(clampBackgroundSoundVolume(Number(e.target.value)))
+                                }
+                                disabled={isSaving}
+                                className="w-full"
+                              />
+                            </div>
                             <div className="flex items-center gap-1.5">
                               <Button
                                 type="button"
@@ -373,6 +401,12 @@ export default function BackgroundSoundsTab() {
                       ) : (
                         <p className="text-xs text-muted-foreground italic">No description</p>
                       )
+                    )}
+
+                    {!isEditing && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Saved volume: {formatBackgroundSoundVolumeLabel(sound.volume)}
+                      </p>
                     )}
 
                     <div className="flex items-center justify-between pt-1 border-t border-border/60">

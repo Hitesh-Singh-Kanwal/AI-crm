@@ -1289,6 +1289,9 @@ export default function MakeCallsPage() {
                         {backgroundSoundsError && (
                           <p className="text-[10px] text-red-600 mt-1">{backgroundSoundsError}</p>
                         )}
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Custom sound volume is managed from the Background Sounds tab and reused here.
+                        </p>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-foreground mb-1 block">
