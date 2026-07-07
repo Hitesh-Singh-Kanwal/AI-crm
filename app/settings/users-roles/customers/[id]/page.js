@@ -1329,9 +1329,12 @@ function PayInstallmentDialog({
   const [method, setMethod] = useState("cash");
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
+  const [cloverResetSignal, setCloverResetSignal] = useState(0);
   const toast = useToast();
+  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection();
 
   const installment = plan?.installments?.[installmentIndex];
+  const showCloverFields = method === "card" && cloverStatus === "connected" && ecommercePublicKey;
 
   useEffect(() => {
     if (installment) setAmount(Number(installment.amount).toFixed(2));
@@ -1346,27 +1349,36 @@ function PayInstallmentDialog({
     return num;
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function submitPayment(cardToken) {
     const num = validatedAmount();
     if (num === null) return;
     setSaving(true);
-    const res = await api.post(
-      `/api/payment-plan/${plan._id}/pay-installment`,
-      {
-        installmentIndex,
-        method,
-        amount: num,
-      },
-    );
+    const res = cardToken
+      ? await api.post(`/api/payment-plan/${plan._id}/charge-installment`, {
+          installmentIndex,
+          cardToken,
+          amount: num,
+        })
+      : await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
+          installmentIndex,
+          method,
+          amount: num,
+        });
     if (res.success) {
       toast.success("Installment payment recorded.");
       onSuccess();
       onClose();
     } else {
       toast.error(res.error || "Failed to record payment.");
+      if (cardToken) setCloverResetSignal((n) => n + 1);
     }
     setSaving(false);
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (showCloverFields) return;
+    await submitPayment(null);
   }
 
   async function handleSaveAmount() {
@@ -1455,17 +1467,31 @@ function PayInstallmentDialog({
             >
               Save
             </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={saving}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              {saving
-                ? "Recording…"
-                : `Pay $${(Number(amount) || 0).toFixed(2)}`}
-            </Button>
+            {!showCloverFields && (
+              <Button
+                type="submit"
+                size="sm"
+                disabled={saving}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {saving
+                  ? "Recording…"
+                  : `Pay $${(Number(amount) || 0).toFixed(2)}`}
+              </Button>
+            )}
           </div>
+          {showCloverFields && (
+            <div className="pt-2">
+              <CloverCardFields
+                ecommercePublicKey={ecommercePublicKey}
+                merchantId={cloverMerchantId}
+                amount={parseFloat(amount) || 0}
+                disabled={saving}
+                resetSignal={cloverResetSignal}
+                onToken={(token) => submitPayment(token)}
+              />
+            </div>
+          )}
         </form>
       </DialogContent>
     </Dialog>
