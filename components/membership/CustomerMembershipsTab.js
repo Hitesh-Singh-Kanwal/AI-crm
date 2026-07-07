@@ -10,6 +10,8 @@ import GlobalLoader from '@/components/shared/GlobalLoader'
 import CancelRefundDialog from '@/components/shared/CancelRefundDialog'
 import FreezeMembershipDialog from '@/components/shared/FreezeMembershipDialog'
 import AssignMembershipForm from './AssignMembershipForm'
+import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
+import CloverCardFields from '@/app/settings/payments/clover/CloverCardFields'
 
 const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other', 'wallet']
 const ANNUAL_FREEZE_CAP_DAYS = 60
@@ -34,17 +36,30 @@ function fmtDate(iso) {
 function PayInstallmentDialog({ target, onClose, onPaid }) {
   const [method, setMethod] = useState('cash')
   const [paying, setPaying] = useState(false)
+  const [cloverResetSignal, setCloverResetSignal] = useState(0)
+  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection()
   if (!target) return null
   const { plan, index } = target
   const inst = plan.installments[index]
+  const showCloverFields = method === 'card' && cloverStatus === 'connected' && ecommercePublicKey
 
-  async function handlePay() {
+  async function submitPayment(cardToken) {
     setPaying(true)
     try {
-      const r = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, { installmentIndex: index, method })
+      const r = cardToken
+        ? await api.post(`/api/payment-plan/${plan._id}/charge-installment`, { installmentIndex: index, cardToken })
+        : await api.post(`/api/payment-plan/${plan._id}/pay-installment`, { installmentIndex: index, method })
       if (r.success) { toast.success('Installment paid'); onPaid() }
-      else toast.error('Payment failed', { description: r.error })
+      else {
+        toast.error('Payment failed', { description: r.error })
+        if (cardToken) setCloverResetSignal((n) => n + 1)
+      }
     } finally { setPaying(false) }
+  }
+
+  async function handlePay() {
+    if (showCloverFields) return
+    await submitPayment(null)
   }
 
   return (
@@ -63,12 +78,28 @@ function PayInstallmentDialog({ target, onClose, onPaid }) {
         >
           {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={paying}>Cancel</Button>
-          <Button size="sm" onClick={handlePay} disabled={paying} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-            {paying ? 'Saving…' : `Pay $${Number(inst.amount).toFixed(2)}`}
-          </Button>
-        </div>
+        {showCloverFields ? (
+          <div className="mt-4">
+            <CloverCardFields
+              ecommercePublicKey={ecommercePublicKey}
+              merchantId={cloverMerchantId}
+              amount={Number(inst.amount)}
+              disabled={paying}
+              resetSignal={cloverResetSignal}
+              onToken={(token) => submitPayment(token)}
+            />
+            <div className="flex justify-end mt-2">
+              <Button variant="outline" size="sm" onClick={onClose} disabled={paying}>Cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={onClose} disabled={paying}>Cancel</Button>
+            <Button size="sm" onClick={handlePay} disabled={paying} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              {paying ? 'Saving…' : `Pay $${Number(inst.amount).toFixed(2)}`}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )
