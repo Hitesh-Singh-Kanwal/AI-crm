@@ -1409,7 +1409,7 @@ function PayInstallmentDialog({
         if (!v) onClose();
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Pay Installment</DialogTitle>
         </DialogHeader>
@@ -1454,6 +1454,16 @@ function PayInstallmentDialog({
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             </div>
           </FormField>
+          {showCloverFields && (
+            <CloverCardFields
+              ecommercePublicKey={ecommercePublicKey}
+              merchantId={cloverMerchantId}
+              amount={parseFloat(amount) || 0}
+              disabled={saving}
+              resetSignal={cloverResetSignal}
+              onToken={(token) => submitPayment(token)}
+            />
+          )}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Cancel
@@ -1480,18 +1490,6 @@ function PayInstallmentDialog({
               </Button>
             )}
           </div>
-          {showCloverFields && (
-            <div className="pt-2">
-              <CloverCardFields
-                ecommercePublicKey={ecommercePublicKey}
-                merchantId={cloverMerchantId}
-                amount={parseFloat(amount) || 0}
-                disabled={saving}
-                resetSignal={cloverResetSignal}
-                onToken={(token) => submitPayment(token)}
-              />
-            </div>
-          )}
         </form>
       </DialogContent>
     </Dialog>

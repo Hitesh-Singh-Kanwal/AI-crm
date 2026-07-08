@@ -65,7 +65,7 @@ function PayInstallmentDialog({ target, onClose, onPaid }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-[61] w-[360px] rounded-xl border border-border bg-card p-5 shadow-2xl">
+      <div className="relative z-[61] w-[420px] rounded-xl border border-border bg-card p-5 shadow-2xl">
         <h3 className="text-sm font-semibold text-foreground mb-1">Record Payment</h3>
         <p className="text-[12px] text-muted-foreground mb-4">
           Payment {index + 1} · <span className="font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</span>
