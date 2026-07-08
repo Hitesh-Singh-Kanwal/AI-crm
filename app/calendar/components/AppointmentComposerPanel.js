@@ -2047,6 +2047,8 @@ export default function AppointmentComposerPanel({
       const payRes = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
         installmentIndex: firstPending,
         method,
+        cardToken: billing.cardToken || undefined,
+        saveCard: billing.saveCard || undefined,
       });
       if (!payRes.success) {
         console.error("pay-installment failed", payRes);
@@ -2061,6 +2063,7 @@ export default function AppointmentComposerPanel({
         type: "package_purchase",
         amount: Number(billing.collectAmount),
         method,
+        cardToken: billing.cardToken || undefined,
       });
     }
   };
@@ -2100,7 +2103,10 @@ export default function AppointmentComposerPanel({
       billingType: payload.billingType,
       billing:
         payload.billingType === "one_time"
-          ? { method: payload.billing?.method || "cash" }
+          ? {
+              method: payload.billing?.method || "cash",
+              cardToken: payload.billing?.cardToken || undefined,
+            }
           : payload.billingType === "payment_plan"
             ? {
                 installmentMode: payload.billing?.installmentMode || "count",

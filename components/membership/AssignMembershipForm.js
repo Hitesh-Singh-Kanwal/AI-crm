@@ -7,6 +7,8 @@ import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
+import CloverCardFields from '@/app/settings/payments/clover/CloverCardFields'
 
 const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other']
 
@@ -25,6 +27,8 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   const [walletBalance, setWalletBalance] = useState(null)
   const [useWallet, setUseWallet] = useState(false)
   const [walletAmount, setWalletAmount] = useState('')
+  const [cloverResetSignal, setCloverResetSignal] = useState(0)
+  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection()
 
   useEffect(() => {
     api.get('/api/membership?isActive=true&limit=200').then((res) => {
@@ -49,6 +53,14 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   const remaining = Math.max(0, price - walletApplied)
   const walletOver = walletEligible && walletEntered > (walletBalance ?? 0)
 
+  // Only one-time billing takes money here; flexible schedules are collected later.
+  const showCloverFields =
+    billingType === 'one_time' &&
+    method === 'card' &&
+    remaining > 0 &&
+    cloverStatus === 'connected' &&
+    Boolean(ecommercePublicKey)
+
   const customTotal = useMemo(
     () => customInstallments.reduce((sum, c) => sum + (Number(c.amount) || 0), 0),
     [customInstallments],
@@ -67,7 +79,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
     setCustomInstallments((prev) => prev.filter((c) => c._key !== key))
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(cardToken = null) {
     if (!customerID) { toast.error('Select a student first'); return }
     if (!membershipID) { toast.error('Select a membership'); return }
     if (walletOver) {
@@ -79,6 +91,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
     if (billingType === 'one_time') {
       billing.method = method
       if (walletApplied > 0) billing.walletAmount = walletApplied
+      if (cardToken) billing.cardToken = cardToken
     }
     else if (billingType === 'flexible') {
       if (scheduleMode === 'custom') {
@@ -108,6 +121,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
         onSuccess?.()
       } else {
         toast.error('Failed to assign membership', { description: result.error })
+        if (cardToken) setCloverResetSignal((n) => n + 1)
       }
     } finally {
       setSubmitting(false)
@@ -238,6 +252,17 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
               </select>
             </div>
           )}
+
+          {showCloverFields && (
+            <CloverCardFields
+              ecommercePublicKey={ecommercePublicKey}
+              merchantId={cloverMerchantId}
+              amount={remaining}
+              disabled={submitting || walletOver}
+              resetSignal={cloverResetSignal}
+              onToken={(token) => handleSubmit(token)}
+            />
+          )}
         </div>
       )}
 
@@ -319,9 +344,12 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
 
       <div className="flex justify-end gap-2 pt-2">
         {onCancel && <Button variant="outline" onClick={onCancel} disabled={submitting}>Cancel</Button>}
-        <Button onClick={handleSubmit} disabled={submitting || walletOver} className="bg-brand hover:bg-brand-dark text-brand-foreground">
-          {submitting ? 'Assigning…' : 'Assign Membership'}
-        </Button>
+        {/* The Clover pay button submits the card path; it owns the token. */}
+        {!showCloverFields && (
+          <Button onClick={() => handleSubmit()} disabled={submitting || walletOver} className="bg-brand hover:bg-brand-dark text-brand-foreground">
+            {submitting ? 'Assigning…' : 'Assign Membership'}
+          </Button>
+        )}
       </div>
     </div>
   )

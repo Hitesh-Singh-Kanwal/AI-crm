@@ -61,10 +61,23 @@ function loadCloverScript() {
   return cloverScriptPromise
 }
 
-export default function CloverCardFields({ ecommercePublicKey, merchantId, amount, onToken, disabled, resetSignal }) {
+// `allowSaveCard` opts a caller into the card-on-file consent checkbox — pass it only where a
+// schedule of future installments exists to charge. The consent it captures is surfaced as the
+// second argument to `onToken`; callers that ignore it get the same behavior as before.
+export default function CloverCardFields({
+  ecommercePublicKey,
+  merchantId,
+  amount,
+  onToken,
+  disabled,
+  resetSignal,
+  allowSaveCard = false,
+}) {
   const [ready, setReady] = useState(false)
   const [tokenizing, setTokenizing] = useState(false)
   const [fieldErrors, setFieldErrors] = useState(null)
+  // Consent must be given explicitly: never pre-checked.
+  const [saveCard, setSaveCard] = useState(false)
   const cloverRef = useRef(null)
   const uid = useId()
   // "-mount" ids are the actual Clover mount targets (wider than visible, see
@@ -115,7 +128,7 @@ export default function CloverCardFields({ ecommercePublicKey, merchantId, amoun
         setTokenizing(false)
         return
       }
-      onToken(result.token)
+      onToken(result.token, { saveCard: allowSaveCard && saveCard })
     } catch (error) {
       setFieldErrors('Unable to process the card. Please check the details and try again.')
       setTokenizing(false)
@@ -176,6 +189,18 @@ export default function CloverCardFields({ ecommercePublicKey, merchantId, amoun
       </div>
 
       {fieldErrors && <p className="mt-3 text-[11px] text-red-500">{fieldErrors}</p>}
+
+      {allowSaveCard && (
+        <label className="mt-4 flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={saveCard}
+            onChange={(e) => setSaveCard(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--studio-primary)]"
+          />
+          Save this card and automatically charge future installments on their due dates.
+        </label>
+      )}
 
       <Button
         type="button"

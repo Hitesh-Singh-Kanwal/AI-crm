@@ -1690,7 +1690,9 @@ function PackagesTab({ customerID }) {
   const [extending, setExtending] = useState(false);
   const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null); // { plan, index }
+  const [cloverResetSignal, setCloverResetSignal] = useState(0);
   const toast = useToast();
+  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1820,6 +1822,14 @@ function PackagesTab({ customerID }) {
     return s + Math.max(0, gross - (Number(svc.finalAmount) || 0));
   }, 0);
 
+  // Only one-time billing settles money in this dialog; the other types collect later.
+  const showCloverFields =
+    addForm.billingType === "one_time" &&
+    addForm.billing.method === "card" &&
+    totalAmount > 0 &&
+    cloverStatus === "connected" &&
+    ecommercePublicKey;
+
   function getInstallments() {
     const { numberOfInstallments, frequency, startDate } = addForm.billing;
     if (!startDate || !numberOfInstallments) return [];
@@ -1853,7 +1863,7 @@ function PackagesTab({ customerID }) {
     return result;
   }
 
-  async function handleAdd() {
+  async function handleAdd(cardToken = null) {
     if (!addForm.enrollmentID) {
       toast.error("Please select an enrollment.");
       return;
@@ -1883,7 +1893,7 @@ function PackagesTab({ customerID }) {
       billingType: addForm.billingType,
       billing:
         addForm.billingType === "one_time"
-          ? { method: addForm.billing.method }
+          ? { method: addForm.billing.method, cardToken: cardToken || undefined }
           : addForm.billingType === "payment_plan"
             ? {
                 numberOfInstallments: Number(
@@ -1902,6 +1912,7 @@ function PackagesTab({ customerID }) {
       load();
     } else {
       toast.error(res.error || "Failed to add package.");
+      if (cardToken) setCloverResetSignal((n) => n + 1);
     }
     setAdding(false);
   }
@@ -2826,6 +2837,16 @@ function PackagesTab({ customerID }) {
                       <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     </div>
                   </FormField>
+                  {showCloverFields && (
+                    <CloverCardFields
+                      ecommercePublicKey={ecommercePublicKey}
+                      merchantId={cloverMerchantId}
+                      amount={totalAmount}
+                      disabled={adding}
+                      resetSignal={cloverResetSignal}
+                      onToken={(token) => handleAdd(token)}
+                    />
+                  )}
                 </div>
               )}
 
@@ -2944,14 +2965,17 @@ function PackagesTab({ customerID }) {
                 >
                   Back
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={adding}
-                  onClick={handleAdd}
-                >
-                  {adding ? "Adding…" : "Add Package"}
-                </Button>
+                {/* The Clover pay button submits the card path; it owns the token. */}
+                {!showCloverFields && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={adding}
+                    onClick={() => handleAdd()}
+                  >
+                    {adding ? "Adding…" : "Add Package"}
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -2994,6 +3018,8 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
   const [addForm, setAddForm] = useState(BLANK_ENR_FORM);
   const [selectedPkg, setSelectedPkg] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [cloverResetSignal, setCloverResetSignal] = useState(0);
+  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection();
 
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
@@ -3168,6 +3194,14 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     return s + Math.max(0, gross - (Number(svc.finalAmount) || 0));
   }, 0);
 
+  // Only one-time billing settles money in this dialog; the other types collect later.
+  const showCloverFields =
+    addForm.billingType === "one_time" &&
+    addForm.billing.method === "card" &&
+    enrTotalAmount > 0 &&
+    cloverStatus === "connected" &&
+    ecommercePublicKey;
+
   function getEnrInstallments() {
     const {
       installmentMode,
@@ -3219,7 +3253,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     return result;
   }
 
-  async function handleEnrAdd() {
+  async function handleEnrAdd(cardToken = null) {
     if (addForm.billingType === "payment_plan") {
       const {
         installmentMode,
@@ -3263,7 +3297,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
       billingType: addForm.billingType,
       billing:
         addForm.billingType === "one_time"
-          ? { method: addForm.billing.method }
+          ? { method: addForm.billing.method, cardToken: cardToken || undefined }
           : addForm.billingType === "payment_plan"
             ? {
                 installmentMode: addForm.billing.installmentMode || "count",
@@ -3289,6 +3323,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     const res = await api.post("/api/customer-package/add", payload);
     if (!res.success) {
       toast.error(res.error || "Failed to add package.");
+      if (cardToken) setCloverResetSignal((n) => n + 1);
       setAdding(false);
       return;
     }
@@ -4493,6 +4528,16 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                             </div>
                           </FormField>
+                          {showCloverFields && (
+                            <CloverCardFields
+                              ecommercePublicKey={ecommercePublicKey}
+                              merchantId={cloverMerchantId}
+                              amount={enrTotalAmount}
+                              disabled={adding}
+                              resetSignal={cloverResetSignal}
+                              onToken={(token) => handleEnrAdd(token)}
+                            />
+                          )}
                         </div>
                       )}
 
@@ -4845,14 +4890,17 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                 >
                   Cancel
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={adding}
-                  onClick={handleEnrAdd}
-                >
-                  {adding ? "Adding…" : "Add Package"}
-                </Button>
+                {/* The Clover pay button submits the card path; it owns the token. */}
+                {!showCloverFields && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={adding}
+                    onClick={() => handleEnrAdd()}
+                  >
+                    {adding ? "Adding…" : "Add Package"}
+                  </Button>
+                )}
               </div>
             </div>
           </div>

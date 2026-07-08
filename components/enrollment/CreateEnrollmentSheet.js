@@ -156,6 +156,10 @@ export default function CreateEnrollmentSheet({
         payload.billingType === 'one_time'
           ? {
               method: payload.billing?.method || 'cash',
+              // Only one_time settles inside /add. Plan types are collected below via
+              // pay-installment, so their cardToken must not be sent here — the backend
+              // would charge the first installment, and then we would charge it again.
+              cardToken: payload.billing?.cardToken || undefined,
               ...(payload.billing?.useWallet && Number(payload.billing?.walletAmount) > 0
                 ? { walletAmount: Number(payload.billing.walletAmount) }
                 : {}),
@@ -227,6 +231,8 @@ export default function CreateEnrollmentSheet({
         const payRes = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
           installmentIndex: firstPending,
           method,
+          cardToken: payload.billing?.cardToken || undefined,
+          saveCard: payload.billing?.saveCard || undefined,
         })
         if (!payRes?.success) {
           setError(payRes?.error || 'Enrollment created but first installment payment failed.')
@@ -241,6 +247,7 @@ export default function CreateEnrollmentSheet({
         type: 'package_purchase',
         amount: collectAmount,
         method,
+        cardToken: payload.billing?.cardToken || undefined,
       })
       if (!payRes?.success) {
         setError(payRes?.error || 'Enrollment created but initial payment failed.')
