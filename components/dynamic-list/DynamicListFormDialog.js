@@ -4,14 +4,14 @@ import { useEffect, useMemo, useState } from 'react'
 import api from '@/lib/api'
 import { STATUS_OPTIONS } from '@/lib/dynamic-list-constants'
 import {
+  buildConditionGroupsFromFlat,
   buildDynamicListPayload,
-  createEmptyCondition,
+  flattenConditionGroups,
   formatFieldDisplayValue,
-  normalizeConditionValue,
   normalizeDynamicListFromApi,
 } from '@/lib/dynamic-list-normalize'
 import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
-import LeadConditionsEditor from '@/components/shared/LeadConditionsEditor'
+import LeadConditionsEditor, { isConditionComplete } from '@/components/shared/LeadConditionsEditor'
 import {
   Dialog,
   DialogContent,
@@ -26,8 +26,26 @@ function createEmptyForm() {
     name: '',
     description: '',
     conditionLogic: 'AND',
-    conditions: [createEmptyCondition()],
+    groups: [],
     status: 'active',
+  }
+}
+
+function formFromList(list) {
+  if (!list) return createEmptyForm()
+  const normalized = normalizeDynamicListFromApi(list)
+  const groups = buildConditionGroupsFromFlat({
+    conditions: list.conditions?.length ? list.conditions : normalized?.conditions,
+    groupLogics: list.groupLogics,
+    conditionGroups: list.conditionGroups,
+  })
+
+  return {
+    name: normalized?.name || list.name || '',
+    description: normalized?.description || list.description || '',
+    conditionLogic: list.conditionLogic || normalized?.conditionLogic || 'AND',
+    groups,
+    status: list.status || normalized?.status || 'active',
   }
 }
 
@@ -44,19 +62,7 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
   useEffect(() => {
     if (!open) return
     setError('')
-    if (list) {
-      const normalized = normalizeDynamicListFromApi(list)
-      setForm({
-        name: normalized?.name || '',
-        description: normalized?.description || '',
-        conditionLogic: normalized?.conditionLogic || 'AND',
-        conditions:
-          normalized?.conditions?.length > 0 ? normalized.conditions : [createEmptyCondition()],
-        status: normalized?.status || 'active',
-      })
-    } else {
-      setForm(createEmptyForm())
-    }
+    setForm(list ? formFromList(list) : createEmptyForm())
   }, [open, list])
 
   useEffect(() => {
@@ -83,20 +89,26 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
 
   const canSubmit = useMemo(() => {
     if (!form.name.trim()) return false
-    return form.conditions.every((c) => {
-      if (c.operator === 'in' || c.operator === 'ne') {
-        const values = normalizeConditionValue(c.operator, c.value)
-        return values.length > 0
-      }
-      return String(c.value || '').trim() !== ''
-    })
+    if (!Array.isArray(form.groups) || form.groups.length === 0) return false
+    return form.groups.every(
+      (group) =>
+        group.catalogGroupId &&
+        Array.isArray(group.conditions) &&
+        group.conditions.length > 0 &&
+        group.conditions.every(isConditionComplete)
+    )
   }, [form])
 
   const submit = async () => {
     if (!canSubmit || saving) return
     setSaving(true)
     setError('')
-    const payload = buildDynamicListPayload(form)
+    const { conditions, groupLogics } = flattenConditionGroups(form.groups)
+    const payload = buildDynamicListPayload({
+      ...form,
+      conditions,
+      groupLogics,
+    })
     const id = list?._id || list?.id
     const res = isEdit
       ? await api.patch(`/api/dynamic-list/${id}`, payload)
@@ -120,7 +132,8 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit dynamic list' : 'Create dynamic list'}</DialogTitle>
           <DialogDescription>
-            Define conditions that automatically add or remove leads from this segment.
+            Pick a filter group, then a filter. Use and / or to add more filters inside a group, or another
+            filter group.
           </DialogDescription>
         </DialogHeader>
 
@@ -163,22 +176,21 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
 
           <div className="rounded-xl border border-border bg-background p-4">
             <div className="mb-4">
-              <div className="text-[14px] font-semibold text-foreground">Conditions</div>
+              <div className="text-[14px] font-semibold text-foreground">Include leads</div>
               <div className="text-[12px] text-muted-foreground">
-                Use Equals, Exclude, or In. Combine rules with AND / OR logic.
+                Level 1: filter group → filter. Then choose and / or before adding another filter or group.
               </div>
             </div>
 
             <LeadConditionsEditor
-              conditions={form.conditions}
+              groups={form.groups}
               conditionLogic={form.conditionLogic}
-              onChangeConditions={(conditions) => setForm((p) => ({ ...p, conditions }))}
+              onChangeGroups={(groups) => setForm((p) => ({ ...p, groups }))}
               onChangeLogic={(conditionLogic) => setForm((p) => ({ ...p, conditionLogic }))}
               leadReasons={leadReasons}
               locations={locations}
               forms={forms}
               loadingOptions={loadingOptions}
-              compact
             />
           </div>
 

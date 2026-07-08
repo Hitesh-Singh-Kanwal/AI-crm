@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { ChevronDown, Plus, Trash2 } from 'lucide-react'
+import { useMemo } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Switch } from '@/components/ui/switch'
 import {
   FILTER_GROUPS,
   conditionHasValue,
@@ -14,18 +15,23 @@ import {
 import FilterLogicToggle from '@/components/shared/FilterLogicToggle'
 import CatalogConditionValueInput from '@/components/shared/CatalogConditionValueInput'
 
-function createCondition(fieldValue) {
+function createCondition(fieldValue, groupId) {
   const operator = getDefaultOperatorForField(fieldValue)
   return {
     id: `${fieldValue}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    groupId,
     field: fieldValue,
     operator,
     value: emptyValueForOperator(operator),
   }
 }
 
-function GroupSection({
+function GroupToggleRow({
   group,
+  enabled,
+  onToggle,
+  logic,
+  onLogicChange,
   conditions,
   onAdd,
   onUpdate,
@@ -34,45 +40,72 @@ function GroupSection({
   locations,
   forms,
   loadingOptions,
-  hiddenFields,
+  availableFields,
 }) {
-  const [open, setOpen] = useState(group.id === 'lead_profile' || group.id === 'utm' || group.id === 'timing')
-  const availableFields = group.fields.filter((f) => !hiddenFields.has(f.value))
-  const groupConditions = conditions.filter((c) => availableFields.some((f) => f.value === c.field))
-  const activeCount = groupConditions.filter(conditionHasValue).length
-
-  if (availableFields.length === 0) return null
+  const activeCount = conditions.filter(conditionHasValue).length
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-background">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/30"
+    <div
+      className={cn(
+        'rounded-xl transition',
+        enabled ? 'border border-[var(--studio-primary)]/20 bg-[var(--studio-primary)]/[0.02]' : ''
+      )}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onToggle(!enabled)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onToggle(!enabled)
+          }
+        }}
+        className={cn(
+          'flex w-full cursor-pointer items-center gap-3 px-1 py-3 text-left transition hover:bg-muted/30',
+          enabled && 'rounded-t-xl px-3 pt-3.5'
+        )}
       >
-        <div>
-          <div className="text-[13px] font-semibold text-foreground">{group.label}</div>
-          <div className="text-[11px] text-muted-foreground">{group.description}</div>
+        <Switch
+          checked={enabled}
+          onCheckedChange={onToggle}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Toggle ${group.label}`}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-medium text-foreground">Filter by {group.label.toLowerCase()}</div>
         </div>
-        <div className="flex items-center gap-2">
-          {activeCount > 0 && (
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--studio-primary)] px-1.5 text-[10px] font-bold text-white">
-              {activeCount}
-            </span>
-          )}
-          <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition', open && 'rotate-180')} />
-        </div>
-      </button>
+        {enabled && activeCount > 0 && (
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--studio-primary)] px-1.5 text-[10px] font-bold text-white">
+            {activeCount}
+          </span>
+        )}
+      </div>
 
-      {open && (
-        <div className="space-y-3 border-t border-border px-4 py-4">
-          {groupConditions.map((condition) => {
+      {enabled && (
+        <div className="space-y-3 border-t border-border/60 px-3 pb-3.5 pt-3">
+          <FilterLogicToggle
+            size="sm"
+            label=""
+            value={logic}
+            onChange={onLogicChange}
+            helpText={
+              logic === 'OR'
+                ? `Within ${group.label.toLowerCase()}, a lead must match at least one selected rule.`
+                : `Within ${group.label.toLowerCase()}, a lead must match all selected rules.`
+            }
+          />
+
+          {conditions.map((condition) => {
             const def = getFilterFieldDef(condition.field)
             const operators = getOperatorsForFilterField(condition.field)
             return (
-              <div key={condition.id || `${condition.field}-${condition.operator}`} className="rounded-lg border border-border/70 bg-card p-3">
+              <div
+                key={condition.id || `${condition.field}-${condition.operator}`}
+                className="rounded-xl border border-border bg-background p-3"
+              >
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-[12px] font-medium text-foreground">{def?.label || condition.field}</div>
+                  <div className="text-[12px] font-semibold text-foreground">{def?.label || condition.field}</div>
                   <button
                     type="button"
                     onClick={() => onRemove(condition.id)}
@@ -121,7 +154,7 @@ function GroupSection({
                 key={fieldDef.value}
                 type="button"
                 onClick={() => onAdd(fieldDef.value)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[11px] font-medium text-foreground hover:bg-muted/40"
+                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-[11px] font-medium text-foreground hover:border-[var(--studio-primary)]/30 hover:bg-[var(--studio-primary)]/5"
               >
                 <Plus className="h-3.5 w-3.5" />
                 {fieldDef.label}
@@ -148,12 +181,43 @@ export default function GroupedLeadFilterFields({
     [draft?.conditions]
   )
 
-  const setConditions = (nextConditions) => {
-    onDraftChange({ ...draft, conditions: nextConditions })
+  const groupLogics = draft?.groupLogics || {}
+  const enabledGroups = draft?.enabledGroups || {}
+
+  const patchDraft = (patch) => onDraftChange({ ...draft, ...patch })
+
+  const setConditions = (nextConditions) => patchDraft({ conditions: nextConditions })
+
+  const setGroupEnabled = (groupId, enabled) => {
+    const nextEnabled = { ...enabledGroups, [groupId]: enabled }
+    if (!enabled) {
+      const groupFieldValues = new Set(
+        (FILTER_GROUPS.find((g) => g.id === groupId)?.fields || []).map((f) => f.value)
+      )
+      const nextConditions = conditions.filter(
+        (c) => !(c.groupId === groupId || groupFieldValues.has(c.field))
+      )
+      const nextLogics = { ...groupLogics }
+      delete nextLogics[groupId]
+      patchDraft({
+        enabledGroups: nextEnabled,
+        groupLogics: nextLogics,
+        conditions: nextConditions,
+      })
+      return
+    }
+    patchDraft({
+      enabledGroups: nextEnabled,
+      groupLogics: { ...groupLogics, [groupId]: groupLogics[groupId] || 'AND' },
+    })
   }
 
-  const addCondition = (fieldValue) => {
-    setConditions([...conditions, createCondition(fieldValue)])
+  const setGroupLogic = (groupId, logic) => {
+    patchDraft({ groupLogics: { ...groupLogics, [groupId]: logic } })
+  }
+
+  const addCondition = (fieldValue, groupId) => {
+    setConditions([...conditions, createCondition(fieldValue, groupId)])
   }
 
   const updateCondition = (id, patch) => {
@@ -169,29 +233,58 @@ export default function GroupedLeadFilterFields({
     setConditions(conditions.filter((c) => c.id !== id))
   }
 
-  return (
-    <div className="space-y-4">
-      <FilterLogicToggle
-        value={draft.conditionLogic || 'AND'}
-        onChange={(logic) => onDraftChange({ ...draft, conditionLogic: logic })}
-      />
+  const isGroupEnabled = (group) => {
+    if (enabledGroups[group.id] === false) return false
+    if (enabledGroups[group.id] === true) return true
+    // Auto-enable if it already has conditions (e.g. restored draft)
+    return conditions.some((c) => c.groupId === group.id || group.fields.some((f) => f.value === c.field))
+  }
 
-      <div className="space-y-3">
-        {FILTER_GROUPS.map((group) => (
-          <GroupSection
-            key={group.id}
-            group={group}
-            conditions={conditions}
-            onAdd={addCondition}
-            onUpdate={updateCondition}
-            onRemove={removeCondition}
-            leadReasons={leadReasons}
-            locations={locations}
-            forms={forms}
-            loadingOptions={loadingOptions}
-            hiddenFields={hiddenFields}
-          />
-        ))}
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="mb-3 text-[13px] font-semibold text-foreground">Step 1: Choose a filter type</div>
+        <FilterLogicToggle
+          value={draft.conditionLogic || 'AND'}
+          onChange={(logic) => patchDraft({ conditionLogic: logic })}
+          label=""
+          helpText={
+            (draft.conditionLogic || 'AND') === 'OR'
+              ? 'A lead must be present in at least one filter to appear in the segment.'
+              : 'A lead must be present in all filters to appear in the segment.'
+          }
+        />
+      </div>
+
+      <div className="space-y-1">
+        {FILTER_GROUPS.map((group) => {
+          const availableFields = group.fields.filter((f) => !hiddenFields.has(f.value))
+          if (availableFields.length === 0) return null
+          const enabled = isGroupEnabled(group)
+          const groupConditions = conditions.filter(
+            (c) => c.groupId === group.id || availableFields.some((f) => f.value === c.field)
+          )
+
+          return (
+            <GroupToggleRow
+              key={group.id}
+              group={group}
+              enabled={enabled}
+              onToggle={(checked) => setGroupEnabled(group.id, checked)}
+              logic={groupLogics[group.id] || 'AND'}
+              onLogicChange={(logic) => setGroupLogic(group.id, logic)}
+              conditions={groupConditions}
+              onAdd={(fieldValue) => addCondition(fieldValue, group.id)}
+              onUpdate={updateCondition}
+              onRemove={removeCondition}
+              leadReasons={leadReasons}
+              locations={locations}
+              forms={forms}
+              loadingOptions={loadingOptions}
+              availableFields={availableFields}
+            />
+          )
+        })}
       </div>
     </div>
   )

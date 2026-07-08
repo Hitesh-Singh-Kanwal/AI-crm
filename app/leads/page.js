@@ -28,7 +28,7 @@ import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import GlobalLoader from '@/components/shared/GlobalLoader'
-import { buildLeadQueryParams, filtersToConditions } from '@/lib/lead-filter-fields'
+import { buildLeadQueryParams, filtersToConditionsForForm } from '@/lib/lead-filter-fields'
 import {
   EMPTY_LEAD_FILTERS,
   sanitizeLeadFilters,
@@ -144,7 +144,7 @@ export default function LeadsPage() {
 
   const openCreateListFromFilters = () => {
     const sanitized = sanitizeLeadFilters(filters)
-    const conditions = filtersToConditions(sanitized)
+    const conditions = filtersToConditionsForForm(sanitized)
     if (conditions.length === 0) {
       toast.info('No filters applied', { description: 'Apply at least one filter before saving as a list.' })
       return
@@ -154,6 +154,7 @@ export default function LeadsPage() {
       description: '',
       conditionLogic: sanitized.conditionLogic || 'AND',
       conditions: normalizeConditionsForForm(conditions),
+      groupLogics: sanitized.groupLogics || {},
       status: 'active',
     })
     setListDialogOpen(true)

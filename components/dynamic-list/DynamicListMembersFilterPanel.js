@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { X } from 'lucide-react'
+import { Settings2, X } from 'lucide-react'
 import { FILTER_SIDEBAR_STYLE, FILTER_SIDEBAR_WIDTH_CLASS } from '@/lib/filter-sidebar-constants'
 import {
   EMPTY_MEMBER_FILTERS,
@@ -44,9 +44,11 @@ export default function DynamicListMembersFilterPanel({
         className={`fixed inset-y-0 right-0 z-50 flex ${FILTER_SIDEBAR_WIDTH_CLASS} flex-col border-l border-border bg-card shadow-2xl`}
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <div>
-            <h3 className="text-[18px] font-semibold text-foreground">Filters</h3>
-            <p className="text-[12px] text-muted-foreground">Grouped by Lead Profile, UTM, Timing, and Activity</p>
+          <div className="flex items-center gap-2.5">
+            <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--studio-primary)]/10 text-[var(--studio-primary)]">
+              <Settings2 className="h-4.5 w-4.5" />
+            </div>
+            <h3 className="text-[18px] font-semibold text-foreground">Filter</h3>
           </div>
           <div className="flex items-center gap-3">
             <button

@@ -29,7 +29,7 @@ import {
   normalizeConditionsForForm,
   summarizeConditions,
 } from '@/lib/dynamic-list-normalize'
-import { filtersToConditions, getValidConditions } from '@/lib/lead-filter-fields'
+import { filtersToConditionsForForm, getValidConditions } from '@/lib/lead-filter-fields'
 import { toast } from '@/components/ui/toast'
 import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
 import ConfirmReEvaluateDialog from '@/components/dynamic-list/ConfirmReEvaluateDialog'
@@ -221,7 +221,7 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
 
     const sanitized = sanitizeMemberFilters(list, filters)
     const parentConditions = getValidConditions(list?.conditions || [])
-    const appliedConditions = filtersToConditions(sanitized)
+    const appliedConditions = filtersToConditionsForForm(sanitized)
     const merged = [...parentConditions, ...appliedConditions]
 
     if (merged.length === 0) {
@@ -234,8 +234,9 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
     setPrefillList({
       name: '',
       description: list?.name ? `Based on ${list.name}` : '',
-      conditionLogic: 'AND',
+      conditionLogic: sanitized.conditionLogic || 'AND',
       conditions: normalizeConditionsForForm(merged),
+      groupLogics: sanitized.groupLogics || {},
       status: 'active',
     })
     setListDialogOpen(true)
