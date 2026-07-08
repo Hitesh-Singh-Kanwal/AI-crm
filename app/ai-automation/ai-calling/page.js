@@ -12,6 +12,7 @@ import PersonasTab from './components/PersonasTab'
 import KnowledgeBaseTab from './components/KnowledgeBaseTab'
 import AiAssistTab from './components/AiAssistTab'
 import BackgroundSoundsTab from './components/BackgroundSoundsTab'
+import InboundIvrTab from './components/InboundIvrTab'
 
 function extractPersonasPayload(result) {
   const payload = result?.data
@@ -142,6 +143,7 @@ function AICallingPageInner() {
         )}
         {activeTab === 'knowledge' && <KnowledgeBaseTab />}
         {activeTab === 'background-sounds' && <BackgroundSoundsTab />}
+        {activeTab === 'inbound-ivr' && <InboundIvrTab />}
         {activeTab === 'assistants' && <AiAssistTab />}
       </Tabs>
       </div>
