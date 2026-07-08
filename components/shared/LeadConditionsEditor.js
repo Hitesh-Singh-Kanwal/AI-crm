@@ -4,8 +4,14 @@ import { Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CONDITION_LOGIC_OPTIONS } from '@/lib/dynamic-list-constants'
 import { CONDITION_FIELDS, getOperatorsForField } from '@/lib/lead-filter-fields'
-import { createEmptyCondition, normalizeConditionValue } from '@/lib/dynamic-list-normalize'
-import LeadConditionValueInput from '@/components/shared/LeadConditionValueInput'
+import { createEmptyCondition } from '@/lib/dynamic-list-normalize'
+import {
+  emptyValueForOperator,
+  getDefaultOperatorForField,
+  isValuelessOperator,
+  usesMultiValueOperator,
+} from '@/lib/dynamic-list-filter-catalog'
+import CatalogConditionValueInput from '@/components/shared/CatalogConditionValueInput'
 
 export default function LeadConditionsEditor({
   conditions = [],
@@ -31,25 +37,12 @@ export default function LeadConditionsEditor({
       if (i !== idx) return c
       const updated = { ...c, ...patch }
       if (patch.field && patch.field !== c.field) {
-        updated.value =
-          patch.operator === 'in' || patch.operator === 'ne' || c.operator === 'in' || c.operator === 'ne'
-            ? []
-            : ''
         const ops = getOperatorsForField(patch.field)
-        if (!ops.some((op) => op.value === updated.operator)) {
-          updated.operator = 'eq'
-        }
+        updated.operator = ops[0]?.value || getDefaultOperatorForField(patch.field)
+        updated.value = emptyValueForOperator(updated.operator)
       }
-      if ((patch.operator === 'in' || patch.operator === 'ne') && c.operator !== 'in' && c.operator !== 'ne') {
-        updated.value = []
-      }
-      if (
-        patch.operator &&
-        patch.operator !== 'in' &&
-        patch.operator !== 'ne' &&
-        (c.operator === 'in' || c.operator === 'ne')
-      ) {
-        updated.value = ''
+      if (patch.operator && patch.operator !== c.operator) {
+        updated.value = emptyValueForOperator(patch.operator)
       }
       return updated
     })
@@ -65,7 +58,9 @@ export default function LeadConditionsEditor({
     onChangeConditions?.([...rows, createEmptyCondition()])
   }
 
-  const labelClass = compact ? 'mb-1 block text-[11px] text-muted-foreground' : 'mb-1.5 block text-[12px] font-medium text-muted-foreground'
+  const labelClass = compact
+    ? 'mb-1 block text-[11px] text-muted-foreground'
+    : 'mb-1.5 block text-[12px] font-medium text-muted-foreground'
   const selectClass = compact
     ? 'h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]'
     : 'h-11 w-full rounded-xl border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]'
@@ -102,11 +97,8 @@ export default function LeadConditionsEditor({
 
           return (
             <div
-              key={idx}
-              className={cn(
-                'rounded-xl border border-border bg-background',
-                compact ? 'p-3' : 'p-4'
-              )}
+              key={condition.id || idx}
+              className={cn('rounded-xl border border-border bg-background', compact ? 'p-3' : 'p-4')}
             >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div>
@@ -141,8 +133,10 @@ export default function LeadConditionsEditor({
                 </div>
                 <div className="md:col-span-1">
                   <label className={labelClass}>Value</label>
-                  <LeadConditionValueInput
-                    condition={condition}
+                  <CatalogConditionValueInput
+                    field={condition.field}
+                    operator={condition.operator}
+                    value={condition.value}
                     onChange={(value) => updateCondition(idx, { value })}
                     leadReasons={leadReasons}
                     locations={locations}
@@ -182,9 +176,16 @@ export default function LeadConditionsEditor({
 
 export function isConditionComplete(condition) {
   const operator = condition?.operator || 'eq'
-  if (operator === 'in' || operator === 'ne') {
-    const values = normalizeConditionValue(operator, condition?.value)
-    return values.length > 0
+  if (isValuelessOperator(operator)) return Boolean(condition?.field)
+  if (usesMultiValueOperator(operator)) {
+    return Array.isArray(condition?.value) && condition.value.length > 0
+  }
+  if (operator === 'between') {
+    const value = condition?.value
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return String(value.from || '').trim() !== '' && String(value.to || '').trim() !== ''
+    }
+    return Array.isArray(value) && value.length === 2 && value.every((v) => String(v || '').trim())
   }
   return String(condition?.value ?? '').trim() !== ''
 }
