@@ -1921,6 +1921,7 @@ function PackagesTab({ customerID }) {
         navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
         toast.success(CHECKOUT_TOAST);
       } else {
+        closeCheckoutTab(checkoutTab);
         toast.success("Package added to customer.");
       }
       closeAdd();
@@ -3357,6 +3358,8 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
       setAdding(false);
       return;
     }
+    // Card success should always carry a checkoutUrl; close any stray pre-opened tab if not.
+    closeCheckoutTab(checkoutTab);
 
     const initialPayment = Number(addForm.billing.initialPayment || 0);
     if (addForm.billingType === "flexible" && initialPayment > 0) {

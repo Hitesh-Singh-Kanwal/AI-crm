@@ -119,6 +119,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
           navigateCheckoutTab(checkoutTab, result.data.checkoutUrl)
           toast.success(CHECKOUT_TOAST)
         } else {
+          closeCheckoutTab(checkoutTab)
           toast.success('Membership assigned')
         }
         onSuccess?.()
