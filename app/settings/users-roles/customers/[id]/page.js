@@ -43,7 +43,7 @@ import CancelRefundDialog from "@/components/shared/CancelRefundDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import api from "@/lib/api";
 import { useCloverConnection } from "@/app/settings/payments/clover/useCloverConnection";
-import CloverCardFields from "@/app/settings/payments/clover/CloverCardFields";
+import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
 import { useToast } from "@/components/ui/toast";
 import { getInitials, formatDate } from "@/lib/utils";
 
@@ -66,8 +66,13 @@ function paymentStatusColor(ps) {
       paid: "bg-emerald-500/10 text-emerald-600",
       partial: "bg-amber-500/10 text-amber-600",
       unpaid: "bg-rose-500/10 text-rose-600",
+      payment_pending: "bg-amber-500/10 text-amber-600",
     }[ps] ?? "bg-muted text-muted-foreground"
   );
+}
+
+function paymentStatusLabel(ps) {
+  return ps === "payment_pending" ? "payment pending" : (ps ?? "unpaid");
 }
 
 function paymentTypeBadge(type) {
@@ -1052,7 +1057,9 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
                           ? "bg-emerald-600 text-white"
                           : inst.status === "failed"
                             ? "bg-rose-600 text-white"
-                            : "bg-muted text-muted-foreground"
+                            : inst.status === "payment_pending"
+                              ? "bg-amber-500 text-white"
+                              : "bg-muted text-muted-foreground"
                       }`}
                     >
                       {inst.status === "paid" ? "✓" : idx + 1}
@@ -1068,6 +1075,11 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
                         {inst.status === "failed" && (
                           <span className="ml-1.5 text-[11px] font-normal text-rose-600">
                             Failed
+                          </span>
+                        )}
+                        {inst.status === "payment_pending" && (
+                          <span className="ml-1.5 text-[11px] font-normal text-amber-600">
+                            Payment pending
                           </span>
                         )}
                       </p>
@@ -1329,12 +1341,12 @@ function PayInstallmentDialog({
   const [method, setMethod] = useState("cash");
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
-  const [cloverResetSignal, setCloverResetSignal] = useState(0);
   const toast = useToast();
-  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection();
+  const { status: cloverStatus } = useCloverConnection();
 
   const installment = plan?.installments?.[installmentIndex];
-  const showCloverFields = method === "card" && cloverStatus === "connected" && ecommercePublicKey;
+  const payWithClover = method === "card" && cloverStatus === "connected";
+  const cloverNotConnected = method === "card" && cloverStatus !== "connected";
 
   useEffect(() => {
     if (installment) setAmount(Number(installment.amount).toFixed(2));
@@ -1349,36 +1361,35 @@ function PayInstallmentDialog({
     return num;
   }
 
-  async function submitPayment(cardToken) {
+  async function submitPayment() {
     const num = validatedAmount();
     if (num === null) return;
+    const checkoutTab = payWithClover ? openCheckoutTab() : null;
     setSaving(true);
-    const res = cardToken
-      ? await api.post(`/api/payment-plan/${plan._id}/charge-installment`, {
-          installmentIndex,
-          cardToken,
-          amount: num,
-        })
-      : await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
-          installmentIndex,
-          method,
-          amount: num,
-        });
+    const res = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
+      installmentIndex,
+      method,
+      amount: num,
+    });
     if (res.success) {
-      toast.success("Installment payment recorded.");
+      if (res.data?.checkoutUrl) {
+        navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
+        toast.success(CHECKOUT_TOAST);
+      } else {
+        toast.success("Installment payment recorded.");
+      }
       onSuccess();
       onClose();
     } else {
+      closeCheckoutTab(checkoutTab);
       toast.error(res.error || "Failed to record payment.");
-      if (cardToken) setCloverResetSignal((n) => n + 1);
     }
     setSaving(false);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (showCloverFields) return;
-    await submitPayment(null);
+    await submitPayment();
   }
 
   async function handleSaveAmount() {
@@ -1454,15 +1465,10 @@ function PayInstallmentDialog({
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             </div>
           </FormField>
-          {showCloverFields && (
-            <CloverCardFields
-              ecommercePublicKey={ecommercePublicKey}
-              merchantId={cloverMerchantId}
-              amount={parseFloat(amount) || 0}
-              disabled={saving}
-              resetSignal={cloverResetSignal}
-              onToken={(token) => submitPayment(token)}
-            />
+          {cloverNotConnected && (
+            <p className="text-[12px] text-muted-foreground">
+              Connect Clover in Settings → Payments to charge a card.
+            </p>
           )}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
@@ -1477,18 +1483,18 @@ function PayInstallmentDialog({
             >
               Save
             </Button>
-            {!showCloverFields && (
-              <Button
-                type="submit"
-                size="sm"
-                disabled={saving}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              >
-                {saving
-                  ? "Recording…"
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving || cloverNotConnected}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {saving
+                ? "Recording…"
+                : payWithClover
+                  ? "Pay with Clover"
                   : `Pay $${(Number(amount) || 0).toFixed(2)}`}
-              </Button>
-            )}
+            </Button>
           </div>
         </form>
       </DialogContent>
@@ -1690,9 +1696,8 @@ function PackagesTab({ customerID }) {
   const [extending, setExtending] = useState(false);
   const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null); // { plan, index }
-  const [cloverResetSignal, setCloverResetSignal] = useState(0);
   const toast = useToast();
-  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection();
+  const { status: cloverStatus } = useCloverConnection();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1823,12 +1828,16 @@ function PackagesTab({ customerID }) {
   }, 0);
 
   // Only one-time billing settles money in this dialog; the other types collect later.
-  const showCloverFields =
+  const payWithClover =
     addForm.billingType === "one_time" &&
     addForm.billing.method === "card" &&
     totalAmount > 0 &&
-    cloverStatus === "connected" &&
-    ecommercePublicKey;
+    cloverStatus === "connected";
+  const cloverNotConnected =
+    addForm.billingType === "one_time" &&
+    addForm.billing.method === "card" &&
+    totalAmount > 0 &&
+    cloverStatus !== "connected";
 
   function getInstallments() {
     const { numberOfInstallments, frequency, startDate } = addForm.billing;
@@ -1863,7 +1872,7 @@ function PackagesTab({ customerID }) {
     return result;
   }
 
-  async function handleAdd(cardToken = null) {
+  async function handleAdd() {
     if (!addForm.enrollmentID) {
       toast.error("Please select an enrollment.");
       return;
@@ -1875,6 +1884,7 @@ function PackagesTab({ customerID }) {
         return;
       }
     }
+    const checkoutTab = payWithClover ? openCheckoutTab() : null;
     setAdding(true);
     const payload = {
       customerID,
@@ -1893,7 +1903,7 @@ function PackagesTab({ customerID }) {
       billingType: addForm.billingType,
       billing:
         addForm.billingType === "one_time"
-          ? { method: addForm.billing.method, cardToken: cardToken || undefined }
+          ? { method: addForm.billing.method }
           : addForm.billingType === "payment_plan"
             ? {
                 numberOfInstallments: Number(
@@ -1907,12 +1917,17 @@ function PackagesTab({ customerID }) {
     if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate;
     const res = await api.post("/api/customer-package/add", payload);
     if (res.success) {
-      toast.success("Package added to customer.");
+      if (res.data?.checkoutUrl) {
+        navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
+        toast.success(CHECKOUT_TOAST);
+      } else {
+        toast.success("Package added to customer.");
+      }
       closeAdd();
       load();
     } else {
+      closeCheckoutTab(checkoutTab);
       toast.error(res.error || "Failed to add package.");
-      if (cardToken) setCloverResetSignal((n) => n + 1);
     }
     setAdding(false);
   }
@@ -2022,7 +2037,7 @@ function PackagesTab({ customerID }) {
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${paymentStatusColor(pkg.paymentStatus)}`}
                     >
-                      {pkg.paymentStatus ?? "unpaid"}
+                      {paymentStatusLabel(pkg.paymentStatus)}
                     </span>
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(pkg.status)}`}
@@ -2257,7 +2272,9 @@ function PackagesTab({ customerID }) {
                                         ? "bg-emerald-600 text-white"
                                         : inst.status === "failed"
                                           ? "bg-rose-600 text-white"
-                                          : "bg-muted text-muted-foreground"
+                                          : inst.status === "payment_pending"
+                                            ? "bg-amber-500 text-white"
+                                            : "bg-muted text-muted-foreground"
                                     }`}
                                   >
                                     {inst.status === "paid" ? "✓" : idx + 1}
@@ -2273,6 +2290,11 @@ function PackagesTab({ customerID }) {
                                       {inst.status === "failed" && (
                                         <span className="ml-1.5 text-[11px] font-normal text-rose-600">
                                           Failed
+                                        </span>
+                                      )}
+                                      {inst.status === "payment_pending" && (
+                                        <span className="ml-1.5 text-[11px] font-normal text-amber-600">
+                                          Payment pending
                                         </span>
                                       )}
                                     </p>
@@ -2837,15 +2859,10 @@ function PackagesTab({ customerID }) {
                       <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     </div>
                   </FormField>
-                  {showCloverFields && (
-                    <CloverCardFields
-                      ecommercePublicKey={ecommercePublicKey}
-                      merchantId={cloverMerchantId}
-                      amount={totalAmount}
-                      disabled={adding}
-                      resetSignal={cloverResetSignal}
-                      onToken={(token) => handleAdd(token)}
-                    />
+                  {cloverNotConnected && (
+                    <p className="text-[12px] text-muted-foreground">
+                      Connect Clover in Settings → Payments to charge a card.
+                    </p>
                   )}
                 </div>
               )}
@@ -2965,17 +2982,18 @@ function PackagesTab({ customerID }) {
                 >
                   Back
                 </Button>
-                {/* The Clover pay button submits the card path; it owns the token. */}
-                {!showCloverFields && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={adding}
-                    onClick={() => handleAdd()}
-                  >
-                    {adding ? "Adding…" : "Add Package"}
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={adding || cloverNotConnected}
+                  onClick={() => handleAdd()}
+                >
+                  {adding
+                    ? "Adding…"
+                    : payWithClover
+                      ? "Pay with Clover"
+                      : "Add Package"}
+                </Button>
               </div>
             </div>
           )}
@@ -3018,8 +3036,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
   const [addForm, setAddForm] = useState(BLANK_ENR_FORM);
   const [selectedPkg, setSelectedPkg] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [cloverResetSignal, setCloverResetSignal] = useState(0);
-  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection();
+  const { status: cloverStatus } = useCloverConnection();
 
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
@@ -3195,12 +3212,16 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
   }, 0);
 
   // Only one-time billing settles money in this dialog; the other types collect later.
-  const showCloverFields =
+  const payWithClover =
     addForm.billingType === "one_time" &&
     addForm.billing.method === "card" &&
     enrTotalAmount > 0 &&
-    cloverStatus === "connected" &&
-    ecommercePublicKey;
+    cloverStatus === "connected";
+  const cloverNotConnected =
+    addForm.billingType === "one_time" &&
+    addForm.billing.method === "card" &&
+    enrTotalAmount > 0 &&
+    cloverStatus !== "connected";
 
   function getEnrInstallments() {
     const {
@@ -3253,7 +3274,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     return result;
   }
 
-  async function handleEnrAdd(cardToken = null) {
+  async function handleEnrAdd() {
     if (addForm.billingType === "payment_plan") {
       const {
         installmentMode,
@@ -3275,6 +3296,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         return;
       }
     }
+    const checkoutTab = payWithClover ? openCheckoutTab() : null;
     setAdding(true);
     const targetEnrollmentID = addTargetEnrollment?._id
       ? String(addTargetEnrollment._id)
@@ -3297,7 +3319,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
       billingType: addForm.billingType,
       billing:
         addForm.billingType === "one_time"
-          ? { method: addForm.billing.method, cardToken: cardToken || undefined }
+          ? { method: addForm.billing.method }
           : addForm.billingType === "payment_plan"
             ? {
                 installmentMode: addForm.billing.installmentMode || "count",
@@ -3322,8 +3344,16 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     if (addForm.purchaseDate) payload.purchaseDate = addForm.purchaseDate;
     const res = await api.post("/api/customer-package/add", payload);
     if (!res.success) {
+      closeCheckoutTab(checkoutTab);
       toast.error(res.error || "Failed to add package.");
-      if (cardToken) setCloverResetSignal((n) => n + 1);
+      setAdding(false);
+      return;
+    }
+    if (res.data?.checkoutUrl) {
+      navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
+      toast.success(CHECKOUT_TOAST);
+      setAddTargetEnrollment(null);
+      load();
       setAdding(false);
       return;
     }
@@ -3597,7 +3627,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${paymentStatusColor(cp.paymentStatus)}`}
                         >
-                          {cp.paymentStatus ?? "unpaid"}
+                          {paymentStatusLabel(cp.paymentStatus)}
                         </span>
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(cp.status)}`}
@@ -4528,15 +4558,10 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                             </div>
                           </FormField>
-                          {showCloverFields && (
-                            <CloverCardFields
-                              ecommercePublicKey={ecommercePublicKey}
-                              merchantId={cloverMerchantId}
-                              amount={enrTotalAmount}
-                              disabled={adding}
-                              resetSignal={cloverResetSignal}
-                              onToken={(token) => handleEnrAdd(token)}
-                            />
+                          {cloverNotConnected && (
+                            <p className="text-[12px] text-muted-foreground">
+                              Connect Clover in Settings → Payments to charge a card.
+                            </p>
                           )}
                         </div>
                       )}
@@ -4890,17 +4915,18 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                 >
                   Cancel
                 </Button>
-                {/* The Clover pay button submits the card path; it owns the token. */}
-                {!showCloverFields && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={adding}
-                    onClick={() => handleEnrAdd()}
-                  >
-                    {adding ? "Adding…" : "Add Package"}
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={adding || cloverNotConnected}
+                  onClick={() => handleEnrAdd()}
+                >
+                  {adding
+                    ? "Adding…"
+                    : payWithClover
+                      ? "Pay with Clover"
+                      : "Add Package"}
+                </Button>
               </div>
             </div>
           </div>
@@ -4925,49 +4951,46 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
     cp.dueDate ? new Date(cp.dueDate).toISOString().slice(0, 10) : "",
   );
   const [saving, setSaving] = useState(false);
-  const [cloverResetSignal, setCloverResetSignal] = useState(0);
   const toast = useToast();
-  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection();
+  const { status: cloverStatus } = useCloverConnection();
 
-  const showCloverFields = method === "card" && cloverStatus === "connected" && ecommercePublicKey;
+  const payWithClover = method === "card" && cloverStatus === "connected";
+  const cloverNotConnected = method === "card" && cloverStatus !== "connected";
   const amountValid = parseFloat(amount) > 0;
 
-  async function submitPayment(cardToken) {
+  async function submitPayment() {
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) return;
+    const checkoutTab = payWithClover ? openCheckoutTab() : null;
     setSaving(true);
-    const res = cardToken
-      ? await api.post("/api/payments/clover/charge", {
-          customerID,
-          enrollmentID: enr._id,
-          type: "package_purchase",
-          amount: num,
-          cardToken,
-        })
-      : await api.post("/api/payment", {
-          customerID,
-          enrollmentID: enr._id,
-          type: "package_purchase",
-          amount: num,
-          method,
-        });
+    const res = await api.post("/api/payment", {
+      customerID,
+      enrollmentID: enr._id,
+      type: "package_purchase",
+      amount: num,
+      method,
+    });
     if (res.success) {
-      toast.success(
-        num >= outstanding ? "Payment recorded." : "Partial payment recorded.",
-      );
+      if (res.data?.checkoutUrl) {
+        navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
+        toast.success(CHECKOUT_TOAST);
+      } else {
+        toast.success(
+          num >= outstanding ? "Payment recorded." : "Partial payment recorded.",
+        );
+      }
       setMode(null);
       onSuccess();
     } else {
+      closeCheckoutTab(checkoutTab);
       toast.error(res.error || "Failed to record payment.");
-      if (cardToken) setCloverResetSignal((n) => n + 1);
     }
     setSaving(false);
   }
 
   async function handlePay(e) {
     e.preventDefault();
-    if (showCloverFields) return; // Clover path is submitted via CloverCardFields' onToken, not this form submit
-    await submitPayment(null);
+    await submitPayment();
   }
 
   async function handleChangeDate(e) {
@@ -5096,27 +5119,12 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
               ))}
             </select>
           </div>
-          {showCloverFields ? (
-            <div className="w-full pt-2">
-              <CloverCardFields
-                ecommercePublicKey={ecommercePublicKey}
-                merchantId={cloverMerchantId}
-                amount={parseFloat(amount) || 0}
-                disabled={saving || !amountValid}
-                resetSignal={cloverResetSignal}
-                onToken={(token) => submitPayment(token)}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 px-3 text-[11px] mt-2"
-                onClick={() => setMode(null)}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : (
+          <div className="flex flex-col gap-1.5 w-full">
+            {cloverNotConnected && (
+              <p className="text-[11px] text-muted-foreground">
+                Connect Clover in Settings → Payments to charge a card.
+              </p>
+            )}
             <div className="flex gap-1.5">
               <Button
                 type="button"
@@ -5131,12 +5139,16 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
                 type="submit"
                 size="sm"
                 className="h-8 px-3 text-[11px]"
-                disabled={saving}
+                disabled={saving || !amountValid || cloverNotConnected}
               >
-                {saving ? "Saving…" : "Confirm Payment"}
+                {saving
+                  ? "Saving…"
+                  : payWithClover
+                    ? "Pay with Clover"
+                    : "Confirm Payment"}
               </Button>
             </div>
-          )}
+          </div>
         </form>
       )}
 
