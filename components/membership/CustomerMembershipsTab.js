@@ -11,7 +11,7 @@ import CancelRefundDialog from '@/components/shared/CancelRefundDialog'
 import FreezeMembershipDialog from '@/components/shared/FreezeMembershipDialog'
 import AssignMembershipForm from './AssignMembershipForm'
 import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
-import CloverCardFields from '@/app/settings/payments/clover/CloverCardFields'
+import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 
 const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other', 'wallet']
 const ANNUAL_FREEZE_CAP_DAYS = 60
@@ -26,6 +26,7 @@ const PAYMENT_STATUS_COLORS = {
   paid: 'bg-emerald-500/10 text-emerald-600',
   partial: 'bg-amber-500/10 text-amber-600',
   unpaid: 'bg-red-500/10 text-red-600',
+  payment_pending: 'bg-amber-500/10 text-amber-600',
 }
 
 function fmtDate(iso) {
@@ -36,30 +37,32 @@ function fmtDate(iso) {
 function PayInstallmentDialog({ target, onClose, onPaid }) {
   const [method, setMethod] = useState('cash')
   const [paying, setPaying] = useState(false)
-  const [cloverResetSignal, setCloverResetSignal] = useState(0)
-  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection()
+  const { status: cloverStatus } = useCloverConnection()
   if (!target) return null
   const { plan, index } = target
   const inst = plan.installments[index]
-  const showCloverFields = method === 'card' && cloverStatus === 'connected' && ecommercePublicKey
-
-  async function submitPayment(cardToken) {
-    setPaying(true)
-    try {
-      const r = cardToken
-        ? await api.post(`/api/payment-plan/${plan._id}/charge-installment`, { installmentIndex: index, cardToken })
-        : await api.post(`/api/payment-plan/${plan._id}/pay-installment`, { installmentIndex: index, method })
-      if (r.success) { toast.success('Installment paid'); onPaid() }
-      else {
-        toast.error('Payment failed', { description: r.error })
-        if (cardToken) setCloverResetSignal((n) => n + 1)
-      }
-    } finally { setPaying(false) }
-  }
+  const payWithClover = method === 'card' && cloverStatus === 'connected'
+  const cloverNotConnected = method === 'card' && cloverStatus !== 'connected'
 
   async function handlePay() {
-    if (showCloverFields) return
-    await submitPayment(null)
+    const checkoutTab = payWithClover ? openCheckoutTab() : null
+    setPaying(true)
+    try {
+      const r = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, { installmentIndex: index, method })
+      if (r.success) {
+        if (r.data?.checkoutUrl) {
+          navigateCheckoutTab(checkoutTab, r.data.checkoutUrl)
+          toast.success(CHECKOUT_TOAST)
+        } else {
+          closeCheckoutTab(checkoutTab)
+          toast.success('Installment paid')
+        }
+        onPaid()
+      } else {
+        closeCheckoutTab(checkoutTab)
+        toast.error('Payment failed', { description: r.error })
+      }
+    } finally { setPaying(false) }
   }
 
   return (
@@ -78,28 +81,15 @@ function PayInstallmentDialog({ target, onClose, onPaid }) {
         >
           {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
-        {showCloverFields ? (
-          <div className="mt-4">
-            <CloverCardFields
-              ecommercePublicKey={ecommercePublicKey}
-              merchantId={cloverMerchantId}
-              amount={Number(inst.amount)}
-              disabled={paying}
-              resetSignal={cloverResetSignal}
-              onToken={(token) => submitPayment(token)}
-            />
-            <div className="flex justify-end mt-2">
-              <Button variant="outline" size="sm" onClick={onClose} disabled={paying}>Cancel</Button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" size="sm" onClick={onClose} disabled={paying}>Cancel</Button>
-            <Button size="sm" onClick={handlePay} disabled={paying} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-              {paying ? 'Saving…' : `Pay $${Number(inst.amount).toFixed(2)}`}
-            </Button>
-          </div>
+        {cloverNotConnected && (
+          <p className="mt-2 text-[11px] text-amber-600">Connect Clover in Settings → Payments to charge a card.</p>
         )}
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={paying}>Cancel</Button>
+          <Button size="sm" onClick={handlePay} disabled={paying || cloverNotConnected} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            {paying ? 'Saving…' : payWithClover ? 'Pay with Clover' : `Pay $${Number(inst.amount).toFixed(2)}`}
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -250,7 +240,7 @@ export default function CustomerMembershipsTab({ customerID }) {
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium', PAYMENT_STATUS_COLORS[m.paymentStatus] || 'bg-muted text-muted-foreground'].join(' ')}>
-                    {m.paymentStatus}
+                    {m.paymentStatus === 'payment_pending' ? 'payment pending' : m.paymentStatus}
                   </span>
                   <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize', STATUS_COLORS[m.status] || 'bg-muted text-muted-foreground'].join(' ')}>
                     {m.status}
@@ -376,13 +366,15 @@ export default function CustomerMembershipsTab({ customerID }) {
                           <div className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
                             inst.status === 'paid' ? 'bg-emerald-600 text-white'
                               : inst.status === 'failed' ? 'bg-rose-600 text-white'
-                                : 'bg-muted text-muted-foreground'}`}>
-                            {inst.status === 'paid' ? '✓' : idx + 1}
+                                : inst.status === 'payment_pending' ? 'bg-amber-500 text-white'
+                                  : 'bg-muted text-muted-foreground'}`}>
+                            {inst.status === 'paid' ? '✓' : inst.status === 'payment_pending' ? '⋯' : idx + 1}
                           </div>
                           <div>
                             <p className="text-[12px] text-foreground font-medium">
                               Payment {idx + 1}
                               {inst.status === 'paid' && <span className="ml-1.5 text-[11px] font-normal text-emerald-600">Paid</span>}
+                              {inst.status === 'payment_pending' && <span className="ml-1.5 text-[11px] font-normal text-amber-600">Payment pending</span>}
                             </p>
                             <p className="text-[11px] text-muted-foreground">Due {fmtDate(inst.dueDate)}</p>
                           </div>
