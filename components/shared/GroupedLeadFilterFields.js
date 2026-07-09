@@ -207,7 +207,6 @@ function GroupToggleRow({
         <Switch
           checked={enabled}
           onCheckedChange={onToggle}
-          onClick={(e) => e.stopPropagation()}
           aria-label={`Toggle ${group.label}`}
         />
         <div className="min-w-0 flex-1">
