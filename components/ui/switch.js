@@ -3,8 +3,9 @@
 import { forwardRef } from 'react'
 import { cn } from '@/lib/utils'
 
-const Switch = forwardRef(function Switch({ checked, onChange, onCheckedChange, className = '', ...props }, ref) {
-  const handleClick = () => {
+const Switch = forwardRef(function Switch({ checked, onChange, onCheckedChange, onClick, className = '', ...props }, ref) {
+  const handleClick = (e) => {
+    onClick?.(e)
     const next = !checked
     onChange?.(next)
     onCheckedChange?.(next)
