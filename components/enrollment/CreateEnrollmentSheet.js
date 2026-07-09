@@ -107,7 +107,7 @@ export default function CreateEnrollmentSheet({
   async function handleCreateEnrollmentAndPackage(payload) {
     if (!resolvedCustomerID) {
       setError('Please select a student.')
-      return false
+      return { ok: false }
     }
 
     setError('')
@@ -122,7 +122,7 @@ export default function CreateEnrollmentSheet({
     if (!enrRes?.success) {
       setError(enrRes?.error || 'Failed to create enrollment.')
       setSubmitting(false)
-      return false
+      return { ok: false }
     }
 
     const created =
@@ -134,7 +134,7 @@ export default function CreateEnrollmentSheet({
     if (!enrollmentID) {
       setError('Enrollment created but ID was not returned.')
       setSubmitting(false)
-      return false
+      return { ok: false }
     }
 
     const addRes = await api.post('/api/customer-package/add', {
@@ -156,10 +156,6 @@ export default function CreateEnrollmentSheet({
         payload.billingType === 'one_time'
           ? {
               method: payload.billing?.method || 'cash',
-              // Only one_time settles inside /add. Plan types are collected below via
-              // pay-installment, so their cardToken must not be sent here — the backend
-              // would charge the first installment, and then we would charge it again.
-              cardToken: payload.billing?.cardToken || undefined,
               ...(payload.billing?.useWallet && Number(payload.billing?.walletAmount) > 0
                 ? { walletAmount: Number(payload.billing.walletAmount) }
                 : {}),
@@ -208,8 +204,10 @@ export default function CreateEnrollmentSheet({
     if (!addRes?.success) {
       setError(addRes?.error || 'Failed to add package to enrollment.')
       setSubmitting(false)
-      return false
+      return { ok: false }
     }
+
+    let checkoutUrl = payload.billingType === 'one_time' ? (addRes.data?.checkoutUrl || null) : null
 
     const collectAmount = Number(payload.billing?.collectAmount || 0)
     const collectNow = Boolean(payload.billing?.collectNow) && collectAmount > 0
@@ -231,14 +229,13 @@ export default function CreateEnrollmentSheet({
         const payRes = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
           installmentIndex: firstPending,
           method,
-          cardToken: payload.billing?.cardToken || undefined,
-          saveCard: payload.billing?.saveCard || undefined,
         })
         if (!payRes?.success) {
           setError(payRes?.error || 'Enrollment created but first installment payment failed.')
           setSubmitting(false)
-          return false
+          return { ok: false }
         }
+        checkoutUrl = payRes.data?.checkoutUrl || null
       }
     } else if (collectNow && payload.billingType === 'flexible' && !isScheduledFlexible) {
       const payRes = await api.post('/api/payment', {
@@ -247,19 +244,19 @@ export default function CreateEnrollmentSheet({
         type: 'package_purchase',
         amount: collectAmount,
         method,
-        cardToken: payload.billing?.cardToken || undefined,
       })
       if (!payRes?.success) {
         setError(payRes?.error || 'Enrollment created but initial payment failed.')
         setSubmitting(false)
-        return false
+        return { ok: false }
       }
+      checkoutUrl = payRes.data?.checkoutUrl || null
     }
 
     setSubmitting(false)
     handleClose()
     onSuccess?.()
-    return true
+    return { ok: true, checkoutUrl }
   }
 
   return (

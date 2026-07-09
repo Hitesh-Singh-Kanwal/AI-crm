@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import api from "@/lib/api";
 import { useCloverConnection } from "@/app/settings/payments/clover/useCloverConnection";
-import CloverCardFields from "@/app/settings/payments/clover/CloverCardFields";
+import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
+import { toast } from "@/components/ui/toast";
 
 const PAYMENT_METHODS = ["cash", "card", "online", "cheque", "other"];
 
@@ -175,8 +176,7 @@ export default function NewEnrollmentPackageInline({
   const [error, setError] = useState("");
   const [catalogServices, setCatalogServices] = useState([]);
   const [walletBalance, setWalletBalance] = useState(null);
-  const [cloverResetSignal, setCloverResetSignal] = useState(0);
-  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection();
+  const { status: cloverStatus } = useCloverConnection();
 
   useEffect(() => {
     api.get("/api/calendar-service?limit=200").then((res) => {
@@ -405,14 +405,20 @@ export default function NewEnrollmentPackageInline({
   // The wallet split settles part of a one-time balance already, so the card only ever
   // charges what's left for the chosen method.
   const cardChargeAmount = walletEligible ? walletRemaining : collectAmt;
-  const showCloverFields =
+  const payWithClover =
     step === 2 &&
     form.billingType !== "pay_per_session" &&
     form.billing.collectNow &&
     form.billing.method === "card" &&
     cardChargeAmount > 0 &&
-    cloverStatus === "connected" &&
-    Boolean(ecommercePublicKey);
+    cloverStatus === "connected";
+  const cloverNotConnected =
+    step === 2 &&
+    form.billingType !== "pay_per_session" &&
+    form.billing.collectNow &&
+    form.billing.method === "card" &&
+    cardChargeAmount > 0 &&
+    cloverStatus !== "connected";
 
   const defaultCollectAmount = useMemo(() => {
     if (form.billingType === "one_time") return total;
@@ -469,9 +475,8 @@ export default function NewEnrollmentPackageInline({
     setStep(2);
   }
 
-  async function handleSubmit(cardToken = null, saveCard = false) {
+  async function handleSubmit() {
     setError("");
-    setLoading(true);
     const collect =
       form.billingType !== "pay_per_session" &&
       form.billing.collectNow &&
@@ -482,8 +487,6 @@ export default function NewEnrollmentPackageInline({
         ...form.billing,
         collectNow: collect,
         collectAmount: collect ? Number(form.billing.collectAmount) : 0,
-        cardToken: cardToken || undefined,
-        saveCard: saveCard || undefined,
       },
     };
     if (form.tip.enabled && form.tip.amount && form.teacherID) {
@@ -491,11 +494,21 @@ export default function NewEnrollmentPackageInline({
     } else {
       payload.tip = undefined;
     }
-    const ok = await onSubmit?.(payload);
+
+    const checkoutTab = payWithClover ? openCheckoutTab() : null;
+    setLoading(true);
+    const res = await onSubmit?.(payload);
     setLoading(false);
-    if (!ok) {
+    if (!res?.ok) {
+      closeCheckoutTab(checkoutTab);
       setError("Failed to create enrollment and package.");
-      if (cardToken) setCloverResetSignal((n) => n + 1);
+      return;
+    }
+    if (res.checkoutUrl) {
+      navigateCheckoutTab(checkoutTab, res.checkoutUrl);
+      toast.success(CHECKOUT_TOAST);
+    } else {
+      closeCheckoutTab(checkoutTab);
     }
   }
 
@@ -1261,17 +1274,6 @@ export default function NewEnrollmentPackageInline({
               )}
             </div>
 
-            {showCloverFields && (
-              <CloverCardFields
-                ecommercePublicKey={ecommercePublicKey}
-                merchantId={cloverMerchantId}
-                amount={cardChargeAmount}
-                disabled={loading || walletOver}
-                resetSignal={cloverResetSignal}
-                allowSaveCard={collectsFirstInstallment}
-                onToken={(token, { saveCard }) => handleSubmit(token, saveCard)}
-              />
-            )}
           </div>
         )}
       </div>
@@ -1367,18 +1369,14 @@ export default function NewEnrollmentPackageInline({
             Next: Payment →
           </button>
         ) : (
-          // With Clover fields on screen the purchase is submitted by their own pay button,
-          // which owns the card token.
-          !showCloverFields && (
-            <button
-              type="button"
-              className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
-              onClick={() => handleSubmit()}
-              disabled={loading || !form.packageID || walletOver || collectWalletShort}
-            >
-              {loading ? "Creating…" : "Create Enrollment & Package"}
-            </button>
-          )
+          <button
+            type="button"
+            className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
+            onClick={() => handleSubmit()}
+            disabled={loading || !form.packageID || walletOver || collectWalletShort || cloverNotConnected}
+          >
+            {loading ? "Creating…" : payWithClover ? "Pay with Clover" : "Create Enrollment & Package"}
+          </button>
         )}
       </div>
     </div>
