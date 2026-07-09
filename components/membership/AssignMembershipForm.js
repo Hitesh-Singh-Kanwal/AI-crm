@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
-import CloverCardFields from '@/app/settings/payments/clover/CloverCardFields'
+import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 
 const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other']
 
@@ -27,8 +27,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   const [walletBalance, setWalletBalance] = useState(null)
   const [useWallet, setUseWallet] = useState(false)
   const [walletAmount, setWalletAmount] = useState('')
-  const [cloverResetSignal, setCloverResetSignal] = useState(0)
-  const { status: cloverStatus, merchantId: cloverMerchantId, ecommercePublicKey } = useCloverConnection()
+  const { status: cloverStatus } = useCloverConnection()
 
   useEffect(() => {
     api.get('/api/membership?isActive=true&limit=200').then((res) => {
@@ -53,13 +52,12 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   const remaining = Math.max(0, price - walletApplied)
   const walletOver = walletEligible && walletEntered > (walletBalance ?? 0)
 
-  // Only one-time billing takes money here; flexible schedules are collected later.
-  const showCloverFields =
-    billingType === 'one_time' &&
-    method === 'card' &&
-    remaining > 0 &&
-    cloverStatus === 'connected' &&
-    Boolean(ecommercePublicKey)
+  // One-time card purchases settle through Clover's hosted page; everything else
+  // (cash, wallet, flexible schedules) is recorded directly.
+  const payWithClover =
+    billingType === 'one_time' && method === 'card' && remaining > 0 && cloverStatus === 'connected'
+  const cloverNotConnected =
+    billingType === 'one_time' && method === 'card' && remaining > 0 && cloverStatus !== 'connected'
 
   const customTotal = useMemo(
     () => customInstallments.reduce((sum, c) => sum + (Number(c.amount) || 0), 0),
@@ -79,7 +77,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
     setCustomInstallments((prev) => prev.filter((c) => c._key !== key))
   }
 
-  async function handleSubmit(cardToken = null) {
+  async function handleSubmit() {
     if (!customerID) { toast.error('Select a student first'); return }
     if (!membershipID) { toast.error('Select a membership'); return }
     if (walletOver) {
@@ -91,7 +89,6 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
     if (billingType === 'one_time') {
       billing.method = method
       if (walletApplied > 0) billing.walletAmount = walletApplied
-      if (cardToken) billing.cardToken = cardToken
     }
     else if (billingType === 'flexible') {
       if (scheduleMode === 'custom') {
@@ -107,6 +104,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
       }
     }
 
+    const checkoutTab = payWithClover ? openCheckoutTab() : null
     setSubmitting(true)
     try {
       const result = await api.post('/api/customer-membership', {
@@ -117,11 +115,16 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
         notes: notes.trim() || undefined,
       })
       if (result.success) {
-        toast.success('Membership assigned')
+        if (result.data?.checkoutUrl) {
+          navigateCheckoutTab(checkoutTab, result.data.checkoutUrl)
+          toast.success(CHECKOUT_TOAST)
+        } else {
+          toast.success('Membership assigned')
+        }
         onSuccess?.()
       } else {
+        closeCheckoutTab(checkoutTab)
         toast.error('Failed to assign membership', { description: result.error })
-        if (cardToken) setCloverResetSignal((n) => n + 1)
       }
     } finally {
       setSubmitting(false)
@@ -253,16 +256,6 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
             </div>
           )}
 
-          {showCloverFields && (
-            <CloverCardFields
-              ecommercePublicKey={ecommercePublicKey}
-              merchantId={cloverMerchantId}
-              amount={remaining}
-              disabled={submitting || walletOver}
-              resetSignal={cloverResetSignal}
-              onToken={(token) => handleSubmit(token)}
-            />
-          )}
         </div>
       )}
 
@@ -342,14 +335,16 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" className="h-9" />
       </div>
 
-      <div className="flex justify-end gap-2 pt-2">
-        {onCancel && <Button variant="outline" onClick={onCancel} disabled={submitting}>Cancel</Button>}
-        {/* The Clover pay button submits the card path; it owns the token. */}
-        {!showCloverFields && (
-          <Button onClick={() => handleSubmit()} disabled={submitting || walletOver} className="bg-brand hover:bg-brand-dark text-brand-foreground">
-            {submitting ? 'Assigning…' : 'Assign Membership'}
-          </Button>
+      <div className="flex flex-col gap-1.5 pt-2">
+        {cloverNotConnected && (
+          <p className="text-[11px] text-amber-600 text-right">Connect Clover in Settings → Payments to charge a card.</p>
         )}
+        <div className="flex justify-end gap-2">
+          {onCancel && <Button variant="outline" onClick={onCancel} disabled={submitting}>Cancel</Button>}
+          <Button onClick={() => handleSubmit()} disabled={submitting || walletOver || cloverNotConnected} className="bg-brand hover:bg-brand-dark text-brand-foreground">
+            {submitting ? 'Assigning…' : payWithClover ? 'Pay with Clover' : 'Assign Membership'}
+          </Button>
+        </div>
       </div>
     </div>
   )
