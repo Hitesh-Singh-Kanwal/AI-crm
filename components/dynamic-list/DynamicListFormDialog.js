@@ -21,40 +21,55 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-function createEmptyForm() {
+function createEmptyForm(entityType = 'lead') {
   return {
     name: '',
     description: '',
+    entityType,
     conditionLogic: 'AND',
     groups: [],
     status: 'active',
   }
 }
 
-function formFromList(list) {
-  if (!list) return createEmptyForm()
+function formFromList(list, fallbackEntityType = 'lead') {
+  if (!list) return createEmptyForm(fallbackEntityType)
   const normalized = normalizeDynamicListFromApi(list)
+  const entityType = list.entityType || normalized?.entityType || fallbackEntityType
   const groups = buildConditionGroupsFromFlat({
     conditions: list.conditions?.length ? list.conditions : normalized?.conditions,
     groupLogics: list.groupLogics,
     conditionGroups: list.conditionGroups,
+    entityType,
   })
 
   return {
     name: normalized?.name || list.name || '',
     description: normalized?.description || list.description || '',
+    entityType,
     conditionLogic: list.conditionLogic || normalized?.conditionLogic || 'AND',
     groups,
     status: list.status || normalized?.status || 'active',
   }
 }
 
-export default function DynamicListFormDialog({ open, onClose, list, onSaved }) {
+export default function DynamicListFormDialog({
+  open,
+  onClose,
+  list,
+  onSaved,
+  entityType: defaultEntityType = 'lead',
+}) {
   const isEdit = Boolean(list?._id || list?.id)
-  const [form, setForm] = useState(createEmptyForm())
+  const resolvedEntityType = list?.entityType || defaultEntityType
+  const isCustomer = resolvedEntityType === 'customer'
+  const [form, setForm] = useState(createEmptyForm(resolvedEntityType))
   const [leadReasons, setLeadReasons] = useState([])
   const [locations, setLocations] = useState([])
   const [forms, setForms] = useState([])
+  const [teachers, setTeachers] = useState([])
+  const [tags, setTags] = useState([])
+  const [memberships, setMemberships] = useState([])
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -62,30 +77,50 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
   useEffect(() => {
     if (!open) return
     setError('')
-    setForm(list ? formFromList(list) : createEmptyForm())
-  }, [open, list])
+    setForm(list ? formFromList(list, defaultEntityType) : createEmptyForm(defaultEntityType))
+  }, [open, list, defaultEntityType])
 
   useEffect(() => {
     if (!open) return
     let cancelled = false
     setLoadingOptions(true)
-    Promise.all([
-      api.get('/api/lead-reasons'),
-      api.get('/api/location?limit=200'),
-      api.get('/api/formBuilder?page=1&limit=200'),
-    ]).then(([reasonsRes, locationsRes, formsRes]) => {
+
+    const requests = [api.get('/api/location?limit=200')]
+    if (isCustomer) {
+      requests.push(
+        api.get('/api/teacher?limit=200&status=active'),
+        api.get('/api/customer/tags'),
+        api.get('/api/membership?limit=200')
+      )
+    } else {
+      requests.push(
+        api.get('/api/lead-reasons'),
+        api.get('/api/formBuilder?page=1&limit=200')
+      )
+    }
+
+    Promise.all(requests).then((results) => {
       if (cancelled) return
-      if (reasonsRes?.success) setLeadReasons(extractLeadReasonsList(reasonsRes))
+      const locationsRes = results[0]
       if (locationsRes?.success) {
         setLocations(Array.isArray(locationsRes.data) ? locationsRes.data : [])
       }
-      if (formsRes?.success) setForms(extractFormTemplatesList(formsRes))
+      if (isCustomer) {
+        const [, teachersRes, tagsRes, membershipsRes] = results
+        if (teachersRes?.success) setTeachers(teachersRes.data || [])
+        if (tagsRes?.success) setTags(tagsRes.data || [])
+        if (membershipsRes?.success) setMemberships(membershipsRes.data || [])
+      } else {
+        const [, reasonsRes, formsRes] = results
+        if (reasonsRes?.success) setLeadReasons(extractLeadReasonsList(reasonsRes))
+        if (formsRes?.success) setForms(extractFormTemplatesList(formsRes))
+      }
       setLoadingOptions(false)
     })
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [open, isCustomer])
 
   const canSubmit = useMemo(() => {
     if (!form.name.trim()) return false
@@ -106,6 +141,7 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
     const { conditions, groupLogics } = flattenConditionGroups(form.groups)
     const payload = buildDynamicListPayload({
       ...form,
+      entityType: form.entityType || defaultEntityType,
       conditions,
       groupLogics,
     })
@@ -126,6 +162,8 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
     setSaving(false)
   }
 
+  const entityLabel = isCustomer ? 'customers' : 'leads'
+
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="4xl">
       <DialogContent className="max-h-[90vh] overflow-y-auto" onClose={saving ? undefined : onClose}>
@@ -144,7 +182,7 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
               <input
                 value={form.name}
                 onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                placeholder="New form leads"
+                placeholder={isCustomer ? 'High-value customers' : 'New form leads'}
                 className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
               />
             </div>
@@ -176,13 +214,14 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
 
           <div className="rounded-xl border border-border bg-background p-4">
             <div className="mb-4">
-              <div className="text-[14px] font-semibold text-foreground">Include leads</div>
+              <div className="text-[14px] font-semibold text-foreground">Include {entityLabel}</div>
               <div className="text-[12px] text-muted-foreground">
                 Level 1: filter group → filter. Then choose and / or before adding another filter or group.
               </div>
             </div>
 
             <LeadConditionsEditor
+              entityType={form.entityType || defaultEntityType}
               groups={form.groups}
               conditionLogic={form.conditionLogic}
               onChangeGroups={(groups) => setForm((p) => ({ ...p, groups }))}
@@ -190,6 +229,9 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
               leadReasons={leadReasons}
               locations={locations}
               forms={forms}
+              teachers={teachers}
+              tags={tags}
+              memberships={memberships}
               loadingOptions={loadingOptions}
             />
           </div>

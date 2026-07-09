@@ -3,12 +3,14 @@
 import MultiSelectCheckboxDropdown from '@/components/shared/MultiSelectCheckboxDropdown'
 import {
   emptyValueForOperator,
-  getFilterFieldDef,
+  getFilterFieldDef as getLeadFilterFieldDef,
   isBetweenOperator,
   isValuelessOperator,
   usesMultiValueOperator,
 } from '@/lib/dynamic-list-filter-catalog'
-import { getFieldValueOptions } from '@/lib/lead-filter-fields'
+import { getCustomerFilterFieldDef } from '@/lib/customer-list-filter-catalog'
+import { getFieldValueOptions as getCustomerFieldValueOptions } from '@/lib/customer-filter-fields'
+import { getFieldValueOptions as getLeadFieldValueOptions } from '@/lib/lead-filter-fields'
 import { formatFieldDisplayValue } from '@/lib/dynamic-list-normalize'
 
 const inputClass =
@@ -28,11 +30,17 @@ export default function CatalogConditionValueInput({
   operator,
   value,
   onChange,
+  entityType = 'lead',
   leadReasons = [],
   locations = [],
   forms = [],
+  teachers = [],
+  tags = [],
+  memberships = [],
   loadingOptions = false,
 }) {
+  const getFilterFieldDef = entityType === 'customer' ? getCustomerFilterFieldDef : getLeadFilterFieldDef
+  const getFieldValueOptions = entityType === 'customer' ? getCustomerFieldValueOptions : getLeadFieldValueOptions
   const def = getFilterFieldDef(field)
   if (!def) {
     return (
@@ -53,14 +61,14 @@ export default function CatalogConditionValueInput({
     )
   }
 
-  if (def.inputType === 'metadata') {
+  if (def.inputType === 'metadata' || def.inputType === 'customField') {
     const meta = value && typeof value === 'object' ? value : { key: '', value: '' }
     return (
       <div className="grid grid-cols-2 gap-2">
         <input
           value={String(meta.key || '')}
           onChange={(e) => onChange({ ...meta, key: e.target.value })}
-          placeholder="metadata key"
+          placeholder={def.inputType === 'customField' ? 'custom field key' : 'metadata key'}
           className={inputClass}
         />
         <input
@@ -97,7 +105,7 @@ export default function CatalogConditionValueInput({
     )
   }
 
-  const context = { leadReasons, locations, forms }
+  const context = { leadReasons, locations, forms, teachers, tags, memberships }
   let labeledOptions = null
   if (def.optionsKey) {
     labeledOptions = getFieldValueOptions(def.optionsKey === 'source' ? 'source' : def.value, context)
@@ -124,6 +132,21 @@ export default function CatalogConditionValueInput({
     }
   } else if (def.staticOptions) {
     labeledOptions = toOptions(def.staticOptions)
+  }
+
+  if (def.inputType === 'multiselect' && usesMultiValueOperator(operator)) {
+    const values = Array.isArray(value) ? value : value ? [String(value)] : []
+    const labeledOptions = getFieldValueOptions(field, context) || []
+    return (
+      <MultiSelectCheckboxDropdown
+        options={labeledOptions}
+        values={values}
+        onChange={onChange}
+        placeholder={operator === 'ne' || operator === 'not_in' ? 'Select values to exclude' : 'Select one or more'}
+        disabled={loadingOptions}
+        emptyMessage={loadingOptions ? 'Loading…' : 'No options available.'}
+      />
+    )
   }
 
   if (usesMultiValueOperator(operator)) {

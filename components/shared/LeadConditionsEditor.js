@@ -5,13 +5,19 @@ import { Copy, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CONDITION_LOGIC_OPTIONS } from '@/lib/dynamic-list-constants'
 import {
-  FILTER_GROUPS,
-  emptyValueForOperator,
-  getDefaultOperatorForField,
-  getOperatorsForFilterField,
+  FILTER_GROUPS as LEAD_FILTER_GROUPS,
+  emptyValueForOperator as leadEmptyValueForOperator,
+  getDefaultOperatorForField as getLeadDefaultOperator,
+  getOperatorsForFilterField as getLeadOperators,
   isValuelessOperator,
   usesMultiValueOperator,
 } from '@/lib/dynamic-list-filter-catalog'
+import {
+  CUSTOMER_FILTER_GROUPS,
+  emptyValueForOperator as customerEmptyValueForOperator,
+  getDefaultOperatorForCustomerField,
+  getOperatorsForCustomerFilterField,
+} from '@/lib/customer-list-filter-catalog'
 import {
   createEmptyCondition,
   createEmptyConditionGroup,
@@ -39,6 +45,23 @@ function LogicPill({ value = 'AND', onChange, className }) {
   )
 }
 
+function getCatalog(entityType) {
+  if (entityType === 'customer') {
+    return {
+      FILTER_GROUPS: CUSTOMER_FILTER_GROUPS,
+      emptyValueForOperator: customerEmptyValueForOperator,
+      getDefaultOperatorForField: getDefaultOperatorForCustomerField,
+      getOperatorsForFilterField: getOperatorsForCustomerFilterField,
+    }
+  }
+  return {
+    FILTER_GROUPS: LEAD_FILTER_GROUPS,
+    emptyValueForOperator: leadEmptyValueForOperator,
+    getDefaultOperatorForField: getLeadDefaultOperator,
+    getOperatorsForFilterField: getLeadOperators,
+  }
+}
+
 function FieldPicker({
   open,
   onClose,
@@ -47,10 +70,12 @@ function FieldPicker({
   step,
   selectedGroupId,
   hiddenFields,
+  catalog,
+  entityType = 'lead',
 }) {
   if (!open) return null
 
-  const group = FILTER_GROUPS.find((g) => g.id === selectedGroupId)
+  const group = catalog.FILTER_GROUPS.find((g) => g.id === selectedGroupId)
   const fields = (group?.fields || []).filter((f) => !hiddenFields.has(f.value))
 
   return (
@@ -65,7 +90,7 @@ function FieldPicker({
             <div className="text-[12px] text-muted-foreground">
               {step === 'field'
                 ? group?.label || 'Select a field from this group'
-                : 'Groups organize related lead attributes'}
+                : `Groups organize related ${entityType === 'customer' ? 'customer' : 'lead'} attributes`}
             </div>
           </div>
           <button
@@ -79,7 +104,7 @@ function FieldPicker({
 
         <div className="max-h-[360px] overflow-y-auto p-2">
           {step === 'group'
-            ? FILTER_GROUPS.map((g) => {
+            ? catalog.FILTER_GROUPS.map((g) => {
                 const available = g.fields.filter((f) => !hiddenFields.has(f.value))
                 if (available.length === 0) return null
                 return (
@@ -128,14 +153,14 @@ function ConditionRow({
   catalogGroupId,
   onChange,
   onRemove,
-  leadReasons,
-  locations,
-  forms,
+  context,
   loadingOptions,
   canRemove,
+  catalog,
+  entityType,
 }) {
-  const operators = getOperatorsForFilterField(condition.field)
-  const fields = FILTER_GROUPS.find((g) => g.id === catalogGroupId)?.fields || []
+  const operators = catalog.getOperatorsForFilterField(condition.field)
+  const fields = catalog.FILTER_GROUPS.find((g) => g.id === catalogGroupId)?.fields || []
 
   if (!condition.field) {
     return (
@@ -149,7 +174,7 @@ function ConditionRow({
     <div className="rounded-xl border border-border bg-background p-3">
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0 text-[12px] font-medium leading-snug text-foreground">
-          {summarizeCondition(condition, { leadReasons, locations, forms })}
+          {summarizeCondition(condition, context, entityType)}
         </div>
         {canRemove ? (
           <button
@@ -168,8 +193,8 @@ function ConditionRow({
           value={condition.field}
           onChange={(e) => {
             const field = e.target.value
-            const operator = getDefaultOperatorForField(field)
-            onChange({ field, operator, value: emptyValueForOperator(operator) })
+            const operator = catalog.getDefaultOperatorForField(field)
+            onChange({ field, operator, value: catalog.emptyValueForOperator(operator) })
           }}
           className="h-9 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-[var(--studio-primary)]"
         >
@@ -183,7 +208,7 @@ function ConditionRow({
           value={condition.operator || 'eq'}
           onChange={(e) => {
             const operator = e.target.value
-            onChange({ operator, value: emptyValueForOperator(operator) })
+            onChange({ operator, value: catalog.emptyValueForOperator(operator) })
           }}
           className="h-9 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-[var(--studio-primary)]"
         >
@@ -198,9 +223,8 @@ function ConditionRow({
           operator={condition.operator}
           value={condition.value}
           onChange={(value) => onChange({ value })}
-          leadReasons={leadReasons}
-          locations={locations}
-          forms={forms}
+          entityType={entityType}
+          {...context}
           loadingOptions={loadingOptions}
         />
       </div>
@@ -213,12 +237,22 @@ export default function LeadConditionsEditor({
   conditionLogic = 'AND',
   onChangeGroups,
   onChangeLogic,
+  entityType = 'lead',
   leadReasons = [],
   locations = [],
   forms = [],
+  teachers = [],
+  tags = [],
+  memberships = [],
   loadingOptions = false,
   hiddenFields = new Set(),
 }) {
+  const catalog = useMemo(() => getCatalog(entityType), [entityType])
+  const context = useMemo(
+    () => ({ leadReasons, locations, forms, teachers, tags, memberships }),
+    [leadReasons, locations, forms, teachers, tags, memberships]
+  )
+  const entityLabel = entityType === 'customer' ? 'customer' : 'lead'
   const [picker, setPicker] = useState(null)
   // picker: { mode: 'new-group' | 'add-filter', groupIndex?: number, step: 'group' | 'field', selectedGroupId?: string }
 
@@ -253,11 +287,11 @@ export default function LeadConditionsEditor({
 
   const handlePickField = (fieldValue) => {
     if (!picker) return
-    const operator = getDefaultOperatorForField(fieldValue)
+    const operator = catalog.getDefaultOperatorForField(fieldValue)
     const condition = createEmptyCondition({
       field: fieldValue,
       operator,
-      value: emptyValueForOperator(operator),
+      value: catalog.emptyValueForOperator(operator),
       groupId: picker.selectedGroupId,
     })
 
@@ -337,7 +371,7 @@ export default function LeadConditionsEditor({
         <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center">
           <div className="text-[13px] font-medium text-foreground">No filters yet</div>
           <div className="mt-1 text-[12px] text-muted-foreground">
-            Choose a filter group, then pick a filter to start building this list.
+            Choose a filter group, then pick a filter to start building this {entityLabel} list.
           </div>
           <button
             type="button"
@@ -352,7 +386,7 @@ export default function LeadConditionsEditor({
         <div className="space-y-3">
           {rows.map((group, groupIndex) => {
             const catalogLabel =
-              FILTER_GROUPS.find((g) => g.id === group.catalogGroupId)?.label ||
+              catalog.FILTER_GROUPS.find((g) => g.id === group.catalogGroupId)?.label ||
               group.catalogGroupId ||
               'Group'
             const conditions = group.conditions || []
@@ -395,11 +429,11 @@ export default function LeadConditionsEditor({
                           catalogGroupId={group.catalogGroupId}
                           onChange={(patch) => updateCondition(groupIndex, conditionIndex, patch)}
                           onRemove={() => removeCondition(groupIndex, conditionIndex)}
-                          leadReasons={leadReasons}
-                          locations={locations}
-                          forms={forms}
+                          context={context}
                           loadingOptions={loadingOptions}
                           canRemove={conditions.length > 1 || rows.length > 1}
+                          catalog={catalog}
+                          entityType={entityType}
                         />
                         {conditionIndex === conditions.length - 1 ? (
                           <div className="flex flex-wrap items-center gap-2 pl-1">
@@ -457,6 +491,8 @@ export default function LeadConditionsEditor({
         onPickGroup={handlePickGroup}
         onPickField={handlePickField}
         hiddenFields={hiddenFields}
+        catalog={catalog}
+        entityType={entityType}
       />
     </div>
   )

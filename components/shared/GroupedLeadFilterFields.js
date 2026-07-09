@@ -6,24 +6,54 @@ import { cn } from '@/lib/utils'
 import { Switch } from '@/components/ui/switch'
 import { CONDITION_LOGIC_OPTIONS } from '@/lib/dynamic-list-constants'
 import {
-  FILTER_GROUPS,
-  conditionHasValue,
-  emptyValueForOperator,
-  getDefaultOperatorForField,
-  getOperatorsForFilterField,
+  FILTER_GROUPS as LEAD_FILTER_GROUPS,
+  conditionHasValue as leadConditionHasValue,
+  emptyValueForOperator as leadEmptyValueForOperator,
+  getDefaultOperatorForField as getLeadDefaultOperator,
+  getFilterFieldDef as getLeadFilterFieldDef,
+  getOperatorsForFilterField as getLeadOperators,
 } from '@/lib/dynamic-list-filter-catalog'
+import {
+  CUSTOMER_FILTER_GROUPS,
+  conditionHasValue as customerConditionHasValue,
+  emptyValueForOperator as customerEmptyValueForOperator,
+  getCustomerFilterFieldDef,
+  getDefaultOperatorForCustomerField,
+  getOperatorsForCustomerFilterField,
+} from '@/lib/customer-list-filter-catalog'
 import { summarizeCondition } from '@/lib/dynamic-list-normalize'
 import FilterLogicToggle from '@/components/shared/FilterLogicToggle'
 import CatalogConditionValueInput from '@/components/shared/CatalogConditionValueInput'
 
-function createCondition(fieldValue, groupId) {
-  const operator = getDefaultOperatorForField(fieldValue)
+function getCatalogApi(entityType) {
+  if (entityType === 'customer') {
+    return {
+      FILTER_GROUPS: CUSTOMER_FILTER_GROUPS,
+      conditionHasValue: customerConditionHasValue,
+      emptyValueForOperator: customerEmptyValueForOperator,
+      getDefaultOperatorForField: getDefaultOperatorForCustomerField,
+      getFilterFieldDef: getCustomerFilterFieldDef,
+      getOperatorsForFilterField: getOperatorsForCustomerFilterField,
+    }
+  }
+  return {
+    FILTER_GROUPS: LEAD_FILTER_GROUPS,
+    conditionHasValue: leadConditionHasValue,
+    emptyValueForOperator: leadEmptyValueForOperator,
+    getDefaultOperatorForField: getLeadDefaultOperator,
+    getFilterFieldDef: getLeadFilterFieldDef,
+    getOperatorsForFilterField: getLeadOperators,
+  }
+}
+
+function createCondition(fieldValue, groupId, catalog) {
+  const operator = catalog.getDefaultOperatorForField(fieldValue)
   return {
     id: `${fieldValue}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     groupId,
     field: fieldValue,
     operator,
-    value: emptyValueForOperator(operator),
+    value: catalog.emptyValueForOperator(operator),
   }
 }
 
@@ -91,20 +121,20 @@ function ConditionRow({
   catalogGroupId,
   onChange,
   onRemove,
-  leadReasons,
-  locations,
-  forms,
+  context,
   loadingOptions,
   canRemove,
+  catalog,
+  entityType,
 }) {
-  const operators = getOperatorsForFilterField(condition.field)
-  const fields = FILTER_GROUPS.find((g) => g.id === catalogGroupId)?.fields || []
+  const operators = catalog.getOperatorsForFilterField(condition.field)
+  const fields = catalog.FILTER_GROUPS.find((g) => g.id === catalogGroupId)?.fields || []
 
   return (
     <div className="rounded-xl border border-border bg-background p-3">
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0 text-[12px] font-medium leading-snug text-foreground">
-          {summarizeCondition(condition, { leadReasons, locations, forms })}
+          {summarizeCondition(condition, context, entityType)}
         </div>
         {canRemove ? (
           <button
@@ -123,8 +153,8 @@ function ConditionRow({
           value={condition.field}
           onChange={(e) => {
             const field = e.target.value
-            const operator = getDefaultOperatorForField(field)
-            onChange({ field, operator, value: emptyValueForOperator(operator) })
+            const operator = catalog.getDefaultOperatorForField(field)
+            onChange({ field, operator, value: catalog.emptyValueForOperator(operator) })
           }}
           className="h-9 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-[var(--studio-primary)]"
         >
@@ -138,7 +168,7 @@ function ConditionRow({
           value={condition.operator || 'eq'}
           onChange={(e) => {
             const operator = e.target.value
-            onChange({ operator, value: emptyValueForOperator(operator) })
+            onChange({ operator, value: catalog.emptyValueForOperator(operator) })
           }}
           className="h-9 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-[var(--studio-primary)]"
         >
@@ -153,9 +183,8 @@ function ConditionRow({
           operator={condition.operator}
           value={condition.value}
           onChange={(value) => onChange({ value })}
-          leadReasons={leadReasons}
-          locations={locations}
-          forms={forms}
+          entityType={entityType}
+          {...context}
           loadingOptions={loadingOptions}
         />
       </div>
@@ -173,14 +202,14 @@ function GroupToggleRow({
   onAdd,
   onUpdate,
   onRemove,
-  leadReasons,
-  locations,
-  forms,
+  context,
   loadingOptions,
   hiddenFields,
+  catalog,
+  entityType,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
-  const activeCount = conditions.filter(conditionHasValue).length
+  const activeCount = conditions.filter(catalog.conditionHasValue).length
 
   return (
     <div
@@ -243,11 +272,11 @@ function GroupToggleRow({
                   catalogGroupId={group.id}
                   onChange={(patch) => onUpdate(condition.id, patch)}
                   onRemove={() => onRemove(condition.id)}
-                  leadReasons={leadReasons}
-                  locations={locations}
-                  forms={forms}
+                  context={context}
                   loadingOptions={loadingOptions}
                   canRemove
+                  catalog={catalog}
+                  entityType={entityType}
                 />
                 {index === conditions.length - 1 ? (
                   <div className="flex flex-wrap items-center gap-2 pl-1">
@@ -290,11 +319,22 @@ export default function GroupedLeadFilterFields({
   draft,
   onDraftChange,
   hiddenFields = new Set(),
+  entityType = 'lead',
   locations = [],
   forms = [],
   leadReasons = [],
+  teachers = [],
+  tags = [],
+  memberships = [],
   loadingOptions = false,
 }) {
+  const catalog = useMemo(() => getCatalogApi(entityType), [entityType])
+  const context = useMemo(
+    () => ({ leadReasons, locations, forms, teachers, tags, memberships }),
+    [leadReasons, locations, forms, teachers, tags, memberships]
+  )
+  const entityLabel = entityType === 'customer' ? 'customer' : 'lead'
+
   const conditions = useMemo(
     () => (Array.isArray(draft?.conditions) ? draft.conditions : []),
     [draft?.conditions]
@@ -311,7 +351,7 @@ export default function GroupedLeadFilterFields({
     const nextEnabled = { ...enabledGroups, [groupId]: enabled }
     if (!enabled) {
       const groupFieldValues = new Set(
-        (FILTER_GROUPS.find((g) => g.id === groupId)?.fields || []).map((f) => f.value)
+        (catalog.FILTER_GROUPS.find((g) => g.id === groupId)?.fields || []).map((f) => f.value)
       )
       const nextConditions = conditions.filter(
         (c) => !(c.groupId === groupId || groupFieldValues.has(c.field))
@@ -336,7 +376,7 @@ export default function GroupedLeadFilterFields({
   }
 
   const addCondition = (fieldValue, groupId) => {
-    setConditions([...conditions, createCondition(fieldValue, groupId)])
+    setConditions([...conditions, createCondition(fieldValue, groupId, catalog)])
   }
 
   const updateCondition = (id, patch) => {
@@ -368,14 +408,14 @@ export default function GroupedLeadFilterFields({
           label=""
           helpText={
             (draft.conditionLogic || 'AND') === 'OR'
-              ? 'A lead must be present in at least one filter group to appear in the segment.'
-              : 'A lead must be present in all filter groups to appear in the segment.'
+              ? `A ${entityLabel} must be present in at least one filter group to appear in the segment.`
+              : `A ${entityLabel} must be present in all filter groups to appear in the segment.`
           }
         />
       </div>
 
       <div className="space-y-1">
-        {FILTER_GROUPS.map((group) => {
+        {catalog.FILTER_GROUPS.map((group) => {
           const availableFields = group.fields.filter((f) => !hiddenFields.has(f.value))
           if (availableFields.length === 0) return null
           const enabled = isGroupEnabled(group)
@@ -395,11 +435,11 @@ export default function GroupedLeadFilterFields({
               onAdd={(fieldValue) => addCondition(fieldValue, group.id)}
               onUpdate={updateCondition}
               onRemove={removeCondition}
-              leadReasons={leadReasons}
-              locations={locations}
-              forms={forms}
+              context={context}
               loadingOptions={loadingOptions}
               hiddenFields={hiddenFields}
+              catalog={catalog}
+              entityType={entityType}
             />
           )
         })}
