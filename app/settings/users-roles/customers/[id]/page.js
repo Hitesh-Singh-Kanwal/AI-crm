@@ -3224,6 +3224,15 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     enrTotalAmount > 0 &&
     cloverStatus !== "connected";
 
+  // Flexible billing collects its initial payment through a second request, after the
+  // package is created. When that payment is by card it returns its own checkoutUrl,
+  // so this flow needs a pre-opened tab too — otherwise the link is silently dropped.
+  const flexInitialByCard =
+    addForm.billingType === "flexible" &&
+    Number(addForm.billing.initialPayment || 0) > 0 &&
+    (addForm.billing.initialPaymentMethod || "cash") === "card" &&
+    cloverStatus === "connected";
+
   function getEnrInstallments() {
     const {
       installmentMode,
@@ -3297,7 +3306,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         return;
       }
     }
-    const checkoutTab = payWithClover ? openCheckoutTab() : null;
+    const checkoutTab = payWithClover || flexInitialByCard ? openCheckoutTab() : null;
     setAdding(true);
     const targetEnrollmentID = addTargetEnrollment?._id
       ? String(addTargetEnrollment._id)
@@ -3358,8 +3367,10 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
       setAdding(false);
       return;
     }
-    // Card success should always carry a checkoutUrl; close any stray pre-opened tab if not.
-    closeCheckoutTab(checkoutTab);
+    // A flexible package still owes its initial payment below, and that request may
+    // return the checkout link. Only a flow with nothing left to collect can close
+    // the tab here.
+    if (!flexInitialByCard) closeCheckoutTab(checkoutTab);
 
     const initialPayment = Number(addForm.billing.initialPayment || 0);
     if (addForm.billingType === "flexible" && initialPayment > 0) {
@@ -3371,6 +3382,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         method: addForm.billing.initialPaymentMethod || "cash",
       });
       if (!payRes.success) {
+        closeCheckoutTab(checkoutTab);
         toast.error(
           payRes.error || "Package added, but initial payment failed.",
         );
@@ -3379,6 +3391,15 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         setAdding(false);
         return;
       }
+      if (payRes.data?.checkoutUrl) {
+        navigateCheckoutTab(checkoutTab, payRes.data.checkoutUrl);
+        toast.success(CHECKOUT_TOAST);
+        setAddTargetEnrollment(null);
+        load();
+        setAdding(false);
+        return;
+      }
+      closeCheckoutTab(checkoutTab);
     }
 
     toast.success("Package added.");
