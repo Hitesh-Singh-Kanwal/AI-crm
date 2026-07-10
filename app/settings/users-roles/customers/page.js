@@ -465,26 +465,31 @@ export default function CustomersPage() {
               All customers
             </button>
             {savedFilters.map((f) => (
-              <button
+              <div
                 key={f.id}
-                type="button"
-                onClick={() => setActiveFilterId(f.id)}
                 className={`group flex h-8 items-center gap-1.5 rounded-lg border pl-3 pr-2 text-[12px] font-medium transition-colors ${
                   activeFilterId === f.id
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border bg-background text-muted-foreground hover:bg-muted/40'
                 }`}
-                title={describeFilter(f, locations)}
               >
-                <span className="max-w-[220px] truncate">{describeFilter(f, locations)}</span>
-                <span
-                  role="button"
-                  onClick={(e) => { e.stopPropagation(); removeFilter(f.id) }}
+                <button
+                  type="button"
+                  onClick={() => setActiveFilterId(f.id)}
+                  className="max-w-[220px] truncate text-left"
+                  title={describeFilter(f, locations)}
+                >
+                  {describeFilter(f, locations)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeFilter(f.id)}
                   className="rounded-full p-0.5 hover:bg-muted"
+                  aria-label="Remove filter"
                 >
                   <X className="h-3 w-3" />
-                </span>
-              </button>
+                </button>
+              </div>
             ))}
           </div>
         )}

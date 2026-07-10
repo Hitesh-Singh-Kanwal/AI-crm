@@ -5,10 +5,11 @@ import { cn } from '@/lib/utils'
 
 const Switch = forwardRef(function Switch({ checked, onChange, onCheckedChange, onClick, className = '', ...props }, ref) {
   const handleClick = (e) => {
-    onClick?.(e)
+    e.stopPropagation()
     const next = !checked
     onChange?.(next)
     onCheckedChange?.(next)
+    onClick?.(e)
   }
   return (
     <button

@@ -190,29 +190,23 @@ function GroupToggleRow({
       )}
     >
       <div
-        role="button"
-        tabIndex={0}
-        onClick={() => onToggle(!enabled)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onToggle(!enabled)
-          }
-        }}
         className={cn(
-          'flex w-full cursor-pointer items-center gap-3 px-1 py-3 text-left transition hover:bg-muted/30',
+          'flex w-full items-center gap-3 px-1 py-3 text-left transition hover:bg-muted/30',
           enabled && 'rounded-t-xl px-3 pt-3.5'
         )}
       >
         <Switch
           checked={enabled}
           onCheckedChange={onToggle}
-          onClick={(e) => e.stopPropagation()}
           aria-label={`Toggle ${group.label}`}
         />
-        <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={() => onToggle(!enabled)}
+          className="min-w-0 flex-1 text-left"
+        >
           <div className="text-[14px] font-medium text-foreground">Filter by {group.label.toLowerCase()}</div>
-        </div>
+        </button>
         {enabled && activeCount > 0 && (
           <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--studio-primary)] px-1.5 text-[10px] font-bold text-white">
             {activeCount}
