@@ -8,6 +8,7 @@ import {
   buildDynamicListPayload,
   flattenConditionGroups,
   formatFieldDisplayValue,
+  inferCatalogGroupId,
   normalizeDynamicListFromApi,
 } from '@/lib/dynamic-list-normalize'
 import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
@@ -125,25 +126,29 @@ export default function DynamicListFormDialog({
   const canSubmit = useMemo(() => {
     if (!form.name.trim()) return false
     if (!Array.isArray(form.groups) || form.groups.length === 0) return false
-    return form.groups.every(
-      (group) =>
-        group.catalogGroupId &&
+    const entity = form.entityType || defaultEntityType
+    return form.groups.every((group) => {
+      const catalogGroupId = inferCatalogGroupId(group, entity)
+      if (!catalogGroupId) return false
+      return (
         Array.isArray(group.conditions) &&
         group.conditions.length > 0 &&
         group.conditions.every(isConditionComplete)
-    )
-  }, [form])
+      )
+    })
+  }, [form, defaultEntityType])
 
   const submit = async () => {
     if (!canSubmit || saving) return
     setSaving(true)
     setError('')
-    const { conditions, groupLogics } = flattenConditionGroups(form.groups)
+    const { conditions, groupLogics, conditionGroups } = flattenConditionGroups(form.groups)
     const payload = buildDynamicListPayload({
       ...form,
       entityType: form.entityType || defaultEntityType,
       conditions,
       groupLogics,
+      conditionGroups,
     })
     const id = list?._id || list?.id
     const res = isEdit

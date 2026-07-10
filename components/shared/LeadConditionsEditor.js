@@ -21,6 +21,7 @@ import {
 import {
   createEmptyCondition,
   createEmptyConditionGroup,
+  findCatalogGroupIdForField,
   summarizeCondition,
 } from '@/lib/dynamic-list-normalize'
 import CatalogConditionValueInput from '@/components/shared/CatalogConditionValueInput'
@@ -148,6 +149,16 @@ function FieldPicker({
   )
 }
 
+function getFieldsForCondition(catalog, catalogGroupId, conditionField) {
+  const primary = catalog.FILTER_GROUPS.find((g) => g.id === catalogGroupId)
+  const fieldHome = catalog.FILTER_GROUPS.find((g) => g.fields.some((f) => f.value === conditionField))
+  const byValue = new Map()
+  for (const field of [...(primary?.fields || []), ...(fieldHome?.fields || [])]) {
+    byValue.set(field.value, field)
+  }
+  return Array.from(byValue.values())
+}
+
 function ConditionRow({
   condition,
   catalogGroupId,
@@ -160,7 +171,7 @@ function ConditionRow({
   entityType,
 }) {
   const operators = catalog.getOperatorsForFilterField(condition.field)
-  const fields = catalog.FILTER_GROUPS.find((g) => g.id === catalogGroupId)?.fields || []
+  const fields = getFieldsForCondition(catalog, catalogGroupId, condition.field)
 
   if (!condition.field) {
     return (
@@ -266,11 +277,13 @@ export default function LeadConditionsEditor({
 
   const openAddFilterPicker = (groupIndex) => {
     const group = rows[groupIndex]
+    const catalogGroupId =
+      group?.catalogGroupId || findCatalogGroupIdForField(group?.conditions?.[0]?.field, entityType)
     setPicker({
       mode: 'add-filter',
       groupIndex,
-      step: 'field',
-      selectedGroupId: group?.catalogGroupId || '',
+      step: catalogGroupId ? 'field' : 'group',
+      selectedGroupId: catalogGroupId || '',
     })
   }
 
@@ -308,7 +321,14 @@ export default function LeadConditionsEditor({
       patchGroups(
         rows.map((g, i) =>
           i === picker.groupIndex
-            ? { ...g, conditions: [...(g.conditions || []), { ...condition, groupId: g.catalogGroupId }] }
+            ? {
+                ...g,
+                catalogGroupId: g.catalogGroupId || picker.selectedGroupId,
+                conditions: [
+                  ...(g.conditions || []),
+                  { ...condition, groupId: g.id || condition.groupId },
+                ],
+              }
             : g
         )
       )
