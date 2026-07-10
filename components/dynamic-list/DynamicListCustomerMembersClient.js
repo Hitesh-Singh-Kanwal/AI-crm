@@ -7,6 +7,7 @@ import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { summarizeConditions } from '@/lib/dynamic-list-normalize'
 import { buildCustomerQueryParams } from '@/lib/customer-filter-fields'
+import { getDynamicListsHref } from '@/lib/dynamic-list-constants'
 import { toast } from '@/components/ui/toast'
 
 export default function DynamicListCustomerMembersClient({ listId }) {
@@ -58,7 +59,7 @@ export default function DynamicListCustomerMembersClient({ listId }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link
-            href="/ai-automation/dynamic-lists"
+            href={getDynamicListsHref('customer')}
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-muted/40"
           >
             <ArrowLeft className="h-4 w-4" />

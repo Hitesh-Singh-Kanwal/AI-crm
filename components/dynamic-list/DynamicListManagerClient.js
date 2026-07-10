@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Pencil, Plus, RefreshCw, Star, Trash2, Users } from 'lucide-react'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -17,9 +18,15 @@ import { extractLeadReasonsList } from '@/lib/workflow-normalize'
 import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
 import ConfirmDeleteDynamicListDialog from '@/components/dynamic-list/ConfirmDeleteDynamicListDialog'
 
+function parseEntityType(value) {
+  return value === 'customer' ? 'customer' : 'lead'
+}
+
 export default function DynamicListManagerClient({ membersPathBase = '/ai-automation/dynamic-lists' }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [lists, setLists] = useState([])
-  const [entityType, setEntityType] = useState('lead')
+  const [entityType, setEntityType] = useState(() => parseEntityType(searchParams.get('entityType')))
   const [leadReasons, setLeadReasons] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -37,6 +44,24 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
   const [favoritingId, setFavoritingId] = useState('')
 
   const totalPages = Math.max(1, Math.ceil(total / LISTS_PAGE_SIZE))
+
+  useEffect(() => {
+    setEntityType(parseEntityType(searchParams.get('entityType')))
+  }, [searchParams])
+
+  const setEntityTypeAndUrl = (value) => {
+    const next = parseEntityType(value)
+    setEntityType(next)
+    setPage(1)
+    const params = new URLSearchParams(searchParams.toString())
+    if (next === 'lead') {
+      params.delete('entityType')
+    } else {
+      params.set('entityType', next)
+    }
+    const qs = params.toString()
+    router.replace(`${membersPathBase}${qs ? `?${qs}` : ''}`, { scroll: false })
+  }
 
   const loadLists = useCallback(async () => {
     setLoading(true)
@@ -162,10 +187,7 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
                 <button
                   key={value}
                   type="button"
-                  onClick={() => {
-                    setEntityType(value)
-                    setPage(1)
-                  }}
+                  onClick={() => setEntityTypeAndUrl(value)}
                   className={cn(
                     'rounded-lg px-3 py-1.5 text-[12px] font-semibold transition',
                     entityType === value
