@@ -11,6 +11,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 import api from "@/lib/api";
+import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
+import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 
 const TABS = [
@@ -1686,6 +1688,8 @@ export default function MiniStudentPanel({
                                       e.preventDefault();
                                       const num = payAmt;
                                       if (isNaN(num) || num <= 0) return;
+                                      const checkoutTab =
+                                        f.method === "card" ? openCheckoutTab() : null;
                                       updateFlex({ saving: true, error: null });
                                       const sessionCount =
                                         f.payType === "sessions"
@@ -1705,8 +1709,12 @@ export default function MiniStudentPanel({
                                         },
                                       );
                                       if (res.success) {
+                                        if (res.data?.checkoutUrl)
+                                          navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
+                                        else closeCheckoutTab(checkoutTab);
                                         await refreshPaymentsData();
                                       } else {
+                                        closeCheckoutTab(checkoutTab);
                                         updateFlex({
                                           saving: false,
                                           error: res.error || "Payment failed.",
@@ -1833,15 +1841,9 @@ export default function MiniStudentPanel({
                                         }
                                         className="flex-1 h-7 rounded-md border border-border bg-background px-2 text-[11px] outline-none capitalize"
                                       >
-                                        {[
-                                          "cash",
-                                          "card",
-                                          "online",
-                                          "cheque",
-                                          "other",
-                                        ].map((m) => (
-                                          <option key={m} value={m}>
-                                            {m}
+                                        {PAYMENT_METHODS.map((m) => (
+                                          <option key={m.value} value={m.value}>
+                                            {m.label}
                                           </option>
                                         ))}
                                       </select>
@@ -2115,6 +2117,8 @@ export default function MiniStudentPanel({
                                     updatePlan({ error: "Enter a valid amount." });
                                     return;
                                   }
+                                  const checkoutTab =
+                                    pf.method === "card" ? openCheckoutTab() : null;
                                   updatePlan({ saving: true, error: null });
                                   const res = await api.post(
                                     `/api/payment-plan/${item.planId}/pay-installment`,
@@ -2125,8 +2129,12 @@ export default function MiniStudentPanel({
                                     },
                                   );
                                   if (res.success) {
+                                    if (res.data?.checkoutUrl)
+                                      navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
+                                    else closeCheckoutTab(checkoutTab);
                                     await refreshPaymentsData();
                                   } else {
+                                    closeCheckoutTab(checkoutTab);
                                     updatePlan({
                                       saving: false,
                                       error: res.error || "Payment failed.",
@@ -2153,15 +2161,9 @@ export default function MiniStudentPanel({
                                   }
                                   className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none capitalize"
                                 >
-                                  {[
-                                    "cash",
-                                    "card",
-                                    "online",
-                                    "cheque",
-                                    "other",
-                                  ].map((m) => (
-                                    <option key={m} value={m}>
-                                      {m}
+                                  {PAYMENT_METHODS.map((m) => (
+                                    <option key={m.value} value={m.value}>
+                                      {m.label}
                                     </option>
                                   ))}
                                 </select>

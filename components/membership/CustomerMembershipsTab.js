@@ -12,8 +12,8 @@ import FreezeMembershipDialog from '@/components/shared/FreezeMembershipDialog'
 import AssignMembershipForm from './AssignMembershipForm'
 import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
+import { PAYMENT_METHODS } from '@/lib/paymentMethods'
 
-const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other', 'wallet']
 const ANNUAL_FREEZE_CAP_DAYS = 60
 
 const STATUS_COLORS = {
@@ -79,7 +79,7 @@ function PayInstallmentDialog({ target, onClose, onPaid }) {
           onChange={(e) => setMethod(e.target.value)}
           className="h-9 w-full rounded-lg border border-border bg-background text-sm px-2.5 capitalize focus:outline-none focus:ring-2 focus:ring-brand/30"
         >
-          {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+          {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
         {cloverNotConnected && (
           <p className="mt-2 text-[11px] text-amber-600">Connect Clover in Settings → Payments to charge a card.</p>

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 
-const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other']
+import { PURCHASE_METHODS } from '@/lib/paymentMethods'
 
 // Shared membership-assignment form. Used inside the customer Memberships tab and
 // the enroll menu's Membership tab.
@@ -252,7 +252,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
                 onChange={(e) => setMethod(e.target.value)}
                 className="h-9 rounded-lg border border-border bg-background text-sm px-2.5 focus:outline-none focus:ring-2 focus:ring-brand/30 capitalize"
               >
-                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                {PURCHASE_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
             </div>
           )}

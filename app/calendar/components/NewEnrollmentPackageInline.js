@@ -7,7 +7,7 @@ import { useCloverConnection } from "@/app/settings/payments/clover/useCloverCon
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
 import { toast } from "@/components/ui/toast";
 
-const PAYMENT_METHODS = ["cash", "card", "online", "cheque", "other"];
+import { PAYMENT_METHODS, PURCHASE_METHODS, TIP_METHODS } from "@/lib/paymentMethods";
 
 function todayISO() {
   const d = new Date();
@@ -325,7 +325,7 @@ export default function NewEnrollmentPackageInline({
   // method dropdown there. Other billing types collect a single payment, so they
   // can pay it straight from the wallet by choosing it as the method.
   const collectMethodOptions =
-    form.billingType === "one_time" ? PAYMENT_METHODS : [...PAYMENT_METHODS, "wallet"];
+    form.billingType === "one_time" ? PURCHASE_METHODS : PAYMENT_METHODS;
 
   // Non-one-time collection paid directly from the wallet via the method dropdown.
   const collectFromWallet =
@@ -1195,7 +1195,7 @@ export default function NewEnrollmentPackageInline({
                           className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
                         >
                           {collectMethodOptions.map((m) => (
-                            <option key={m} value={m} className="capitalize">{m}</option>
+                            <option key={m.value} value={m.value}>{m.label}</option>
                           ))}
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -1336,9 +1336,9 @@ export default function NewEnrollmentPackageInline({
                   }
                   className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
                 >
-                  {PAYMENT_METHODS.map((m) => (
-                    <option key={m} value={m} className="capitalize">
-                      {m}
+                  {TIP_METHODS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
                     </option>
                   ))}
                 </select>

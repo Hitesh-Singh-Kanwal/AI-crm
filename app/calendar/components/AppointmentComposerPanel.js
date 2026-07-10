@@ -14,6 +14,8 @@ import {
 import api from "@/lib/api";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import NewEnrollmentPackageInline from "@/app/calendar/components/NewEnrollmentPackageInline";
+// A session payment lands on CalendarEvent.payment.method, whose enum has no wallet.
+import { PURCHASE_METHODS as PAYMENT_METHODS } from "@/lib/paymentMethods";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -100,14 +102,6 @@ const TAB_SAVE_LABEL = {
   "Group Class": "Create Group Event",
   "To Do": "Save To Do",
 };
-
-const PAYMENT_METHODS = [
-  { value: "cash", label: "Cash" },
-  { value: "card", label: "Card" },
-  { value: "online", label: "Online" },
-  { value: "cheque", label: "Cheque" },
-  { value: "other", label: "Other" },
-];
 
 const FREQUENCY_OPTIONS = [
   { value: "daily", label: "Daily" },

@@ -44,6 +44,7 @@ import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import api from "@/lib/api";
 import { useCloverConnection } from "@/app/settings/payments/clover/useCloverConnection";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
+import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { useToast } from "@/components/ui/toast";
 import { getInitials, formatDate } from "@/lib/utils";
 
@@ -91,7 +92,6 @@ function paymentTypeBadge(type) {
   );
 }
 
-const PAYMENT_METHODS = ["cash", "card", "online", "cheque", "other", "wallet"];
 
 function SessionBar({ used, total }) {
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
@@ -1457,8 +1457,8 @@ function PayInstallmentDialog({
                 className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
               >
                 {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m} className="capitalize">
-                    {m}
+                  <option key={m.value} value={m.value}>
+                    {m.label}
                   </option>
                 ))}
               </select>
@@ -2852,8 +2852,8 @@ function PackagesTab({ customerID }) {
                         className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
                       >
                         {PAYMENT_METHODS.map((m) => (
-                          <option key={m} value={m} className="capitalize">
-                            {m}
+                          <option key={m.value} value={m.value}>
+                            {m.label}
                           </option>
                         ))}
                       </select>
@@ -4570,12 +4570,8 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                 className="h-8 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary capitalize"
                               >
                                 {PAYMENT_METHODS.map((m) => (
-                                  <option
-                                    key={m}
-                                    value={m}
-                                    className="capitalize"
-                                  >
-                                    {m}
+                                  <option key={m.value} value={m.value}>
+                                    {m.label}
                                   </option>
                                 ))}
                               </select>
@@ -4786,19 +4782,9 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                 }
                                 className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] capitalize outline-none focus:border-primary"
                               >
-                                {[
-                                  "cash",
-                                  "card",
-                                  "online",
-                                  "cheque",
-                                  "other",
-                                ].map((m) => (
-                                  <option
-                                    key={m}
-                                    value={m}
-                                    className="capitalize"
-                                  >
-                                    {m}
+                                {PAYMENT_METHODS.map((m) => (
+                                  <option key={m.value} value={m.value}>
+                                    {m.label}
                                   </option>
                                 ))}
                               </select>
@@ -5137,8 +5123,8 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
               className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary capitalize"
             >
               {PAYMENT_METHODS.map((m) => (
-                <option key={m} value={m} className="capitalize">
-                  {m}
+                <option key={m.value} value={m.value}>
+                  {m.label}
                 </option>
               ))}
             </select>

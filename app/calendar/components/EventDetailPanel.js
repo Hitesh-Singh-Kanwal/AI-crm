@@ -11,6 +11,8 @@ import {
   Users,
 } from "lucide-react";
 import api from "@/lib/api";
+import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
+import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MiniStudentPanel from "./MiniStudentPanel";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
@@ -739,6 +741,7 @@ function GroupStudentRoster({
   };
 
   const handleDirectPay = async (cid) => {
+    const checkoutTab = payForm.method === "card" ? openCheckoutTab() : null;
     setSaving(cid);
     const res = await api.post(`/api/calendar/${eventId}/charge-student`, {
       customerID: cid,
@@ -746,11 +749,14 @@ function GroupStudentRoster({
       amount: payForm.amount !== "" ? Number(payForm.amount) : undefined,
     });
     if (res.success) {
+      if (res.data?.checkoutUrl) navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
+      else closeCheckoutTab(checkoutTab);
       const charges = res.data?.charges || [];
       const charged = new Set(charges.map((ch) => String(ch.customerID)));
       setChargedIds(charged);
       setPayingId(null);
     } else {
+      closeCheckoutTab(checkoutTab);
       await fetchEnrolled();
     }
     // Always refresh the calendar so the event badge + tooltip update
@@ -1350,13 +1356,11 @@ function GroupStudentRoster({
                             }
                             className="h-8 w-full appearance-none rounded-md border border-border bg-background px-2 pr-6 text-[11px] text-foreground outline-none focus:border-amber-500"
                           >
-                            {["cash", "card", "online", "cheque", "other", "wallet"].map(
-                              (m) => (
-                                <option key={m} value={m}>
-                                  {m.charAt(0).toUpperCase() + m.slice(1)}
-                                </option>
-                              ),
-                            )}
+                            {PAYMENT_METHODS.map((m) => (
+                              <option key={m.value} value={m.value}>
+                                {m.label}
+                              </option>
+                            ))}
                           </select>
                           <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                         </div>
