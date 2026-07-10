@@ -13,6 +13,7 @@ const Switch = forwardRef(function Switch(
     onChange?.(next)
     onCheckedChange?.(next)
     onClick?.(e)
+    onClick?.(e)
   }
   return (
     <button

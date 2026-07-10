@@ -352,20 +352,20 @@ export default function FilterSheet({ open, onClose, onApply, locations = [], me
                 const isOn = Boolean(selected[id])
                 return (
                   <div key={id} className="rounded-lg border border-border overflow-hidden">
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => toggle(id)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggle(id) }}
-                      className="flex w-full cursor-pointer items-center gap-2.5 px-3 py-2.5 text-left hover:bg-muted/30"
-                    >
-                      <Checkbox checked={isOn} onClick={(e) => { e.stopPropagation(); toggle(id) }} />
-                      <span className="flex-1 text-[13px] text-foreground">{label}</span>
-                      {isOn ? (
-                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
+                    <div className="flex w-full items-center gap-2.5 px-3 py-2.5 hover:bg-muted/30">
+                      <Checkbox checked={isOn} onClick={() => toggle(id)} />
+                      <button
+                        type="button"
+                        onClick={() => toggle(id)}
+                        className="flex flex-1 items-center gap-2 text-left"
+                      >
+                        <span className="flex-1 text-[13px] text-foreground">{label}</span>
+                        {isOn ? (
+                          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                        )}
+                      </button>
                     </div>
                     {isOn && (
                       <div className="border-t border-border bg-muted/20 px-3 py-3">
