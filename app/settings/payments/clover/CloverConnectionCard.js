@@ -6,9 +6,23 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import { hasPermission } from '@/lib/permissions'
 import { useCloverConnection } from './useCloverConnection'
+import CloverWebhookSetup from './CloverWebhookSetup'
 
 export default function CloverConnectionCard() {
-  const { status, merchantId, merchantName, connectedAt, lastError, connect, disconnect } = useCloverConnection()
+  const {
+    status,
+    merchantId,
+    merchantName,
+    connectedAt,
+    lastError,
+    webhookUrl,
+    webhookSecretSaved,
+    webhookLastReceivedAt,
+    webhookLastError,
+    saveWebhookSecret,
+    connect,
+    disconnect,
+  } = useCloverConnection()
   const [disconnecting, setDisconnecting] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const toast = useToast()
@@ -74,6 +88,17 @@ export default function CloverConnectionCard() {
         <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
           {lastError}
         </p>
+      )}
+
+      {status === 'connected' && (
+        <CloverWebhookSetup
+          webhookUrl={webhookUrl}
+          webhookSecretSaved={webhookSecretSaved}
+          webhookLastReceivedAt={webhookLastReceivedAt}
+          webhookLastError={webhookLastError}
+          saveWebhookSecret={saveWebhookSecret}
+          canWrite={canWrite}
+        />
       )}
 
       <div className="mt-5 flex gap-3">

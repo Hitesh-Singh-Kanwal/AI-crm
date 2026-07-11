@@ -10,6 +10,13 @@ const initialState = {
   connectedAt: null,
   ecommercePublicKey: null,
   lastError: null,
+  webhookUrl: null,
+  // Clover issues a signing secret per merchant, and without it their webhook can't be
+  // verified — so a card payment could never be confirmed. Every card Pay button gates
+  // on this as well as on `status`.
+  webhookSecretSaved: false,
+  webhookLastReceivedAt: null,
+  webhookLastError: null,
 }
 
 export function useCloverConnection() {
@@ -26,6 +33,10 @@ export function useCloverConnection() {
         connectedAt: result.data.connectedAt ?? null,
         ecommercePublicKey: result.data.ecommercePublicKey ?? null,
         lastError: result.data.lastError ?? null,
+        webhookUrl: result.data.webhookUrl ?? null,
+        webhookSecretSaved: Boolean(result.data.webhookSecretSaved),
+        webhookLastReceivedAt: result.data.webhookLastReceivedAt ?? null,
+        webhookLastError: result.data.webhookLastError ?? null,
       })
     } else {
       setState({ ...initialState, status: 'disconnected', lastError: result.error || null })
@@ -53,5 +64,15 @@ export function useCloverConnection() {
     return { success: result.success, error: result.error }
   }, [refresh])
 
-  return { ...state, refresh, connect, disconnect }
+  const saveWebhookSecret = useCallback(async (secret) => {
+    const result = await api.post('/api/payments/clover/webhook-secret', { secret })
+    if (result.success) await refresh()
+    return { success: result.success, error: result.error }
+  }, [refresh])
+
+  // Clover only sends a webhook when a payment happens, so "a webhook has arrived"
+  // can't gate the first payment. A saved secret is what we can require up front.
+  const cloverReady = state.status === 'connected' && state.webhookSecretSaved
+
+  return { ...state, cloverReady, refresh, connect, disconnect, saveWebhookSecret }
 }

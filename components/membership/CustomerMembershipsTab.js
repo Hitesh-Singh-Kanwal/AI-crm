@@ -37,12 +37,12 @@ function fmtDate(iso) {
 function PayInstallmentDialog({ target, onClose, onPaid }) {
   const [method, setMethod] = useState('cash')
   const [paying, setPaying] = useState(false)
-  const { status: cloverStatus } = useCloverConnection()
+  const { cloverReady } = useCloverConnection()
   if (!target) return null
   const { plan, index } = target
   const inst = plan.installments[index]
-  const payWithClover = method === 'card' && cloverStatus === 'connected'
-  const cloverNotConnected = method === 'card' && cloverStatus !== 'connected'
+  const payWithClover = method === 'card' && cloverReady
+  const cloverNotConnected = method === 'card' && !cloverReady
 
   async function handlePay() {
     const checkoutTab = payWithClover ? openCheckoutTab() : null
@@ -82,7 +82,7 @@ function PayInstallmentDialog({ target, onClose, onPaid }) {
           {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
         {cloverNotConnected && (
-          <p className="mt-2 text-[11px] text-amber-600">Connect Clover in Settings → Payments to charge a card.</p>
+          <p className="mt-2 text-[11px] text-amber-600">Finish Clover setup in Settings → Payments to charge a card.</p>
         )}
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" size="sm" onClick={onClose} disabled={paying}>Cancel</Button>

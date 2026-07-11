@@ -27,7 +27,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   const [walletBalance, setWalletBalance] = useState(null)
   const [useWallet, setUseWallet] = useState(false)
   const [walletAmount, setWalletAmount] = useState('')
-  const { status: cloverStatus } = useCloverConnection()
+  const { cloverReady } = useCloverConnection()
 
   useEffect(() => {
     api.get('/api/membership?isActive=true&limit=200').then((res) => {
@@ -55,9 +55,9 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   // One-time card purchases settle through Clover's hosted page; everything else
   // (cash, wallet, flexible schedules) is recorded directly.
   const payWithClover =
-    billingType === 'one_time' && method === 'card' && remaining > 0 && cloverStatus === 'connected'
+    billingType === 'one_time' && method === 'card' && remaining > 0 && cloverReady
   const cloverNotConnected =
-    billingType === 'one_time' && method === 'card' && remaining > 0 && cloverStatus !== 'connected'
+    billingType === 'one_time' && method === 'card' && remaining > 0 && !cloverReady
 
   const customTotal = useMemo(
     () => customInstallments.reduce((sum, c) => sum + (Number(c.amount) || 0), 0),
@@ -338,7 +338,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
 
       <div className="flex flex-col gap-1.5 pt-2">
         {cloverNotConnected && (
-          <p className="text-[11px] text-amber-600 text-right">Connect Clover in Settings → Payments to charge a card.</p>
+          <p className="text-[11px] text-amber-600 text-right">Finish Clover setup in Settings → Payments to charge a card.</p>
         )}
         <div className="flex justify-end gap-2">
           {onCancel && <Button variant="outline" onClick={onCancel} disabled={submitting}>Cancel</Button>}

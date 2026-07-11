@@ -1342,11 +1342,11 @@ function PayInstallmentDialog({
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
-  const { status: cloverStatus } = useCloverConnection();
+  const { cloverReady } = useCloverConnection();
 
   const installment = plan?.installments?.[installmentIndex];
-  const payWithClover = method === "card" && cloverStatus === "connected";
-  const cloverNotConnected = method === "card" && cloverStatus !== "connected";
+  const payWithClover = method === "card" && cloverReady;
+  const cloverNotConnected = method === "card" && !cloverReady;
 
   useEffect(() => {
     if (installment) setAmount(Number(installment.amount).toFixed(2));
@@ -1467,7 +1467,7 @@ function PayInstallmentDialog({
           </FormField>
           {cloverNotConnected && (
             <p className="text-[12px] text-muted-foreground">
-              Connect Clover in Settings → Payments to charge a card.
+              Finish Clover setup in Settings → Payments to charge a card.
             </p>
           )}
           <div className="flex justify-end gap-2 pt-1">
@@ -1697,7 +1697,7 @@ function PackagesTab({ customerID }) {
   const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null); // { plan, index }
   const toast = useToast();
-  const { status: cloverStatus } = useCloverConnection();
+  const { cloverReady } = useCloverConnection();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1832,12 +1832,12 @@ function PackagesTab({ customerID }) {
     addForm.billingType === "one_time" &&
     addForm.billing.method === "card" &&
     totalAmount > 0 &&
-    cloverStatus === "connected";
+    cloverReady;
   const cloverNotConnected =
     addForm.billingType === "one_time" &&
     addForm.billing.method === "card" &&
     totalAmount > 0 &&
-    cloverStatus !== "connected";
+    !cloverReady;
 
   function getInstallments() {
     const { numberOfInstallments, frequency, startDate } = addForm.billing;
@@ -2862,7 +2862,7 @@ function PackagesTab({ customerID }) {
                   </FormField>
                   {cloverNotConnected && (
                     <p className="text-[12px] text-muted-foreground">
-                      Connect Clover in Settings → Payments to charge a card.
+                      Finish Clover setup in Settings → Payments to charge a card.
                     </p>
                   )}
                 </div>
@@ -3037,7 +3037,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
   const [addForm, setAddForm] = useState(BLANK_ENR_FORM);
   const [selectedPkg, setSelectedPkg] = useState(null);
   const [adding, setAdding] = useState(false);
-  const { status: cloverStatus } = useCloverConnection();
+  const { cloverReady } = useCloverConnection();
 
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
@@ -3217,12 +3217,12 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     addForm.billingType === "one_time" &&
     addForm.billing.method === "card" &&
     enrTotalAmount > 0 &&
-    cloverStatus === "connected";
+    cloverReady;
   const cloverNotConnected =
     addForm.billingType === "one_time" &&
     addForm.billing.method === "card" &&
     enrTotalAmount > 0 &&
-    cloverStatus !== "connected";
+    !cloverReady;
 
   // Flexible billing collects its initial payment through a second request, after the
   // package is created. When that payment is by card it returns its own checkoutUrl,
@@ -3231,7 +3231,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
     addForm.billingType === "flexible" &&
     Number(addForm.billing.initialPayment || 0) > 0 &&
     (addForm.billing.initialPaymentMethod || "cash") === "card" &&
-    cloverStatus === "connected";
+    cloverReady;
 
   function getEnrInstallments() {
     const {
@@ -4580,7 +4580,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                           </FormField>
                           {cloverNotConnected && (
                             <p className="text-[12px] text-muted-foreground">
-                              Connect Clover in Settings → Payments to charge a card.
+                              Finish Clover setup in Settings → Payments to charge a card.
                             </p>
                           )}
                         </div>
@@ -4962,10 +4962,10 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
   );
   const [saving, setSaving] = useState(false);
   const toast = useToast();
-  const { status: cloverStatus } = useCloverConnection();
+  const { cloverReady } = useCloverConnection();
 
-  const payWithClover = method === "card" && cloverStatus === "connected";
-  const cloverNotConnected = method === "card" && cloverStatus !== "connected";
+  const payWithClover = method === "card" && cloverReady;
+  const cloverNotConnected = method === "card" && !cloverReady;
   const amountValid = parseFloat(amount) > 0;
 
   async function submitPayment() {
@@ -5132,7 +5132,7 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
           <div className="flex flex-col gap-1.5 w-full">
             {cloverNotConnected && (
               <p className="text-[11px] text-muted-foreground">
-                Connect Clover in Settings → Payments to charge a card.
+                Finish Clover setup in Settings → Payments to charge a card.
               </p>
             )}
             <div className="flex gap-1.5">

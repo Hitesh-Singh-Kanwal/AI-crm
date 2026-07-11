@@ -176,7 +176,7 @@ export default function NewEnrollmentPackageInline({
   const [error, setError] = useState("");
   const [catalogServices, setCatalogServices] = useState([]);
   const [walletBalance, setWalletBalance] = useState(null);
-  const { status: cloverStatus } = useCloverConnection();
+  const { cloverReady } = useCloverConnection();
 
   useEffect(() => {
     api.get("/api/calendar-service?limit=200").then((res) => {
@@ -411,14 +411,14 @@ export default function NewEnrollmentPackageInline({
     form.billing.collectNow &&
     form.billing.method === "card" &&
     cardChargeAmount > 0 &&
-    cloverStatus === "connected";
+    cloverReady;
   const cloverNotConnected =
     step === 2 &&
     form.billingType !== "pay_per_session" &&
     form.billing.collectNow &&
     form.billing.method === "card" &&
     cardChargeAmount > 0 &&
-    cloverStatus !== "connected";
+    !cloverReady;
 
   const defaultCollectAmount = useMemo(() => {
     if (form.billingType === "one_time") return total;
