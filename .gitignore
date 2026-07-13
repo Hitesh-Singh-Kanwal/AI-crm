@@ -34,3 +34,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Design docs and implementation plans — kept locally, not in the repo
+docs/superpowers/
