@@ -41,6 +41,7 @@ import CustomerMembershipsTab from "@/components/membership/CustomerMembershipsT
 import CustomerWalletTab from "@/components/wallet/CustomerWalletTab";
 import CancelRefundDialog from "@/components/shared/CancelRefundDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
+import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
 import api from "@/lib/api";
 import { useCloverConnection } from "@/app/settings/payments/clover/useCloverConnection";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
@@ -1005,8 +1006,9 @@ function ProfileTab({ customer, locations, onUpdated }) {
 
 // ─── PaymentSchedule ─────────────────────────────────────────────────────────
 
-function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAddInstallment, billingType }) {
+function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAddInstallment, billingType, customerID, onSent }) {
   const [open, setOpen] = useState(false);
+  const { cloverReady } = useCloverConnection();
 
   if (!plan) return null;
 
@@ -1109,6 +1111,17 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
                           >
                             Change Date
                           </Button>
+                          {cloverReady && customerID && (
+                            <SendPaymentLinkMenu
+                              customerID={customerID}
+                              target={{
+                                kind: "installment",
+                                paymentPlanID: plan._id,
+                                installmentIndex: idx,
+                              }}
+                              onSent={onSent}
+                            />
+                          )}
                           <Button
                             size="sm"
                             className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -2127,6 +2140,18 @@ function PackagesTab({ customerID }) {
                   ))}
                 </div>
 
+                {/* Chasing an outstanding balance is the moment this is wanted, so the
+                    action sits where the balance is read. */}
+                {outstanding > 0 && cloverReady && (
+                  <div className="mt-2 flex justify-end">
+                    <SendPaymentLinkMenu
+                      customerID={customerID}
+                      target={{ kind: "package", enrollmentID: enr._id }}
+                      onSent={load}
+                    />
+                  </div>
+                )}
+
                 {/* Services with full session breakdown */}
                 {services.length > 0 && (
                   <div className="mt-4 border-t border-border pt-4">
@@ -2345,6 +2370,17 @@ function PackagesTab({ customerID }) {
                                         >
                                           Change Date
                                         </Button>
+                                        {cloverReady && (
+                                          <SendPaymentLinkMenu
+                                            customerID={customerID}
+                                            target={{
+                                              kind: "installment",
+                                              paymentPlanID: plan._id,
+                                              installmentIndex: idx,
+                                            }}
+                                            onSent={load}
+                                          />
+                                        )}
                                         <Button
                                           size="sm"
                                           className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -4120,9 +4156,11 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                         plan={plansMap[String(enr._id)]}
                         cpStatus={cp.status}
                         billingType={cp.billingType}
+                        customerID={customerID}
                         onPayInstallment={setPayInstallTarget}
                         onChangeDate={setChangeInstallDateTarget}
                         onAddInstallment={setAddInstallTarget}
+                        onSent={load}
                       />
                     )}
 

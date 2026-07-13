@@ -10,6 +10,7 @@ import GlobalLoader from '@/components/shared/GlobalLoader'
 import CancelRefundDialog from '@/components/shared/CancelRefundDialog'
 import FreezeMembershipDialog from '@/components/shared/FreezeMembershipDialog'
 import AssignMembershipForm from './AssignMembershipForm'
+import SendPaymentLinkMenu from '@/components/payments/SendPaymentLinkMenu'
 import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 import { PAYMENT_METHODS } from '@/lib/paymentMethods'
@@ -108,6 +109,7 @@ export default function CustomerMembershipsTab({ customerID }) {
   const [freezing, setFreezing] = useState(false)
   const [calendarEvents, setCalendarEvents] = useState([])
   const [expandedServices, setExpandedServices] = useState(new Set())
+  const { cloverReady } = useCloverConnection()
 
   function toggleService(key) {
     setExpandedServices((prev) => {
@@ -382,13 +384,22 @@ export default function CustomerMembershipsTab({ customerID }) {
                         <div className="flex items-center gap-2">
                           <p className="text-[13px] font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</p>
                           {inst.status === 'pending' && plan.status === 'active' && m.status === 'active' && (
-                            <Button
-                              size="sm"
-                              className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                              onClick={() => setPayTarget({ plan, index: idx })}
-                            >
-                              Pay
-                            </Button>
+                            <>
+                              {cloverReady && (
+                                <SendPaymentLinkMenu
+                                  customerID={customerID}
+                                  target={{ kind: 'installment', paymentPlanID: plan._id, installmentIndex: idx }}
+                                  onSent={load}
+                                />
+                              )}
+                              <Button
+                                size="sm"
+                                className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => setPayTarget({ plan, index: idx })}
+                              >
+                                Pay
+                              </Button>
+                            </>
                           )}
                         </div>
                       </div>
