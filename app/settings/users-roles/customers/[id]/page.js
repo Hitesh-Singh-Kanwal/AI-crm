@@ -127,7 +127,9 @@ function FormField({ label, required, children }) {
 
 // ─── IssueRefundDialog ───────────────────────────────────────────────────────
 
-function IssueRefundDialog({ open, onClose, payment, onSuccess }) {
+const refIdOf = (ref) => (ref?._id ?? ref ?? null);
+
+function IssueRefundDialog({ open, onClose, payment, customerID, onSuccess }) {
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -143,8 +145,14 @@ function IssueRefundDialog({ open, onClose, payment, onSuccess }) {
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) return;
     setSaving(true);
+    // The endpoint refunds against a customer's payments, not a paymentID — it was being
+    // sent one, so the required fields were missing and every refund failed. The money
+    // goes back the way it came: whatever was charged on a card is returned to that card
+    // regardless, and the method decides how the rest is handed back.
     const res = await api.post("/api/payment/refund", {
-      paymentID: payment._id,
+      customerID,
+      enrollmentID: refIdOf(payment.enrollmentID) || undefined,
+      method: payment.method,
       amount: num,
       notes: notes.trim() || undefined,
     });
@@ -5454,6 +5462,7 @@ function PaymentsTab({ customerID }) {
         open={Boolean(refundTarget)}
         onClose={() => setRefundTarget(null)}
         payment={refundTarget}
+        customerID={customerID}
         onSuccess={() => load(page)}
       />
     </div>
