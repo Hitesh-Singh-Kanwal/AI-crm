@@ -129,14 +129,24 @@ function FormField({ label, required, children }) {
 
 const refIdOf = (ref) => (ref?._id ?? ref ?? null);
 
+// Where the refunded money goes. Anything originally taken on a card is returned to that
+// card by Clover regardless of this choice; it decides what happens to the rest.
+const REFUND_DESTINATIONS = [
+  { value: "wallet", label: "Wallet (store credit)" },
+  { value: "cash", label: "Cash" },
+  { value: "card", label: "Card" },
+];
+
 function IssueRefundDialog({ open, onClose, payment, customerID, onSuccess }) {
   const [amount, setAmount] = useState("");
+  const [destination, setDestination] = useState("wallet");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
   function reset() {
     setAmount("");
+    setDestination("wallet");
     setNotes("");
   }
 
@@ -146,13 +156,11 @@ function IssueRefundDialog({ open, onClose, payment, customerID, onSuccess }) {
     if (isNaN(num) || num <= 0) return;
     setSaving(true);
     // The endpoint refunds against a customer's payments, not a paymentID — it was being
-    // sent one, so the required fields were missing and every refund failed. The money
-    // goes back the way it came: whatever was charged on a card is returned to that card
-    // regardless, and the method decides how the rest is handed back.
+    // sent one, so the required fields were missing and every refund failed.
     const res = await api.post("/api/payment/refund", {
       customerID,
       enrollmentID: refIdOf(payment.enrollmentID) || undefined,
-      method: payment.method,
+      method: destination,
       amount: num,
       notes: notes.trim() || undefined,
     });
@@ -207,6 +215,24 @@ function IssueRefundDialog({ open, onClose, payment, customerID, onSuccess }) {
                 className="h-9 w-full rounded-lg border border-border bg-background pl-7 pr-3 text-[13px] outline-none focus:border-primary"
               />
             </div>
+          </FormField>
+          <FormField label="Refund to" required>
+            <select
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            >
+              {REFUND_DESTINATIONS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+            {destination === "wallet" && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Added to the customer's wallet to spend on a future purchase.
+              </p>
+            )}
           </FormField>
           <FormField label="Reason (optional)">
             <input
