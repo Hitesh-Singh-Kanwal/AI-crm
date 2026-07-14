@@ -46,6 +46,7 @@ const EMPTY_FORM = {
   specialties: [],
   bio: '',
   status: 'active',
+  locationID: '',
 }
 
 function FormField({ label, required, children }) {
@@ -59,7 +60,7 @@ function FormField({ label, required, children }) {
   )
 }
 
-function TeacherFormDialog({ open, onClose, onSaved, initial }) {
+function TeacherFormDialog({ open, onClose, onSaved, initial, locations }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -77,6 +78,7 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
             specialties: initial.specialties || [],
             bio: initial.bio || '',
             status: initial.status || 'active',
+            locationID: String(initial.locationID?.[0]?._id ?? initial.locationID?.[0] ?? ''),
           }
         : EMPTY_FORM
       )
@@ -103,21 +105,37 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
       setError('Name and email are required.')
       return
     }
-    setSaving(true)
-    const payload = {
-      name: form.name.trim(),
-      email: form.email.trim(),
-      phoneNumber: form.phoneNumber.trim() || undefined,
-      specialties: form.specialties,
-      bio: form.bio.trim() || undefined,
-      status: form.status,
+    if (!isEdit && !form.locationID) {
+      setError('Please select a location.')
+      return
     }
-    const result = isEdit
-      ? await api.put(`/api/teacher/${initial._id}`, payload)
-      : await api.post('/api/teacher', payload)
+    setSaving(true)
+
+    let result
+    if (isEdit) {
+      result = await api.put(`/api/teacher/${initial._id}`, {
+        name: form.name.trim(),
+        phoneNumber: form.phoneNumber.trim() || undefined,
+        specialties: form.specialties,
+        bio: form.bio.trim() || undefined,
+        status: form.status,
+      })
+    } else {
+      // Teachers are Users with role "teacher" — created via the invite flow
+      // (they set their own password from the invite email, same as any other role).
+      result = await api.post('/api/user/invite', {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phoneNumber: form.phoneNumber.trim() || undefined,
+        role: 'teacher',
+        locationID: [form.locationID],
+        specialties: form.specialties,
+        bio: form.bio.trim() || undefined,
+      })
+    }
 
     if (result.success) {
-      toast.success(isEdit ? 'Teacher updated.' : 'Teacher created.')
+      toast.success(isEdit ? 'Teacher updated.' : 'Invite sent to teacher.')
       onSaved()
       onClose()
     } else {
@@ -127,8 +145,8 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-lg">
+    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="lg">
+      <DialogContent onClose={saving ? undefined : onClose}>
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit Teacher' : 'Add Teacher'}</DialogTitle>
         </DialogHeader>
@@ -149,10 +167,28 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
                 value={form.email}
                 onChange={(e) => setField('email', e.target.value)}
                 placeholder="email@studio.com"
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+                disabled={isEdit}
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary disabled:opacity-60"
               />
             </FormField>
           </div>
+          {!isEdit && (
+            <FormField label="Studio location" required>
+              <div className="relative">
+                <select
+                  value={form.locationID}
+                  onChange={(e) => setField('locationID', e.target.value)}
+                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] text-foreground outline-none focus:border-primary"
+                >
+                  <option value="">Select location…</option>
+                  {locations.map((loc) => (
+                    <option key={loc._id} value={loc._id}>{loc.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              </div>
+            </FormField>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Phone">
               <input
@@ -232,9 +268,9 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
             <Button type="submit" disabled={saving}>
-              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Add Teacher'}
+              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Send Invite'}
             </Button>
           </div>
         </form>
@@ -246,6 +282,7 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
 export default function TeachersPage() {
   const router = useRouter()
   const [teachers, setTeachers] = useState([])
+  const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -262,6 +299,12 @@ export default function TeachersPage() {
   const [deleting, setDeleting] = useState(false)
 
   const toast = useToast()
+
+  useEffect(() => {
+    api.get('/api/location?limit=200').then((res) => {
+      if (res.success) setLocations(res.data || [])
+    })
+  }, [])
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 350)
@@ -292,7 +335,7 @@ export default function TeachersPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     setDeleting(true)
-    const result = await api.delete(`/api/teacher/${deleteTarget._id}`)
+    const result = await api.delete(`/api/user/${deleteTarget._id}`)
     if (result.success) {
       toast.success('Teacher deleted.')
       setDeleteTarget(null)
@@ -497,11 +540,12 @@ export default function TeachersPage() {
         onClose={() => setDialogOpen(false)}
         onSaved={fetchTeachers}
         initial={editingTeacher}
+        locations={locations}
       />
 
       {/* Delete Confirm Dialog */}
-      <Dialog open={Boolean(deleteTarget)} onOpenChange={(v) => { if (!v) setDeleteTarget(null) }}>
-        <DialogContent className="max-w-sm">
+      <Dialog open={Boolean(deleteTarget)} onClose={deleting ? undefined : () => setDeleteTarget(null)} maxWidth="sm">
+        <DialogContent onClose={deleting ? undefined : () => setDeleteTarget(null)}>
           <DialogHeader>
             <DialogTitle>Delete Teacher</DialogTitle>
           </DialogHeader>

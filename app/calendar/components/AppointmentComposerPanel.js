@@ -14,6 +14,8 @@ import {
 import api from "@/lib/api";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import NewEnrollmentPackageInline from "@/app/calendar/components/NewEnrollmentPackageInline";
+// A session payment lands on CalendarEvent.payment.method, whose enum has no wallet.
+import { PURCHASE_METHODS as PAYMENT_METHODS } from "@/lib/paymentMethods";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -100,14 +102,6 @@ const TAB_SAVE_LABEL = {
   "Group Class": "Create Group Event",
   "To Do": "Save To Do",
 };
-
-const PAYMENT_METHODS = [
-  { value: "cash", label: "Cash" },
-  { value: "card", label: "Card" },
-  { value: "online", label: "Online" },
-  { value: "cheque", label: "Cheque" },
-  { value: "other", label: "Other" },
-];
 
 const FREQUENCY_OPTIONS = [
   { value: "daily", label: "Daily" },
@@ -2025,7 +2019,7 @@ export default function AppointmentComposerPanel({
   // installment; flexible packages collect an ad-hoc initial amount.
   const recordInitialPayment = async (customerID, enrollmentID, payload) => {
     const { billingType, billing } = payload;
-    if (!billing?.collectNow || !(Number(billing.collectAmount) > 0)) return;
+    if (!billing?.collectNow || !(Number(billing.collectAmount) > 0)) return null;
     const method = billing.method || "cash";
 
     if (billingType === "payment_plan") {
@@ -2042,7 +2036,7 @@ export default function AppointmentComposerPanel({
       const firstPending = (plan?.installments || []).findIndex((i) => i.status === "pending");
       if (!plan || firstPending === -1) {
         console.error("Initial installment not collected: no pending plan found", { enrollmentID, plans });
-        return;
+        return null;
       }
       const payRes = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
         installmentIndex: firstPending,
@@ -2050,19 +2044,22 @@ export default function AppointmentComposerPanel({
       });
       if (!payRes.success) {
         console.error("pay-installment failed", payRes);
+        return null;
       }
-      return;
+      return payRes.data?.checkoutUrl || null;
     }
 
     if (billingType === "flexible") {
-      await api.post("/api/payment", {
+      const payRes = await api.post("/api/payment", {
         customerID,
         enrollmentID,
         type: "package_purchase",
         amount: Number(billing.collectAmount),
         method,
       });
+      return payRes.data?.checkoutUrl || null;
     }
+    return null;
   };
 
   const handleNewEnrollment = async (customerID, payload = {}) => {
@@ -2100,7 +2097,9 @@ export default function AppointmentComposerPanel({
       billingType: payload.billingType,
       billing:
         payload.billingType === "one_time"
-          ? { method: payload.billing?.method || "cash" }
+          ? {
+              method: payload.billing?.method || "cash",
+            }
           : payload.billingType === "payment_plan"
             ? {
                 installmentMode: payload.billing?.installmentMode || "count",
@@ -2121,13 +2120,16 @@ export default function AppointmentComposerPanel({
     });
     if (!addRes.success) return null;
 
-    await recordInitialPayment(customerID, enrollmentID, payload);
+    const checkoutUrl =
+      payload.billingType === "one_time"
+        ? addRes.data?.checkoutUrl || null
+        : await recordInitialPayment(customerID, enrollmentID, payload);
 
     const listRes = await api.get(`/api/enrollment?customerID=${customerID}`);
     if (listRes.success && Array.isArray(listRes.data)) {
       setEnrollments((prev) => ({ ...prev, [customerID]: listRes.data }));
     }
-    return enrollmentID;
+    return { enrollmentID, checkoutUrl };
   };
 
   const handleSave = async () => {
@@ -2339,7 +2341,8 @@ export default function AppointmentComposerPanel({
           packageTemplates={packageTemplates}
           onCancel={() => setShowEnrollmentWizard(false)}
           onSubmit={async (payload) => {
-            const createdId = await handleNewEnrollment(form.customer_id, payload);
+            const created = await handleNewEnrollment(form.customer_id, payload);
+            const createdId = created?.enrollmentID;
             if (createdId) {
               setField("enrollment_id", String(createdId));
               // Auto-select the service if exactly one package service matches the current tab's catalog
@@ -2361,9 +2364,9 @@ export default function AppointmentComposerPanel({
                 setField("service_id", "");
               }
               setShowEnrollmentWizard(false);
-              return true;
+              return { ok: true, checkoutUrl: created?.checkoutUrl || null };
             }
-            return false;
+            return { ok: false, checkoutUrl: null };
           }}
         />
       );

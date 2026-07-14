@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import api from "@/lib/api";
+import { useCloverConnection } from "@/app/settings/payments/clover/useCloverConnection";
+import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
+import { toast } from "@/components/ui/toast";
 
-const PAYMENT_METHODS = ["cash", "card", "online", "cheque", "other"];
+import { PAYMENT_METHODS, PURCHASE_METHODS, TIP_METHODS } from "@/lib/paymentMethods";
 
 function todayISO() {
   const d = new Date();
@@ -173,6 +176,7 @@ export default function NewEnrollmentPackageInline({
   const [error, setError] = useState("");
   const [catalogServices, setCatalogServices] = useState([]);
   const [walletBalance, setWalletBalance] = useState(null);
+  const { cloverReady } = useCloverConnection();
 
   useEffect(() => {
     api.get("/api/calendar-service?limit=200").then((res) => {
@@ -321,7 +325,7 @@ export default function NewEnrollmentPackageInline({
   // method dropdown there. Other billing types collect a single payment, so they
   // can pay it straight from the wallet by choosing it as the method.
   const collectMethodOptions =
-    form.billingType === "one_time" ? PAYMENT_METHODS : [...PAYMENT_METHODS, "wallet"];
+    form.billingType === "one_time" ? PURCHASE_METHODS : PAYMENT_METHODS;
 
   // Non-one-time collection paid directly from the wallet via the method dropdown.
   const collectFromWallet =
@@ -398,6 +402,24 @@ export default function NewEnrollmentPackageInline({
     : 0;
   const collectsFirstInstallment = form.billingType === "payment_plan" || scheduledFlexible;
 
+  // The wallet split settles part of a one-time balance already, so the card only ever
+  // charges what's left for the chosen method.
+  const cardChargeAmount = walletEligible ? walletRemaining : collectAmt;
+  const payWithClover =
+    step === 2 &&
+    form.billingType !== "pay_per_session" &&
+    form.billing.collectNow &&
+    form.billing.method === "card" &&
+    cardChargeAmount > 0 &&
+    cloverReady;
+  const cloverNotConnected =
+    step === 2 &&
+    form.billingType !== "pay_per_session" &&
+    form.billing.collectNow &&
+    form.billing.method === "card" &&
+    cardChargeAmount > 0 &&
+    !cloverReady;
+
   const defaultCollectAmount = useMemo(() => {
     if (form.billingType === "one_time") return total;
     if (form.billingType === "payment_plan") return firstInstallmentAmount;
@@ -455,7 +477,6 @@ export default function NewEnrollmentPackageInline({
 
   async function handleSubmit() {
     setError("");
-    setLoading(true);
     const collect =
       form.billingType !== "pay_per_session" &&
       form.billing.collectNow &&
@@ -473,9 +494,22 @@ export default function NewEnrollmentPackageInline({
     } else {
       payload.tip = undefined;
     }
-    const ok = await onSubmit?.(payload);
+
+    const checkoutTab = payWithClover ? openCheckoutTab() : null;
+    setLoading(true);
+    const res = await onSubmit?.(payload);
     setLoading(false);
-    if (!ok) setError("Failed to create enrollment and package.");
+    if (!res?.ok) {
+      closeCheckoutTab(checkoutTab);
+      setError("Failed to create enrollment and package.");
+      return;
+    }
+    if (res.checkoutUrl) {
+      navigateCheckoutTab(checkoutTab, res.checkoutUrl);
+      toast.success(CHECKOUT_TOAST);
+    } else {
+      closeCheckoutTab(checkoutTab);
+    }
   }
 
   return (
@@ -1161,7 +1195,7 @@ export default function NewEnrollmentPackageInline({
                           className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
                         >
                           {collectMethodOptions.map((m) => (
-                            <option key={m} value={m} className="capitalize">{m}</option>
+                            <option key={m.value} value={m.value}>{m.label}</option>
                           ))}
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -1239,6 +1273,7 @@ export default function NewEnrollmentPackageInline({
                 </>
               )}
             </div>
+
           </div>
         )}
       </div>
@@ -1301,9 +1336,9 @@ export default function NewEnrollmentPackageInline({
                   }
                   className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
                 >
-                  {PAYMENT_METHODS.map((m) => (
-                    <option key={m} value={m} className="capitalize">
-                      {m}
+                  {TIP_METHODS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
                     </option>
                   ))}
                 </select>
@@ -1337,10 +1372,10 @@ export default function NewEnrollmentPackageInline({
           <button
             type="button"
             className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
-            onClick={handleSubmit}
-            disabled={loading || !form.packageID || walletOver || collectWalletShort}
+            onClick={() => handleSubmit()}
+            disabled={loading || !form.packageID || walletOver || collectWalletShort || cloverNotConnected}
           >
-            {loading ? "Creating…" : "Create Enrollment & Package"}
+            {loading ? "Creating…" : payWithClover ? "Pay with Clover" : "Create Enrollment & Package"}
           </button>
         )}
       </div>

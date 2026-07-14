@@ -7,8 +7,7 @@ import api from '@/lib/api'
 import { formatDate, formatMoney } from './billingData'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { toast } from 'sonner'
-
-const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other']
+import { TIP_METHODS as PAYMENT_METHODS } from '@/lib/paymentMethods'
 
 const EMPTY_TIP_FORM = {
   customerID: '',
@@ -160,8 +159,8 @@ function RecordTipDialog({ open, onClose, onSuccess }) {
                   className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize outline-none focus:border-primary"
                 >
                   {PAYMENT_METHODS.map((m) => (
-                    <option key={m} value={m} className="capitalize">
-                      {m}
+                    <option key={m.value} value={m.value}>
+                      {m.label}
                     </option>
                   ))}
                 </select>
