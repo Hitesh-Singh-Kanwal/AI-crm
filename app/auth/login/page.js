@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { login } from '@/lib/auth'
+import { getDefaultRedirect } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,12 +23,7 @@ export default function LoginPage() {
     const result = await login(email, password)
 
     if (result.success) {
-      // Redirect based on role
-      if (result.user.role === 'staff') {
-        router.push('/inbox')
-      } else {
-        router.push('/dashboard')
-      }
+      router.push(getDefaultRedirect())
     } else {
       setError(result.error || 'Login failed')
     }

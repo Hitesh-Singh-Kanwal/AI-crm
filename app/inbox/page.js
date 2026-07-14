@@ -575,7 +575,6 @@ function InboxPageContent() {
     setThreadMessages((prev) => ({ ...prev, [convId]: prev[convId] || [] }))
     setSelectedConversation(convId)
     // Ensure the newly created thread is visible immediately even if the user has filters applied.
-    setSelectedChannel('All')
     setSearchQuery('')
     setContactFilter('All')
     setShowContactList(false)

@@ -7,8 +7,10 @@ import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
+import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 
-const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other']
+import { PURCHASE_METHODS } from '@/lib/paymentMethods'
 
 // Shared membership-assignment form. Used inside the customer Memberships tab and
 // the enroll menu's Membership tab.
@@ -25,6 +27,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   const [walletBalance, setWalletBalance] = useState(null)
   const [useWallet, setUseWallet] = useState(false)
   const [walletAmount, setWalletAmount] = useState('')
+  const { cloverReady } = useCloverConnection()
 
   useEffect(() => {
     api.get('/api/membership?isActive=true&limit=200').then((res) => {
@@ -48,6 +51,13 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   const walletApplied = Math.min(walletEntered, price, walletBalance ?? 0)
   const remaining = Math.max(0, price - walletApplied)
   const walletOver = walletEligible && walletEntered > (walletBalance ?? 0)
+
+  // One-time card purchases settle through Clover's hosted page; everything else
+  // (cash, wallet, flexible schedules) is recorded directly.
+  const payWithClover =
+    billingType === 'one_time' && method === 'card' && remaining > 0 && cloverReady
+  const cloverNotConnected =
+    billingType === 'one_time' && method === 'card' && remaining > 0 && !cloverReady
 
   const customTotal = useMemo(
     () => customInstallments.reduce((sum, c) => sum + (Number(c.amount) || 0), 0),
@@ -94,6 +104,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
       }
     }
 
+    const checkoutTab = payWithClover ? openCheckoutTab() : null
     setSubmitting(true)
     try {
       const result = await api.post('/api/customer-membership', {
@@ -104,9 +115,16 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
         notes: notes.trim() || undefined,
       })
       if (result.success) {
-        toast.success('Membership assigned')
+        if (result.data?.checkoutUrl) {
+          navigateCheckoutTab(checkoutTab, result.data.checkoutUrl)
+          toast.success(CHECKOUT_TOAST)
+        } else {
+          closeCheckoutTab(checkoutTab)
+          toast.success('Membership assigned')
+        }
         onSuccess?.()
       } else {
+        closeCheckoutTab(checkoutTab)
         toast.error('Failed to assign membership', { description: result.error })
       }
     } finally {
@@ -234,10 +252,11 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
                 onChange={(e) => setMethod(e.target.value)}
                 className="h-9 rounded-lg border border-border bg-background text-sm px-2.5 focus:outline-none focus:ring-2 focus:ring-brand/30 capitalize"
               >
-                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                {PURCHASE_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
             </div>
           )}
+
         </div>
       )}
 
@@ -317,11 +336,16 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" className="h-9" />
       </div>
 
-      <div className="flex justify-end gap-2 pt-2">
-        {onCancel && <Button variant="outline" onClick={onCancel} disabled={submitting}>Cancel</Button>}
-        <Button onClick={handleSubmit} disabled={submitting || walletOver} className="bg-brand hover:bg-brand-dark text-brand-foreground">
-          {submitting ? 'Assigning…' : 'Assign Membership'}
-        </Button>
+      <div className="flex flex-col gap-1.5 pt-2">
+        {cloverNotConnected && (
+          <p className="text-[11px] text-amber-600 text-right">Finish Clover setup in Settings → Payments to charge a card.</p>
+        )}
+        <div className="flex justify-end gap-2">
+          {onCancel && <Button variant="outline" onClick={onCancel} disabled={submitting}>Cancel</Button>}
+          <Button onClick={() => handleSubmit()} disabled={submitting || walletOver || cloverNotConnected} className="bg-brand hover:bg-brand-dark text-brand-foreground">
+            {submitting ? 'Assigning…' : payWithClover ? 'Pay with Clover' : 'Assign Membership'}
+          </Button>
+        </div>
       </div>
     </div>
   )

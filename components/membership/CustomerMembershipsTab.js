@@ -10,8 +10,11 @@ import GlobalLoader from '@/components/shared/GlobalLoader'
 import CancelRefundDialog from '@/components/shared/CancelRefundDialog'
 import FreezeMembershipDialog from '@/components/shared/FreezeMembershipDialog'
 import AssignMembershipForm from './AssignMembershipForm'
+import SendPaymentLinkMenu from '@/components/payments/SendPaymentLinkMenu'
+import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
+import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
+import { PAYMENT_METHODS } from '@/lib/paymentMethods'
 
-const PAYMENT_METHODS = ['cash', 'card', 'online', 'cheque', 'other', 'wallet']
 const ANNUAL_FREEZE_CAP_DAYS = 60
 
 const STATUS_COLORS = {
@@ -24,6 +27,7 @@ const PAYMENT_STATUS_COLORS = {
   paid: 'bg-emerald-500/10 text-emerald-600',
   partial: 'bg-amber-500/10 text-amber-600',
   unpaid: 'bg-red-500/10 text-red-600',
+  payment_pending: 'bg-amber-500/10 text-amber-600',
 }
 
 function fmtDate(iso) {
@@ -34,23 +38,38 @@ function fmtDate(iso) {
 function PayInstallmentDialog({ target, onClose, onPaid }) {
   const [method, setMethod] = useState('cash')
   const [paying, setPaying] = useState(false)
+  const { cloverReady } = useCloverConnection()
   if (!target) return null
   const { plan, index } = target
   const inst = plan.installments[index]
+  const payWithClover = method === 'card' && cloverReady
+  const cloverNotConnected = method === 'card' && !cloverReady
 
   async function handlePay() {
+    const checkoutTab = payWithClover ? openCheckoutTab() : null
     setPaying(true)
     try {
       const r = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, { installmentIndex: index, method })
-      if (r.success) { toast.success('Installment paid'); onPaid() }
-      else toast.error('Payment failed', { description: r.error })
+      if (r.success) {
+        if (r.data?.checkoutUrl) {
+          navigateCheckoutTab(checkoutTab, r.data.checkoutUrl)
+          toast.success(CHECKOUT_TOAST)
+        } else {
+          closeCheckoutTab(checkoutTab)
+          toast.success('Installment paid')
+        }
+        onPaid()
+      } else {
+        closeCheckoutTab(checkoutTab)
+        toast.error('Payment failed', { description: r.error })
+      }
     } finally { setPaying(false) }
   }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-[61] w-[360px] rounded-xl border border-border bg-card p-5 shadow-2xl">
+      <div className="relative z-[61] w-[420px] rounded-xl border border-border bg-card p-5 shadow-2xl">
         <h3 className="text-sm font-semibold text-foreground mb-1">Record Payment</h3>
         <p className="text-[12px] text-muted-foreground mb-4">
           Payment {index + 1} · <span className="font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</span>
@@ -61,12 +80,15 @@ function PayInstallmentDialog({ target, onClose, onPaid }) {
           onChange={(e) => setMethod(e.target.value)}
           className="h-9 w-full rounded-lg border border-border bg-background text-sm px-2.5 capitalize focus:outline-none focus:ring-2 focus:ring-brand/30"
         >
-          {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+          {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
+        {cloverNotConnected && (
+          <p className="mt-2 text-[11px] text-amber-600">Finish Clover setup in Settings → Payments to charge a card.</p>
+        )}
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" size="sm" onClick={onClose} disabled={paying}>Cancel</Button>
-          <Button size="sm" onClick={handlePay} disabled={paying} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-            {paying ? 'Saving…' : `Pay $${Number(inst.amount).toFixed(2)}`}
+          <Button size="sm" onClick={handlePay} disabled={paying || cloverNotConnected} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            {paying ? 'Saving…' : payWithClover ? 'Pay with Clover' : `Pay $${Number(inst.amount).toFixed(2)}`}
           </Button>
         </div>
       </div>
@@ -87,6 +109,7 @@ export default function CustomerMembershipsTab({ customerID }) {
   const [freezing, setFreezing] = useState(false)
   const [calendarEvents, setCalendarEvents] = useState([])
   const [expandedServices, setExpandedServices] = useState(new Set())
+  const { cloverReady } = useCloverConnection()
 
   function toggleService(key) {
     setExpandedServices((prev) => {
@@ -219,7 +242,7 @@ export default function CustomerMembershipsTab({ customerID }) {
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium', PAYMENT_STATUS_COLORS[m.paymentStatus] || 'bg-muted text-muted-foreground'].join(' ')}>
-                    {m.paymentStatus}
+                    {m.paymentStatus === 'payment_pending' ? 'payment pending' : m.paymentStatus}
                   </span>
                   <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize', STATUS_COLORS[m.status] || 'bg-muted text-muted-foreground'].join(' ')}>
                     {m.status}
@@ -345,13 +368,15 @@ export default function CustomerMembershipsTab({ customerID }) {
                           <div className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
                             inst.status === 'paid' ? 'bg-emerald-600 text-white'
                               : inst.status === 'failed' ? 'bg-rose-600 text-white'
-                                : 'bg-muted text-muted-foreground'}`}>
-                            {inst.status === 'paid' ? '✓' : idx + 1}
+                                : inst.status === 'payment_pending' ? 'bg-amber-500 text-white'
+                                  : 'bg-muted text-muted-foreground'}`}>
+                            {inst.status === 'paid' ? '✓' : inst.status === 'payment_pending' ? '⋯' : idx + 1}
                           </div>
                           <div>
                             <p className="text-[12px] text-foreground font-medium">
                               Payment {idx + 1}
                               {inst.status === 'paid' && <span className="ml-1.5 text-[11px] font-normal text-emerald-600">Paid</span>}
+                              {inst.status === 'payment_pending' && <span className="ml-1.5 text-[11px] font-normal text-amber-600">Payment pending</span>}
                             </p>
                             <p className="text-[11px] text-muted-foreground">Due {fmtDate(inst.dueDate)}</p>
                           </div>
@@ -359,13 +384,22 @@ export default function CustomerMembershipsTab({ customerID }) {
                         <div className="flex items-center gap-2">
                           <p className="text-[13px] font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</p>
                           {inst.status === 'pending' && plan.status === 'active' && m.status === 'active' && (
-                            <Button
-                              size="sm"
-                              className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                              onClick={() => setPayTarget({ plan, index: idx })}
-                            >
-                              Pay
-                            </Button>
+                            <>
+                              {cloverReady && (
+                                <SendPaymentLinkMenu
+                                  customerID={customerID}
+                                  target={{ kind: 'installment', paymentPlanID: plan._id, installmentIndex: idx }}
+                                  onSent={load}
+                                />
+                              )}
+                              <Button
+                                size="sm"
+                                className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => setPayTarget({ plan, index: idx })}
+                              >
+                                Pay
+                              </Button>
+                            </>
                           )}
                         </div>
                       </div>

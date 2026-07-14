@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { isAuthenticated } from '@/lib/auth'
 import { canAccessRoute, getDefaultRedirect } from '@/lib/permissions'
+import { useToast } from '@/components/ui/toast'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import { cn } from '@/lib/utils'
@@ -11,6 +12,7 @@ import { cn } from '@/lib/utils'
 export default function MainLayout({ children, title, subtitle, mainClassName }) {
   const router = useRouter()
   const pathname = usePathname()
+  const toast = useToast()
   const [branchVersion, setBranchVersion] = useState(0)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isClient, setIsClient] = useState(false)
@@ -29,6 +31,7 @@ export default function MainLayout({ children, title, subtitle, mainClassName })
 
     // Check route access
     if (!canAccessRoute(pathname)) {
+      toast.error({ title: 'Access denied', message: "You don't have access to that page." })
       router.push(getDefaultRedirect())
     }
   }, [pathname, router])

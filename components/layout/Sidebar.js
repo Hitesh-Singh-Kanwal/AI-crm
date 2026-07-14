@@ -79,6 +79,7 @@ const navItems = [
       { name: 'Setup', href: '/settings/setup' },
       { name: 'Integrations', href: '/settings/integrations' },
       { name: 'Billing', href: '/settings/billing' },
+      { name: 'Payments', href: '/settings/payments' },
       { name: 'Activity Log', href: '/settings/activity-log' },
     ],
   },

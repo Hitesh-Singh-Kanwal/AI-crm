@@ -28,7 +28,6 @@ import UsersDialog from './components/UsersDialog'
 import { getCurrentUser } from '@/lib/auth'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
-import { filterByBranch } from '@/lib/branch-filter'
 import { getInitials, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
@@ -198,8 +197,8 @@ export default function UsersPage() {
     }
   }
 
-  // Filter users by branch
-  const displayedUsers = filterByBranch(usersList)
+  // Users are already location-scoped server-side via the x-location-id header
+  const displayedUsers = usersList
 
   function handlePageChange(newPage) {
     setCurrentPage(newPage)
