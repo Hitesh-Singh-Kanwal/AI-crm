@@ -7,6 +7,7 @@ import {
   getDefaultConfig,
   getPaletteItem,
 } from '@/components/workflow/builder/constants'
+import { NODE_GAP_Y } from '@/components/workflow/builder/nodeHelpers'
 
 const MAX_HISTORY = 40
 const DEFAULT_EDGE = {
@@ -232,7 +233,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
   },
 
   addNodeToFlow: (paletteType) => {
-    const { nodes } = get()
+    const { nodes, edges } = get()
     const item = getPaletteItem(paletteType)
     if (!item) return null
 
@@ -254,20 +255,48 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       }
     }
 
-    // Place unconnected — user wires nodes themselves on the canvas.
-    const offset = nodes.length * 24
-    const position = {
-      x: 320 + (offset % 120),
-      y: 80 + offset,
-    }
+    // Prefer the end of the chain (no outgoing edges); else the lowest node on the board.
+    const sources = new Set(edges.map((e) => e.source))
+    const chainEnds = nodes.filter(
+      (n) =>
+        !sources.has(n.id) &&
+        n.data?.category !== 'exit' &&
+        n.data?.paletteType !== 'exit_logic'
+    )
+    const lastNode =
+      chainEnds.sort((a, b) => b.position.y - a.position.y)[0] ||
+      nodes.reduce((lowest, node) => {
+        if (!lowest || node.position.y > lowest.position.y) return node
+        return lowest
+      }, null)
+
+    const position = lastNode
+      ? { x: lastNode.position.x, y: lastNode.position.y + NODE_GAP_Y + 60 }
+      : { x: 360, y: 40 }
 
     const node = createNodeFromPalette(paletteType, position)
     if (!node) return null
 
+    const newEdges = [...edges]
+    const canConnectFromLast =
+      lastNode &&
+      lastNode.data?.category !== 'exit' &&
+      lastNode.data?.paletteType !== 'exit_logic'
+    if (canConnectFromLast) {
+      newEdges.push({
+        id: `e-${lastNode.id}-${node.id}`,
+        source: lastNode.id,
+        target: node.id,
+        ...DEFAULT_EDGE,
+      })
+    }
+
     get().pushHistory()
     set({
       nodes: [...nodes, node],
+      edges: newEdges,
       selectedNodeId: node.id,
+      selectedEdgeId: null,
       propertiesPanelCollapsed: false,
       saveStatus: 'unsaved',
     })
