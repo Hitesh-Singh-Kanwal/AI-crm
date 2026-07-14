@@ -1872,7 +1872,6 @@ function PackagesTab({ customerID }) {
           year: "numeric",
         }),
         amount,
-        isLast,
       });
       if (frequency === "weekly") d = new Date(d.getTime() + 7 * 86400000);
       else if (frequency === "biweekly")
@@ -2953,9 +2952,9 @@ function PackagesTab({ customerID }) {
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                           Schedule Preview
                         </p>
-                        {pkgDiscountApplied > 0 && (
+                        {totalDiscount > 0 && (
                           <span className="text-[11px] text-amber-600">
-                            Discount applied to last payment
+                            ${totalDiscount.toFixed(2)} discount spread across payments
                           </span>
                         )}
                       </div>
@@ -2967,11 +2966,6 @@ function PackagesTab({ customerID }) {
                           >
                             <span className="text-[11px] text-muted-foreground">
                               Payment {i + 1} · {inst.date}
-                              {inst.isLast && pkgDiscountApplied > 0 && (
-                                <span className="ml-1 text-amber-600">
-                                  (-${pkgDiscountApplied.toFixed(2)} discount)
-                                </span>
-                              )}
                             </span>
                             <span className="text-[11px] font-medium text-foreground">
                               ${inst.amount.toFixed(2)}
@@ -3307,7 +3301,6 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
           year: "numeric",
         }),
         amount,
-        isLast,
       });
       if (frequency === "weekly") d = new Date(d.getTime() + 7 * 86400000);
       else if (frequency === "biweekly")
@@ -4730,7 +4723,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                 </p>
                                 {enrTotalDiscount > 0 && (
                                   <span className="text-[11px] text-amber-600">
-                                    Discount on last payment
+                                    ${enrTotalDiscount.toFixed(2)} discount spread across payments
                                   </span>
                                 )}
                               </div>
@@ -4742,11 +4735,6 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                                   >
                                     <span className="text-[11px] text-muted-foreground">
                                       Payment {i + 1} · {inst.date}
-                                      {inst.isLast && enrTotalDiscount > 0 && (
-                                        <span className="ml-1 text-amber-600">
-                                          (-${enrTotalDiscount.toFixed(2)})
-                                        </span>
-                                      )}
                                     </span>
                                     <span className="text-[12px] font-medium text-foreground">
                                       ${inst.amount.toFixed(2)}
