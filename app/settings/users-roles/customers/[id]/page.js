@@ -46,6 +46,8 @@ import api from "@/lib/api";
 import { useCloverConnection } from "@/app/settings/payments/clover/useCloverConnection";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
+import WalletShortfallField, { walletPaymentFields } from "@/components/payments/WalletShortfallField";
+import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
 import { getInitials, formatDate } from "@/lib/utils";
 
@@ -1352,14 +1354,31 @@ function PayInstallmentDialog({
   onSuccess,
 }) {
   const [method, setMethod] = useState("cash");
+  const [shortfallMethod, setShortfallMethod] = useState("cash");
+  const [walletBalance, setWalletBalance] = useState(0);
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
   const { cloverReady } = useCloverConnection();
 
+  useEffect(() => {
+    if (open && plan?.customerID) {
+      fetchWalletBalance(plan.customerID?._id ?? plan.customerID).then(setWalletBalance);
+    }
+  }, [open, plan?.customerID]);
+
   const installment = plan?.installments?.[installmentIndex];
-  const payWithClover = method === "card" && cloverReady;
-  const cloverNotConnected = method === "card" && !cloverReady;
+
+  // When the wallet cannot cover the installment, the shortfall method is what actually
+  // reaches Clover — so it, not the wallet, decides whether a checkout tab is needed.
+  const paymentFields = walletPaymentFields({
+    method,
+    shortfallMethod,
+    balance: walletBalance,
+    amountDue: Number(amount) || 0,
+  });
+  const payWithClover = paymentFields.method === "card" && cloverReady;
+  const cloverNotConnected = paymentFields.method === "card" && !cloverReady;
 
   useEffect(() => {
     if (installment) setAmount(Number(installment.amount).toFixed(2));
@@ -1381,8 +1400,13 @@ function PayInstallmentDialog({
     setSaving(true);
     const res = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
       installmentIndex,
-      method,
       amount: num,
+      ...walletPaymentFields({
+        method,
+        shortfallMethod,
+        balance: walletBalance,
+        amountDue: num,
+      }),
     });
     if (res.success) {
       if (res.data?.checkoutUrl) {
@@ -1478,6 +1502,13 @@ function PayInstallmentDialog({
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             </div>
           </FormField>
+          <WalletShortfallField
+            method={method}
+            balance={walletBalance}
+            amountDue={Number(amount) || 0}
+            shortfallMethod={shortfallMethod}
+            onShortfallMethodChange={setShortfallMethod}
+          />
           {cloverNotConnected && (
             <p className="text-[12px] text-muted-foreground">
               Finish Clover setup in Settings → Payments to charge a card.
@@ -4983,6 +5014,8 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
   const [mode, setMode] = useState(null); // "pay" | "change-date"
   const [amount, setAmount] = useState(String(outstanding.toFixed(2)));
   const [method, setMethod] = useState("cash");
+  const [shortfallMethod, setShortfallMethod] = useState("cash");
+  const [walletBalance, setWalletBalance] = useState(0);
   const [newDueDate, setNewDueDate] = useState(
     cp.dueDate ? new Date(cp.dueDate).toISOString().slice(0, 10) : "",
   );
@@ -4990,8 +5023,20 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
   const toast = useToast();
   const { cloverReady } = useCloverConnection();
 
-  const payWithClover = method === "card" && cloverReady;
-  const cloverNotConnected = method === "card" && !cloverReady;
+  useEffect(() => {
+    if (mode === "pay") fetchWalletBalance(customerID).then(setWalletBalance);
+  }, [mode, customerID]);
+
+  // A wallet short of the amount is topped up by the shortfall method, and that is what
+  // reaches Clover — so it decides whether a checkout tab is opened.
+  const paymentFields = walletPaymentFields({
+    method,
+    shortfallMethod,
+    balance: walletBalance,
+    amountDue: parseFloat(amount) || 0,
+  });
+  const payWithClover = paymentFields.method === "card" && cloverReady;
+  const cloverNotConnected = paymentFields.method === "card" && !cloverReady;
   const amountValid = parseFloat(amount) > 0;
 
   async function submitPayment() {
@@ -5004,7 +5049,12 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
       enrollmentID: enr._id,
       type: "package_purchase",
       amount: num,
-      method,
+      ...walletPaymentFields({
+        method,
+        shortfallMethod,
+        balance: walletBalance,
+        amountDue: num,
+      }),
     });
     if (res.success) {
       if (res.data?.checkoutUrl) {
@@ -5156,6 +5206,13 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
             </select>
           </div>
           <div className="flex flex-col gap-1.5 w-full">
+            <WalletShortfallField
+              method={method}
+              balance={walletBalance}
+              amountDue={parseFloat(amount) || 0}
+              shortfallMethod={shortfallMethod}
+              onShortfallMethodChange={setShortfallMethod}
+            />
             {cloverNotConnected && (
               <p className="text-[11px] text-muted-foreground">
                 Finish Clover setup in Settings → Payments to charge a card.

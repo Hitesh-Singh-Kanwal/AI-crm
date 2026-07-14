@@ -14,6 +14,8 @@ import SendPaymentLinkMenu from '@/components/payments/SendPaymentLinkMenu'
 import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 import { PAYMENT_METHODS } from '@/lib/paymentMethods'
+import WalletShortfallField, { walletPaymentFields } from '@/components/payments/WalletShortfallField'
+import { fetchWalletBalance } from '@/lib/wallet'
 
 const ANNUAL_FREEZE_CAP_DAYS = 60
 
@@ -37,19 +39,40 @@ function fmtDate(iso) {
 
 function PayInstallmentDialog({ target, onClose, onPaid }) {
   const [method, setMethod] = useState('cash')
+  const [shortfallMethod, setShortfallMethod] = useState('cash')
+  const [walletBalance, setWalletBalance] = useState(0)
   const [paying, setPaying] = useState(false)
   const { cloverReady } = useCloverConnection()
+
+  const customerID = target?.plan?.customerID
+  useEffect(() => {
+    if (customerID) fetchWalletBalance(customerID?._id ?? customerID).then(setWalletBalance)
+  }, [customerID])
+
   if (!target) return null
   const { plan, index } = target
   const inst = plan.installments[index]
-  const payWithClover = method === 'card' && cloverReady
-  const cloverNotConnected = method === 'card' && !cloverReady
+  const amountDue = Number(inst.amount) || 0
+
+  // A wallet short of the installment is topped up by the shortfall method, and that is
+  // what reaches Clover — so it decides whether a checkout tab is opened.
+  const paymentFields = walletPaymentFields({
+    method,
+    shortfallMethod,
+    balance: walletBalance,
+    amountDue,
+  })
+  const payWithClover = paymentFields.method === 'card' && cloverReady
+  const cloverNotConnected = paymentFields.method === 'card' && !cloverReady
 
   async function handlePay() {
     const checkoutTab = payWithClover ? openCheckoutTab() : null
     setPaying(true)
     try {
-      const r = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, { installmentIndex: index, method })
+      const r = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
+        installmentIndex: index,
+        ...paymentFields,
+      })
       if (r.success) {
         if (r.data?.checkoutUrl) {
           navigateCheckoutTab(checkoutTab, r.data.checkoutUrl)
@@ -82,6 +105,14 @@ function PayInstallmentDialog({ target, onClose, onPaid }) {
         >
           {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
+        <WalletShortfallField
+          className="mt-2"
+          method={method}
+          balance={walletBalance}
+          amountDue={amountDue}
+          shortfallMethod={shortfallMethod}
+          onShortfallMethodChange={setShortfallMethod}
+        />
         {cloverNotConnected && (
           <p className="mt-2 text-[11px] text-amber-600">Finish Clover setup in Settings → Payments to charge a card.</p>
         )}
