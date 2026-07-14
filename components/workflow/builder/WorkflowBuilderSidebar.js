@@ -21,7 +21,10 @@ export function getDragPayload(event) {
 
 export default function WorkflowBuilderSidebar() {
   const [query, setQuery] = useState('')
-  const [activeCategory, setActiveCategory] = useState('all')
+  const guidedCategory = useWorkflowBuilderStore((s) => s.guidedCategory)
+  const setGuidedCategory = useWorkflowBuilderStore((s) => s.setGuidedCategory)
+  const activeCategory = guidedCategory || 'all'
+  const setActiveCategory = (id) => setGuidedCategory(id)
   const sidebarCollapsed = useWorkflowBuilderStore((s) => s.sidebarCollapsed)
   const setSidebarCollapsed = useWorkflowBuilderStore((s) => s.setSidebarCollapsed)
   const addNodeToFlow = useWorkflowBuilderStore((s) => s.addNodeToFlow)

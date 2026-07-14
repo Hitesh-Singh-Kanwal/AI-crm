@@ -27,11 +27,11 @@ const STEP_TO_NODE_TYPE = {
 }
 
 const EVENT_TO_TRIGGER_NODE = {
-  form_submission: 'form_submitted',
-  lead_updated: 'tag_added',
-  lead_moved_stage: 'contact_created',
-  custom_event: 'contact_created',
-  non: 'contact_created',
+  form_submission: 'contact',
+  lead_updated: 'contact',
+  lead_moved_stage: 'contact',
+  custom_event: 'contact',
+  non: 'contact',
 }
 
 function makeId(prefix) {
@@ -166,13 +166,25 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
   }
 
   const triggerConfig = triggerNode.data?.config || {}
-  const triggerType = triggerConfig.triggerType === 'list' || triggerConfig.listID ? 'list' : 'event'
+  const audienceMode = triggerConfig.audienceMode
+  const hasContactAudience = audienceMode === 'all' || audienceMode === 'list'
+  const triggerType =
+    hasContactAudience || triggerConfig.triggerType === 'list' || triggerConfig.listID
+      ? 'list'
+      : 'event'
   const listID = String(triggerConfig.listID || '').trim()
   const reason = String(triggerConfig.reason || '').trim()
 
   if (triggerType === 'list') {
     if (!listID) {
-      return { ok: false, error: 'Select a dynamic list for this list-based workflow trigger.', warnings }
+      return {
+        ok: false,
+        error:
+          audienceMode === 'all'
+            ? 'Add filters in Contact so we can build the audience list for this workflow.'
+            : 'Select a dynamic list in the Contact step before saving.',
+        warnings,
+      }
     }
   } else {
     const event = triggerConfig.event || 'non'
@@ -203,6 +215,10 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
 
     if (paletteType === 'wait') {
       offsetMinutes += waitToMinutes(node.data?.config)
+      continue
+    }
+
+    if (paletteType === 'exit_logic') {
       continue
     }
 
@@ -248,7 +264,8 @@ function triggerNodeFromWorkflow(wf) {
   const listName = wf.listName || ''
   const isListBased = Boolean(listID)
   const event = wf.event || 'non'
-  const paletteType = isListBased ? 'form_submitted' : EVENT_TO_TRIGGER_NODE[event] || 'contact_created'
+  const entityType = wf.entityType === 'customer' ? 'customer' : 'lead'
+  const paletteType = isListBased ? 'contact' : EVENT_TO_TRIGGER_NODE[event] || 'contact'
   const item = getPaletteItem(paletteType)
   return {
     id: 'node-trigger',
@@ -257,15 +274,24 @@ function triggerNodeFromWorkflow(wf) {
     data: {
       paletteType,
       category: 'trigger',
-      label: item?.label || 'Trigger',
+      label: item?.label || 'Contact',
       config: {
-        triggerType: isListBased ? 'list' : 'event',
+        entityType,
+        audienceMode: isListBased ? 'list' : '',
         listID,
         listName,
+        conditionLogic: wf.conditionLogic === 'OR' ? 'OR' : 'AND',
+        groups: Array.isArray(wf.conditionGroups)
+          ? wf.conditionGroups
+          : Array.isArray(wf.groups)
+            ? wf.groups
+            : [],
+        triggerType: isListBased ? 'list' : 'event',
         event,
         formID: Array.isArray(wf.formIDs) ? wf.formIDs : [],
         isGenericForm: Boolean(wf.isGenericForm),
         reason: wf.reason || '',
+        exitType: wf.exitType || 'none',
       },
     },
   }

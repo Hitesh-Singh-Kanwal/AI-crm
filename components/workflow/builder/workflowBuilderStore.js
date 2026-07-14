@@ -2,16 +2,18 @@
 
 import { create } from 'zustand'
 import { addEdge, applyEdgeChanges, applyNodeChanges } from '@xyflow/react'
-import { createDemoWorkflow } from '@/components/workflow/builder/mockWorkflowData'
+import { createBlankWorkflow } from '@/components/workflow/builder/mockWorkflowData'
 import {
   getDefaultConfig,
   getPaletteItem,
 } from '@/components/workflow/builder/constants'
-import { NODE_GAP_Y } from '@/components/workflow/builder/nodeHelpers'
 
 const MAX_HISTORY = 40
 const DEFAULT_EDGE = {
   type: 'smoothstep',
+  selectable: true,
+  focusable: true,
+  deletable: true,
   style: { stroke: '#94a3b8', strokeWidth: 2 },
   pathOptions: { borderRadius: 20 },
 }
@@ -52,23 +54,27 @@ function createNodeFromPalette(paletteType, position) {
   }
 }
 
-const demo = createDemoWorkflow()
+const blank = createBlankWorkflow()
 
 export const useWorkflowBuilderStore = create((set, get) => ({
   workflowId: null,
-  workflowName: demo.workflowName,
-  nodes: demo.nodes,
-  edges: demo.edges,
+  workflowName: blank.workflowName,
+  nodes: blank.nodes,
+  edges: blank.edges,
   selectedNodeId: null,
+  selectedEdgeId: null,
   sidebarCollapsed: false,
   propertiesPanelCollapsed: false,
   zoom: 100,
   isPublished: false,
   isActive: true,
   saveStatus: 'saved',
+  guidedCategory: 'all',
   options: { forms: [], reasons: [], dynamicLists: [] },
   past: [],
   future: [],
+
+  setGuidedCategory: (guidedCategory) => set({ guidedCategory }),
 
   pushHistory: () => {
     const state = get()
@@ -88,6 +94,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       past: past.slice(0, -1),
       future: [makeSnapshot(current), ...future],
       selectedNodeId: null,
+      selectedEdgeId: null,
       saveStatus: 'unsaved',
     })
   },
@@ -101,6 +108,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       past: [...past, makeSnapshot(current)],
       future: future.slice(1),
       selectedNodeId: null,
+      selectedEdgeId: null,
       saveStatus: 'unsaved',
     })
   },
@@ -128,6 +136,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       edges,
       isActive,
       selectedNodeId: null,
+      selectedEdgeId: null,
       isPublished: false,
       saveStatus: 'saved',
       past: [],
@@ -162,7 +171,14 @@ export const useWorkflowBuilderStore = create((set, get) => ({
   setSelectedNodeId: (selectedNodeId) =>
     set({
       selectedNodeId,
+      selectedEdgeId: null,
       ...(selectedNodeId ? { propertiesPanelCollapsed: false } : {}),
+    }),
+
+  setSelectedEdgeId: (selectedEdgeId) =>
+    set({
+      selectedEdgeId,
+      selectedNodeId: null,
     }),
 
   setZoom: (zoom) => set({ zoom }),
@@ -181,9 +197,14 @@ export const useWorkflowBuilderStore = create((set, get) => ({
     const hasStructural = changes.some((c) => c.type === 'remove' || c.type === 'add')
     if (hasStructural) get().pushHistory()
 
+    const removedIds = new Set(
+      changes.filter((c) => c.type === 'remove').map((c) => c.id)
+    )
+    const selectedEdgeId = get().selectedEdgeId
     set({
       edges: applyEdgeChanges(changes, get().edges),
       saveStatus: 'unsaved',
+      ...(selectedEdgeId && removedIds.has(selectedEdgeId) ? { selectedEdgeId: null } : {}),
     })
   },
 
@@ -191,6 +212,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
     get().pushHistory()
     set({
       edges: addEdge({ ...connection, ...DEFAULT_EDGE }, get().edges),
+      selectedEdgeId: null,
       saveStatus: 'unsaved',
     })
   },
@@ -210,7 +232,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
   },
 
   addNodeToFlow: (paletteType) => {
-    const { nodes, edges, selectedNodeId } = get()
+    const { nodes } = get()
     const item = getPaletteItem(paletteType)
     if (!item) return null
 
@@ -222,35 +244,29 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       }
     }
 
-    let anchor = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) : null
-    if (!anchor) {
-      anchor = nodes.reduce((lowest, node) => {
-        if (!lowest || node.position.y > lowest.position.y) return node
-        return lowest
-      }, null)
+    if (paletteType === 'exit_logic' || item.category === 'exit') {
+      const existingExit = nodes.find(
+        (n) => n.data?.paletteType === 'exit_logic' || n.data?.category === 'exit'
+      )
+      if (existingExit) {
+        get().setSelectedNodeId(existingExit.id)
+        return existingExit
+      }
     }
 
-    const position = anchor
-      ? { x: anchor.position.x, y: anchor.position.y + NODE_GAP_Y + 60 }
-      : { x: 360, y: 40 }
+    // Place unconnected — user wires nodes themselves on the canvas.
+    const offset = nodes.length * 24
+    const position = {
+      x: 320 + (offset % 120),
+      y: 80 + offset,
+    }
 
     const node = createNodeFromPalette(paletteType, position)
     if (!node) return null
 
-    const newEdges = [...edges]
-    if (anchor) {
-      newEdges.push({
-        id: `e-${anchor.id}-${node.id}`,
-        source: anchor.id,
-        target: node.id,
-        ...DEFAULT_EDGE,
-      })
-    }
-
     get().pushHistory()
     set({
       nodes: [...nodes, node],
-      edges: newEdges,
       selectedNodeId: node.id,
       propertiesPanelCollapsed: false,
       saveStatus: 'unsaved',
@@ -288,6 +304,18 @@ export const useWorkflowBuilderStore = create((set, get) => ({
     set({ saveStatus: 'unsaved' })
   },
 
+  deleteSelectedEdge: () => {
+    const { selectedEdgeId, edges } = get()
+    if (!selectedEdgeId) return
+
+    get().pushHistory()
+    set({
+      edges: edges.filter((e) => e.id !== selectedEdgeId),
+      selectedEdgeId: null,
+      saveStatus: 'unsaved',
+    })
+  },
+
   deleteSelectedNode: () => {
     const { selectedNodeId, nodes, edges } = get()
     if (!selectedNodeId) return
@@ -297,8 +325,14 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       nodes: nodes.filter((n) => n.id !== selectedNodeId),
       edges: edges.filter((e) => e.source !== selectedNodeId && e.target !== selectedNodeId),
       selectedNodeId: null,
+      selectedEdgeId: null,
       saveStatus: 'unsaved',
     })
+  },
+
+  /** Only disconnects a selected wire. Steps are never removed here. */
+  deleteSelection: () => {
+    get().deleteSelectedEdge()
   },
 
   saveWorkflow: () => {
@@ -315,17 +349,20 @@ export const useWorkflowBuilderStore = create((set, get) => ({
     }, 800)
   },
 
-  resetToDemo: () => {
-    const fresh = createDemoWorkflow()
+  resetToBlank: () => {
+    const fresh = createBlankWorkflow()
     get().pushHistory()
     set({
+      workflowId: null,
       workflowName: fresh.workflowName,
       nodes: fresh.nodes,
       edges: fresh.edges,
       selectedNodeId: null,
+      selectedEdgeId: null,
       isPublished: false,
       isActive: true,
       saveStatus: 'unsaved',
+      guidedCategory: 'all',
     })
   },
 }))

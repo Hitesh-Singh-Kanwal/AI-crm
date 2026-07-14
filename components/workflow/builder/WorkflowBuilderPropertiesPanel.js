@@ -25,13 +25,11 @@ import {
 } from '@/components/workflow/builder/constants'
 import { getNodeSummary } from '@/components/workflow/builder/nodeHelpers'
 import { useWorkflowBuilderStore } from '@/components/workflow/builder/workflowBuilderStore'
-import { WORKFLOW_EVENT_OPTIONS, isWorkflowEventFormSubmission } from '@/lib/workflow-normalize'
-import WorkflowFormMultiSelect from '@/components/workflow/WorkflowFormMultiSelect'
+import WorkflowContactStep from '@/components/workflow/WorkflowContactStep'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import Switch from '@/components/ui/switch'
 
 function Field({ label, hint, children, className }) {
   return (
@@ -141,166 +139,77 @@ function ScheduleFields({ config, onChange }) {
   )
 }
 
-function TriggerFields({ config, onChange, options }) {
-  const forms = options?.forms || []
-  const reasons = options?.reasons || []
-  const dynamicLists = options?.dynamicLists || []
-  const triggerType = config.triggerType === 'list' || config.listID ? 'list' : 'event'
-  const isFormSubmission = isWorkflowEventFormSubmission(config.event)
-
+function TriggerFields({ config, onChange }) {
   return (
     <div className="space-y-4">
-      <Field label="Trigger type">
-        <div className="inline-flex w-full rounded-lg border border-border bg-background p-1">
+      <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+        Step 1 · Contact — pick leads or customers, then everyone or a dynamic list, then filters.
+      </div>
+      <WorkflowContactStep config={config} onChange={onChange} compact />
+      <Field label="Reason" hint="optional">
+        <Input
+          value={config.reason || ''}
+          onChange={(e) => onChange({ reason: e.target.value, triggerType: 'list' })}
+          placeholder="Default (any reason)"
+          className={inputClass}
+        />
+      </Field>
+    </div>
+  )
+}
+
+function ExitLogicFields({ config, onChange }) {
+  const exitType = config.exitType || 'none'
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+        Step 3 · Exit logic — when should contacts leave this workflow?
+      </div>
+      <Field label="Exit rule">
+        <div className="space-y-2">
           {[
-            { value: 'event', label: 'Event-based' },
-            { value: 'list', label: 'List-based' },
+            { value: 'none', label: 'No exit rule', hint: 'Run the full action sequence' },
+            { value: 'goal', label: 'Stop on goal', hint: 'e.g. booked a class or replied' },
+            {
+              value: 'leave_audience',
+              label: 'Leave audience',
+              hint: 'Stop when they no longer match Contact filters',
+            },
           ].map((opt) => (
-            <button
+            <label
               key={opt.value}
-              type="button"
-              onClick={() =>
-                onChange(
-                  opt.value === 'list'
-                    ? {
-                        triggerType: 'list',
-                        listID: config.listID || '',
-                        listName: config.listName || '',
-                        reason: config.reason || '',
-                      }
-                    : {
-                        triggerType: 'event',
-                        listID: '',
-                        listName: '',
-                        event: config.event || 'non',
-                      }
-                )
-              }
               className={cn(
-                'flex-1 rounded-md px-3 py-2 text-[12px] font-semibold',
-                triggerType === opt.value
-                  ? 'bg-[var(--studio-primary)] text-white'
-                  : 'text-muted-foreground hover:bg-muted/40'
+                'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition',
+                exitType === opt.value
+                  ? 'border-[var(--studio-primary)] bg-[var(--studio-primary)]/[0.06]'
+                  : 'border-border bg-background hover:bg-muted/20'
               )}
             >
-              {opt.label}
-            </button>
+              <input
+                type="radio"
+                name="exitType"
+                className="mt-1"
+                checked={exitType === opt.value}
+                onChange={() => onChange({ exitType: opt.value })}
+              />
+              <span>
+                <span className="block text-[13px] font-semibold text-foreground">{opt.label}</span>
+                <span className="text-[11px] text-muted-foreground">{opt.hint}</span>
+              </span>
+            </label>
           ))}
         </div>
       </Field>
-
-      {triggerType === 'list' ? (
-        <>
-          <Field label="Dynamic list">
-            <select
-              value={config.listID || ''}
-              onChange={(e) => {
-                const nextId = e.target.value
-                const selected = dynamicLists.find((l) => (l?._id || l?.id) === nextId)
-                onChange({
-                  listID: nextId,
-                  listName: selected?.name || '',
-                })
-              }}
-              className={selectClass}
-            >
-              <option value="">Select a list</option>
-              {dynamicLists.map((list) => {
-                const id = list?._id || list?.id
-                return (
-                  <option key={id} value={id}>
-                    {list?.name || 'Untitled list'}
-                  </option>
-                )
-              })}
-            </select>
-          </Field>
-
-          <Field label="Reason" hint="optional">
-            <Input
-              value={config.reason || ''}
-              onChange={(e) => onChange({ reason: e.target.value })}
-              placeholder="Default (any reason)"
-              className={inputClass}
-            />
-          </Field>
-
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Leave reason blank for the default fallback. You can create multiple workflows for the same list with
-            different reasons.
-          </p>
-        </>
-      ) : (
-        <>
-          <Field label="Trigger event">
-            <select
-              value={config.event || 'non'}
-              onChange={(e) => {
-                const next = e.target.value
-                onChange(
-                  isWorkflowEventFormSubmission(next)
-                    ? { event: next, triggerType: 'event' }
-                    : { event: next, formID: [], isGenericForm: false, reason: '', triggerType: 'event' }
-                )
-              }}
-              className={selectClass}
-            >
-              {WORKFLOW_EVENT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          {isFormSubmission && (
-            <>
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2.5">
-                <div className="min-w-0">
-                  <p className="text-[12px] font-semibold text-foreground">Apply to all forms</p>
-                  <p className="text-[11px] text-muted-foreground">Trigger on any form submission</p>
-                </div>
-                <Switch
-                  checked={Boolean(config.isGenericForm)}
-                  onCheckedChange={(checked) =>
-                    onChange({ isGenericForm: checked, ...(checked ? { formID: [] } : {}) })
-                  }
-                />
-              </div>
-
-              {!config.isGenericForm && (
-                <Field label="Forms">
-                  <WorkflowFormMultiSelect
-                    values={config.formID || []}
-                    onChange={(formID) => onChange({ formID })}
-                    forms={forms}
-                    compact
-                    placeholder="Select forms…"
-                  />
-                </Field>
-              )}
-
-              <Field label="Reason (optional)">
-                <select
-                  value={config.reason || ''}
-                  onChange={(e) => onChange({ reason: e.target.value })}
-                  className={selectClass}
-                >
-                  <option value="">Any reason</option>
-                  {reasons.map((r) => {
-                    const value = r?.reasonCode || r?.name || ''
-                    return (
-                      <option key={value || r?._id} value={value}>
-                        {r?.name || value}
-                      </option>
-                    )
-                  })}
-                </select>
-              </Field>
-            </>
-          )}
-        </>
-      )}
+      {exitType === 'goal' ? (
+        <Field label="Goal name">
+          <Input
+            value={config.goalName || ''}
+            onChange={(e) => onChange({ goalName: e.target.value })}
+            placeholder="e.g. Booked trial class"
+            className={inputClass}
+          />
+        </Field>
+      ) : null}
     </div>
   )
 }
@@ -496,8 +405,11 @@ function UnsupportedNote() {
 }
 
 function NodeConfigFields({ paletteType, category, config, onChange, options }) {
-  if (category === 'trigger') {
-    return <TriggerFields config={config} onChange={onChange} options={options} />
+  if (category === 'trigger' || paletteType === 'contact') {
+    return <TriggerFields config={config} onChange={onChange} />
+  }
+  if (paletteType === 'exit_logic' || category === 'exit') {
+    return <ExitLogicFields config={config} onChange={onChange} />
   }
   switch (paletteType) {
     case 'send_email':

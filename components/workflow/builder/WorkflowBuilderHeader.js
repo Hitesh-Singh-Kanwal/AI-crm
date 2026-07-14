@@ -29,7 +29,7 @@ export default function WorkflowBuilderHeader({ onSave, onPublish, saving = fals
   const future = useWorkflowBuilderStore((s) => s.future)
   const undo = useWorkflowBuilderStore((s) => s.undo)
   const redo = useWorkflowBuilderStore((s) => s.redo)
-  const resetToDemo = useWorkflowBuilderStore((s) => s.resetToDemo)
+  const resetToBlank = useWorkflowBuilderStore((s) => s.resetToBlank)
 
   const busy = saving || saveStatus === 'saving'
 
@@ -85,7 +85,7 @@ export default function WorkflowBuilderHeader({ onSave, onPublish, saving = fals
             </span>
           )}
 
-          <Button type="button" variant="outline" size="sm" className="hidden h-9 gap-1.5 sm:inline-flex" onClick={resetToDemo} title="Reset demo">
+          <Button type="button" variant="outline" size="sm" className="hidden h-9 gap-1.5 sm:inline-flex" onClick={resetToBlank} title="Clear canvas">
             <RotateCcw className="h-3.5 w-3.5" />
             Reset
           </Button>
