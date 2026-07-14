@@ -1,110 +1,76 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowRightLeft, CheckCircle2, Clock3, UserCheck, Users } from 'lucide-react'
+import {
+  ArrowRightLeft,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  Clock3,
+  Headphones,
+  PhoneCall,
+  PhoneForwarded,
+  PhoneMissed,
+  Radio,
+  Settings,
+  UserCheck,
+  Users,
+  Volume2,
+} from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import { cn, formatDateTime, getInitials } from '@/lib/utils'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import api from '@/lib/api'
+import { useToast } from '@/components/ui/toast'
+import {
+  disconnectConnection,
+  joinConferenceCall,
+  subscribeToConnectionEvents,
+} from '@/lib/twilioVoiceClient'
+import ActiveCallPanel from '@/components/human-queue/ActiveCallPanel'
+import IncomingCallBanner from '@/components/human-queue/IncomingCallBanner'
+import ResolvedCallDetail from '@/components/human-queue/ResolvedCallDetail'
 
 const HUMAN_QUEUE_TABS = [
-  { id: 'escalations', label: 'Escalations' },
-  { id: 'unassigned', label: 'Unassigned' },
-  { id: 'assigned', label: 'Assigned' },
-  { id: 'transferred', label: 'Transferred' },
+  { id: 'waiting', label: 'Waiting' },
+  { id: 'active', label: 'Active' },
   { id: 'resolved', label: 'Resolved' },
+  { id: 'callbacks', label: 'Callbacks' },
 ]
 
-const INITIAL_AGENTS = [
-  { id: 'agent-1', name: 'Sarah Smith', activeChats: 1, maxConcurrent: 3, availability: 'available' },
-  { id: 'agent-2', name: 'David Lee', activeChats: 2, maxConcurrent: 3, availability: 'available' },
-  { id: 'agent-3', name: 'Maya Patel', activeChats: 3, maxConcurrent: 3, availability: 'busy' },
-  { id: 'agent-4', name: 'Chris Morgan', activeChats: 0, maxConcurrent: 2, availability: 'available' },
-]
-
-const INITIAL_ESCALATIONS = [
-  {
-    id: 'esc-1001',
-    leadName: 'Liam Jones',
-    phone: '+1 (512) 123-4567',
-    channel: 'Voice',
-    intent: 'Requested to speak to a human',
-    priority: 'High',
-    waitMinutes: 12,
-    status: 'waiting',
-    assignedAgentId: null,
-    transferCount: 0,
-    escalatedBy: 'AI Voice Agent',
-    createdAt: '2026-04-15T14:08:00.000Z',
-    lastMessage: 'I need to talk to a real person now.',
-  },
-  {
-    id: 'esc-1002',
-    leadName: 'Ava Johnson',
-    phone: '+1 (305) 555-0138',
-    channel: 'SMS',
-    intent: 'Billing confusion',
-    priority: 'Medium',
-    waitMinutes: 4,
-    status: 'waiting',
-    assignedAgentId: null,
-    transferCount: 0,
-    escalatedBy: 'AI Chat Agent',
-    createdAt: '2026-04-15T14:16:00.000Z',
-    lastMessage: 'Can a human explain this monthly charge?',
-  },
-  {
-    id: 'esc-1003',
-    leadName: 'Noah Brown',
-    phone: '+1 (786) 555-0101',
-    channel: 'WhatsApp',
-    intent: 'Wants class schedule options',
-    priority: 'Low',
-    waitMinutes: 18,
-    status: 'assigned',
-    assignedAgentId: 'agent-2',
-    transferCount: 1,
-    escalatedBy: 'AI Chat Agent',
-    createdAt: '2026-04-15T13:54:00.000Z',
-    lastMessage: 'Can your team call me after 6 PM?',
-  },
-  {
-    id: 'esc-1004',
-    leadName: 'Emma Garcia',
-    phone: '+1 (214) 555-0194',
-    channel: 'Voice',
-    intent: 'Needs urgent trial booking',
-    priority: 'High',
-    waitMinutes: 2,
-    status: 'assigned',
-    assignedAgentId: 'agent-1',
-    transferCount: 0,
-    escalatedBy: 'AI Voice Agent',
-    createdAt: '2026-04-15T14:18:00.000Z',
-    lastMessage: 'Please book me for tonight if possible.',
-  },
-  {
-    id: 'esc-1005',
-    leadName: 'Sophia Wilson',
-    phone: '+1 (404) 555-0167',
-    channel: 'SMS',
-    intent: 'Complaint follow-up',
-    priority: 'Medium',
-    waitMinutes: 1,
-    status: 'resolved',
-    assignedAgentId: 'agent-4',
-    transferCount: 0,
-    escalatedBy: 'AI Chat Agent',
-    createdAt: '2026-04-15T14:05:00.000Z',
-    resolvedAt: '2026-04-15T14:17:00.000Z',
-    lastMessage: 'Thanks, this is sorted now.',
-  },
-]
-
-function availabilityFromLoad(activeChats, maxConcurrent) {
-  return activeChats < maxConcurrent ? 'available' : 'busy'
+const LEGACY_TAB_MAP = {
+  escalations: 'waiting',
+  unassigned: 'waiting',
+  assigned: 'active',
+  transferred: 'active',
 }
+
+const LIVE_POLL_MS = 8000
+const HISTORY_POLL_MS = 30000
+const CALLBACK_POLL_MS = 15000
+
+const MY_STATUSES = [
+  { id: 'available', label: 'Available', color: 'bg-emerald-500' },
+  { id: 'on_call', label: 'On Call', color: 'bg-[var(--studio-primary)]' },
+  { id: 'away', label: 'Away', color: 'bg-amber-500' },
+]
+
+const TRANSFER_MODE_OPTIONS = [
+  {
+    id: 'smart',
+    label: 'Smart Route',
+    desc: 'Transfer to queue if any team member is online — calls wait even if everyone is busy. Switches to callback if nobody is online.',
+  },
+  {
+    id: 'callback_only',
+    label: 'Callback Only',
+    desc: 'Always schedule a callback — no live transfers, even when agents are online.',
+  },
+]
+
 
 function priorityClasses(priority) {
   if (priority === 'High') return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
@@ -118,362 +84,1385 @@ function waitTimeClasses(minutes) {
   return 'text-emerald-600 dark:text-emerald-400'
 }
 
+function statusBadgeClasses(status) {
+  if (status === 'waiting') return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
+  if (status === 'in_progress') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+  if (status === 'claimed') return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400'
+  if (status === 'abandoned') return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+  if (status === 'resolved') return 'bg-muted text-muted-foreground'
+  return 'bg-muted text-muted-foreground'
+}
+
+function statusLabel(status) {
+  if (status === 'in_progress') return 'On call'
+  if (status === 'claimed') return 'Claimed'
+  if (status === 'waiting') return 'Waiting'
+  if (status === 'abandoned') return 'Disconnected'
+  if (status === 'resolved') return 'Resolved'
+  if (!status) return 'Unknown'
+  return String(status).replace(/_/g, ' ')
+}
+
+function endedReasonLabel(reason) {
+  if (!reason) return null
+  const map = {
+    customer_hangup: 'Caller hung up',
+    agent_resolve: 'Marked resolved',
+    agent_hangup: 'Agent ended call',
+    conference_end: 'Call ended',
+    stale: 'Timed out in queue',
+    transfer_failed: 'Transfer failed',
+  }
+  return map[reason] || String(reason).replace(/_/g, ' ')
+}
+
+function getEndedAt(item) {
+  return item?.endedAt || item?.resolvedAt || item?.abandonedAt || item?.callerLeftAt || item?.updatedAt || null
+}
+
+function formatShortTime(date) {
+  if (!date) return '—'
+  const d = new Date(date)
+  if (Number.isNaN(d.getTime())) return '—'
+  const now = new Date()
+  const sameDay = d.toDateString() === now.toDateString()
+  if (sameDay) {
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  }
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function extractList(result) {
+  return Array.isArray(result?.data) ? result.data : []
+}
+
+function normalizeTab(tab) {
+  const raw = tab || 'waiting'
+  return LEGACY_TAB_MAP[raw] || raw
+}
+
+function Toggle({ checked, onChange, disabled }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50',
+        checked ? 'bg-[var(--studio-primary)]' : 'bg-muted',
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-6' : 'translate-x-1',
+        )}
+      />
+    </button>
+  )
+}
+
+function playIncomingRing() {
+  if (typeof window === 'undefined') return
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const oscillator = ctx.createOscillator()
+    const gain = ctx.createGain()
+    oscillator.connect(gain)
+    gain.connect(ctx.destination)
+    oscillator.frequency.value = 880
+    oscillator.type = 'sine'
+    gain.gain.setValueAtTime(0.08, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
+    oscillator.start(ctx.currentTime)
+    oscillator.stop(ctx.currentTime + 0.35)
+  } catch {
+    // audio not available
+  }
+}
+
+// ── Settings Panel ────────────────────────────────────────────────────────────
+
+function SettingsPanel({ onClose }) {
+  const toast = useToast()
+  const [settings, setSettings] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [draft, setDraft] = useState(null)
+
+  useEffect(() => {
+    api.get('/api/human-queue/settings').then((r) => {
+      if (r.success) {
+        const data = { transferMode: r.data?.transferMode || 'smart' }
+        setSettings(data)
+        setDraft(data)
+      }
+    }).finally(() => setLoading(false))
+  }, [])
+
+  const hasChanges = draft && settings && draft.transferMode !== settings.transferMode
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const r = await api.patch('/api/human-queue/settings', { transferMode: draft.transferMode })
+      if (!r.success) throw new Error(r.error || 'Failed to save settings')
+      const saved = { transferMode: r.data?.transferMode || draft.transferMode }
+      setSettings(saved)
+      setDraft(saved)
+      toast.success({ title: 'Saved', message: 'Routing settings updated.' })
+    } catch (err) {
+      toast.error({ title: 'Error', message: err.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Call Routing Settings</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Choose how the AI routes calls when a caller asks to speak with a human
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <GlobalLoader variant="inline" size="sm" text="Loading settings…" />
+        </div>
+      ) : (
+        <div className="p-5 space-y-5">
+
+          {/* Routing mode */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+              Routing Mode
+            </p>
+            <div className="grid gap-2">
+              {TRANSFER_MODE_OPTIONS.map((opt) => {
+                const isSelected = draft?.transferMode === opt.id
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setDraft((d) => ({ ...d, transferMode: opt.id }))}
+                    className={cn(
+                      'flex items-start gap-3 rounded-xl border p-4 text-left transition-all',
+                      isSelected
+                        ? 'border-[var(--studio-primary)] bg-[var(--studio-primary-light)]/40'
+                        : 'border-border bg-background hover:border-[var(--studio-primary)]/40',
+                    )}
+                  >
+                    <span className={cn(
+                      'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-all',
+                      isSelected ? 'border-[var(--studio-primary)] bg-[var(--studio-primary)]' : 'border-muted-foreground/40',
+                    )}>
+                      {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{opt.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{opt.desc}</p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Info note */}
+          <div className="rounded-xl border border-border bg-muted/40 px-4 py-3">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              <span className="font-semibold text-foreground">Escalation rules:</span>{' '}
+              The AI only transfers or schedules a callback when the caller <span className="font-medium">explicitly asks</span> for it.
+              Frustration or complaints alone will not trigger an escalation.
+            </p>
+          </div>
+
+          {hasChanges && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleSave}
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[var(--studio-primary)] text-sm font-semibold text-white hover:brightness-95 disabled:opacity-60"
+            >
+              {saving ? 'Saving…' : 'Save settings'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
+
 function HumanQueuePageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const activeTab = searchParams?.get('tab') || 'escalations'
-  const [agents, setAgents] = useState(INITIAL_AGENTS)
-  const [escalations, setEscalations] = useState(INITIAL_ESCALATIONS)
-  const [selectedEscalationId, setSelectedEscalationId] = useState(INITIAL_ESCALATIONS[0]?.id || null)
+  const toast = useToast()
+  const rawTab = searchParams?.get('tab') || 'waiting'
+  const activeTab = normalizeTab(rawTab)
+
+  // Redirect legacy tab URLs once
+  useEffect(() => {
+    if (LEGACY_TAB_MAP[rawTab]) {
+      const params = new URLSearchParams(searchParams?.toString() || '')
+      params.set('tab', LEGACY_TAB_MAP[rawTab])
+      router.replace(`/inbox/human-queue?${params.toString()}`)
+    }
+  }, [rawTab, router, searchParams])
+
+  const [escalations, setEscalations] = useState([])
+  const [agents, setAgents] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [selectedEscalationId, setSelectedEscalationId] = useState(null)
+  const [historyDetailItem, setHistoryDetailItem] = useState(null)
+  const [answeringId, setAnsweringId] = useState(null)
+  const [resolvingId, setResolvingId] = useState(null)
+  const [transferring, setTransferring] = useState(false)
+  const [tabCounts, setTabCounts] = useState({
+    waiting: 0, active: 0, resolved: 0, callbacks: 0,
+  })
+  const [showSettings, setShowSettings] = useState(false)
+
+  const [voiceSetupReady, setVoiceSetupReady] = useState(null)
+  const [activeConnection, setActiveConnection] = useState(null)
+  const [activeCall, setActiveCall] = useState(null)
+  const [callStatus, setCallStatus] = useState('idle')
+  const [myStatus, setMyStatus] = useState('available')
+  const [soundEnabled, setSoundEnabled] = useState(true)
+
+  // Clear history detail when leaving Resolved tab
+  useEffect(() => {
+    if (activeTab !== 'resolved') setHistoryDetailItem(null)
+  }, [activeTab])
+
+  // Ref mirrors activeCall so fetchQueueData can read it without being in useCallback deps.
+  // Without this, setActiveCall would recreate fetchQueueData → restart poll interval → spinner loop.
+  const activeCallRef = useRef(null)
+  useEffect(() => { activeCallRef.current = activeCall }, [activeCall])
+
+  const activeConnectionRef = useRef(null)
+  useEffect(() => { activeConnectionRef.current = activeConnection }, [activeConnection])
+
+  const toastRef = useRef(toast)
+  useEffect(() => { toastRef.current = toast }, [toast])
+
+  const prevWaitingCountRef = useRef(0)
+  const callerDisconnectToastRef = useRef(false)
+
+  const clearActiveCallUi = useCallback((message) => {
+    disconnectConnection(activeConnectionRef.current)
+    setActiveConnection(null)
+    setActiveCall(null)
+    setCallStatus('idle')
+    if (message && !callerDisconnectToastRef.current) {
+      callerDisconnectToastRef.current = true
+      toastRef.current?.info?.({ title: 'Call disconnected', message })
+      setTimeout(() => { callerDisconnectToastRef.current = false }, 2000)
+    }
+  }, [])
+
+  // -- Callbacks tab state --
+  const [callbacks, setCallbacks] = useState([])
+  const [callbacksLoading, setCallbacksLoading] = useState(false)
+  const [markingCalledId, setMarkingCalledId] = useState(null)
+  const [cancellingCallbackId, setCancellingCallbackId] = useState(null)
+  const [callbackStats, setCallbackStats] = useState({ pending: 0, called: 0, cancelled: 0 })
+  const [callbackFilter, setCallbackFilter] = useState('')
+
+  // -- Agent availability toggling --
+  const [togglingAgentId, setTogglingAgentId] = useState(null)
+
+  const fetchToken = useCallback(() => api.get('/api/human-queue/voice-token'), [])
 
   useEffect(() => {
-    setEscalations((currentEscalations) => {
-      const hasUnassigned = currentEscalations.some((item) => item.status !== 'resolved' && !item.assignedAgentId)
-      if (!hasUnassigned) return currentEscalations
-
-      const nextAgents = agents.map((agent) => ({ ...agent }))
-      let hasAssignments = false
-
-      const nextEscalations = currentEscalations.map((item) => {
-        if (item.status === 'resolved' || item.assignedAgentId) return item
-
-        const candidate = nextAgents
-          .filter((agent) => agent.activeChats < agent.maxConcurrent)
-          .sort((a, b) => a.activeChats - b.activeChats)[0]
-
-        if (!candidate) return item
-
-        hasAssignments = true
-        candidate.activeChats += 1
-        candidate.availability = availabilityFromLoad(candidate.activeChats, candidate.maxConcurrent)
-
-        return {
-          ...item,
-          assignedAgentId: candidate.id,
-          status: 'assigned',
-          assignedAt: new Date().toISOString(),
-        }
-      })
-
-      if (hasAssignments) setAgents(nextAgents)
-      return hasAssignments ? nextEscalations : currentEscalations
+    api.get('/api/human-queue/voice-setup').then((r) => {
+      if (r.success) setVoiceSetupReady(Boolean(r.data?.ready))
     })
-  }, [agents])
+  }, [])
 
-  const tabCounts = useMemo(() => ({
-    escalations: escalations.length,
-    unassigned: escalations.filter((item) => item.status !== 'resolved' && !item.assignedAgentId).length,
-    assigned: escalations.filter((item) => item.status !== 'resolved' && item.assignedAgentId && item.transferCount === 0).length,
-    transferred: escalations.filter((item) => item.status !== 'resolved' && item.transferCount > 0).length,
-    resolved: escalations.filter((item) => item.status === 'resolved').length,
-  }), [escalations])
+  const fetchQueueData = useCallback(async ({ silent = false } = {}) => {
+    try {
+      if (!silent) setLoading(true)
+      else setRefreshing(true)
 
-  const filteredEscalations = useMemo(() => {
-    if (activeTab === 'unassigned') return escalations.filter((item) => item.status !== 'resolved' && !item.assignedAgentId)
-    if (activeTab === 'assigned') return escalations.filter((item) => item.status !== 'resolved' && item.assignedAgentId && item.transferCount === 0)
-    if (activeTab === 'transferred') return escalations.filter((item) => item.status !== 'resolved' && item.transferCount > 0)
-    if (activeTab === 'resolved') return escalations.filter((item) => item.status === 'resolved')
-    return escalations
-  }, [activeTab, escalations])
+      const requests = [
+        api.get(`/api/human-queue?tab=${encodeURIComponent(activeTab)}`),
+        api.get('/api/human-queue/stats'),
+      ]
+      // Agents only needed on live tabs (answer / transfer / availability)
+      const includeAgents = activeTab !== 'resolved'
+      if (includeAgents) requests.splice(1, 0, api.get('/api/human-queue/agents'))
 
-  const selectedEscalation = useMemo(() => {
-    const fromVisibleList = filteredEscalations.find((item) => item.id === selectedEscalationId)
-    if (fromVisibleList) return fromVisibleList
-    return filteredEscalations[0] || null
-  }, [filteredEscalations, selectedEscalationId])
+      const results = await Promise.all(requests)
+      const queueResult = results[0]
+      const agentsResult = includeAgents ? results[1] : null
+      const statsResult = includeAgents ? results[2] : results[1]
 
-  const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
+      if (queueResult.success) {
+        const list = extractList(queueResult)
+        setEscalations(list)
+        setSelectedEscalationId((current) => {
+          if (current && list.some((i) => (i.id || i._id) === current)) return current
+          return list[0]?.id || list[0]?._id || null
+        })
 
-  const transferCandidates = useMemo(() => {
-    if (!selectedEscalation?.assignedAgentId) return []
-    return agents.filter((agent) => agent.id !== selectedEscalation.assignedAgentId && agent.activeChats < agent.maxConcurrent)
-  }, [agents, selectedEscalation])
+        const currentActiveCall = activeCallRef.current
+        if (currentActiveCall) {
+          const activeId = String(currentActiveCall.id || currentActiveCall._id)
+          let updated = list.find((i) => String(i.id || i._id) === activeId) || null
 
-  const updateAgentLoads = (fromAgentId, toAgentId) => {
-    setAgents((currentAgents) =>
-      currentAgents.map((agent) => {
-        let nextActiveChats = agent.activeChats
-        if (fromAgentId && agent.id === fromAgentId) nextActiveChats = Math.max(0, nextActiveChats - 1)
-        if (toAgentId && agent.id === toAgentId) nextActiveChats += 1
-        return {
-          ...agent,
-          activeChats: nextActiveChats,
-          availability: availabilityFromLoad(nextActiveChats, agent.maxConcurrent),
-        }
-      })
-    )
-  }
-
-  const handleTransfer = (escalationId, toAgentId) => {
-    const escalation = escalations.find((item) => item.id === escalationId)
-    if (!escalation || !escalation.assignedAgentId || !toAgentId || escalation.assignedAgentId === toAgentId) return
-
-    updateAgentLoads(escalation.assignedAgentId, toAgentId)
-    setEscalations((currentEscalations) =>
-      currentEscalations.map((item) =>
-        item.id === escalationId
-          ? {
-              ...item,
-              assignedAgentId: toAgentId,
-              transferCount: (item.transferCount || 0) + 1,
-              transferredAt: new Date().toISOString(),
+          // Live tabs won't include abandoned/resolved items — fetch by id to detect hangup.
+          if (!updated && activeConnectionRef.current) {
+            try {
+              const detail = await api.get(`/api/human-queue/${activeId}`)
+              if (detail.success && detail.data) updated = detail.data
+            } catch {
+              // ignore — fall through
             }
-          : item
+          }
+
+          if (updated) {
+            const terminal = ['abandoned', 'resolved'].includes(updated.status)
+            if (terminal) {
+              const reason = updated.endedReason === 'customer_hangup'
+                ? 'The caller hung up.'
+                : updated.status === 'resolved'
+                  ? 'This call was resolved.'
+                  : 'The call has ended.'
+              clearActiveCallUi(reason)
+            } else {
+              // Only update when something meaningful changed — avoids re-render churn.
+              const prev = activeCallRef.current
+              const same =
+                prev
+                && String(prev.id || prev._id) === String(updated.id || updated._id)
+                && prev.status === updated.status
+                && prev.assignedUserId === updated.assignedUserId
+                && prev.endedReason === updated.endedReason
+              if (!same) setActiveCall(updated)
+            }
+          }
+        }
+      }
+
+      if (agentsResult?.success) setAgents(extractList(agentsResult))
+      if (statsResult.success && statsResult.data) {
+        setTabCounts((prev) => ({
+          waiting: statsResult.data.waiting ?? statsResult.data.unassigned ?? prev.waiting ?? 0,
+          active: statsResult.data.active
+            ?? ((statsResult.data.assigned || 0) + (statsResult.data.transferred || 0))
+            ?? prev.active
+            ?? 0,
+          resolved: statsResult.data.resolved ?? prev.resolved ?? 0,
+          callbacks: statsResult.data.callbacks ?? prev.callbacks ?? 0,
+        }))
+      }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      if (!silent) setLoading(false)
+      setRefreshing(false)
+    }
+  // clearActiveCallUi is stable (empty deps); do not add toast or it restarts the poll loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  const fetchCallbacks = useCallback(async ({ silent = false, filter = callbackFilter } = {}) => {
+    try {
+      if (!silent) setCallbacksLoading(true)
+      const url = filter ? `/api/callback-requests?status=${filter}` : '/api/callback-requests'
+      const [listResult, statsResult] = await Promise.all([
+        api.get(url),
+        api.get('/api/callback-requests/stats'),
+      ])
+      if (listResult.success) {
+        setCallbacks(Array.isArray(listResult.data?.items) ? listResult.data.items : [])
+      }
+      if (statsResult.success && statsResult.data) {
+        setCallbackStats(statsResult.data)
+        setTabCounts((prev) => ({ ...prev, callbacks: statsResult.data.pending || 0 }))
+      }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      if (!silent) setCallbacksLoading(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callbackFilter])
+
+  useEffect(() => {
+    let cancelled = false
+    let intervalId = null
+
+    const pollMs = activeTab === 'callbacks'
+      ? CALLBACK_POLL_MS
+      : activeTab === 'resolved'
+        ? HISTORY_POLL_MS
+        : LIVE_POLL_MS
+
+    const tick = (silent = true) => {
+      if (cancelled) return
+      // Pause when the browser tab is hidden — saves API load at scale
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      if (activeTab === 'callbacks') fetchCallbacks({ silent })
+      else fetchQueueData({ silent })
+    }
+
+    // Initial load (non-silent)
+    if (activeTab === 'callbacks') fetchCallbacks({ silent: false })
+    else fetchQueueData({ silent: false })
+
+    intervalId = setInterval(() => tick(true), pollMs)
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') tick(true)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      cancelled = true
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [fetchQueueData, fetchCallbacks, activeTab])
+
+  // Ring on new waiting calls
+  const waitingCalls = useMemo(
+    () => (activeTab === 'waiting' ? escalations.filter((i) => i.status === 'waiting') : []),
+    [escalations, activeTab],
+  )
+  useEffect(() => {
+    if (activeTab === 'callbacks' || activeTab === 'resolved' || !soundEnabled || myStatus === 'away') return
+    const count = tabCounts.waiting ?? waitingCalls.length
+    if (count > prevWaitingCountRef.current) playIncomingRing()
+    prevWaitingCountRef.current = count
+  }, [tabCounts.waiting, waitingCalls.length, soundEnabled, myStatus, activeTab])
+
+  // Sync myStatus with activeConnection
+  useEffect(() => {
+    if (activeConnection) { setMyStatus('on_call'); return undefined }
+    if (myStatus === 'on_call') setMyStatus('available')
+    return undefined
+  }, [activeConnection, myStatus])
+
+  // ── Agent availability toggle ──
+  const handleToggleAgentAvailability = async (agentId, newValue) => {
+    setTogglingAgentId(agentId)
+    try {
+      const r = await api.patch(`/api/human-queue/agents/${agentId}/availability`, {
+        isAvailableForCalls: newValue,
+      })
+      if (!r.success) throw new Error(r.error || 'Failed to update availability')
+      // Optimistically update local state
+      setAgents((prev) =>
+        prev.map((a) =>
+          a.id === agentId
+            ? { ...a, isAvailableForCalls: newValue, availability: newValue && a.activeChats < a.maxConcurrent ? 'available' : 'busy' }
+            : a,
+        ),
       )
-    )
+      toast.success({
+        title: newValue ? 'Online' : 'Offline',
+        message: newValue ? 'Agent is now available for calls.' : 'Agent is now offline.',
+      })
+    } catch (err) {
+      toast.error({ title: 'Error', message: err.message })
+    } finally {
+      setTogglingAgentId(null)
+    }
   }
 
-  const handleResolve = (escalationId) => {
-    const escalation = escalations.find((item) => item.id === escalationId)
-    if (!escalation || escalation.status === 'resolved') return
-    if (escalation.assignedAgentId) updateAgentLoads(escalation.assignedAgentId, null)
-
-    setEscalations((currentEscalations) =>
-      currentEscalations.map((item) =>
-        item.id === escalationId
-          ? { ...item, status: 'resolved', resolvedAt: new Date().toISOString() }
-          : item
-      )
-    )
+  // ── Callbacks actions ──
+  const handleMarkCalled = async (cbId) => {
+    setMarkingCalledId(cbId)
+    try {
+      const r = await api.post(`/api/callback-requests/${cbId}/mark-called`, {})
+      if (!r.success) throw new Error(r.error || 'Could not mark callback as called.')
+      toast.success({ title: 'Done', message: 'Callback marked as called.' })
+      fetchCallbacks({ silent: true })
+    } catch (err) {
+      toast.error({ title: 'Failed', message: err.message })
+    } finally {
+      setMarkingCalledId(null)
+    }
   }
 
-  const availableAgents = agents.filter((agent) => agent.availability === 'available').length
+  const handleCancelCallback = async (cbId) => {
+    setCancellingCallbackId(cbId)
+    try {
+      const r = await api.post(`/api/callback-requests/${cbId}/cancel`, {})
+      if (!r.success) throw new Error(r.error || 'Could not cancel callback.')
+      toast.success({ title: 'Cancelled', message: 'Callback request cancelled.' })
+      fetchCallbacks({ silent: true })
+    } catch (err) {
+      toast.error({ title: 'Error', message: err.message })
+    } finally {
+      setCancellingCallbackId(null)
+    }
+  }
+
+  // ── Queue actions ──
+  const handleAnswer = async (item) => {
+    const itemId = item.id || item._id
+    if (!itemId || !item.conferenceName) return
+    if (myStatus === 'away') {
+      toast.error({ title: 'You are away', message: 'Set your status to Available before answering calls.' })
+      return
+    }
+    if (activeConnection) {
+      toast.error({ title: 'Already on a call', message: 'Finish your current call first.' })
+      return
+    }
+
+    setAnsweringId(itemId)
+    setCallStatus('connecting')
+    setActiveCall(item)
+    setSelectedEscalationId(itemId)
+
+    try {
+      const claimResult = await api.post(`/api/human-queue/${itemId}/claim`, {})
+      if (!claimResult.success) {
+        toast.error({ title: 'Unable to answer', message: claimResult.error || 'Could not claim this call.' })
+        setActiveCall(null)
+        setCallStatus('idle')
+        return
+      }
+
+      const claimedItem = claimResult.data || item
+      const conferenceName = claimedItem.conferenceName || item.conferenceName
+
+      // Customer is already in this conference (Vapi native transfer on escalate).
+      // Agent joins the same room — no outbound callback dial.
+      const connection = await joinConferenceCall({ fetchToken, conferenceName, queueItemId: itemId })
+
+      setActiveConnection(connection)
+      setActiveCall(claimedItem)
+      setCallStatus('connecting')
+
+      subscribeToConnectionEvents(connection, {
+        accept: () => setCallStatus('connected'),
+        disconnect: () => {
+          setActiveConnection(null)
+          setActiveCall(null)
+          setCallStatus('idle')
+          if (!callerDisconnectToastRef.current) {
+            callerDisconnectToastRef.current = true
+            toast.info({
+              title: 'Call disconnected',
+              message: 'The call has ended.',
+            })
+            setTimeout(() => { callerDisconnectToastRef.current = false }, 2000)
+          }
+        },
+        error: () => {
+          setActiveConnection(null)
+          setCallStatus('idle')
+        },
+      })
+
+      toast.success({ title: 'Connected', message: 'You are now connected to the caller.' })
+      fetchQueueData({ silent: true })
+    } catch (error) {
+      console.error(error)
+      await api.post(`/api/human-queue/${itemId}/release-claim`, {}).catch(() => {})
+      setActiveCall(null)
+      setCallStatus('idle')
+      toast.error({
+        title: 'Call failed',
+        message: error.message || 'Could not join the call. Check Twilio Voice SDK configuration.',
+      })
+      fetchQueueData({ silent: true })
+    } finally {
+      setAnsweringId(null)
+    }
+  }
+
+  const handleTransfer = async (escalationId, toAgentId) => {
+    if (!escalationId || !toAgentId) return
+    setTransferring(true)
+    try {
+      const r = await api.post(`/api/human-queue/${escalationId}/transfer`, { targetUserId: toAgentId })
+      if (!r.success) {
+        toast.error({ title: 'Transfer failed', message: r.error || 'Could not transfer.' })
+        return
+      }
+      disconnectConnection(activeConnection)
+      setActiveConnection(null)
+      setActiveCall(null)
+      setCallStatus('idle')
+      toast.success({ title: 'Transferred', message: 'Call transferred to another agent.' })
+      fetchQueueData()
+    } finally {
+      setTransferring(false)
+    }
+  }
+
+  const handleHoldChange = async (onHold) => {
+    const callId = activeCall?.id || activeCall?._id
+    if (!callId) return
+    const r = await api.post(onHold ? `/api/human-queue/${callId}/hold` : `/api/human-queue/${callId}/unhold`, {})
+    if (!r.success) {
+      toast.error({ title: 'Hold failed', message: r.error || 'Could not update hold status.' })
+      throw new Error(r.error)
+    }
+    setCallStatus(onHold ? 'on_hold' : 'connected')
+    toast.success({
+      title: onHold ? 'Caller on hold' : 'Caller resumed',
+      message: onHold ? 'The caller is hearing hold music.' : 'You are connected again.',
+    })
+  }
+
+  const handleResolve = async (escalationId) => {
+    if (!escalationId) return
+    setResolvingId(escalationId)
+    try {
+      disconnectConnection(activeConnection)
+      setActiveConnection(null)
+      setActiveCall(null)
+      setCallStatus('idle')
+      const r = await api.post(`/api/human-queue/${escalationId}/resolve`, {})
+      if (!r.success) {
+        toast.error({ title: 'Resolve failed', message: r.error || 'Could not resolve.' })
+        return
+      }
+      toast.success({ title: 'Resolved', message: 'Call marked as resolved.' })
+      fetchQueueData()
+    } catch (error) {
+      console.error(error)
+      toast.error({ title: 'Error', message: 'Could not resolve this call.' })
+    } finally {
+      setResolvingId(null)
+    }
+  }
+
+  const handleEndCall = () => {
+    disconnectConnection(activeConnection)
+    setActiveConnection(null)
+    setActiveCall(null)
+    setCallStatus('idle')
+    toast.info({ title: 'Call ended', message: 'You left the call. You can still mark it resolved.' })
+  }
+
+  const handleCloseCallPanel = () => {
+    setActiveCall(null)
+    setCallStatus('idle')
+  }
+
+  // ── Derived values ──
+  const selectedEscalation = useMemo(
+    () => escalations.find((i) => (i.id || i._id) === selectedEscalationId) || escalations[0] || null,
+    [escalations, selectedEscalationId],
+  )
+
+  const agentById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents])
+
+  const onlineAgents = agents.filter((a) => a.isAvailableForCalls)
+  const availableAgents = agents.filter((a) => a.availability === 'available').length
+  const isOnCall = Boolean(activeConnection)
 
   return (
-    <MainLayout title="Human Queue" subtitle="Escalations from AI agents for human handling">
+    <MainLayout title="Human Queue" subtitle="Live voice escalations from AI agents">
       <div className="space-y-4">
-        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <div className="flex flex-wrap items-center gap-2 rounded-full bg-muted p-1 w-fit">
-            {HUMAN_QUEUE_TABS.map((tab) => {
-              const isActive = activeTab === tab.id
-              const tabCount = tabCounts[tab.id] || 0
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    const params = new URLSearchParams(searchParams?.toString() || '')
-                    params.set('tab', tab.id)
-                    router.push(`/inbox/human-queue?${params.toString()}`)
-                  }}
-                  className={cn(
-                    'flex items-center gap-2 rounded-full px-4 h-9 text-sm transition-all',
-                    isActive
-                      ? 'bg-background text-[var(--studio-primary)] shadow-sm font-semibold'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  <span>{tab.label}</span>
-                  <span className={cn('inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full text-xs', isActive ? 'bg-[var(--studio-primary-light)] text-[var(--studio-primary)]' : 'bg-background text-muted-foreground')}>
-                    {tabCount}
-                  </span>
-                </button>
-              )
-            })}
+        {activeCall && (
+          <ActiveCallPanel
+            call={activeCall}
+            connection={activeConnection}
+            agents={agents}
+            callStatus={callStatus}
+            resolving={resolvingId === (activeCall.id || activeCall._id)}
+            transferring={transferring}
+            onEndCall={handleEndCall}
+            onResolve={() => handleResolve(activeCall.id || activeCall._id)}
+            onTransfer={(agentId) => handleTransfer(activeCall.id || activeCall._id, agentId)}
+            onHoldChange={handleHoldChange}
+            onClose={handleCloseCallPanel}
+          />
+        )}
+
+        {/* ── Top bar: tabs + controls ── */}
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
+          {voiceSetupReady === false && (
+            <div className="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+              Browser pickup is not configured. Set <code>TWILIO_API_KEY_SID</code>,{' '}
+              <code>TWILIO_API_KEY_SECRET</code>, and <code>TWILIO_TWIML_APP_SID</code> in backend env.
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Tabs */}
+            <div className="flex flex-wrap items-center gap-1 rounded-full bg-muted p-1 w-fit">
+              {HUMAN_QUEUE_TABS.map((tab) => {
+                const isActive = activeTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      const params = new URLSearchParams(searchParams?.toString() || '')
+                      params.set('tab', tab.id)
+                      router.push(`/inbox/human-queue?${params.toString()}`)
+                    }}
+                    className={cn(
+                      'flex items-center gap-2 rounded-full px-4 h-9 text-sm transition-all',
+                      isActive
+                        ? 'bg-background text-[var(--studio-primary)] shadow-sm font-semibold'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <span>{tab.label}</span>
+                    <span className={cn(
+                      'inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full text-xs',
+                      isActive
+                        ? 'bg-[var(--studio-primary-light)] text-[var(--studio-primary)]'
+                        : 'bg-background text-muted-foreground',
+                    )}>
+                      {tabCounts[tab.id] || 0}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Right controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              {activeTab !== 'callbacks' && (
+                <>
+                  {/* My status */}
+                  <div className="flex items-center gap-1 rounded-full border border-border bg-background p-1">
+                    {MY_STATUSES.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        disabled={isOnCall && s.id !== 'on_call'}
+                        onClick={() => setMyStatus(s.id)}
+                        className={cn(
+                          'inline-flex items-center gap-1.5 rounded-full px-3 h-8 text-xs font-medium transition-all disabled:opacity-50',
+                          myStatus === s.id ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        <Circle className={cn('h-2 w-2 fill-current', s.color.replace('bg-', 'text-'))} />
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Sound toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setSoundEnabled((v) => !v)}
+                    className={cn(
+                      'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium',
+                      soundEnabled
+                        ? 'border-[var(--studio-primary)]/30 bg-[var(--studio-primary-light)]/30 text-[var(--studio-primary)]'
+                        : 'border-border text-muted-foreground',
+                    )}
+                  >
+                    <Volume2 className="h-3.5 w-3.5" />
+                    {soundEnabled ? 'Ring on' : 'Ring off'}
+                  </button>
+                </>
+              )}
+              {/* Settings toggle */}
+              <button
+                type="button"
+                onClick={() => setShowSettings((v) => !v)}
+                className={cn(
+                  'inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors',
+                  showSettings
+                    ? 'border-[var(--studio-primary)] bg-[var(--studio-primary-light)]/40 text-[var(--studio-primary)]'
+                    : 'border-border text-muted-foreground hover:text-foreground',
+                )}
+                title="Escalation settings"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </section>
 
-        <section className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4">
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">Escalation Queue</h2>
-                <p className="text-xs text-muted-foreground">Automatically assigned to free human agents</p>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Showing <span className="font-semibold text-foreground">{filteredEscalations.length}</span> requests
-              </div>
+        {/* ── Settings Panel ── */}
+        {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+
+        {/* ── Callbacks tab ── */}
+        {activeTab === 'callbacks' ? (
+          callbacksLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <GlobalLoader variant="inline" size="md" text="Loading callbacks…" />
             </div>
-
-            <div className="space-y-2">
-              {filteredEscalations.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border bg-background py-10 text-center text-sm text-muted-foreground">
-                  No queue items in this tab.
-                </div>
-              ) : (
-                filteredEscalations.map((item) => {
-                  const assignedAgent = item.assignedAgentId ? agentById.get(item.assignedAgentId) : null
-                  const isSelected = selectedEscalation?.id === item.id
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setSelectedEscalationId(item.id)}
-                      className={cn(
-                        'w-full rounded-xl border p-3 text-left transition-colors',
-                        isSelected
-                          ? 'border-[var(--studio-primary)] bg-[var(--studio-primary-light)]/50'
-                          : 'border-border bg-background hover:bg-muted/40'
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <Avatar className="h-10 w-10">
-                            <AvatarFallback className="bg-[color:var(--studio-primary)] text-white font-semibold">
-                              {getInitials(item.leadName)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">{item.leadName}</p>
-                            <p className="text-xs text-muted-foreground truncate">{item.intent}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className={cn('text-sm font-semibold', waitTimeClasses(item.waitMinutes))}>{item.waitMinutes}m</p>
-                          <p className="text-xs text-muted-foreground">waiting</p>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                        <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-muted-foreground">{item.channel}</span>
-                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-1', priorityClasses(item.priority))}>{item.priority}</span>
-                        <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
-                          {assignedAgent ? `Assigned: ${assignedAgent.name}` : 'Unassigned'}
-                        </span>
-                        {item.transferCount > 0 && (
-                          <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
-                            Transfers: {item.transferCount}
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-foreground">Human Agents</h3>
-                <span className="text-xs text-muted-foreground">{availableAgents}/{agents.length} available</span>
-              </div>
-              <div className="mt-3 space-y-2">
-                {agents.map((agent) => (
-                  <div key={agent.id} className="flex items-center justify-between rounded-xl border border-border bg-background p-2.5">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{agent.name}</p>
-                      <p className="text-xs text-muted-foreground">{agent.activeChats}/{agent.maxConcurrent} active chats</p>
-                    </div>
-                    <span
-                      className={cn(
-                        'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium',
-                        agent.availability === 'available'
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
-                      )}
-                    >
-                      {agent.availability}
-                    </span>
+          ) : (
+            <section className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Pending', value: callbackStats.pending, color: 'text-amber-600 dark:text-amber-400' },
+                  { label: 'Called', value: callbackStats.called, color: 'text-emerald-600 dark:text-emerald-400' },
+                  { label: 'Cancelled', value: callbackStats.cancelled, color: 'text-muted-foreground' },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm text-center">
+                    <p className={cn('text-2xl font-bold', stat.color)}>{stat.value ?? 0}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
                   </div>
                 ))}
               </div>
-            </div>
 
-            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-foreground">Selected Escalation</h3>
-                  <p className="text-xs text-muted-foreground">Transfer between humans or close this request</p>
+              <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-2 mb-4">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">Callback Requests</h2>
+                    <p className="text-xs text-muted-foreground">Callers who asked to be called back by a team member</p>
+                  </div>
+                  <select
+                    value={callbackFilter}
+                    onChange={(e) => {
+                      setCallbackFilter(e.target.value)
+                      fetchCallbacks({ silent: false, filter: e.target.value })
+                    }}
+                    className="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground outline-none"
+                  >
+                    <option value="">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="called">Called</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
                 </div>
-                {selectedEscalation?.status === 'resolved' && (
-                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
-                    Resolved
-                  </span>
+
+                {callbacks.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-background py-12 text-center text-sm text-muted-foreground">
+                    <PhoneMissed className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                    No callback requests.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {callbacks.map((cb) => {
+                      const cbId = cb.id || cb._id
+                      const isPending = cb.status === 'pending'
+                      return (
+                        <div key={cbId} className="rounded-xl border border-border bg-background p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Avatar className="h-9 w-9 shrink-0">
+                                <AvatarFallback className="bg-[color:var(--studio-primary)] text-white text-xs font-semibold">
+                                  {getInitials(cb.leadName || cb.callerName || 'Caller')}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">
+                                  {cb.leadName || cb.callerName || 'Unknown caller'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{cb.phone || cb.callerPhone}</p>
+                              </div>
+                            </div>
+                            <span className={cn(
+                              'shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium',
+                              cb.status === 'pending'
+                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
+                                : cb.status === 'called'
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+                                  : 'bg-muted text-muted-foreground',
+                            )}>
+                              {cb.status}
+                            </span>
+                          </div>
+
+                          {cb.reason && (
+                            <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2 text-xs text-foreground">
+                              <span className="text-muted-foreground font-medium">Reason: </span>{cb.reason}
+                            </div>
+                          )}
+
+                          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock3 className="h-3.5 w-3.5" />
+                            <span>{formatDateTime(cb.createdAt)}</span>
+                            {cb.scheduledTime && (
+                              <>
+                                <span>·</span>
+                                <span className="font-medium text-foreground">Scheduled: {formatDateTime(cb.scheduledTime)}</span>
+                              </>
+                            )}
+                          </div>
+
+                          {isPending && (
+                            <div className="mt-3 flex items-center gap-2">
+                              <button
+                                type="button"
+                                disabled={markingCalledId === cbId}
+                                onClick={() => handleMarkCalled(cbId)}
+                                className="flex-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--studio-primary)] text-white text-xs font-medium hover:brightness-95 disabled:opacity-60"
+                              >
+                                <PhoneForwarded className="h-3.5 w-3.5" />
+                                {markingCalledId === cbId ? 'Updating…' : 'Mark as Called'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={cancellingCallbackId === cbId}
+                                onClick={() => handleCancelCallback(cbId)}
+                                className="flex-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-background text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
+                              >
+                                <PhoneMissed className="h-3.5 w-3.5" />
+                                {cancellingCallbackId === cbId ? 'Cancelling…' : 'Cancel'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </div>
+            </section>
+          )
+        ) : loading ? (
+          <div className="flex items-center justify-center py-20">
+            <GlobalLoader variant="inline" size="md" text="Loading human queue…" />
+          </div>
+        ) : (
+          <section className="space-y-4">
+            {activeTab === 'waiting' && (
+              <IncomingCallBanner
+                waitingCalls={waitingCalls}
+                onAnswerNext={handleAnswer}
+                answeringId={answeringId}
+                isOnCall={isOnCall}
+              />
+            )}
 
-              {!selectedEscalation ? (
-                <div className="mt-4 rounded-lg border border-dashed border-border bg-background p-4 text-sm text-muted-foreground">
-                  Pick a queue item to manage it.
-                </div>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  <div className="rounded-xl border border-border bg-background p-3">
-                    <p className="text-sm font-medium text-foreground">{selectedEscalation.leadName}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{selectedEscalation.phone}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Escalated by {selectedEscalation.escalatedBy} at {formatDateTime(selectedEscalation.createdAt)}
-                    </p>
-                    <p className="text-sm text-foreground mt-2">&quot;{selectedEscalation.lastMessage}&quot;</p>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2 text-xs">
-                    <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
-                      <Clock3 className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">
-                        Wait time:{' '}
-                        <span className={cn('font-semibold', waitTimeClasses(selectedEscalation.waitMinutes))}>
-                          {selectedEscalation.waitMinutes} minutes
-                        </span>
-                      </span>
+            {/* Stats row — live tabs only */}
+            {activeTab !== 'resolved' && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: 'Waiting', value: tabCounts.waiting || 0, icon: PhoneCall, tone: 'text-amber-600' },
+                  { label: 'Active', value: tabCounts.active || 0, icon: Headphones, tone: 'text-emerald-600' },
+                  { label: 'Online agents', value: `${onlineAgents.length}/${agents.length}`, icon: Users, tone: 'text-[var(--studio-primary)]' },
+                  { label: 'Your status', value: MY_STATUSES.find((s) => s.id === myStatus)?.label, icon: Radio, tone: 'text-foreground' },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <stat.icon className="h-4 w-4" />
+                      <span className="text-xs">{stat.label}</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
-                      <UserCheck className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">
-                        Current owner:{' '}
-                        <span className="font-semibold text-foreground">
-                          {selectedEscalation.assignedAgentId
-                            ? (agentById.get(selectedEscalation.assignedAgentId)?.name || 'Unknown')
-                            : 'Unassigned'}
-                        </span>
-                      </span>
+                    <p className={cn('mt-1 text-xl font-bold', stat.tone)}>{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'resolved' ? (
+              historyDetailItem ? (
+                <ResolvedCallDetail
+                  queueItem={historyDetailItem}
+                  onBack={() => setHistoryDetailItem(null)}
+                />
+              ) : (
+                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">Call history</h2>
+                      <p className="text-xs text-muted-foreground">
+                        Click a call to open recording, transcript, and summary
+                      </p>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {escalations.length} recent{refreshing ? ' · Updating…' : ''}
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                      <ArrowRightLeft className="h-3.5 w-3.5" />
-                      Transfer to another available human
-                    </label>
-                    <select
-                      defaultValue=""
-                      disabled={!selectedEscalation.assignedAgentId || selectedEscalation.status === 'resolved'}
-                      onChange={(event) => {
-                        const targetAgent = event.target.value
-                        if (targetAgent) {
-                          handleTransfer(selectedEscalation.id, targetAgent)
-                          event.target.value = ''
-                        }
-                      }}
-                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none disabled:opacity-60"
-                    >
-                      <option value="">Select agent</option>
-                      {transferCandidates.map((agent) => (
-                        <option key={agent.id} value={agent.id}>
-                          {agent.name} ({agent.activeChats}/{agent.maxConcurrent})
-                        </option>
-                      ))}
-                    </select>
+                    {escalations.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border bg-background py-10 text-center text-sm text-muted-foreground">
+                        No resolved calls yet.
+                      </div>
+                    ) : (
+                      escalations.map((item) => {
+                        const itemId = item.id || item._id
+                        const assignedAgent = item.assignedUserId
+                          ? agentById.get(String(item.assignedUserId))
+                          : null
+                        return (
+                          <button
+                            key={itemId}
+                            type="button"
+                            onClick={() => setHistoryDetailItem(item)}
+                            className="w-full rounded-xl border border-border bg-background p-3 text-left transition-all hover:bg-muted/40 hover:border-[var(--studio-primary)]/40"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex flex-1 items-center gap-3 min-w-0">
+                                <Avatar className="h-10 w-10 shrink-0">
+                                  <AvatarFallback className="bg-[color:var(--studio-primary)] text-white font-semibold">
+                                    {getInitials(item.leadName || item.callerName || 'Caller')}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-foreground truncate">
+                                    {item.leadName || item.callerName || 'Unknown caller'}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground truncate">{item.phone || item.callerPhone}</p>
+                                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                    {endedReasonLabel(item.endedReason) || item.intent}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-xs font-medium text-muted-foreground tabular-nums">
+                                  {formatShortTime(getEndedAt(item))}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground mt-1">
+                                  {item.assignedUserName || assignedAgent?.name || 'No agent'}
+                                </p>
+                                {item.vapiCallId ? (
+                                  <p className="text-[10px] text-[var(--studio-primary)] mt-1">View recording →</p>
+                                ) : (
+                                  <p className="text-[10px] text-muted-foreground mt-1">No recording linked</p>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              )
+            ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4">
+              {/* Queue list */}
+              <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">
+                      {activeTab === 'waiting' && 'Waiting calls'}
+                      {activeTab === 'active' && 'Active calls'}
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      {activeTab === 'waiting' && 'Callers waiting for an agent — answer from here'}
+                      {activeTab === 'active' && 'Calls currently with your team'}
+                    </p>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {escalations.length} calls{refreshing ? ' · Updating…' : ''}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {escalations.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background py-10 text-center text-sm text-muted-foreground">
+                      {activeTab === 'waiting' && 'No callers waiting.'}
+                      {activeTab === 'active' && 'No active calls right now.'}
+                    </div>
+                  ) : (
+                    escalations.map((item) => {
+                      const itemId = item.id || item._id
+                      const assignedAgent = item.assignedUserId
+                        ? agentById.get(String(item.assignedUserId))
+                        : null
+                      const isSelected = (selectedEscalation?.id || selectedEscalation?._id) === itemId
+                      const isWaiting = item.status === 'waiting'
+                      const isActiveCall = (activeCall?.id || activeCall?._id) === itemId
+
+                      return (
+                        <div
+                          key={itemId}
+                          className={cn(
+                            'w-full rounded-xl border p-3 transition-all',
+                            isSelected
+                              ? 'border-[var(--studio-primary)] bg-[var(--studio-primary-light)]/50'
+                              : 'border-border bg-background hover:bg-muted/40',
+                            isWaiting && 'ring-1 ring-amber-300/50 dark:ring-amber-500/20',
+                            isActiveCall && 'ring-2 ring-emerald-400/60',
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedEscalationId(itemId)}
+                              className="flex flex-1 items-center gap-3 min-w-0 text-left"
+                            >
+                              <div className="relative shrink-0">
+                                <Avatar className="h-10 w-10">
+                                  <AvatarFallback className="bg-[color:var(--studio-primary)] text-white font-semibold">
+                                    {getInitials(item.leadName || item.callerName || 'Caller')}
+                                  </AvatarFallback>
+                                </Avatar>
+                                {isWaiting && (
+                                  <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                                    <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-500" />
+                                  </span>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">
+                                  {item.leadName || item.callerName || 'Unknown caller'}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate">{item.phone || item.callerPhone}</p>
+                                <p className="text-xs text-muted-foreground truncate mt-0.5">{item.intent}</p>
+                              </div>
+                            </button>
+
+                            <div className="flex flex-col items-end gap-2 shrink-0">
+                              <div className="text-right">
+                                {isWaiting ? (
+                                  <p className={cn('text-sm font-semibold tabular-nums', waitTimeClasses(item.waitMinutes || 0))}>
+                                    {item.waitMinutes || 0}m wait
+                                  </p>
+                                ) : (
+                                  <p className="text-xs font-medium text-muted-foreground">
+                                    {item.assignedUserName || assignedAgent?.name || 'Agent'}
+                                  </p>
+                                )}
+                                <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize', statusBadgeClasses(item.status))}>
+                                  {statusLabel(item.status)}
+                                </span>
+                              </div>
+                              {isWaiting && !isOnCall && (
+                                <button
+                                  type="button"
+                                  disabled={answeringId === itemId || voiceSetupReady === false || myStatus === 'away'}
+                                  onClick={() => handleAnswer(item)}
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--studio-primary)] px-3 text-xs font-semibold text-white hover:brightness-95 disabled:opacity-60"
+                                >
+                                  <PhoneCall className="h-3.5 w-3.5" />
+                                  {answeringId === itemId ? '…' : 'Answer'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            <span className={cn('inline-flex items-center rounded-full px-2.5 py-1', priorityClasses(item.priority))}>
+                              {item.priority || 'Medium'}
+                            </span>
+                            {item.ivrLabel && (
+                              <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
+                                {item.ivrLabel}
+                              </span>
+                            )}
+                            {(item.transferCount > 0) && (
+                              <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
+                                Transferred
+                              </span>
+                            )}
+                            <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
+                              {item.assignedUserName || assignedAgent?.name || 'Unassigned'}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Right column */}
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <h3 className="text-sm font-semibold text-foreground">Team Availability</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {onlineAgents.length} online · {availableAgents} free
+                    </span>
+                  </div>
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-0.5">
+                    {agents.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border bg-background py-6 text-center text-xs text-muted-foreground">
+                        No active team members.
+                      </div>
+                    ) : (
+                      agents.map((agent) => (
+                        <div
+                          key={agent.id}
+                          className="flex items-center justify-between rounded-xl border border-border bg-background p-2.5"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="relative shrink-0">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback className="text-[10px] bg-muted">{getInitials(agent.name)}</AvatarFallback>
+                              </Avatar>
+                              <span className={cn(
+                                'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card',
+                                agent.isAvailableForCalls ? 'bg-emerald-500' : 'bg-slate-400',
+                              )} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{agent.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {agent.activeChats}/{agent.maxConcurrent} calls
+                              </p>
+                            </div>
+                          </div>
+                          <Toggle
+                            checked={Boolean(agent.isAvailableForCalls)}
+                            onChange={(v) => handleToggleAgentAvailability(agent.id, v)}
+                            disabled={togglingAgentId === agent.id}
+                          />
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {onlineAgents.length === 0 && agents.length > 0 && (
+                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                      No agents are online. Escalations will be converted to callbacks.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-2 mb-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">Call Details</h3>
+                      <p className="text-xs text-muted-foreground">
+                        {activeTab === 'active' ? 'Live call context' : 'Caller context before you answer'}
+                      </p>
+                    </div>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={selectedEscalation.status === 'resolved'}
-                    onClick={() => handleResolve(selectedEscalation.id)}
-                    className="inline-flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-[var(--studio-primary)] text-white text-sm font-medium hover:brightness-95 disabled:opacity-60"
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Mark as Resolved
-                  </button>
-                </div>
-              )}
-            </div>
+                  {!selectedEscalation ? (
+                    <div className="rounded-lg border border-dashed border-border bg-background p-4 text-sm text-muted-foreground">
+                      Select a call from the queue.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-border bg-background p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          {selectedEscalation.leadName || selectedEscalation.callerName || 'Unknown caller'}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">{selectedEscalation.phone || selectedEscalation.callerPhone}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Escalated by {selectedEscalation.escalatedBy || 'AI Voice Agent'} · {formatDateTime(selectedEscalation.createdAt)}
+                        </p>
+                        {(selectedEscalation.lastMessage || selectedEscalation.escalationReason) && (
+                          <p className="text-sm text-foreground mt-2">
+                            &quot;{selectedEscalation.lastMessage || selectedEscalation.escalationReason}&quot;
+                          </p>
+                        )}
+                        {selectedEscalation.aiSummary && (
+                          <p className="text-xs text-muted-foreground mt-2">{selectedEscalation.aiSummary}</p>
+                        )}
+                      </div>
 
-            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                Queue Rules
+                      <div className="grid grid-cols-1 gap-2 text-xs">
+                        {selectedEscalation.status === 'waiting' ? (
+                          <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                            <Clock3 className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">
+                              Waiting:{' '}
+                              <span className={cn('font-semibold', waitTimeClasses(selectedEscalation.waitMinutes || 0))}>
+                                {selectedEscalation.waitMinutes || 0} min
+                              </span>
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                            <Clock3 className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">
+                              Claimed:{' '}
+                              <span className="font-semibold text-foreground">
+                                {formatShortTime(selectedEscalation.claimedAt || selectedEscalation.inProgressAt)}
+                              </span>
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                          <UserCheck className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">
+                            Agent:{' '}
+                            <span className="font-semibold text-foreground">
+                              {selectedEscalation.assignedUserName
+                                || (selectedEscalation.assignedUserId ? agentById.get(String(selectedEscalation.assignedUserId))?.name : null)
+                                || 'Unassigned'}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {selectedEscalation.status === 'waiting' && (
+                        <Button
+                          className="w-full h-11"
+                          onClick={() => handleAnswer(selectedEscalation)}
+                          disabled={
+                            answeringId === (selectedEscalation.id || selectedEscalation._id)
+                            || voiceSetupReady === false
+                            || isOnCall
+                            || myStatus === 'away'
+                          }
+                        >
+                          <PhoneCall className="h-4 w-4 mr-2" />
+                          {answeringId ? 'Connecting…' : 'Answer Call'}
+                        </Button>
+                      )}
+
+                      {isOnCall && (activeCall?.id || activeCall?._id) === (selectedEscalation.id || selectedEscalation._id) && (
+                        <div className="rounded-xl border border-emerald-300/50 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                          You are on this call. Use the call panel for mute, hold, and transfer.
+                        </div>
+                      )}
+
+                      {['claimed', 'in_progress'].includes(selectedEscalation.status) && (
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                            <ArrowRightLeft className="h-3.5 w-3.5" />
+                            Transfer to agent
+                          </label>
+                          <select
+                            defaultValue=""
+                            disabled={!['claimed', 'in_progress'].includes(selectedEscalation.status)}
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleTransfer(selectedEscalation.id || selectedEscalation._id, e.target.value)
+                                e.target.value = ''
+                              }
+                            }}
+                            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none disabled:opacity-60"
+                          >
+                            <option value="">Select agent</option>
+                            {agents
+                              .filter((a) => {
+                                const currentId = String(selectedEscalation.assignedUserId || '')
+                                return a.id !== currentId && a.availability === 'available'
+                              })
+                              .map((agent) => (
+                                <option key={agent.id} value={agent.id}>
+                                  {agent.name} ({agent.activeChats}/{agent.maxConcurrent})
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={resolvingId === (selectedEscalation.id || selectedEscalation._id)}
+                        onClick={() => handleResolve(selectedEscalation.id || selectedEscalation._id)}
+                        className="inline-flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-[var(--studio-primary)] text-white text-sm font-medium hover:brightness-95 disabled:opacity-60"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {resolvingId ? 'Resolving…' : 'Mark as Resolved'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-              <ul className="mt-3 space-y-1.5 text-xs text-muted-foreground">
-                <li>- New escalations are auto-assigned to the least-loaded free agent.</li>
-                <li>- Transfers are only offered to agents with free capacity.</li>
-                <li>- Resolving a queue item instantly frees agent capacity.</li>
-              </ul>
             </div>
-          </div>
-        </section>
+            )}
+          </section>
+        )}
       </div>
     </MainLayout>
   )
@@ -483,7 +1472,7 @@ export default function HumanQueuePage() {
   return (
     <Suspense
       fallback={
-        <MainLayout title="Human Queue" subtitle="Escalations from AI agents for human handling">
+        <MainLayout title="Human Queue" subtitle="Live voice escalations from AI agents">
           <div className="flex items-center justify-center py-20">
             <GlobalLoader variant="inline" size="md" text="Loading human queue…" />
           </div>

@@ -897,7 +897,7 @@ export default function AiCallDetailPage() {
                       </div>
                     </div>
                     <div className="text-right space-y-0.5">
-                      {typeof selectedCall.cost === 'number' && (
+                      {typeof selectedCall.cost === 'number' && selectedCall.cost > 0 && (
                         <p className="text-sm font-semibold text-foreground">
                           ${selectedCall.cost.toFixed(4)}
                           <span className="text-xs font-normal text-muted-foreground ml-1">call cost</span>

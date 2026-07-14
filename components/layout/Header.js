@@ -430,6 +430,7 @@ export default function Header({
                     { value: "personas", label: "AI Personas" },
                     { value: "knowledge", label: "Knowledge Base" },
                     { value: "background-sounds", label: "Background Sounds" },
+                    { value: "inbound-ivr", label: "Inbound IVR" },
                     { value: "assistants", label: "AI Assist" },
                   ].map(({ value, label }) => {
                     const isActive = aiCallingView === value;
