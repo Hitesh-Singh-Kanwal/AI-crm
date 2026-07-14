@@ -1,28 +1,24 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Settings2, X } from 'lucide-react'
 import { FILTER_SIDEBAR_STYLE, FILTER_SIDEBAR_WIDTH_CLASS } from '@/lib/filter-sidebar-constants'
-import {
-  EMPTY_MEMBER_FILTERS,
-  getHiddenMemberFilterFields,
-} from '@/lib/dynamic-list-member-filters'
-import { getValidConditions } from '@/lib/lead-filter-fields'
+import { EMPTY_CUSTOMER_FILTERS } from '@/lib/customer-page-filters'
+import { getValidConditions } from '@/lib/customer-filter-fields'
 import GroupedLeadFilterFields from '@/components/shared/GroupedLeadFilterFields'
 
-export default function DynamicListMembersFilterPanel({
+export default function CustomersFilterPanel({
   open,
   appliedFilters,
   onClose,
   onApply,
-  list = null,
   locations = [],
-  forms = [],
-  leadReasons = [],
+  teachers = [],
+  tags = [],
+  memberships = [],
   loadingOptions = false,
 }) {
   const [draft, setDraft] = useState(appliedFilters)
-  const hiddenFields = useMemo(() => getHiddenMemberFilterFields(list), [list])
 
   useEffect(() => {
     if (open) setDraft(appliedFilters)
@@ -55,9 +51,9 @@ export default function DynamicListMembersFilterPanel({
               type="button"
               onClick={() =>
                 setDraft({
-                  ...EMPTY_MEMBER_FILTERS,
+                  ...EMPTY_CUSTOMER_FILTERS,
                   search: draft.search,
-                  searchOperator: draft.searchOperator,
+                  teacherID: draft.teacherID,
                 })
               }
               className="text-[13px] font-medium text-[var(--studio-primary)] hover:underline"
@@ -76,12 +72,13 @@ export default function DynamicListMembersFilterPanel({
 
         <div className="flex-1 overflow-y-auto px-5 py-5">
           <GroupedLeadFilterFields
+            entityType="customer"
             draft={draft}
             onDraftChange={setDraft}
-            hiddenFields={hiddenFields}
             locations={locations}
-            forms={forms}
-            leadReasons={leadReasons}
+            teachers={teachers}
+            tags={tags}
+            memberships={memberships}
             loadingOptions={loadingOptions}
           />
         </div>

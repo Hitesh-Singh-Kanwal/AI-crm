@@ -11,6 +11,13 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 
+const TAB_CHANNEL_MAP = { 'E-mail': 'Email', SMS: 'SMS', Call: 'Call' }
+
+function defaultChannelTab(conversation) {
+  if (!conversation) return 'SMS'
+  return conversation.channel === 'Email' ? 'E-mail' : 'SMS'
+}
+
 export default function ConversationView({
   conversation,
   messages,
@@ -24,7 +31,7 @@ export default function ConversationView({
   emailSending = false,
   onEmailTabActive,
 }) {
-  const [activeTab, setActiveTab] = useState('All')
+  const [activeTab, setActiveTab] = useState(() => defaultChannelTab(conversation))
   const scrollRef = useRef(null)
   const prevScrollHeightRef = useRef(0)
   const isLoadingMoreRef = useRef(false)
@@ -34,7 +41,7 @@ export default function ConversationView({
 
   // Reset on conversation change and scroll to bottom
   useEffect(() => {
-    setActiveTab('All')
+    setActiveTab(defaultChannelTab(conversation))
     prevScrollHeightRef.current = 0
     isLoadingMoreRef.current = false
     const el = scrollRef.current
@@ -129,8 +136,7 @@ export default function ConversationView({
           <div className="text-center text-xs text-muted-foreground py-2">Loading older messages…</div>
         )}
         {(() => {
-          const tabChannelMap = { 'E-mail': 'Email', 'SMS': 'SMS', 'Call': 'Call' }
-          const filtered = activeTab === 'All' ? messages : messages.filter((m) => m.channel === tabChannelMap[activeTab])
+          const filtered = messages.filter((m) => m.channel === TAB_CHANNEL_MAP[activeTab])
           if (filtered.length === 0) return (
             <div className="text-center text-muted-foreground text-sm py-8">
               {messages.length === 0 ? 'No messages yet. Start the conversation!' : `No ${activeTab} messages.`}
@@ -228,7 +234,7 @@ export default function ConversationView({
           <div className="px-4 py-6 text-center border-t border-border bg-card/80">
             <p className="text-sm text-muted-foreground">Calls cannot be sent from the inbox.</p>
           </div>
-        ) : activeTab === 'E-mail' || (activeTab === 'All' && conversation.channel === 'Email') ? (
+        ) : activeTab === 'E-mail' ? (
           contactEmail ? (
             <EmailMessageInput
               onSendMessage={onSendMessage}

@@ -1,12 +1,19 @@
 'use client'
 
 import { forwardRef } from 'react'
+import { cn } from '@/lib/utils'
 
-const Switch = forwardRef(function Switch({ checked, onChange, onCheckedChange, className = '', ...props }, ref) {
-  const handleClick = () => {
+const Switch = forwardRef(function Switch(
+  { checked, onChange, onCheckedChange, className = '', onClick, ...props },
+  ref
+) {
+  const handleClick = (e) => {
+    e.stopPropagation()
     const next = !checked
     onChange?.(next)
     onCheckedChange?.(next)
+    onClick?.(e)
+    onClick?.(e)
   }
   return (
     <button
@@ -15,11 +22,18 @@ const Switch = forwardRef(function Switch({ checked, onChange, onCheckedChange, 
       role="switch"
       aria-checked={checked}
       onClick={handleClick}
-      className={`${className} inline-flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${checked ? 'bg-emerald-500' : 'bg-red-400'}`}
+      className={cn(
+        'inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors',
+        checked ? 'bg-[var(--studio-primary)]' : 'bg-muted-foreground/30',
+        className
+      )}
       {...props}
     >
       <span
-        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`}
+        className={cn(
+          'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-5' : 'translate-x-0'
+        )}
       />
     </button>
   )
@@ -27,4 +41,3 @@ const Switch = forwardRef(function Switch({ checked, onChange, onCheckedChange, 
 
 export { Switch }
 export default Switch
-

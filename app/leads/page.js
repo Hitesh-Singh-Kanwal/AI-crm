@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Plus, ChevronDown, SlidersHorizontal, Phone, Mail, MessageSquare, MoreHorizontal, X, UserCheck } from 'lucide-react'
+import { Plus, Phone, Mail, MessageSquare, MoreHorizontal, UserCheck } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -22,10 +21,20 @@ import {
 } from '@/components/ui/dropdown-menu'
 import LeadsDialog from './components/LeadsDialog'
 import BulkCreateLeadsDialog from './components/BulkCreateLeadsDialog'
+import LeadsQuickBar from '@/components/leads/LeadsQuickBar'
+import LeadsFilterPanel from '@/components/leads/LeadsFilterPanel'
+import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
 import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import { buildLeadQueryParams, filtersToConditionsForForm } from '@/lib/lead-filter-fields'
+import {
+  EMPTY_LEAD_FILTERS,
+  sanitizeLeadFilters,
+} from '@/lib/lead-page-filters'
+import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
+import { normalizeConditionsForForm } from '@/lib/dynamic-list-normalize'
 
 const STAGE_STYLES = {
   new: 'bg-slate-200 text-slate-800',
@@ -46,7 +55,6 @@ const BOOKING_STATUS_STYLES = {
 const ROWS_PER_PAGE = 10
 
 export default function LeadsPage() {
-  const [searchQuery, setSearchQuery] = useState('')
   const [selectedIds, setSelectedIds] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
   const [leads, setLeads] = useState([])
@@ -56,27 +64,27 @@ export default function LeadsPage() {
   const [dialogInitialLeadId, setDialogInitialLeadId] = useState(null)
   const [dialogViewOnly, setDialogViewOnly] = useState(false)
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
-  const [stageFilter, setStageFilter] = useState('')
-  const [bookingStatusFilter, setBookingStatusFilter] = useState('')
-  const [escalatedOnly, setEscalatedOnly] = useState(false)
-  const [sort, setSort] = useState('createdDesc')
+  const [filters, setFilters] = useState(EMPTY_LEAD_FILTERS)
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const [listDialogOpen, setListDialogOpen] = useState(false)
+  const [prefillList, setPrefillList] = useState(null)
+  const [leadReasons, setLeadReasons] = useState([])
+  const [locations, setLocations] = useState([])
+  const [forms, setForms] = useState([])
+  const [loadingOptions, setLoadingOptions] = useState(false)
   const [convertingId, setConvertingId] = useState(null)
 
   const totalPages = Math.max(1, Math.ceil((totalCount || 0) / ROWS_PER_PAGE))
 
-  const loadLeads = useCallback(async (page, query, filters) => {
+  const loadLeads = useCallback(async (page, nextFilters) => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: String(ROWS_PER_PAGE),
+      const sanitized = sanitizeLeadFilters(nextFilters)
+      const params = buildLeadQueryParams({
+        page,
+        limit: ROWS_PER_PAGE,
+        filters: sanitized,
       })
-      if (query) {
-        params.set('search', query)
-      }
-      if (filters?.stage) params.set('stage', filters.stage)
-      if (filters?.bookingStatus) params.set('bookingStatus', filters.bookingStatus)
-      if (filters?.isEscalated) params.set('isEscalated', 'true')
 
       const result = await api.get(`/api/lead?${params.toString()}`)
       if (result.success) {
@@ -87,12 +95,6 @@ export default function LeadsPage() {
         if (page > nextTotalPages) {
           setCurrentPage(nextTotalPages)
           return
-        }
-
-        if (sort === 'nameAsc') {
-          data = [...data].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-        } else if (sort === 'nameDesc') {
-          data = [...data].sort((a, b) => (b.name || '').localeCompare(a.name || ''))
         }
 
         setLeads(data)
@@ -107,15 +109,56 @@ export default function LeadsPage() {
       setLoading(false)
       setSelectedIds([])
     }
-  }, [sort])
+  }, [])
+
+  const loadFilterOptions = useCallback(async () => {
+    setLoadingOptions(true)
+    const [reasonsRes, locationsRes, formsRes] = await Promise.all([
+      api.get('/api/lead-reasons'),
+      api.get('/api/location?limit=200'),
+      api.get('/api/formBuilder?page=1&limit=200'),
+    ])
+    if (reasonsRes?.success) setLeadReasons(extractLeadReasonsList(reasonsRes))
+    if (locationsRes?.success) setLocations(Array.isArray(locationsRes.data) ? locationsRes.data : [])
+    if (formsRes?.success) setForms(extractFormTemplatesList(formsRes))
+    setLoadingOptions(false)
+  }, [])
 
   useEffect(() => {
-    loadLeads(currentPage, searchQuery, {
-      stage: stageFilter,
-      bookingStatus: bookingStatusFilter,
-      isEscalated: escalatedOnly,
+    loadFilterOptions()
+  }, [loadFilterOptions])
+
+  useEffect(() => {
+    loadLeads(currentPage, filters)
+  }, [currentPage, filters, loadLeads])
+
+  const refreshLeads = useCallback(() => {
+    loadLeads(currentPage, filters)
+  }, [currentPage, filters, loadLeads])
+
+  const applyFilters = (next) => {
+    setFilters(sanitizeLeadFilters(next))
+    setCurrentPage(1)
+    setFilterPanelOpen(false)
+  }
+
+  const openCreateListFromFilters = () => {
+    const sanitized = sanitizeLeadFilters(filters)
+    const conditions = filtersToConditionsForForm(sanitized)
+    if (conditions.length === 0) {
+      toast.info('No filters applied', { description: 'Apply at least one filter before saving as a list.' })
+      return
+    }
+    setPrefillList({
+      name: '',
+      description: '',
+      conditionLogic: sanitized.conditionLogic || 'AND',
+      conditions: normalizeConditionsForForm(conditions),
+      groupLogics: sanitized.groupLogics || {},
+      status: 'active',
     })
-  }, [currentPage, searchQuery, stageFilter, bookingStatusFilter, escalatedOnly, loadLeads])
+    setListDialogOpen(true)
+  }
 
   if (loading && leads.length === 0) {
     return (
@@ -167,7 +210,7 @@ export default function LeadsPage() {
       const result = await api.post(`/api/lead/${lead._id}/convert-to-customer`, {})
       if (result.success) {
         toast.success('Converted', { description: `${lead.name} has been converted to a customer.` })
-        loadLeads(currentPage, searchQuery, { stage: stageFilter, bookingStatus: bookingStatusFilter, isEscalated: escalatedOnly })
+        refreshLeads()
       } else {
         toast.error('Conversion failed', { description: result.error || 'Unable to convert lead' })
       }
@@ -187,11 +230,7 @@ export default function LeadsPage() {
       const result = await api.delete(`/api/lead/${id}`)
       if (result.success) {
         toast.success('Deleted', { description: 'Lead deleted successfully' })
-        loadLeads(currentPage, searchQuery, {
-          stage: stageFilter,
-          bookingStatus: bookingStatusFilter,
-          isEscalated: escalatedOnly,
-        })
+        refreshLeads()
       } else {
         toast.error('Delete failed', { description: result.error || 'Unable to delete lead' })
       }
@@ -204,145 +243,45 @@ export default function LeadsPage() {
   return (
     <MainLayout title="Leads" subtitle="">
       <div className="max-w-[1204px] mx-auto min-h-full flex flex-col">
-        {/* Title + count + description */}
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-semibold text-foreground tracking-tight">Leads</h1>
-            <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
-              {totalCount} leads
-            </span>
-          </div>
-          <p className="text-sm font-normal text-muted-foreground">
-            Manage your team members and their account permissions here.
-          </p>
-        </div>
-
-        {/* Search + filter bar — Search left, everything else right */}
-        <div className="flex items-center justify-between gap-3 mb-6">
-          {/* Left: Search */}
-          <div className="relative w-[220px] shrink-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 rounded-lg bg-background text-sm placeholder:text-muted-foreground"
-            />
-          </div>
-
-          {/* Right: all filter controls */}
-          <div className="flex items-center gap-2">
-            {/* Active filter pills */}
-            {stageFilter && (
-              <button
-                type="button"
-                onClick={() => setStageFilter('')}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-brand text-brand-foreground text-sm font-medium shrink-0"
-              >
-                {stageFilter} <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          {bookingStatusFilter && (
-            <button
-              type="button"
-              onClick={() => setBookingStatusFilter('')}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-brand text-brand-foreground text-sm font-medium shrink-0"
-            >
-              {bookingStatusFilter} <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {escalatedOnly && (
-            <button
-              type="button"
-              onClick={() => setEscalatedOnly(false)}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-brand text-brand-foreground text-sm font-medium shrink-0"
-            >
-              Escalated <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-            {sort !== 'createdDesc' && (
-              <button
-                type="button"
-                onClick={() => setSort('createdDesc')}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-brand text-brand-foreground text-sm font-medium shrink-0"
-              >
-                {sort === 'nameAsc' ? 'Sort A-Z' : sort} <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 shrink-0"
-              >
-                <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-                More filters
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <div className="px-2 py-1.5 text-sm font-semibold text-foreground">
-                Booking status
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h1 className="text-2xl font-semibold text-foreground tracking-tight">Leads</h1>
+                <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
+                  {totalCount} leads
+                </span>
               </div>
-              <DropdownMenuItem onClick={() => setBookingStatusFilter('')}>All</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setBookingStatusFilter('Not Booked')}>
-                Not Booked
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setBookingStatusFilter('Booked')}>
-                Booked
-              </DropdownMenuItem>
-
-              <div className="px-2 pt-2 pb-1.5 text-sm font-semibold text-foreground">
-                Escalation
-              </div>
-              <DropdownMenuItem
-                onClick={() => setEscalatedOnly((prev) => !prev)}
-                className="flex items-center justify-between"
-              >
-                <span>Escalated only</span>
-                {escalatedOnly && (
-                  <span className="text-[10px] rounded-full bg-brand text-brand-foreground px-1.5 py-0.5">
-                    On
-                  </span>
-                )}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 shrink-0"
-              >
-                {stageFilter ? `Status: ${stageFilter}` : 'Status'}{' '}
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setStageFilter('')}>All</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStageFilter('new')}>New</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStageFilter('engaged')}>Engaged</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStageFilter('cold')}>Cold</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStageFilter('bookingInProgress')}>
-                Booking In Progress
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStageFilter('booked')}>Booked</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStageFilter('qualified')}>Qualified</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStageFilter('disqualified')}>Disqualified</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStageFilter('lost')}>Lost</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
-            onClick={openCreateDialog}
-          >
-            <Plus className="h-4 w-4" />
-            Add Leads
-          </Button>
+              <p className="text-sm font-normal text-muted-foreground">
+                Manage leads and filter by any field. Save filters as dynamic lists for automation.
+              </p>
+            </div>
+            <Button
+              className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
+              onClick={openCreateDialog}
+            >
+              <Plus className="h-4 w-4" />
+              Add Leads
+            </Button>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="rounded-xl border border-border bg-card overflow-hidden min-h-[560px] flex flex-col">
+        <LeadsQuickBar
+          filters={filters}
+          onChange={(next) => {
+            setFilters(sanitizeLeadFilters(next))
+            setCurrentPage(1)
+          }}
+          onClear={() => applyFilters(EMPTY_LEAD_FILTERS)}
+          onOpenAdvanced={() => setFilterPanelOpen(true)}
+          onCreateList={openCreateListFromFilters}
+          canCreateList
+          locations={locations}
+          forms={forms}
+          leadReasons={leadReasons}
+        />
+
+        <div className="mt-6 rounded-xl border border-border bg-card overflow-hidden min-h-[560px] flex flex-col">
           <div className="flex-1">
           <Table>
             <TableHeader>
@@ -485,7 +424,6 @@ export default function LeadsPage() {
           </Table>
           </div>
 
-          {/* Pagination */}
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
             <button
               type="button"
@@ -509,17 +447,36 @@ export default function LeadsPage() {
           </div>
         </div>
 
+        <LeadsFilterPanel
+          open={filterPanelOpen}
+          appliedFilters={filters}
+          onClose={() => setFilterPanelOpen(false)}
+          onApply={applyFilters}
+          locations={locations}
+          forms={forms}
+          leadReasons={leadReasons}
+          loadingOptions={loadingOptions}
+        />
+
+        <DynamicListFormDialog
+          open={listDialogOpen}
+          onClose={() => {
+            setListDialogOpen(false)
+            setPrefillList(null)
+          }}
+          list={prefillList}
+          onSaved={() => {
+            toast.success('Dynamic list created', {
+              description: 'Your filtered leads have been saved as a dynamic list.',
+            })
+          }}
+        />
+
         <LeadsDialog
           open={dialogOpen}
           onClose={() => setDialogOpen(false)}
           leads={leads}
-          onRefresh={() =>
-            loadLeads(currentPage, searchQuery, {
-              stage: stageFilter,
-              bookingStatus: bookingStatusFilter,
-              isEscalated: escalatedOnly,
-            })
-          }
+          onRefresh={refreshLeads}
           initialLeadId={dialogInitialLeadId}
           viewOnly={dialogViewOnly}
         />
@@ -527,13 +484,7 @@ export default function LeadsPage() {
         <BulkCreateLeadsDialog
           open={bulkDialogOpen}
           onClose={() => setBulkDialogOpen(false)}
-          onRefresh={() =>
-            loadLeads(currentPage, searchQuery, {
-              stage: stageFilter,
-              bookingStatus: bookingStatusFilter,
-              isEscalated: escalatedOnly,
-            })
-          }
+          onRefresh={refreshLeads}
         />
       </div>
     </MainLayout>

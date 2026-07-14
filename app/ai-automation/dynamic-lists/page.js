@@ -5,7 +5,7 @@ import DynamicListManagerClient from '@/components/dynamic-list/DynamicListManag
 
 export default function DynamicListsPage() {
   return (
-    <MainLayout title="Dynamic Lists" subtitle="Automatically group leads and trigger workflows">
+    <MainLayout title="Dynamic Lists" subtitle="Automatically group leads and customers by conditions">
       <DynamicListManagerClient />
     </MainLayout>
   )

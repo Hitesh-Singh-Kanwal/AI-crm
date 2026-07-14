@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Pencil, Plus, RefreshCw, Star, Trash2, Users } from 'lucide-react'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { LISTS_PAGE_SIZE } from '@/lib/dynamic-list-constants'
+import { LISTS_PAGE_SIZE, DYNAMIC_LIST_ENTITY_LABELS } from '@/lib/dynamic-list-constants'
 import {
   formatDateTime,
   formatFieldDisplayValue,
@@ -17,8 +18,15 @@ import { extractLeadReasonsList } from '@/lib/workflow-normalize'
 import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
 import ConfirmDeleteDynamicListDialog from '@/components/dynamic-list/ConfirmDeleteDynamicListDialog'
 
+function parseEntityType(value) {
+  return value === 'customer' ? 'customer' : 'lead'
+}
+
 export default function DynamicListManagerClient({ membersPathBase = '/ai-automation/dynamic-lists' }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [lists, setLists] = useState([])
+  const [entityType, setEntityType] = useState(() => parseEntityType(searchParams.get('entityType')))
   const [leadReasons, setLeadReasons] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -37,12 +45,31 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
 
   const totalPages = Math.max(1, Math.ceil(total / LISTS_PAGE_SIZE))
 
+  useEffect(() => {
+    setEntityType(parseEntityType(searchParams.get('entityType')))
+  }, [searchParams])
+
+  const setEntityTypeAndUrl = (value) => {
+    const next = parseEntityType(value)
+    setEntityType(next)
+    setPage(1)
+    const params = new URLSearchParams(searchParams.toString())
+    if (next === 'lead') {
+      params.delete('entityType')
+    } else {
+      params.set('entityType', next)
+    }
+    const qs = params.toString()
+    router.replace(`${membersPathBase}${qs ? `?${qs}` : ''}`, { scroll: false })
+  }
+
   const loadLists = useCallback(async () => {
     setLoading(true)
     setError('')
     const params = new URLSearchParams({
       page: String(page),
       limit: String(LISTS_PAGE_SIZE),
+      entityType,
     })
     if (statusFilter !== 'all') params.set('status', statusFilter)
 
@@ -50,16 +77,17 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
     if (res?.success) {
       const data = res?.data || {}
       const nextLists = Array.isArray(data?.lists) ? data.lists : Array.isArray(res?.data) ? res.data : []
-      const nextTotal = Number(data?.total ?? res?.pagination?.total ?? nextLists.length)
-      setLists(nextLists)
-      setTotal(nextTotal)
+      const filtered = nextLists.filter((l) => (l?.entityType || 'lead') === entityType)
+      const nextTotal = Number(data?.total ?? res?.pagination?.total ?? filtered.length)
+      setLists(filtered)
+      setTotal(filtered.length > 0 ? nextTotal : filtered.length)
     } else {
       setLists([])
       setTotal(0)
       setError(res?.error || 'Failed to load dynamic lists.')
     }
     setLoading(false)
-  }, [page, statusFilter])
+  }, [page, statusFilter, entityType])
 
   useEffect(() => {
     loadLists()
@@ -149,10 +177,28 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
           <div>
             <h2 className="text-[26px] font-bold text-foreground">Dynamic Lists</h2>
             <p className="text-[15px] text-muted-foreground">
-              Segment leads by conditions. Workflows link to lists and fire when leads enter.
+              Segment {entityType === 'customer' ? 'customers' : 'leads'} by conditions.
+              {entityType === 'lead' ? ' Workflows link to lists and fire when leads enter.' : ''}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-xl border border-border bg-background p-1">
+              {Object.entries(DYNAMIC_LIST_ENTITY_LABELS).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setEntityTypeAndUrl(value)}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-[12px] font-semibold transition',
+                    entityType === value
+                      ? 'bg-[var(--studio-primary)] text-white'
+                      : 'text-muted-foreground hover:bg-muted/40'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <select
               value={statusFilter}
               onChange={(e) => {
@@ -238,7 +284,7 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
                         </span>
                       </td>
                       <td className="max-w-[220px] px-4 py-3 text-[12px] text-foreground">
-                        {summarizeConditions(list, leadReasons)}
+                        {summarizeConditions(list, { leadReasons }, list?.entityType || entityType)}
                       </td>
                       <td className="px-4 py-3 font-medium text-foreground">{Number(list?.memberCount ?? 0)}</td>
                       <td className="px-4 py-3 text-muted-foreground">{formatDateTime(list?.createdAt) || '—'}</td>
@@ -269,7 +315,7 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
                             Edit
                           </button>
                           <Link
-                            href={`${membersPathBase}/${id}/members`}
+                            href={`${membersPathBase}/${id}/${(list?.entityType || entityType) === 'customer' ? 'customers' : 'members'}`}
                             className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-medium text-foreground hover:bg-muted/40"
                           >
                             <Users className="h-3.5 w-3.5" />
@@ -327,6 +373,7 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
           setEditingList(null)
         }}
         list={editingList}
+        entityType={editingList?.entityType || entityType}
         onSaved={handleSaved}
       />
 

@@ -2,15 +2,23 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink, SlidersHorizontal, X, Users, MapPin, Wallet } from 'lucide-react'
+import { Search, Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink, SlidersHorizontal, X, Users, MapPin, Wallet, ListPlus } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import FilterSheet from '@/components/customers/FilterSheet'
-import { describeFilter } from '@/lib/customerFilters'
+import CustomersFilterPanel from '@/components/customers/CustomersFilterPanel'
+import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
+import {
+  EMPTY_CUSTOMER_FILTERS,
+  sanitizeCustomerFilters,
+  hasActiveCustomerFilters,
+  countAdvancedCustomerFilters,
+} from '@/lib/customer-page-filters'
+import { buildCustomerQueryParams, filtersToConditionsForForm } from '@/lib/customer-filter-fields'
+import { normalizeConditionsForForm } from '@/lib/dynamic-list-normalize'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -342,11 +350,14 @@ export default function CustomersPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
 
-  const [filterSheetOpen, setFilterSheetOpen] = useState(false)
-  const [savedFilters, setSavedFilters] = useState([])
-  const [activeFilterId, setActiveFilterId] = useState(null)
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const [filters, setFilters] = useState(EMPTY_CUSTOMER_FILTERS)
+  const [listDialogOpen, setListDialogOpen] = useState(false)
+  const [prefillList, setPrefillList] = useState(null)
 
   const toast = useToast()
+
+  const isFiltered = hasActiveCustomerFilters({ ...filters, search: debouncedSearch, teacherID: teacherFilter })
 
   useEffect(() => {
     api.get('/api/location?limit=200').then((res) => {
@@ -368,19 +379,12 @@ export default function CustomersPage() {
     return () => clearTimeout(timer)
   }, [search])
 
-  const activeFilter = savedFilters.find((f) => f.id === activeFilterId) || null
-
-  useEffect(() => { setCurrentPage(1) }, [debouncedSearch, teacherFilter, activeFilterId])
+  useEffect(() => { setCurrentPage(1) }, [debouncedSearch, teacherFilter, filters])
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true)
-    const params = new URLSearchParams({ page: currentPage, limit })
-    if (debouncedSearch) params.set('search', debouncedSearch)
-    if (teacherFilter) params.set('teacherID', teacherFilter)
-    if (activeFilter) {
-      params.set('filterMode', activeFilter.mode)
-      params.set('filters', JSON.stringify(activeFilter.filters))
-    }
+    const sanitized = sanitizeCustomerFilters({ ...filters, search: debouncedSearch, teacherID: teacherFilter })
+    const params = buildCustomerQueryParams({ page: currentPage, limit, filters: sanitized })
     const result = await api.get(`/api/customer?${params}`)
     if (result.success) {
       setCustomers(result.data || [])
@@ -389,7 +393,7 @@ export default function CustomersPage() {
       setTotalPages(Math.max(1, Math.ceil(t / limit)))
     }
     setLoading(false)
-  }, [currentPage, debouncedSearch, teacherFilter, activeFilter])
+  }, [currentPage, debouncedSearch, teacherFilter, filters])
 
   useEffect(() => { fetchCustomers() }, [fetchCustomers])
 
@@ -412,15 +416,23 @@ export default function CustomersPage() {
     return loc?.name || '—'
   }
 
-  const handleApplyFilter = ({ mode, filters }) => {
-    const id = `filter-${Date.now()}`
-    setSavedFilters((prev) => [...prev, { id, mode, filters }])
-    setActiveFilterId(id)
-  }
-
-  const removeFilter = (id) => {
-    setSavedFilters((prev) => prev.filter((f) => f.id !== id))
-    setActiveFilterId((current) => (current === id ? null : current))
+  const openCreateListFromFilters = () => {
+    const sanitized = sanitizeCustomerFilters({ ...filters, search: debouncedSearch, teacherID: teacherFilter })
+    const conditions = filtersToConditionsForForm(sanitized)
+    if (conditions.length === 0 && !sanitized.search) {
+      toast.info('No filters applied', { description: 'Apply at least one filter before saving as a list.' })
+      return
+    }
+    setPrefillList({
+      name: '',
+      description: '',
+      entityType: 'customer',
+      conditionLogic: sanitized.conditionLogic || 'AND',
+      conditions: normalizeConditionsForForm(conditions),
+      groupLogics: sanitized.groupLogics || {},
+      status: 'active',
+    })
+    setListDialogOpen(true)
   }
 
   return (
@@ -462,50 +474,57 @@ export default function CustomersPage() {
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           </div>
-          <Button variant="outline" size="sm" className="h-9" onClick={() => setFilterSheetOpen(true)}>
+          <Button variant="outline" size="sm" className="h-9" onClick={() => setFilterPanelOpen(true)}>
             <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
-            Filter
+            Filters
+            {countAdvancedCustomerFilters(filters) > 0 && (
+              <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--studio-primary)] px-1 text-[10px] font-bold text-white">
+                {countAdvancedCustomerFilters(filters)}
+              </span>
+            )}
           </Button>
+          {hasActiveCustomerFilters({ ...filters, search: debouncedSearch, teacherID: teacherFilter }) && (
+            <Button variant="outline" size="sm" className="h-9" onClick={openCreateListFromFilters}>
+              <ListPlus className="mr-1.5 h-3.5 w-3.5" />
+              Save as list
+            </Button>
+          )}
+          {(hasActiveCustomerFilters(filters) || debouncedSearch || teacherFilter) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9"
+              onClick={() => setFilters(EMPTY_CUSTOMER_FILTERS)}
+            >
+              Clear filters
+            </Button>
+          )}
         </div>
 
-        {/* Saved filter tabs */}
-        {savedFilters.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setActiveFilterId(null)}
-              className={`h-8 rounded-lg border px-3 text-[12px] font-medium transition-colors ${
-                activeFilterId === null
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-background text-muted-foreground hover:bg-muted/40'
-              }`}
-            >
-              All customers
-            </button>
-            {savedFilters.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setActiveFilterId(f.id)}
-                className={`group flex h-8 items-center gap-1.5 rounded-lg border pl-3 pr-2 text-[12px] font-medium transition-colors ${
-                  activeFilterId === f.id
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border bg-background text-muted-foreground hover:bg-muted/40'
-                }`}
-                title={describeFilter(f, locations)}
-              >
-                <span className="max-w-[220px] truncate">{describeFilter(f, locations)}</span>
-                <span
-                  role="button"
-                  onClick={(e) => { e.stopPropagation(); removeFilter(f.id) }}
-                  className="rounded-full p-0.5 hover:bg-muted"
-                >
-                  <X className="h-3 w-3" />
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
+        <CustomersFilterPanel
+          open={filterPanelOpen}
+          appliedFilters={filters}
+          onClose={() => setFilterPanelOpen(false)}
+          onApply={(next) => {
+            setFilters(next)
+            setFilterPanelOpen(false)
+          }}
+          locations={locations}
+          teachers={teachers}
+          tags={tagOptions}
+          memberships={memberships}
+        />
+
+        <DynamicListFormDialog
+          open={listDialogOpen}
+          onClose={() => {
+            setListDialogOpen(false)
+            setPrefillList(null)
+          }}
+          list={prefillList}
+          entityType="customer"
+          onSaved={() => toast.success('Customer list created')}
+        />
 
         {/* Table */}
         <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -536,15 +555,15 @@ export default function CustomersPage() {
                       </div>
                       <div className="space-y-1">
                         <p className="text-[13px] font-medium text-foreground">
-                          {debouncedSearch || activeFilter ? 'No customers match this view' : 'No customers yet'}
+                          {isFiltered ? 'No customers match this view' : 'No customers yet'}
                         </p>
                         <p className="text-[12px] text-muted-foreground">
-                          {debouncedSearch || activeFilter
+                          {isFiltered
                             ? 'Try a different search term or clear your filters.'
                             : "Add your studio's first customer to get started."}
                         </p>
                       </div>
-                      {!debouncedSearch && !activeFilter && (
+                      {!isFiltered && (
                         <Button size="sm" className="mt-1" onClick={() => { setEditingCustomer(null); setDialogOpen(true) }}>
                           <Plus className="mr-1.5 h-3.5 w-3.5" />
                           Add customer
@@ -644,16 +663,6 @@ export default function CustomersPage() {
         onSaved={fetchCustomers}
         initial={editingCustomer}
         locations={locations}
-      />
-
-      {/* Filter Sheet */}
-      <FilterSheet
-        open={filterSheetOpen}
-        onClose={() => setFilterSheetOpen(false)}
-        onApply={handleApplyFilter}
-        locations={locations}
-        membershipNames={[...new Set(memberships.map((m) => m.membershipName).filter(Boolean))]}
-        tagOptions={tagOptions}
       />
 
       {/* Delete Confirm */}

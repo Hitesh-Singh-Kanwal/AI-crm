@@ -7,8 +7,6 @@ export default function ContactList({
   conversations,
   selectedConversation,
   onSelectConversation,
-  selectedChannel,
-  onChannelChange,
   searchQuery,
   onSearchChange,
   contactFilter,

@@ -1,28 +1,23 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Settings2, X } from 'lucide-react'
 import { FILTER_SIDEBAR_STYLE, FILTER_SIDEBAR_WIDTH_CLASS } from '@/lib/filter-sidebar-constants'
-import {
-  EMPTY_MEMBER_FILTERS,
-  getHiddenMemberFilterFields,
-} from '@/lib/dynamic-list-member-filters'
+import { EMPTY_LEAD_FILTERS } from '@/lib/lead-page-filters'
 import { getValidConditions } from '@/lib/lead-filter-fields'
 import GroupedLeadFilterFields from '@/components/shared/GroupedLeadFilterFields'
 
-export default function DynamicListMembersFilterPanel({
+export default function LeadsFilterPanel({
   open,
   appliedFilters,
   onClose,
   onApply,
-  list = null,
   locations = [],
   forms = [],
   leadReasons = [],
   loadingOptions = false,
 }) {
   const [draft, setDraft] = useState(appliedFilters)
-  const hiddenFields = useMemo(() => getHiddenMemberFilterFields(list), [list])
 
   useEffect(() => {
     if (open) setDraft(appliedFilters)
@@ -55,7 +50,7 @@ export default function DynamicListMembersFilterPanel({
               type="button"
               onClick={() =>
                 setDraft({
-                  ...EMPTY_MEMBER_FILTERS,
+                  ...EMPTY_LEAD_FILTERS,
                   search: draft.search,
                   searchOperator: draft.searchOperator,
                 })
@@ -78,7 +73,6 @@ export default function DynamicListMembersFilterPanel({
           <GroupedLeadFilterFields
             draft={draft}
             onDraftChange={setDraft}
-            hiddenFields={hiddenFields}
             locations={locations}
             forms={forms}
             leadReasons={leadReasons}

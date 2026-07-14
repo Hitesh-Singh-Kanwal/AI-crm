@@ -2,7 +2,14 @@
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
-export default function ConfirmReEvaluateDialog({ open, onClose, onConfirm, listName, busy = false }) {
+export default function ConfirmReEvaluateDialog({
+  open,
+  onClose,
+  onConfirm,
+  listName,
+  busy = false,
+  entityLabel = 'leads',
+}) {
   return (
     <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="md">
       <DialogContent onClose={busy ? undefined : onClose}>
@@ -11,11 +18,11 @@ export default function ConfirmReEvaluateDialog({ open, onClose, onConfirm, list
           <DialogDescription>
             {listName ? (
               <>
-                Re-run all leads against <span className="font-medium text-foreground">{listName}</span>&apos;s
-                conditions?
+                Re-run all {entityLabel} against <span className="font-medium text-foreground">{listName}</span>
+                &apos;s conditions?
               </>
             ) : (
-              <>Re-run all leads against this list&apos;s conditions?</>
+              <>Re-run all {entityLabel} against this list&apos;s conditions?</>
             )}
           </DialogDescription>
         </DialogHeader>

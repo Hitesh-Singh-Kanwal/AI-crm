@@ -11,6 +11,7 @@ import ScriptsTab from './components/ScriptsTab'
 import PersonasTab from './components/PersonasTab'
 import KnowledgeBaseTab from './components/KnowledgeBaseTab'
 import AiAssistTab from './components/AiAssistTab'
+import BackgroundSoundsTab from './components/BackgroundSoundsTab'
 
 function extractPersonasPayload(result) {
   const payload = result?.data
@@ -87,9 +88,10 @@ function AICallingPageInner() {
   }
 
   useEffect(() => {
+    if (activeTab !== 'personas') return
     fetchPersonas()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [personasPage, debouncedPersonasSearch])
+  }, [activeTab, personasPage, debouncedPersonasSearch])
 
   const handleDeletePersona = async (id) => {
     try {
@@ -119,25 +121,28 @@ function AICallingPageInner() {
     <MainLayout title="AI Calling" subtitle="Manage AI-powered calling scripts and personas">
       <div className="h-full min-h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full min-h-full flex flex-col">
-        <ScriptsTab />
-        <PersonasTab
-          personas={personas}
-          personasLoading={personasLoading}
-          personasError={personasError}
-          deletingId={deletingId}
-          onDeletePersona={handleDeletePersona}
-          currentPage={personasPage}
-          totalPages={personasTotalPages}
-          totalCount={personasTotal}
-          onPrevPage={() => setPersonasPage((p) => Math.max(1, p - 1))}
-          onNextPage={() => setPersonasPage((p) => Math.min(personasTotalPages, p + 1))}
-          onPageChange={(page) => setPersonasPage(page)}
-          onRefresh={fetchPersonas}
-          searchQuery={personasSearchQuery}
-          onSearchQueryChange={setPersonasSearchQuery}
-        />
-        <KnowledgeBaseTab />
-        <AiAssistTab />
+        {activeTab === 'scripts' && <ScriptsTab />}
+        {activeTab === 'personas' && (
+          <PersonasTab
+            personas={personas}
+            personasLoading={personasLoading}
+            personasError={personasError}
+            deletingId={deletingId}
+            onDeletePersona={handleDeletePersona}
+            currentPage={personasPage}
+            totalPages={personasTotalPages}
+            totalCount={personasTotal}
+            onPrevPage={() => setPersonasPage((p) => Math.max(1, p - 1))}
+            onNextPage={() => setPersonasPage((p) => Math.min(personasTotalPages, p + 1))}
+            onPageChange={(page) => setPersonasPage(page)}
+            onRefresh={fetchPersonas}
+            searchQuery={personasSearchQuery}
+            onSearchQueryChange={setPersonasSearchQuery}
+          />
+        )}
+        {activeTab === 'knowledge' && <KnowledgeBaseTab />}
+        {activeTab === 'background-sounds' && <BackgroundSoundsTab />}
+        {activeTab === 'assistants' && <AiAssistTab />}
       </Tabs>
       </div>
     </MainLayout>

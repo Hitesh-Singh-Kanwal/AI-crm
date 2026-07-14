@@ -428,6 +428,7 @@ export default function Header({
                     { value: "scripts", label: "Scripts" },
                     { value: "personas", label: "AI Personas" },
                     { value: "knowledge", label: "Knowledge Base" },
+                    { value: "background-sounds", label: "Background Sounds" },
                     { value: "assistants", label: "AI Assist" },
                   ].map(({ value, label }) => {
                     const isActive = aiCallingView === value;

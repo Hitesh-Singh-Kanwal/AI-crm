@@ -139,7 +139,6 @@ function InboxPageContent() {
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [showDetails, setShowDetails] = useState(true)
   const [showContactList, setShowContactList] = useState(true)
-  const [selectedChannel, setSelectedChannel] = useState('All')
   const [searchQuery, setSearchQuery] = useState('')
   const [contactFilter, setContactFilter] = useState('All')
   const [conversations, setConversations] = useState([])
@@ -319,15 +318,14 @@ function InboxPageContent() {
 
   const displayedConversations = useMemo(() => {
     const list = filteredConversations.filter((conv) => {
-      const matchesChannel = selectedChannel === 'All' || conv.channel === selectedChannel
       const matchesSearch = getContactDisplayName(conv.contact)
         .toLowerCase()
         .includes(searchQuery.toLowerCase())
       const matchesType = contactFilter === 'All' || normalizeContactType(conv.contact.type) === contactFilter
-      return matchesChannel && matchesSearch && matchesType
+      return matchesSearch && matchesType
     })
     return list
-  }, [filteredConversations, selectedChannel, searchQuery, contactFilter])
+  }, [filteredConversations, searchQuery, contactFilter])
 
   // Teachers count for header tab (from current branch-filtered list)
   const teachersCount = useMemo(
@@ -577,7 +575,6 @@ function InboxPageContent() {
     setThreadMessages((prev) => ({ ...prev, [convId]: prev[convId] || [] }))
     setSelectedConversation(convId)
     // Ensure the newly created thread is visible immediately even if the user has filters applied.
-    setSelectedChannel('All')
     setSearchQuery('')
     setContactFilter('All')
     setShowContactList(false)
@@ -734,8 +731,6 @@ function InboxPageContent() {
             conversations={displayedConversations}
             selectedConversation={selectedConversation}
             onSelectConversation={handleSelectConversation}
-            selectedChannel={selectedChannel}
-            onChannelChange={setSelectedChannel}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             contactFilter={contactFilter}

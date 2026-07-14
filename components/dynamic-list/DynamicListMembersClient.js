@@ -15,21 +15,25 @@ import {
 } from 'lucide-react'
 import api from '@/lib/api'
 import { cn, getInitials } from '@/lib/utils'
-import { MEMBERS_PAGE_SIZE } from '@/lib/dynamic-list-constants'
+import { MEMBERS_PAGE_SIZE, getDynamicListsHref } from '@/lib/dynamic-list-constants'
 import {
   buildMemberFilterParams,
   EMPTY_MEMBER_FILTERS,
+  hasActiveMemberFilters,
   sanitizeMemberFilters,
 } from '@/lib/dynamic-list-member-filters'
 import {
   formatDateTime,
   formatFieldDisplayValue,
   getMembershipLead,
+  normalizeConditionsForForm,
   summarizeConditions,
 } from '@/lib/dynamic-list-normalize'
+import { filtersToConditionsForForm, getValidConditions } from '@/lib/lead-filter-fields'
 import { toast } from '@/components/ui/toast'
 import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
 import ConfirmReEvaluateDialog from '@/components/dynamic-list/ConfirmReEvaluateDialog'
+import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
 import DynamicListMemberSendDialog from '@/components/dynamic-list/DynamicListMemberSendDialog'
 import DynamicListMembersFilterPanel from '@/components/dynamic-list/DynamicListMembersFilterPanel'
 import DynamicListMembersQuickBar from '@/components/dynamic-list/DynamicListMembersQuickBar'
@@ -99,6 +103,8 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
   const [sendChannel, setSendChannel] = useState('SMS')
   const [viewLeadId, setViewLeadId] = useState(null)
   const [viewLeadOpen, setViewLeadOpen] = useState(false)
+  const [listDialogOpen, setListDialogOpen] = useState(false)
+  const [prefillList, setPrefillList] = useState(null)
 
   const totalPages = Math.max(1, Math.ceil(total / MEMBERS_PAGE_SIZE))
   const pageStart = total === 0 ? 0 : (page - 1) * MEMBERS_PAGE_SIZE + 1
@@ -205,6 +211,37 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
     clearSelection()
   }
 
+  const openCreateListFromFilters = () => {
+    if (!hasActiveMemberFilters(filters)) {
+      toast.info('No filters applied', {
+        description: 'Search or apply at least one filter before creating a list.',
+      })
+      return
+    }
+
+    const sanitized = sanitizeMemberFilters(list, filters)
+    const parentConditions = getValidConditions(list?.conditions || [])
+    const appliedConditions = filtersToConditionsForForm(sanitized)
+    const merged = [...parentConditions, ...appliedConditions]
+
+    if (merged.length === 0) {
+      toast.info('No filters applied', {
+        description: 'Search or apply at least one filter before creating a list.',
+      })
+      return
+    }
+
+    setPrefillList({
+      name: '',
+      description: list?.name ? `Based on ${list.name}` : '',
+      conditionLogic: sanitized.conditionLogic || 'AND',
+      conditions: normalizeConditionsForForm(merged),
+      groupLogics: sanitized.groupLogics || {},
+      status: 'active',
+    })
+    setListDialogOpen(true)
+  }
+
   const clearSelection = () => {
     setSelectedLeadIds([])
     setSelectedLeadsData([])
@@ -303,7 +340,7 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <Link
-              href={listPathBase}
+              href={getDynamicListsHref('lead')}
               className="mb-3 inline-flex items-center gap-2 text-[13px] font-medium text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -315,7 +352,9 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
                 {Number(list?.memberCount ?? total)} members
               </span>
             </div>
-            <p className="mt-1 text-[14px] text-muted-foreground">{summarizeConditions(list, leadReasons)}</p>
+            <p className="mt-1 text-[14px] text-muted-foreground">
+              {summarizeConditions(list, { leadReasons, locations, forms })}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -345,6 +384,8 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
           onChange={handleFiltersChange}
           onClear={clearFilters}
           onOpenAdvanced={() => setFilterPanelOpen(true)}
+          onCreateList={openCreateListFromFilters}
+          canCreateList
           list={list}
           locations={locations}
           forms={forms}
@@ -626,6 +667,20 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
         }}
         leadReasons={leadReasons}
         locations={locations}
+      />
+
+      <DynamicListFormDialog
+        open={listDialogOpen}
+        onClose={() => {
+          setListDialogOpen(false)
+          setPrefillList(null)
+        }}
+        list={prefillList}
+        onSaved={() => {
+          toast.success('Dynamic list created', {
+            description: 'Your filtered members have been saved as a new dynamic list.',
+          })
+        }}
       />
     </div>
   )

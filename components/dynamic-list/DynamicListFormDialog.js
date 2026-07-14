@@ -1,24 +1,18 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
 import api from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { STATUS_OPTIONS } from '@/lib/dynamic-list-constants'
 import {
-  CONDITION_FIELDS,
-  CONDITION_LOGIC_OPTIONS,
-  CONDITION_OPERATORS,
-  STATUS_OPTIONS,
-} from '@/lib/dynamic-list-constants'
-import {
+  buildConditionGroupsFromFlat,
   buildDynamicListPayload,
-  createEmptyCondition,
+  flattenConditionGroups,
   formatFieldDisplayValue,
-  getFieldValueOptions,
-  normalizeConditionValue,
+  inferCatalogGroupId,
   normalizeDynamicListFromApi,
 } from '@/lib/dynamic-list-normalize'
-import { extractLeadReasonsList } from '@/lib/workflow-normalize'
+import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
+import LeadConditionsEditor, { isConditionComplete } from '@/components/shared/LeadConditionsEditor'
 import {
   Dialog,
   DialogContent,
@@ -28,189 +22,134 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-function createEmptyForm() {
+function createEmptyForm(entityType = 'lead') {
   return {
     name: '',
     description: '',
+    entityType,
     conditionLogic: 'AND',
-    conditions: [createEmptyCondition()],
+    groups: [],
     status: 'active',
   }
 }
 
-function ConditionValueInput({ condition, onChange, leadReasons = [] }) {
-  const rawOptions = getFieldValueOptions(condition.field, leadReasons)
-  const operator = condition.operator || 'eq'
-  const labeledOptions = Array.isArray(rawOptions) ? rawOptions : null
+function formFromList(list, fallbackEntityType = 'lead') {
+  if (!list) return createEmptyForm(fallbackEntityType)
+  const normalized = normalizeDynamicListFromApi(list)
+  const entityType = list.entityType || normalized?.entityType || fallbackEntityType
+  const groups = buildConditionGroupsFromFlat({
+    conditions: list.conditions?.length ? list.conditions : normalized?.conditions,
+    groupLogics: list.groupLogics,
+    conditionGroups: list.conditionGroups,
+    entityType,
+  })
 
-  if (operator === 'in') {
-    const values = Array.isArray(condition.value)
-      ? condition.value
-      : normalizeConditionValue('in', condition.value)
-
-    const toggleValue = (val) => {
-      const next = values.includes(val) ? values.filter((v) => v !== val) : [...values, val]
-      onChange(next)
-    }
-
-    if (labeledOptions) {
-      if (labeledOptions.length === 0) {
-        return (
-          <div className="rounded-lg border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground">
-            {condition.field === 'reason' ? 'No lead reasons configured yet.' : 'No options available.'}
-          </div>
-        )
-      }
-
-      return (
-        <div className="flex flex-wrap gap-2">
-          {labeledOptions.map((opt) => {
-            const selected = values.includes(opt.value)
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => toggleValue(opt.value)}
-                className={cn(
-                  'rounded-full border px-3 py-1 text-[12px] transition-colors',
-                  selected
-                    ? 'border-[var(--studio-primary)] bg-[var(--studio-primary)]/10 text-foreground'
-                    : 'border-border bg-background text-muted-foreground hover:bg-muted/40'
-                )}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
-      )
-    }
-
-    return (
-      <input
-        value={Array.isArray(condition.value) ? condition.value.join(', ') : String(condition.value || '')}
-        onChange={(e) =>
-          onChange(
-            e.target.value
-              .split(',')
-              .map((v) => v.trim())
-              .filter(Boolean)
-          )
-        }
-        placeholder="value1, value2"
-        className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-      />
-    )
+  return {
+    name: normalized?.name || list.name || '',
+    description: normalized?.description || list.description || '',
+    entityType,
+    conditionLogic: list.conditionLogic || normalized?.conditionLogic || 'AND',
+    groups,
+    status: list.status || normalized?.status || 'active',
   }
-
-  if (labeledOptions) {
-    if (labeledOptions.length === 0) {
-      return (
-        <div className="rounded-lg border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground">
-          {condition.field === 'reason' ? 'No lead reasons configured yet.' : 'No options available.'}
-        </div>
-      )
-    }
-
-    return (
-      <select
-        value={String(condition.value || '')}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-      >
-        <option value="">Select value</option>
-        {labeledOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    )
-  }
-
-  return (
-    <input
-      value={String(condition.value || '')}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder="Enter value"
-      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-    />
-  )
 }
 
-export default function DynamicListFormDialog({ open, onClose, list, onSaved }) {
+export default function DynamicListFormDialog({
+  open,
+  onClose,
+  list,
+  onSaved,
+  entityType: defaultEntityType = 'lead',
+}) {
   const isEdit = Boolean(list?._id || list?.id)
-  const [form, setForm] = useState(createEmptyForm())
+  const resolvedEntityType = list?.entityType || defaultEntityType
+  const isCustomer = resolvedEntityType === 'customer'
+  const [form, setForm] = useState(createEmptyForm(resolvedEntityType))
   const [leadReasons, setLeadReasons] = useState([])
-  const [loadingReasons, setLoadingReasons] = useState(false)
+  const [locations, setLocations] = useState([])
+  const [forms, setForms] = useState([])
+  const [teachers, setTeachers] = useState([])
+  const [tags, setTags] = useState([])
+  const [memberships, setMemberships] = useState([])
+  const [loadingOptions, setLoadingOptions] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!open) return
     setError('')
-    if (list) {
-      const normalized = normalizeDynamicListFromApi(list)
-      setForm({
-        name: normalized?.name || '',
-        description: normalized?.description || '',
-        conditionLogic: normalized?.conditionLogic || 'AND',
-        conditions: normalized?.conditions || [createEmptyCondition()],
-        status: normalized?.status || 'active',
-      })
-    } else {
-      setForm(createEmptyForm())
-    }
-  }, [open, list])
+    setForm(list ? formFromList(list, defaultEntityType) : createEmptyForm(defaultEntityType))
+  }, [open, list, defaultEntityType])
 
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    setLoadingReasons(true)
-    api.get('/api/lead-reasons').then((res) => {
+    setLoadingOptions(true)
+
+    const requests = [api.get('/api/location?limit=200')]
+    if (isCustomer) {
+      requests.push(
+        api.get('/api/teacher?limit=200&status=active'),
+        api.get('/api/customer/tags'),
+        api.get('/api/membership?limit=200')
+      )
+    } else {
+      requests.push(
+        api.get('/api/lead-reasons'),
+        api.get('/api/formBuilder?page=1&limit=200')
+      )
+    }
+
+    Promise.all(requests).then((results) => {
       if (cancelled) return
-      if (res?.success) {
-        setLeadReasons(extractLeadReasonsList(res))
-      } else {
-        setLeadReasons([])
+      const locationsRes = results[0]
+      if (locationsRes?.success) {
+        setLocations(Array.isArray(locationsRes.data) ? locationsRes.data : [])
       }
-      setLoadingReasons(false)
+      if (isCustomer) {
+        const [, teachersRes, tagsRes, membershipsRes] = results
+        if (teachersRes?.success) setTeachers(teachersRes.data || [])
+        if (tagsRes?.success) setTags(tagsRes.data || [])
+        if (membershipsRes?.success) setMemberships(membershipsRes.data || [])
+      } else {
+        const [, reasonsRes, formsRes] = results
+        if (reasonsRes?.success) setLeadReasons(extractLeadReasonsList(reasonsRes))
+        if (formsRes?.success) setForms(extractFormTemplatesList(formsRes))
+      }
+      setLoadingOptions(false)
     })
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [open, isCustomer])
 
   const canSubmit = useMemo(() => {
     if (!form.name.trim()) return false
-    return form.conditions.every((c) => {
-      if (c.operator === 'in') {
-        const values = normalizeConditionValue('in', c.value)
-        return values.length > 0
-      }
-      return String(c.value || '').trim() !== ''
+    if (!Array.isArray(form.groups) || form.groups.length === 0) return false
+    const entity = form.entityType || defaultEntityType
+    return form.groups.every((group) => {
+      const catalogGroupId = inferCatalogGroupId(group, entity)
+      if (!catalogGroupId) return false
+      return (
+        Array.isArray(group.conditions) &&
+        group.conditions.length > 0 &&
+        group.conditions.every(isConditionComplete)
+      )
     })
-  }, [form])
-
-  const updateCondition = (idx, patch) => {
-    setForm((prev) => ({
-      ...prev,
-      conditions: prev.conditions.map((c, i) => {
-        if (i !== idx) return c
-        const next = { ...c, ...patch }
-        if (patch.field && patch.field !== c.field) next.value = patch.operator === 'in' ? [] : ''
-        if (patch.operator === 'in' && c.operator !== 'in') next.value = []
-        if (patch.operator && patch.operator !== 'in' && c.operator === 'in') next.value = ''
-        return next
-      }),
-    }))
-  }
+  }, [form, defaultEntityType])
 
   const submit = async () => {
     if (!canSubmit || saving) return
     setSaving(true)
     setError('')
-    const payload = buildDynamicListPayload(form)
+    const { conditions, groupLogics, conditionGroups } = flattenConditionGroups(form.groups)
+    const payload = buildDynamicListPayload({
+      ...form,
+      entityType: form.entityType || defaultEntityType,
+      conditions,
+      groupLogics,
+      conditionGroups,
+    })
     const id = list?._id || list?.id
     const res = isEdit
       ? await api.patch(`/api/dynamic-list/${id}`, payload)
@@ -228,13 +167,16 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
     setSaving(false)
   }
 
+  const entityLabel = isCustomer ? 'customers' : 'leads'
+
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="4xl">
       <DialogContent className="max-h-[90vh] overflow-y-auto" onClose={saving ? undefined : onClose}>
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit dynamic list' : 'Create dynamic list'}</DialogTitle>
           <DialogDescription>
-            Define conditions that automatically add or remove leads from this segment.
+            Pick a filter group, then a filter. Use and / or to add more filters inside a group, or another
+            filter group.
           </DialogDescription>
         </DialogHeader>
 
@@ -245,7 +187,7 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
               <input
                 value={form.name}
                 onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                placeholder="New form leads"
+                placeholder={isCustomer ? 'High-value customers' : 'New form leads'}
                 className="h-11 w-full rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-[var(--studio-primary)]"
               />
             </div>
@@ -276,109 +218,27 @@ export default function DynamicListFormDialog({ open, onClose, list, onSaved }) 
           </div>
 
           <div className="rounded-xl border border-border bg-background p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-[14px] font-semibold text-foreground">Conditions</div>
-                <div className="text-[12px] text-muted-foreground">
-                  Leads must match these rules to enter the list. Link workflows to this list from the workflow builder.
-                </div>
-              </div>
-              <div className="inline-flex rounded-lg border border-border bg-card p-1">
-                {CONDITION_LOGIC_OPTIONS.map((logic) => (
-                  <button
-                    key={logic}
-                    type="button"
-                    onClick={() => setForm((p) => ({ ...p, conditionLogic: logic }))}
-                    className={cn(
-                      'rounded-md px-3 py-1.5 text-[12px] font-semibold',
-                      form.conditionLogic === logic
-                        ? 'bg-[var(--studio-primary)] text-white'
-                        : 'text-muted-foreground hover:bg-muted/40'
-                    )}
-                  >
-                    {logic}
-                  </button>
-                ))}
+            <div className="mb-4">
+              <div className="text-[14px] font-semibold text-foreground">Include {entityLabel}</div>
+              <div className="text-[12px] text-muted-foreground">
+                Level 1: filter group → filter. Then choose and / or before adding another filter or group.
               </div>
             </div>
 
-            <div className="mt-4 space-y-3">
-              {form.conditions.map((condition, idx) => (
-                <div key={idx} className="rounded-lg border border-border bg-card p-3">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                    <div>
-                      <label className="mb-1 block text-[11px] text-muted-foreground">Field</label>
-                      <select
-                        value={condition.field}
-                        onChange={(e) => updateCondition(idx, { field: e.target.value })}
-                        className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                      >
-                        {CONDITION_FIELDS.map((f) => (
-                          <option key={f.value} value={f.value}>
-                            {f.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[11px] text-muted-foreground">Operator</label>
-                      <select
-                        value={condition.operator}
-                        onChange={(e) => updateCondition(idx, { operator: e.target.value })}
-                        className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-                      >
-                        {CONDITION_OPERATORS.map((op) => (
-                          <option key={op.value} value={op.value}>
-                            {op.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-[11px] text-muted-foreground">Value</label>
-                      <ConditionValueInput
-                        condition={condition}
-                        onChange={(value) => updateCondition(idx, { value })}
-                        leadReasons={leadReasons}
-                      />
-                      {condition.field === 'reason' && loadingReasons && (
-                        <p className="mt-1 text-[11px] text-muted-foreground">Loading lead reasons…</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setForm((p) => ({
-                          ...p,
-                          conditions:
-                            p.conditions.length === 1
-                              ? p.conditions
-                              : p.conditions.filter((_, i) => i !== idx),
-                        }))
-                      }
-                      disabled={form.conditions.length === 1}
-                      className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2 text-[11px] text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                setForm((p) => ({ ...p, conditions: [...p.conditions, createEmptyCondition()] }))
-              }
-              className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-[12px] font-medium text-foreground hover:bg-muted/40"
-            >
-              <Plus className="h-4 w-4" />
-              Add condition
-            </button>
+            <LeadConditionsEditor
+              entityType={form.entityType || defaultEntityType}
+              groups={form.groups}
+              conditionLogic={form.conditionLogic}
+              onChangeGroups={(groups) => setForm((p) => ({ ...p, groups }))}
+              onChangeLogic={(conditionLogic) => setForm((p) => ({ ...p, conditionLogic }))}
+              leadReasons={leadReasons}
+              locations={locations}
+              forms={forms}
+              teachers={teachers}
+              tags={tags}
+              memberships={memberships}
+              loadingOptions={loadingOptions}
+            />
           </div>
 
           {error && (
