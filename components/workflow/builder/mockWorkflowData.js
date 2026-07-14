@@ -45,7 +45,8 @@ export function createDemoWorkflow() {
       leadStage: 'engaged',
     }),
     makeNode('node-exit', 'exit_logic', 'exit', CENTER_X, 740, {
-      exitType: 'none',
+      successGoalStages: [],
+      exitRuleStages: [],
     }),
   ]
 

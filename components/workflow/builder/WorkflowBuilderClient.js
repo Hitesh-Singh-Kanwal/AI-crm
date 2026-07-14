@@ -10,7 +10,9 @@ import {
   extractDynamicListsList,
   flattenConditionGroups,
 } from '@/lib/dynamic-list-normalize'
-import { getContactConfigFromTrigger } from '@/lib/workflow-contact'
+import {
+  getContactConfigFromTrigger,
+} from '@/lib/workflow-contact'
 import WorkflowBuilderCanvas from '@/components/workflow/builder/WorkflowBuilderCanvas'
 import WorkflowBuilderHeader from '@/components/workflow/builder/WorkflowBuilderHeader'
 import WorkflowBuilderPropertiesPanel from '@/components/workflow/builder/WorkflowBuilderPropertiesPanel'
@@ -41,6 +43,8 @@ export default function WorkflowBuilderClient() {
   const updateNodeConfig = useWorkflowBuilderStore((s) => s.updateNodeConfig)
   const guidedCategory = useWorkflowBuilderStore((s) => s.guidedCategory)
   const setGuidedCategory = useWorkflowBuilderStore((s) => s.setGuidedCategory)
+  const nodes = useWorkflowBuilderStore((s) => s.nodes)
+  const syncWorkflowUnlocks = useWorkflowBuilderStore((s) => s.syncWorkflowUnlocks)
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -52,6 +56,11 @@ export default function WorkflowBuilderClient() {
   useEffect(() => {
     setOptions({ forms, reasons, dynamicLists })
   }, [forms, reasons, dynamicLists, setOptions])
+
+  // Sync unlock latches when Contact / Action become complete — never force tab changes.
+  useEffect(() => {
+    syncWorkflowUnlocks()
+  }, [nodes, syncWorkflowUnlocks])
 
   useEffect(() => {
     let cancelled = false

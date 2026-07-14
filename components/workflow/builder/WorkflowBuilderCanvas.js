@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 import { workflowNodeTypes } from '@/components/workflow/builder/nodes'
 import { getDragPayload } from '@/components/workflow/builder/WorkflowBuilderSidebar'
 import { useWorkflowBuilderStore } from '@/components/workflow/builder/workflowBuilderStore'
+import { toast } from 'sonner'
 
 function CanvasInner() {
   const reactFlowWrapper = useRef(null)
@@ -67,7 +68,10 @@ function CanvasInner() {
         y: event.clientY,
       })
 
-      addNodeAtPosition(payload.paletteType, position)
+      const result = addNodeAtPosition(payload.paletteType, position)
+      if (result && result.ok === false) {
+        toast.error(result.error || 'Cannot add this step yet.')
+      }
     },
     [addNodeAtPosition, screenToFlowPosition]
   )

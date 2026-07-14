@@ -251,8 +251,8 @@ export const DEFAULT_NODE_CONFIG = {
   goal: { name: 'Conversion goal' },
   ai_chatbot: { greeting: 'Hi! How can I help you today?' },
   exit_logic: {
-    exitType: 'none',
-    goalName: '',
+    successGoalStages: [],
+    exitRuleStages: [],
   },
 }
 

@@ -8,6 +8,13 @@ import {
   getPaletteItem,
 } from '@/components/workflow/builder/constants'
 import { NODE_GAP_Y } from '@/components/workflow/builder/nodeHelpers'
+import {
+  getCategoryIdForPaletteType,
+  getPaletteUnlockMessage,
+  getWorkflowStepProgress,
+  isPaletteCategoryUnlocked,
+  nextWorkflowUnlockLatches,
+} from '@/lib/workflow-contact'
 
 const MAX_HISTORY = 40
 const DEFAULT_EDGE = {
@@ -55,6 +62,18 @@ function createNodeFromPalette(paletteType, position) {
   }
 }
 
+function assertCanAddPaletteType(paletteType, nodes, latches) {
+  const progress = getWorkflowStepProgress(nodes, latches)
+  const categoryId = getCategoryIdForPaletteType(paletteType)
+  if (isPaletteCategoryUnlocked(categoryId, progress)) {
+    return { ok: true }
+  }
+  return {
+    ok: false,
+    error: getPaletteUnlockMessage(categoryId, progress) || 'Finish the previous step first.',
+  }
+}
+
 const blank = createBlankWorkflow()
 
 export const useWorkflowBuilderStore = create((set, get) => ({
@@ -71,11 +90,28 @@ export const useWorkflowBuilderStore = create((set, get) => ({
   isActive: true,
   saveStatus: 'saved',
   guidedCategory: 'all',
+  actionsUnlocked: false,
+  exitUnlocked: false,
   options: { forms: [], reasons: [], dynamicLists: [] },
   past: [],
   future: [],
 
   setGuidedCategory: (guidedCategory) => set({ guidedCategory }),
+
+  syncWorkflowUnlocks: () => {
+    const state = get()
+    const next = nextWorkflowUnlockLatches(state.nodes, {
+      actionsUnlocked: state.actionsUnlocked,
+      exitUnlocked: state.exitUnlocked,
+    })
+    if (
+      next.actionsUnlocked === state.actionsUnlocked &&
+      next.exitUnlocked === state.exitUnlocked
+    ) {
+      return
+    }
+    set(next)
+  },
 
   pushHistory: () => {
     const state = get()
@@ -130,6 +166,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
 
   /** Replace the whole canvas with a graph loaded from the API (or a blank/new flow). */
   loadWorkflowGraph: ({ workflowId = null, workflowName, nodes = [], edges = [], isActive = true }) => {
+    const latches = nextWorkflowUnlockLatches(nodes, { actionsUnlocked: false, exitUnlocked: false })
     set({
       workflowId,
       workflowName: workflowName ?? get().workflowName,
@@ -142,6 +179,9 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       saveStatus: 'saved',
       past: [],
       future: [],
+      actionsUnlocked: latches.actionsUnlocked,
+      exitUnlocked: latches.exitUnlocked,
+      guidedCategory: 'all',
     })
   },
 
@@ -219,29 +259,46 @@ export const useWorkflowBuilderStore = create((set, get) => ({
   },
 
   addNodeAtPosition: (paletteType, position) => {
+    const state = get()
+    const latches = {
+      actionsUnlocked: state.actionsUnlocked,
+      exitUnlocked: state.exitUnlocked,
+    }
+    const gate = assertCanAddPaletteType(paletteType, state.nodes, latches)
+    if (!gate.ok) return { ok: false, error: gate.error }
+
     const node = createNodeFromPalette(paletteType, position)
-    if (!node) return null
+    if (!node) return { ok: false, error: 'Unknown step type.' }
+
+    const nextNodes = [...state.nodes, node]
+    const nextLatches = nextWorkflowUnlockLatches(nextNodes, latches)
 
     get().pushHistory()
     set({
-      nodes: [...get().nodes, node],
+      nodes: nextNodes,
       selectedNodeId: node.id,
+      selectedEdgeId: null,
       propertiesPanelCollapsed: false,
       saveStatus: 'unsaved',
+      ...nextLatches,
     })
-    return node
+    return { ok: true, node }
   },
 
   addNodeToFlow: (paletteType) => {
-    const { nodes, edges } = get()
+    const { nodes, edges, actionsUnlocked, exitUnlocked } = get()
+    const latches = { actionsUnlocked, exitUnlocked }
     const item = getPaletteItem(paletteType)
-    if (!item) return null
+    if (!item) return { ok: false, error: 'Unknown step type.' }
+
+    const gate = assertCanAddPaletteType(paletteType, nodes, latches)
+    if (!gate.ok) return { ok: false, error: gate.error }
 
     if (item.category === 'trigger') {
       const existingTrigger = nodes.find((n) => n.data?.category === 'trigger')
       if (existingTrigger) {
         get().setSelectedNodeId(existingTrigger.id)
-        return existingTrigger
+        return { ok: true, node: existingTrigger }
       }
     }
 
@@ -251,7 +308,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       )
       if (existingExit) {
         get().setSelectedNodeId(existingExit.id)
-        return existingExit
+        return { ok: true, node: existingExit }
       }
     }
 
@@ -275,7 +332,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       : { x: 360, y: 40 }
 
     const node = createNodeFromPalette(paletteType, position)
-    if (!node) return null
+    if (!node) return { ok: false, error: 'Unknown step type.' }
 
     const newEdges = [...edges]
     const canConnectFromLast =
@@ -291,31 +348,42 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       })
     }
 
+    const nextNodes = [...nodes, node]
+    const nextLatches = nextWorkflowUnlockLatches(nextNodes, latches)
+
     get().pushHistory()
     set({
-      nodes: [...nodes, node],
+      nodes: nextNodes,
       edges: newEdges,
       selectedNodeId: node.id,
       selectedEdgeId: null,
       propertiesPanelCollapsed: false,
       saveStatus: 'unsaved',
+      ...nextLatches,
     })
-    return node
+    return { ok: true, node }
   },
 
   updateNodeConfig: (nodeId, partialConfig) => {
+    const state = get()
+    const nextNodes = state.nodes.map((node) => {
+      if (node.id !== nodeId) return node
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          config: { ...node.data.config, ...partialConfig },
+        },
+      }
+    })
+    const nextLatches = nextWorkflowUnlockLatches(nextNodes, {
+      actionsUnlocked: state.actionsUnlocked,
+      exitUnlocked: state.exitUnlocked,
+    })
     set({
-      nodes: get().nodes.map((node) => {
-        if (node.id !== nodeId) return node
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            config: { ...node.data.config, ...partialConfig },
-          },
-        }
-      }),
+      nodes: nextNodes,
       saveStatus: 'unsaved',
+      ...nextLatches,
     })
   },
 
@@ -392,6 +460,8 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       isActive: true,
       saveStatus: 'unsaved',
       guidedCategory: 'all',
+      actionsUnlocked: false,
+      exitUnlocked: false,
     })
   },
 }))

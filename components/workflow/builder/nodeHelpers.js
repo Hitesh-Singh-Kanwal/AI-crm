@@ -17,11 +17,12 @@ function waitSummary(config) {
 }
 
 function exitSummary(config) {
-  if (config.exitType === 'goal') {
-    return config.goalName ? `Exit on goal · ${config.goalName}` : 'Exit on goal'
-  }
-  if (config.exitType === 'leave_audience') return 'Exit when they leave the audience'
-  return 'No exit rule'
+  const goalCount = Array.isArray(config.successGoalStages) ? config.successGoalStages.length : 0
+  const exitCount = Array.isArray(config.exitRuleStages) ? config.exitRuleStages.length : 0
+  const parts = []
+  if (goalCount) parts.push(`Goal · ${goalCount} stage${goalCount === 1 ? '' : 's'}`)
+  if (exitCount) parts.push(`Exit · ${exitCount} stage${exitCount === 1 ? '' : 's'}`)
+  return parts.length ? parts.join(' · ') : 'Set success goal and exit stages'
 }
 
 export function getNodeSummary(paletteType, config = {}) {

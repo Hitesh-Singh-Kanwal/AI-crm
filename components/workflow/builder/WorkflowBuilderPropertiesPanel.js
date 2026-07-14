@@ -26,6 +26,7 @@ import {
 import { getNodeSummary } from '@/components/workflow/builder/nodeHelpers'
 import { useWorkflowBuilderStore } from '@/components/workflow/builder/workflowBuilderStore'
 import WorkflowContactStep from '@/components/workflow/WorkflowContactStep'
+import WorkflowStageMultiSelect from '@/components/workflow/WorkflowStageMultiSelect'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -159,57 +160,47 @@ function TriggerFields({ config, onChange }) {
 }
 
 function ExitLogicFields({ config, onChange }) {
-  const exitType = config.exitType || 'none'
+  const successGoalStages = Array.isArray(config.successGoalStages) ? config.successGoalStages : []
+  const exitRuleStages = Array.isArray(config.exitRuleStages) ? config.exitRuleStages : []
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
-        Step 3 · Exit logic — when should contacts leave this workflow?
+        Step 3 · Exit logic — set a success goal and/or workflow exit stages. Each uses its own stage
+        list.
       </div>
-      <Field label="Exit rule">
-        <div className="space-y-2">
-          {[
-            { value: 'none', label: 'No exit rule', hint: 'Run the full action sequence' },
-            { value: 'goal', label: 'Stop on goal', hint: 'e.g. booked a class or replied' },
-            {
-              value: 'leave_audience',
-              label: 'Leave audience',
-              hint: 'Stop when they no longer match Contact filters',
-            },
-          ].map((opt) => (
-            <label
-              key={opt.value}
-              className={cn(
-                'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition',
-                exitType === opt.value
-                  ? 'border-[var(--studio-primary)] bg-[var(--studio-primary)]/[0.06]'
-                  : 'border-border bg-background hover:bg-muted/20'
-              )}
-            >
-              <input
-                type="radio"
-                name="exitType"
-                className="mt-1"
-                checked={exitType === opt.value}
-                onChange={() => onChange({ exitType: opt.value })}
-              />
-              <span>
-                <span className="block text-[13px] font-semibold text-foreground">{opt.label}</span>
-                <span className="text-[11px] text-muted-foreground">{opt.hint}</span>
-              </span>
-            </label>
-          ))}
+
+      <div className="space-y-3 rounded-xl border border-border bg-background p-3">
+        <div>
+          <div className="text-[13px] font-semibold text-foreground">Success goal</div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Mark the workflow successful when the contact reaches any of these stages.
+          </p>
         </div>
-      </Field>
-      {exitType === 'goal' ? (
-        <Field label="Goal name">
-          <Input
-            value={config.goalName || ''}
-            onChange={(e) => onChange({ goalName: e.target.value })}
-            placeholder="e.g. Booked trial class"
-            className={inputClass}
+        <Field label="Stages" hint="multi-select">
+          <WorkflowStageMultiSelect
+            values={successGoalStages}
+            onChange={(next) => onChange({ successGoalStages: next })}
+            placeholder="Select success goal stages…"
           />
         </Field>
-      ) : null}
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-border bg-background p-3">
+        <div>
+          <div className="text-[13px] font-semibold text-foreground">Workflow exit rule</div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Remove the contact from this workflow when they reach any of these stages.
+          </p>
+        </div>
+        <Field label="Stages" hint="multi-select">
+          <WorkflowStageMultiSelect
+            values={exitRuleStages}
+            onChange={(next) => onChange({ exitRuleStages: next })}
+            placeholder="Select exit rule stages…"
+          />
+        </Field>
+      </div>
     </div>
   )
 }
