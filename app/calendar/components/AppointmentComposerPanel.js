@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import MultiSelectCheckboxDropdown from "@/components/shared/MultiSelectCheckboxDropdown";
 import NewEnrollmentPackageInline from "@/app/calendar/components/NewEnrollmentPackageInline";
 // A session payment lands on CalendarEvent.payment.method, whose enum has no wallet.
 import { PURCHASE_METHODS as PAYMENT_METHODS } from "@/lib/paymentMethods";
@@ -111,8 +112,10 @@ const FREQUENCY_OPTIONS = [
 
 const EMPTY_FORM = {
   lesson_id: "",
+  todo_id: "",
   service_id: "",
   instructor_id: "",
+  instructor_ids: [],
   customer_id: "",
   customer_ids: [],
   enrollment_id: "",
@@ -1730,32 +1733,32 @@ function ToDoFields({
   form,
   setField,
   instructorOptions,
-  lessonOptions,
-  lessonMap,
+  todoOptions,
+  todoMap,
   lessonDuration,
   slotStepMins,
   slotAlignMins,
   dayEndMin,
 }) {
-  function handleLessonChange(id) {
-    setField("lesson_id", id);
-    const lesson = lessonMap[id];
-    if (lesson?.name) setField("title", lesson.name);
-    if (lesson?.color) setField("event_color", lesson.color);
-    if (lesson?.duration && form.start_time)
-      setField("end_time", addMinutes(form.start_time, lesson.duration));
+  function handleTodoChange(id) {
+    setField("todo_id", id);
+    const todo = todoMap[id];
+    if (todo?.name) setField("title", todo.name);
+    if (todo?.color) setField("event_color", todo.color);
+    if (todo?.duration && form.start_time)
+      setField("end_time", addMinutes(form.start_time, todo.duration));
   }
   return (
     <div className="space-y-4">
       <div className="space-y-3">
         <SectionDivider label="Task" />
         <div>
-          <FieldLabel>Scheduling Code</FieldLabel>
+          <FieldLabel>To-Do</FieldLabel>
           <StyledSelect
-            value={form.lesson_id}
-            onChange={handleLessonChange}
-            options={lessonOptions}
-            placeholder="Select scheduling code…"
+            value={form.todo_id}
+            onChange={handleTodoChange}
+            options={todoOptions}
+            placeholder="Select to-do…"
           />
         </div>
         <div>
@@ -1768,11 +1771,12 @@ function ToDoFields({
         </div>
         <div>
           <FieldLabel>Assigned To</FieldLabel>
-          <SearchableSelect
-            value={form.instructor_id}
-            onChange={(v) => setField("instructor_id", v)}
+          <MultiSelectCheckboxDropdown
             options={instructorOptions}
-            placeholder="Select teacher…"
+            values={form.instructor_ids}
+            onChange={(v) => setField("instructor_ids", v)}
+            placeholder="Select teachers…"
+            showSelectAll
           />
         </div>
       </div>
@@ -1814,6 +1818,8 @@ export default function AppointmentComposerPanel({
   const [lessonOptions, setLessonOptions] = useState([]);
   const [lessonMap, setLessonMap] = useState({});
   const [lessonByName, setLessonByName] = useState({});
+  const [todoOptions, setTodoOptions] = useState([]);
+  const [todoMap, setTodoMap] = useState({});
   const [allServices, setAllServices] = useState([]);
   const [packageOptions, setPackageOptions] = useState([]);
   const [packageTemplates, setPackageTemplates] = useState([]);
@@ -1838,6 +1844,7 @@ export default function AppointmentComposerPanel({
           : bumpHour(initialTime)
         : "",
       instructor_id: initialInstructorId ? String(initialInstructorId) : "",
+      instructor_ids: initialInstructorId ? [String(initialInstructorId)] : [],
     });
   }, [open, initialDate, initialTime, initialInstructorId, initialDuration]);
 
@@ -1852,8 +1859,13 @@ export default function AppointmentComposerPanel({
       customer_id: "",
       customer_ids: [],
       instructor_id: "",
+      // Preserve the day-view teacher for the To Do tab's multi-select; other tabs
+      // use the single instructor_id and start clean.
+      instructor_ids:
+        key === "To Do" && initialInstructorId ? [String(initialInstructorId)] : [],
       service_id: "",
       lesson_id: "",
+      todo_id: "",
       enrollment_id: "",
       customer_membership_id: "",
       event_color: "",
@@ -1864,7 +1876,7 @@ export default function AppointmentComposerPanel({
   useEffect(() => {
     async function load() {
       try {
-        const [usersRes, customersRes, lessonsRes, packagesRes, servicesRes, customerPkgRes] =
+        const [usersRes, customersRes, lessonsRes, packagesRes, servicesRes, customerPkgRes, todosRes] =
           await Promise.all([
             api.get("/api/teacher?limit=200&status=active"),
             api.get("/api/customer?limit=200"),
@@ -1872,6 +1884,7 @@ export default function AppointmentComposerPanel({
             api.get("/api/package?limit=200"),
             api.get("/api/calendar-service?limit=200"),
             api.get("/api/customer-package?limit=500"),
+            api.get("/api/todo?limit=200&isActive=true"),
           ]);
 
         if (usersRes.success && Array.isArray(usersRes.data))
@@ -1911,6 +1924,15 @@ export default function AppointmentComposerPanel({
               value: String(l._id),
               label: l.name,
             })),
+          );
+        }
+
+        if (todosRes.success && Array.isArray(todosRes.data)) {
+          const tMap = {};
+          todosRes.data.forEach((t) => { tMap[String(t._id)] = t; });
+          setTodoMap(tMap);
+          setTodoOptions(
+            todosRes.data.map((t) => ({ value: String(t._id), label: t.name })),
           );
         }
 
@@ -2163,7 +2185,16 @@ export default function AppointmentComposerPanel({
         TABS.find((t) => t.key === activeTab)?.label ||
         "Appointment",
       type: TAB_TYPE_MAP[activeTab],
-      teacherID: form.instructor_id || undefined,
+      // To-dos can be assigned to many teachers (teacherIDs); teacherID stays set
+      // to the first for back-compat with single-teacher rendering/other types.
+      teacherID:
+        (activeTab === "To Do" ? form.instructor_ids?.[0] : form.instructor_id) ||
+        undefined,
+      teacherIDs:
+        activeTab === "To Do" && form.instructor_ids?.length
+          ? form.instructor_ids
+          : undefined,
+      todoID: activeTab === "To Do" ? form.todo_id || undefined : undefined,
       customerIDs:
         activeTab === "Group Class"
           ? undefined
@@ -2392,8 +2423,8 @@ export default function AppointmentComposerPanel({
           form={form}
           setField={setField}
           instructorOptions={instructorOptions}
-          lessonOptions={lessonOptions}
-          lessonMap={lessonMap}
+          todoOptions={todoOptions}
+          todoMap={todoMap}
           lessonDuration={lessonDuration}
           slotStepMins={slotStepMins}
           slotAlignMins={slotAlignMins}
@@ -2409,6 +2440,8 @@ export default function AppointmentComposerPanel({
     instructorOptions,
     customerOptions,
     lessonOptions,
+    todoOptions,
+    todoMap,
     schedulingCodeOptions,
     lessonMap,
     lessonDuration,

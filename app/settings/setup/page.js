@@ -32,6 +32,7 @@ import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import ServiceDialog from '@/app/calendar/services/components/ServiceDialog'
 import LessonDialog from '@/app/calendar/lessons/components/LessonDialog'
+import ToDoDialog from '@/app/calendar/todos/components/ToDoDialog'
 
 const ROWS_PER_PAGE = 10
 
@@ -39,6 +40,7 @@ const TABS = [
   { id: 'services', label: 'Services' },
   { id: 'packages', label: 'Packages' },
   { id: 'memberships', label: 'Memberships' },
+  { id: 'todos', label: 'To-Dos' },
 ]
 
 function BoolBadge({ value }) {
@@ -868,6 +870,166 @@ function MembershipsTab() {
   )
 }
 
+function ToDosTab() {
+  const [todos, setTodos] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [selectedIds, setSelectedIds] = useState([])
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingTodo, setEditingTodo] = useState(null)
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / ROWS_PER_PAGE))
+
+  const loadTodos = useCallback(async (page, search) => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: String(ROWS_PER_PAGE) })
+      if (search) params.set('search', search)
+      const result = await api.get(`/api/todo?${params}`)
+      if (result.success) {
+        const data = Array.isArray(result.data) ? result.data : []
+        setTodos(data)
+        setTotalCount(result.pagination?.total ?? data.length)
+      } else {
+        toast.error('Failed to load to-dos', { description: result.error })
+      }
+    } catch { toast.error('Error', { description: 'Unable to load to-dos' }) }
+    finally { setLoading(false); setSelectedIds([]) }
+  }, [])
+
+  useEffect(() => { loadTodos(currentPage, searchQuery) }, [currentPage, searchQuery, loadTodos])
+
+  const toggleOne = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+  const toggleAll = () => { if (selectedIds.length === todos.length) setSelectedIds([]); else setSelectedIds(todos.map((t) => t._id)) }
+
+  async function handleDelete(todo) {
+    if (!window.confirm(`Delete "${todo.name}"? This cannot be undone.`)) return
+    try {
+      const result = await api.delete(`/api/todo/${todo._id}`)
+      if (result.success) { toast.success('To-do deleted'); loadTodos(currentPage, searchQuery) }
+      else toast.error('Delete failed', { description: result.error })
+    } catch { toast.error('Error', { description: 'Unable to delete to-do' }) }
+  }
+
+  async function handleToggleStatus(todo) {
+    try {
+      const result = await api.patch(`/api/todo/${todo._id}/toggle`)
+      if (result.success) { toast.success(`To-do ${todo.isActive ? 'deactivated' : 'activated'}`); loadTodos(currentPage, searchQuery) }
+      else toast.error('Failed', { description: result.error })
+    } catch { toast.error('Error', { description: 'Unable to update to-do status' }) }
+  }
+
+  if (loading && todos.length === 0) {
+    return <div className="flex items-center justify-center h-64"><GlobalLoader variant="center" size="md" text="Loading to-dos…" /></div>
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="relative w-[220px] shrink-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search to-dos…"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+            className="pl-9 h-9 rounded-lg bg-background text-sm"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
+            {totalCount} {totalCount === 1 ? 'to-do' : 'to-dos'}
+          </span>
+          <Button
+            className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
+            onClick={() => { setEditingTodo(null); setDialogOpen(true) }}
+          >
+            <Plus className="h-4 w-4" />
+            Add To-Do
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card min-h-[480px] flex flex-col">
+        <div className="flex-1 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b border-border hover:bg-transparent bg-muted/30">
+                <TableHead className="w-12 py-3 pl-4 pr-0">
+                  <Checkbox checked={selectedIds.length === todos.length && todos.length > 0} onClick={toggleAll} className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand" />
+                </TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">To-Do</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Location Name</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Duration</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Color</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Status</TableHead>
+                <TableHead className="w-12 py-3 pr-4 pl-0" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {todos.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-16 text-center text-sm text-muted-foreground">
+                    {searchQuery ? 'No to-dos match your search.' : 'No to-dos yet. Click "Add To-Do" to create one.'}
+                  </TableCell>
+                </TableRow>
+              ) : todos.map((todo) => (
+                <TableRow key={todo._id} className="border-b border-border hover:bg-muted/30 transition-colors">
+                  <TableCell className="py-3 pl-4 pr-0">
+                    <Checkbox checked={selectedIds.includes(todo._id)} onClick={() => toggleOne(todo._id)} className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand" />
+                  </TableCell>
+                  <TableCell className="py-3 px-4"><p className="text-sm text-foreground">{todo.name}</p></TableCell>
+                  <TableCell className="py-3 px-4">
+                    <p className="text-sm text-foreground">
+                      {Array.isArray(todo.locationID)
+                        ? (todo.locationID.map((l) => l?.name).filter(Boolean).join(', ') || '—')
+                        : (todo.locationID?.name || '—')}
+                    </p>
+                  </TableCell>
+                  <TableCell className="py-3 px-4"><p className="text-sm text-foreground">{todo.duration ?? 50}</p></TableCell>
+                  <TableCell className="py-3 px-4">
+                    {todo.color ? (
+                      <div className="flex items-center gap-2">
+                        <span className="h-6 w-10 rounded border border-black/10 shrink-0" style={{ backgroundColor: todo.color }} />
+                        <span className="text-xs font-mono text-muted-foreground">{todo.color}</span>
+                      </div>
+                    ) : <span className="text-sm text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="py-3 px-4">
+                    <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', todo.isActive ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'].join(' ')}>
+                      {todo.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 pr-4 pl-0">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground"><MoreHorizontal className="h-4 w-4" /></button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => { setEditingTodo(todo); setDialogOpen(true) }}>Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleToggleStatus(todo)}>{todo.isActive ? 'Deactivate' : 'Activate'}</DropdownMenuItem>
+                        <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(todo)}>Delete</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+          <button type="button" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1 || loading} className="inline-flex items-center h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed">Previous</button>
+          <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+          <button type="button" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || loading} className="inline-flex items-center h-8 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
+        </div>
+      </div>
+
+      <ToDoDialog open={dialogOpen} onClose={() => setDialogOpen(false)} todo={editingTodo} onRefresh={() => loadTodos(currentPage, searchQuery)} />
+    </div>
+  )
+}
+
 function SetupContent() {
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
@@ -911,6 +1073,7 @@ function SetupContent() {
       {activeTab === 'lessons' && <LessonsTab />}
       {activeTab === 'packages' && <PackagesTab />}
       {activeTab === 'memberships' && <MembershipsTab />}
+      {activeTab === 'todos' && <ToDosTab />}
     </div>
   )
 }

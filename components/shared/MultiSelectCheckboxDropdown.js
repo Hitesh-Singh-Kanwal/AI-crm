@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { Check, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Checkbox } from '@/components/ui/checkbox'
 
 export default function MultiSelectCheckboxDropdown({
   options = [],
@@ -12,6 +11,7 @@ export default function MultiSelectCheckboxDropdown({
   placeholder = 'Select values',
   disabled = false,
   emptyMessage = 'No options available.',
+  showSelectAll = false,
 }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef(null)
@@ -60,6 +60,20 @@ export default function MultiSelectCheckboxDropdown({
 
       {open && (
         <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+          {showSelectAll && options.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                onChange?.(
+                  values.length === options.length ? [] : options.map((o) => String(o.value))
+                )
+              }
+              className="flex w-full items-center justify-between border-b border-border px-3 py-2 text-left text-[12px] font-medium text-[var(--studio-primary)] hover:bg-muted/40"
+            >
+              <span>{values.length === options.length ? 'Clear all' : 'Select all'}</span>
+              <span className="text-muted-foreground">{values.length}/{options.length}</span>
+            </button>
+          )}
           <div className="max-h-56 overflow-y-auto py-1">
             {options.length === 0 ? (
               <div className="px-3 py-2 text-[12px] text-muted-foreground">{emptyMessage}</div>
@@ -73,7 +87,14 @@ export default function MultiSelectCheckboxDropdown({
                     onClick={() => toggleValue(opt.value)}
                     className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground hover:bg-muted/40"
                   >
-                    <Checkbox checked={checked} className="pointer-events-none" />
+                    <span
+                      className={cn(
+                        'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-primary',
+                        checked ? 'bg-primary text-primary-foreground' : 'bg-background'
+                      )}
+                    >
+                      {checked && <Check className="h-3 w-3" />}
+                    </span>
                     <span className="truncate">{opt.label}</span>
                   </button>
                 )

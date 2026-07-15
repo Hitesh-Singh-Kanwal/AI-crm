@@ -260,6 +260,13 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
       appt.teacherID?._id || appt.teacherID || "unknown",
     );
     const teacherName = appt.teacherID?.name || "";
+    // A to-do assigned to several teachers carries teacherIDs; it should appear in
+    // each of their day-view columns. tutorKey stays the primary teacher (week view
+    // / filters); teacherKeys lists every column this event belongs in.
+    const teacherKeys =
+      Array.isArray(appt.teacherIDs) && appt.teacherIDs.length
+        ? appt.teacherIDs.map((t) => String(t?._id ?? t))
+        : [teacherId];
     const color =
       appt.color ||
       appt.calendarServiceID?.color ||
@@ -457,6 +464,10 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
       extendedProps: {
         tutorName: teacherName,
         tutorKey: teacherId,
+        teacherKeys,
+        // To-dos (created from the To-Do catalog, stored as type "event") render
+        // with a distinct task treatment rather than the lesson/booking block.
+        isTodo: Boolean(appt.todoID) || appt.type === "event",
         status: appt.status,
         effectiveStatus,
         color: isCancelled ? "hsl(var(--muted-foreground))" : isCompleted ? color : color,
@@ -1193,6 +1204,69 @@ function showGroupEventTooltip(e, props, raw) {
   positionTooltip(e);
 }
 
+function showTodoTooltip(e, props, raw) {
+  const tip = getTooltipEl();
+
+  const teacherNames =
+    Array.isArray(raw.teacherIDs) && raw.teacherIDs.length
+      ? raw.teacherIDs.map((t) => t?.name).filter(Boolean)
+      : props.tutorName
+        ? [props.tutorName]
+        : [];
+
+  const fmt = (d) =>
+    d
+      ? new Date(d).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        })
+      : "";
+  const timeRange = raw.startDateTime
+    ? `${fmt(raw.startDateTime)} – ${fmt(raw.endDateTime)}`
+    : "";
+
+  const status = props.effectiveStatus || raw.status || "scheduled";
+  const statusColors = {
+    scheduled: "#3b82f6",
+    completed: "#22c55e",
+    cancelled_no_charge: "#6b7280",
+    cancelled_charged: "#ef4444",
+    no_show_no_charge: "#f97316",
+    no_show_charged: "#f97316",
+  };
+  const statusColor = statusColors[status] || "#6b7280";
+  const statusLabel = status.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+
+  const divider = `<div style="border-top:1px solid hsl(var(--border));margin:6px 0"></div>`;
+  const section = (label, value) =>
+    value
+      ? `<div style="display:flex;justify-content:space-between;gap:12px;margin:2px 0">
+      <span style="color:hsl(var(--muted-foreground));white-space:nowrap">${label}</span>
+      <span style="font-weight:600;text-align:right">${value}</span>
+    </div>`
+      : "";
+
+  tip.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;font-weight:700;font-size:12px;margin-bottom:2px">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${props.color || "var(--studio-primary)"};flex-shrink:0"></span>
+      ${raw.title || "To-do"}
+      <span style="color:hsl(var(--muted-foreground));font-weight:600;font-size:10px">· To-do</span>
+    </div>
+    ${divider}
+    ${section(teacherNames.length > 1 ? "Assigned to" : "Assigned", teacherNames.join(", "))}
+    ${section("When", timeRange)}
+    ${divider}
+    <div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+      <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${statusColor};flex-shrink:0"></span>
+      <span style="font-weight:600">${statusLabel}</span>
+    </div>
+  `;
+
+  tip.style.display = "block";
+  positionTooltip(e);
+}
+
 function showEventTooltip(e, props) {
   const tip = getTooltipEl();
   const raw = props.raw || {};
@@ -1200,6 +1274,13 @@ function showEventTooltip(e, props) {
   // Group classes get their own roster-style tooltip.
   if (props.eventType === "lesson") {
     showGroupEventTooltip(e, props, raw);
+    return;
+  }
+
+  // To-dos are staff tasks — no customer, service, or payment. Show the task,
+  // who it's assigned to, when, and its status.
+  if (props.isTodo) {
+    showTodoTooltip(e, props, raw);
     return;
   }
 
@@ -1383,6 +1464,7 @@ function AppointmentTimedEventRows({ event, compact = false }) {
     paymentCollected,
     coveredByMembership,
     studentCount: studentCountProp,
+    isTodo,
   } = ep;
   const cancelled =
     effectiveStatus === "cancelled_no_charge" ||
@@ -1418,7 +1500,9 @@ function AppointmentTimedEventRows({ event, compact = false }) {
       ? customerNames[0]
       : null;
 
-  const teacherLine = [serviceCode, tutorName].filter(Boolean).join(" — ");
+  // A to-do's column already identifies the teacher, so the secondary line is
+  // dropped rather than repeating the (primary) teacher's name in every column.
+  const teacherLine = isTodo ? "" : [serviceCode, tutorName].filter(Boolean).join(" — ");
 
   const studentCount =
     studentCountProp ??
@@ -1433,9 +1517,11 @@ function AppointmentTimedEventRows({ event, compact = false }) {
     return `${remaining}/${totalSessions}`;
   })();
 
-  const primaryLabel = isGroupClass
-    ? event.title || "Group class"
-    : firstCustomer;
+  const primaryLabel = isTodo
+    ? event.title || "To-do"
+    : isGroupClass
+      ? event.title || "Group class"
+      : firstCustomer;
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-px overflow-hidden">
@@ -1457,6 +1543,7 @@ function AppointmentTimedEventRows({ event, compact = false }) {
           {timeRange && durationLabel ? ` (${durationLabel})` : durationLabel}
         </div>
       )}
+      {!isTodo && (
       <div
         className={`flex items-center gap-1 shrink-0 mt-auto min-w-0 pt-px ${compact ? "flex-nowrap overflow-hidden pr-[54px]" : "flex-wrap"}`}
       >
@@ -1497,6 +1584,7 @@ function AppointmentTimedEventRows({ event, compact = false }) {
           </span>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -1847,6 +1935,18 @@ function TimedEventsOverflowPopover({ events, style, onClose, onEventClick }) {
 
 const UNASSIGNED_KEY = "__unassigned__";
 
+// Which teacher columns an event belongs to. Multi-teacher to-dos list every
+// assignee in teacherKeys; everything else falls back to its single tutorKey.
+function eventTutorKeys(event) {
+  const keys = event.extendedProps?.teacherKeys;
+  if (Array.isArray(keys) && keys.length) return keys;
+  return [event.extendedProps?.tutorKey || "unknown"];
+}
+
+function eventBelongsToTutor(event, tutorKey) {
+  return eventTutorKeys(event).includes(tutorKey);
+}
+
 function deriveTutorsFromEvents(events, passedTutors) {
   if (passedTutors.length > 0) return passedTutors;
   const seen = {};
@@ -1920,10 +2020,9 @@ function TutorDayCalendar({
   const byTutorTimed = useMemo(() => {
     const map = {};
     effectiveTutors.forEach((tutor) => {
-      const filtered = visibleDayTimedEvents.filter((event) => {
-        const key = event.extendedProps?.tutorKey || "unknown";
-        return key === tutor.key;
-      });
+      const filtered = visibleDayTimedEvents.filter((event) =>
+        eventBelongsToTutor(event, tutor.key),
+      );
       map[tutor.key] = layoutOverlappingEvents(filtered);
     });
     return map;
@@ -1932,10 +2031,9 @@ function TutorDayCalendar({
   const byTutorAllDay = useMemo(() => {
     const map = {};
     effectiveTutors.forEach((tutor) => {
-      map[tutor.key] = dayAllDayEvents.filter((event) => {
-        const key = event.extendedProps?.tutorKey || "unknown";
-        return key === tutor.key;
-      });
+      map[tutor.key] = dayAllDayEvents.filter((event) =>
+        eventBelongsToTutor(event, tutor.key),
+      );
     });
     return map;
   }, [dayAllDayEvents, effectiveTutors]);
@@ -1994,9 +2092,8 @@ function TutorDayCalendar({
             <div className="flex" style={{ minWidth: effectiveTutors.length * MIN_COL_WIDTH }}>
           {effectiveTutors.map((tutor, idx) => {
             const todayCount =
-              dayTimedEvents.filter(
-                (e) => (e.extendedProps?.tutorKey || "unknown") === tutor.key,
-              ).length + (byTutorAllDay[tutor.key]?.length ?? 0);
+              dayTimedEvents.filter((e) => eventBelongsToTutor(e, tutor.key))
+                .length + (byTutorAllDay[tutor.key]?.length ?? 0);
             const weekCount = weekCountByTutor[tutor.key] ?? 0;
             return (
               <div
@@ -2202,6 +2299,20 @@ function TutorDayCalendar({
                 const effectiveStatus = event.extendedProps?.effectiveStatus;
                 const isCancelledEvent = effectiveStatus === "cancelled_no_charge" || effectiveStatus === "cancelled_charged";
                 const isCompletedEvent = effectiveStatus === "completed";
+                const isTodo = event.extendedProps?.isTodo;
+
+                // To-dos get a task treatment (dashed outline + diagonal hatch, no
+                // left stripe) so they never read as a lesson/booking block.
+                const baseBg = isTodo
+                  ? `color-mix(in srgb, ${accentColor} 12%, hsl(var(--card)))`
+                  : `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`;
+                const hoverBg = isTodo
+                  ? `color-mix(in srgb, ${accentColor} 20%, hsl(var(--card)))`
+                  : `color-mix(in srgb, ${accentColor} 38%, hsl(var(--card)))`;
+                const hatch = `repeating-linear-gradient(45deg, color-mix(in srgb, ${accentColor} 20%, transparent) 0, color-mix(in srgb, ${accentColor} 20%, transparent) 5px, transparent 5px, transparent 11px)`;
+                const shapeStyle = isTodo
+                  ? { border: `1.5px dashed ${accentColor}`, backgroundColor: baseBg, backgroundImage: hatch }
+                  : { borderLeft: `3px solid ${accentColor}`, backgroundColor: baseBg };
 
                 return (
                   <div
@@ -2221,15 +2332,14 @@ function TutorDayCalendar({
                       minHeight: height,
                       left: "2px",
                       width: "calc(100% - 4px)",
-                      borderLeft: `3px solid ${accentColor}`,
-                      backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
+                      ...shapeStyle,
                       boxShadow: "0 1px 3px hsl(var(--foreground)/0.06)",
                       zIndex: 10,
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.boxShadow = `0 4px 12px ${accentColor}40`;
                       e.currentTarget.style.zIndex = "20";
-                      e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 38%, hsl(var(--card)))`;
+                      e.currentTarget.style.backgroundColor = hoverBg;
                       e.currentTarget.style.transform = "scaleX(1.01)";
                       showEventTooltip(e, event.extendedProps || {});
                     }}
@@ -2237,11 +2347,24 @@ function TutorDayCalendar({
                     onMouseLeave={(e) => {
                       e.currentTarget.style.boxShadow = "0 1px 3px hsl(var(--foreground)/0.06)";
                       e.currentTarget.style.zIndex = "10";
-                      e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`;
+                      e.currentTarget.style.backgroundColor = baseBg;
                       e.currentTarget.style.transform = "scaleX(1)";
                       hideEventTooltip();
                     }}
                   >
+                    {isTodo && (
+                      <span
+                        className="absolute top-0.5 left-0.5 z-10 inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] shrink-0"
+                        style={{ backgroundColor: accentColor }}
+                        title="To-do"
+                      >
+                        <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="1.5,6.2 3.2,8 6,4.4" />
+                          <line x1="7.5" y1="4" x2="10.5" y2="4" />
+                          <line x1="7.5" y1="7.5" x2="10.5" y2="7.5" />
+                        </svg>
+                      </span>
+                    )}
                     {isCompletedEvent && (
                       <span
                         className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shrink-0"
@@ -2252,7 +2375,7 @@ function TutorDayCalendar({
                         </svg>
                       </span>
                     )}
-                    <div className="h-full min-h-0 flex flex-col overflow-hidden px-1.5 py-0.5 gap-[1px] box-border">
+                    <div className={`h-full min-h-0 flex flex-col overflow-hidden py-0.5 gap-[1px] box-border ${isTodo ? "pl-5 pr-1.5" : "px-1.5"}`}>
                       <AppointmentTimedEventRows event={event} />
                     </div>
                   </div>
@@ -3101,7 +3224,7 @@ export default function CalendarPage() {
       );
     }
     if (selectedTeacherId) {
-      result = result.filter((e) => e.extendedProps?.tutorKey === selectedTeacherId);
+      result = result.filter((e) => eventBelongsToTutor(e, selectedTeacherId));
     }
     return result;
   }, [events, statusFilter, selectedTeacherId]);
