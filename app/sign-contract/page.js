@@ -18,7 +18,7 @@ function SignContractContent() {
   const [agreed, setAgreed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const baseUrl = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL) || 'http://localhost:8080'
+  const baseUrl = ((typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL) || 'http://localhost:8080').replace(/\/$/, '')
 
   useEffect(() => {
     if (!contractId || !token) {

@@ -5,9 +5,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import RoleEditor from './RoleEditor'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { getToken } from '@/lib/auth'
+import { getApiBaseUrl } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'
+const API_BASE = getApiBaseUrl()
 
 function deepClonePermissions(schema) {
   if (!schema) return {}
