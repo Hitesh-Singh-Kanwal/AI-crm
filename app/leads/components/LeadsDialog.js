@@ -28,6 +28,22 @@ const bookingStatusOptions = [
   { value: 'Booked', label: 'Booked' },
 ]
 
+const emptyLead = {
+  name: '',
+  email: '',
+  phoneNumber: '',
+  location: '',
+  stage: 'new',
+  bookingStatus: 'Not Booked',
+  assignedAiAgent: '',
+  assignedHumanAgent: '',
+  isEscalated: false,
+  callbackDate: '',
+  notes: '',
+}
+
+const toDateInputValue = (value) => (value ? String(value).slice(0, 10) : '')
+
 export default function LeadsDialog({
   open,
   onClose,
@@ -50,21 +66,11 @@ export default function LeadsDialog({
     if (initialLeadId && leads && leads.length > 0) {
       const found = leads.find((l) => l._id === initialLeadId)
       if (found) {
-        setEditingLead({ ...found })
+        setEditingLead({ ...found, callbackDate: toDateInputValue(found.callbackDate), notes: found.notes || '' })
         setMode(viewOnly ? 'view' : 'edit')
       }
     } else {
-      setEditingLead({
-        name: '',
-        email: '',
-        phoneNumber: '',
-        location: '',
-        stage: 'new',
-        bookingStatus: 'Not Booked',
-        assignedAiAgent: '',
-        assignedHumanAgent: '',
-        isEscalated: false,
-      })
+      setEditingLead({ ...emptyLead })
       setMode('create')
     }
   }, [open, initialLeadId, leads, viewOnly])
@@ -75,17 +81,7 @@ export default function LeadsDialog({
   }
 
   function openCreate() {
-    setEditingLead({
-      name: '',
-      email: '',
-      phoneNumber: '',
-      location: '',
-      stage: 'new',
-      bookingStatus: 'Not Booked',
-      assignedAiAgent: '',
-      assignedHumanAgent: '',
-      isEscalated: false,
-    })
+    setEditingLead({ ...emptyLead })
     setMode('create')
   }
 
@@ -123,6 +119,8 @@ export default function LeadsDialog({
           assignedAiAgent: editingLead.assignedAiAgent || '',
           assignedHumanAgent: editingLead.assignedHumanAgent || '',
           isEscalated: editingLead.isEscalated || false,
+          callbackDate: editingLead.callbackDate || null,
+          notes: editingLead.notes || '',
         })
         if (result.success) {
           toast.success({ title: 'Saved', message: 'Lead updated successfully' })
@@ -133,7 +131,11 @@ export default function LeadsDialog({
           toast.error({ title: 'Save failed', message: result.error || 'Unable to update lead' })
         }
       } else {
-        const payload = { ...editingLead, organisationID: user?.organisationID }
+        const payload = {
+          ...editingLead,
+          organisationID: user?.organisationID,
+          callbackDate: editingLead.callbackDate || undefined,
+        }
         const result = await api.post('/api/lead', payload)
         if (result.success) {
           toast.success({ title: 'Created', message: 'Lead created successfully' })
@@ -263,6 +265,26 @@ export default function LeadsDialog({
                 onChange={(e) => setEditingLead({ ...editingLead, assignedHumanAgent: e.target.value })}
                 disabled={viewOnly}
                 placeholder="Human agent email/ID (optional)"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Callback Date</label>
+              <Input
+                type="date"
+                value={toDateInputValue(editingLead.callbackDate)}
+                onChange={(e) => setEditingLead({ ...editingLead, callbackDate: e.target.value })}
+                disabled={viewOnly}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1">Notes</label>
+              <textarea
+                value={editingLead.notes || ''}
+                onChange={(e) => setEditingLead({ ...editingLead, notes: e.target.value })}
+                disabled={viewOnly}
+                rows={3}
+                placeholder="Notes carry over to the customer when this lead is converted"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
               />
             </div>
             <div className="md:col-span-2">
