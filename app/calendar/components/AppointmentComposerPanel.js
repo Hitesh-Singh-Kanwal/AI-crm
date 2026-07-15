@@ -552,7 +552,15 @@ function EnrollmentServiceSelector({
             }
           }}
           options={activeEnrollments
-            .filter((e) => e.package)
+            .filter(
+              (e) =>
+                e.package &&
+                (e.package.services ?? []).some(
+                  (s) =>
+                    s.sessionsRemaining > 0 &&
+                    allServices.some((cat) => cat.serviceCode === s.serviceCode),
+                ),
+            )
             .map((e) => ({
               value: String(e._id),
               label: e.package.packageName || "Unnamed Package",
@@ -1855,7 +1863,6 @@ export default function AppointmentComposerPanel({
       ...prev,
       customer_id: "",
       customer_ids: [],
-      instructor_id: "",
       service_id: "",
       lesson_id: "",
       enrollment_id: "",

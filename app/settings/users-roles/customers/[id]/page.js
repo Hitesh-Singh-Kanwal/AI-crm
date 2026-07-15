@@ -1126,7 +1126,7 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
                             size="sm"
                             className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
                             onClick={() =>
-                              onPayInstallment({ plan, index: idx })
+                              onPayInstallment({ plan, index: idx, billingType })
                             }
                           >
                             Pay
@@ -1349,6 +1349,7 @@ function PayInstallmentDialog({
   onClose,
   plan,
   installmentIndex,
+  billingType,
   onSuccess,
 }) {
   const [method, setMethod] = useState("cash");
@@ -1357,6 +1358,7 @@ function PayInstallmentDialog({
   const toast = useToast();
   const { cloverReady } = useCloverConnection();
 
+  const amountEditable = billingType === "flexible";
   const installment = plan?.installments?.[installmentIndex];
   const payWithClover = method === "card" && cloverReady;
   const cloverNotConnected = method === "card" && !cloverReady;
@@ -1459,7 +1461,11 @@ function PayInstallmentDialog({
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+              readOnly={!amountEditable}
+              disabled={!amountEditable}
+              className={`h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary ${
+                amountEditable ? "" : "cursor-not-allowed opacity-70"
+              }`}
             />
           </FormField>
           <FormField label="Payment Method" required>
@@ -1487,15 +1493,17 @@ function PayInstallmentDialog({
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={saving}
-              onClick={handleSaveAmount}
-            >
-              Save
-            </Button>
+            {amountEditable && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={saving}
+                onClick={handleSaveAmount}
+              >
+                Save
+              </Button>
+            )}
             <Button
               type="submit"
               size="sm"
@@ -2387,6 +2395,7 @@ function PackagesTab({ customerID }) {
                                             setPayInstallTarget({
                                               plan,
                                               index: idx,
+                                              billingType: pkg.billingType,
                                             })
                                           }
                                         >
@@ -2432,6 +2441,7 @@ function PackagesTab({ customerID }) {
         onClose={() => setPayInstallTarget(null)}
         plan={payInstallTarget?.plan}
         installmentIndex={payInstallTarget?.index}
+        billingType={payInstallTarget?.billingType}
         onSuccess={load}
       />
 
@@ -4175,6 +4185,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         onClose={() => setPayInstallTarget(null)}
         plan={payInstallTarget?.plan}
         installmentIndex={payInstallTarget?.index}
+        billingType={payInstallTarget?.billingType}
         onSuccess={load}
       />
 
