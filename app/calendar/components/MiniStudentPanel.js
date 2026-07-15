@@ -812,9 +812,11 @@ export default function MiniStudentPanel({
     apptView === "past"
       ? privateAppts.filter((a) => new Date(a.startDateTime) < todayStart)
       : privateAppts.filter((a) => new Date(a.startDateTime) >= todayStart);
-  const visibleAppts = showGroups
-    ? [...visiblePrivate, ...groupAppts]
-    : visiblePrivate;
+  const visibleGroups =
+    apptView === "past"
+      ? groupAppts.filter((a) => new Date(a.startDateTime) < todayStart)
+      : groupAppts.filter((a) => new Date(a.startDateTime) >= todayStart);
+  const visibleAppts = showGroups ? visibleGroups : visiblePrivate;
 
   const sortedNotes = [...(customer?.notes || [])].sort((a, b) => {
     if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;

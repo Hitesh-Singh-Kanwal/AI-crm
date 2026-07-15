@@ -2,16 +2,26 @@
 
 import { create } from 'zustand'
 import { addEdge, applyEdgeChanges, applyNodeChanges } from '@xyflow/react'
-import { createDemoWorkflow } from '@/components/workflow/builder/mockWorkflowData'
+import { createBlankWorkflow } from '@/components/workflow/builder/mockWorkflowData'
 import {
   getDefaultConfig,
   getPaletteItem,
 } from '@/components/workflow/builder/constants'
 import { NODE_GAP_Y } from '@/components/workflow/builder/nodeHelpers'
+import {
+  getCategoryIdForPaletteType,
+  getPaletteUnlockMessage,
+  getWorkflowStepProgress,
+  isPaletteCategoryUnlocked,
+  nextWorkflowUnlockLatches,
+} from '@/lib/workflow-contact'
 
 const MAX_HISTORY = 40
 const DEFAULT_EDGE = {
   type: 'smoothstep',
+  selectable: true,
+  focusable: true,
+  deletable: true,
   style: { stroke: '#94a3b8', strokeWidth: 2 },
   pathOptions: { borderRadius: 20 },
 }
@@ -52,23 +62,56 @@ function createNodeFromPalette(paletteType, position) {
   }
 }
 
-const demo = createDemoWorkflow()
+function assertCanAddPaletteType(paletteType, nodes, latches) {
+  const progress = getWorkflowStepProgress(nodes, latches)
+  const categoryId = getCategoryIdForPaletteType(paletteType)
+  if (isPaletteCategoryUnlocked(categoryId, progress)) {
+    return { ok: true }
+  }
+  return {
+    ok: false,
+    error: getPaletteUnlockMessage(categoryId, progress) || 'Finish the previous step first.',
+  }
+}
+
+const blank = createBlankWorkflow()
 
 export const useWorkflowBuilderStore = create((set, get) => ({
   workflowId: null,
-  workflowName: demo.workflowName,
-  nodes: demo.nodes,
-  edges: demo.edges,
+  workflowName: blank.workflowName,
+  nodes: blank.nodes,
+  edges: blank.edges,
   selectedNodeId: null,
+  selectedEdgeId: null,
   sidebarCollapsed: false,
   propertiesPanelCollapsed: false,
   zoom: 100,
   isPublished: false,
   isActive: true,
   saveStatus: 'saved',
+  guidedCategory: 'all',
+  actionsUnlocked: false,
+  exitUnlocked: false,
   options: { forms: [], reasons: [], dynamicLists: [] },
   past: [],
   future: [],
+
+  setGuidedCategory: (guidedCategory) => set({ guidedCategory }),
+
+  syncWorkflowUnlocks: () => {
+    const state = get()
+    const next = nextWorkflowUnlockLatches(state.nodes, {
+      actionsUnlocked: state.actionsUnlocked,
+      exitUnlocked: state.exitUnlocked,
+    })
+    if (
+      next.actionsUnlocked === state.actionsUnlocked &&
+      next.exitUnlocked === state.exitUnlocked
+    ) {
+      return
+    }
+    set(next)
+  },
 
   pushHistory: () => {
     const state = get()
@@ -88,6 +131,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       past: past.slice(0, -1),
       future: [makeSnapshot(current), ...future],
       selectedNodeId: null,
+      selectedEdgeId: null,
       saveStatus: 'unsaved',
     })
   },
@@ -101,6 +145,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       past: [...past, makeSnapshot(current)],
       future: future.slice(1),
       selectedNodeId: null,
+      selectedEdgeId: null,
       saveStatus: 'unsaved',
     })
   },
@@ -121,6 +166,7 @@ export const useWorkflowBuilderStore = create((set, get) => ({
 
   /** Replace the whole canvas with a graph loaded from the API (or a blank/new flow). */
   loadWorkflowGraph: ({ workflowId = null, workflowName, nodes = [], edges = [], isActive = true }) => {
+    const latches = nextWorkflowUnlockLatches(nodes, { actionsUnlocked: false, exitUnlocked: false })
     set({
       workflowId,
       workflowName: workflowName ?? get().workflowName,
@@ -128,10 +174,14 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       edges,
       isActive,
       selectedNodeId: null,
+      selectedEdgeId: null,
       isPublished: false,
       saveStatus: 'saved',
       past: [],
       future: [],
+      actionsUnlocked: latches.actionsUnlocked,
+      exitUnlocked: latches.exitUnlocked,
+      guidedCategory: 'all',
     })
   },
 
@@ -162,7 +212,14 @@ export const useWorkflowBuilderStore = create((set, get) => ({
   setSelectedNodeId: (selectedNodeId) =>
     set({
       selectedNodeId,
+      selectedEdgeId: null,
       ...(selectedNodeId ? { propertiesPanelCollapsed: false } : {}),
+    }),
+
+  setSelectedEdgeId: (selectedEdgeId) =>
+    set({
+      selectedEdgeId,
+      selectedNodeId: null,
     }),
 
   setZoom: (zoom) => set({ zoom }),
@@ -181,9 +238,14 @@ export const useWorkflowBuilderStore = create((set, get) => ({
     const hasStructural = changes.some((c) => c.type === 'remove' || c.type === 'add')
     if (hasStructural) get().pushHistory()
 
+    const removedIds = new Set(
+      changes.filter((c) => c.type === 'remove').map((c) => c.id)
+    )
+    const selectedEdgeId = get().selectedEdgeId
     set({
       edges: applyEdgeChanges(changes, get().edges),
       saveStatus: 'unsaved',
+      ...(selectedEdgeId && removedIds.has(selectedEdgeId) ? { selectedEdgeId: null } : {}),
     })
   },
 
@@ -191,86 +253,137 @@ export const useWorkflowBuilderStore = create((set, get) => ({
     get().pushHistory()
     set({
       edges: addEdge({ ...connection, ...DEFAULT_EDGE }, get().edges),
+      selectedEdgeId: null,
       saveStatus: 'unsaved',
     })
   },
 
   addNodeAtPosition: (paletteType, position) => {
+    const state = get()
+    const latches = {
+      actionsUnlocked: state.actionsUnlocked,
+      exitUnlocked: state.exitUnlocked,
+    }
+    const gate = assertCanAddPaletteType(paletteType, state.nodes, latches)
+    if (!gate.ok) return { ok: false, error: gate.error }
+
     const node = createNodeFromPalette(paletteType, position)
-    if (!node) return null
+    if (!node) return { ok: false, error: 'Unknown step type.' }
+
+    const nextNodes = [...state.nodes, node]
+    const nextLatches = nextWorkflowUnlockLatches(nextNodes, latches)
 
     get().pushHistory()
     set({
-      nodes: [...get().nodes, node],
+      nodes: nextNodes,
       selectedNodeId: node.id,
+      selectedEdgeId: null,
       propertiesPanelCollapsed: false,
       saveStatus: 'unsaved',
+      ...nextLatches,
     })
-    return node
+    return { ok: true, node }
   },
 
   addNodeToFlow: (paletteType) => {
-    const { nodes, edges, selectedNodeId } = get()
+    const { nodes, edges, actionsUnlocked, exitUnlocked } = get()
+    const latches = { actionsUnlocked, exitUnlocked }
     const item = getPaletteItem(paletteType)
-    if (!item) return null
+    if (!item) return { ok: false, error: 'Unknown step type.' }
+
+    const gate = assertCanAddPaletteType(paletteType, nodes, latches)
+    if (!gate.ok) return { ok: false, error: gate.error }
 
     if (item.category === 'trigger') {
       const existingTrigger = nodes.find((n) => n.data?.category === 'trigger')
       if (existingTrigger) {
         get().setSelectedNodeId(existingTrigger.id)
-        return existingTrigger
+        return { ok: true, node: existingTrigger }
       }
     }
 
-    let anchor = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) : null
-    if (!anchor) {
-      anchor = nodes.reduce((lowest, node) => {
+    if (paletteType === 'exit_logic' || item.category === 'exit') {
+      const existingExit = nodes.find(
+        (n) => n.data?.paletteType === 'exit_logic' || n.data?.category === 'exit'
+      )
+      if (existingExit) {
+        get().setSelectedNodeId(existingExit.id)
+        return { ok: true, node: existingExit }
+      }
+    }
+
+    // Prefer the end of the chain (no outgoing edges); else the lowest node on the board.
+    const sources = new Set(edges.map((e) => e.source))
+    const chainEnds = nodes.filter(
+      (n) =>
+        !sources.has(n.id) &&
+        n.data?.category !== 'exit' &&
+        n.data?.paletteType !== 'exit_logic'
+    )
+    const lastNode =
+      chainEnds.sort((a, b) => b.position.y - a.position.y)[0] ||
+      nodes.reduce((lowest, node) => {
         if (!lowest || node.position.y > lowest.position.y) return node
         return lowest
       }, null)
-    }
 
-    const position = anchor
-      ? { x: anchor.position.x, y: anchor.position.y + NODE_GAP_Y + 60 }
+    const position = lastNode
+      ? { x: lastNode.position.x, y: lastNode.position.y + NODE_GAP_Y + 60 }
       : { x: 360, y: 40 }
 
     const node = createNodeFromPalette(paletteType, position)
-    if (!node) return null
+    if (!node) return { ok: false, error: 'Unknown step type.' }
 
     const newEdges = [...edges]
-    if (anchor) {
+    const canConnectFromLast =
+      lastNode &&
+      lastNode.data?.category !== 'exit' &&
+      lastNode.data?.paletteType !== 'exit_logic'
+    if (canConnectFromLast) {
       newEdges.push({
-        id: `e-${anchor.id}-${node.id}`,
-        source: anchor.id,
+        id: `e-${lastNode.id}-${node.id}`,
+        source: lastNode.id,
         target: node.id,
         ...DEFAULT_EDGE,
       })
     }
 
+    const nextNodes = [...nodes, node]
+    const nextLatches = nextWorkflowUnlockLatches(nextNodes, latches)
+
     get().pushHistory()
     set({
-      nodes: [...nodes, node],
+      nodes: nextNodes,
       edges: newEdges,
       selectedNodeId: node.id,
+      selectedEdgeId: null,
       propertiesPanelCollapsed: false,
       saveStatus: 'unsaved',
+      ...nextLatches,
     })
-    return node
+    return { ok: true, node }
   },
 
   updateNodeConfig: (nodeId, partialConfig) => {
+    const state = get()
+    const nextNodes = state.nodes.map((node) => {
+      if (node.id !== nodeId) return node
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          config: { ...node.data.config, ...partialConfig },
+        },
+      }
+    })
+    const nextLatches = nextWorkflowUnlockLatches(nextNodes, {
+      actionsUnlocked: state.actionsUnlocked,
+      exitUnlocked: state.exitUnlocked,
+    })
     set({
-      nodes: get().nodes.map((node) => {
-        if (node.id !== nodeId) return node
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            config: { ...node.data.config, ...partialConfig },
-          },
-        }
-      }),
+      nodes: nextNodes,
       saveStatus: 'unsaved',
+      ...nextLatches,
     })
   },
 
@@ -288,6 +401,18 @@ export const useWorkflowBuilderStore = create((set, get) => ({
     set({ saveStatus: 'unsaved' })
   },
 
+  deleteSelectedEdge: () => {
+    const { selectedEdgeId, edges } = get()
+    if (!selectedEdgeId) return
+
+    get().pushHistory()
+    set({
+      edges: edges.filter((e) => e.id !== selectedEdgeId),
+      selectedEdgeId: null,
+      saveStatus: 'unsaved',
+    })
+  },
+
   deleteSelectedNode: () => {
     const { selectedNodeId, nodes, edges } = get()
     if (!selectedNodeId) return
@@ -297,8 +422,14 @@ export const useWorkflowBuilderStore = create((set, get) => ({
       nodes: nodes.filter((n) => n.id !== selectedNodeId),
       edges: edges.filter((e) => e.source !== selectedNodeId && e.target !== selectedNodeId),
       selectedNodeId: null,
+      selectedEdgeId: null,
       saveStatus: 'unsaved',
     })
+  },
+
+  /** Only disconnects a selected wire. Steps are never removed here. */
+  deleteSelection: () => {
+    get().deleteSelectedEdge()
   },
 
   saveWorkflow: () => {
@@ -315,17 +446,22 @@ export const useWorkflowBuilderStore = create((set, get) => ({
     }, 800)
   },
 
-  resetToDemo: () => {
-    const fresh = createDemoWorkflow()
+  resetToBlank: () => {
+    const fresh = createBlankWorkflow()
     get().pushHistory()
     set({
+      workflowId: null,
       workflowName: fresh.workflowName,
       nodes: fresh.nodes,
       edges: fresh.edges,
       selectedNodeId: null,
+      selectedEdgeId: null,
       isPublished: false,
       isActive: true,
       saveStatus: 'unsaved',
+      guidedCategory: 'all',
+      actionsUnlocked: false,
+      exitUnlocked: false,
     })
   },
 }))

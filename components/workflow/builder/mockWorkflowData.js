@@ -1,4 +1,5 @@
 import { getDefaultConfig, getDefaultLabel } from '@/components/workflow/builder/constants'
+import { createDefaultContactConfig } from '@/lib/workflow-contact'
 
 const CENTER_X = 360
 
@@ -26,11 +27,11 @@ export const DEMO_WORKFLOW_NAME = 'New lead nurture automation'
 
 export function createDemoWorkflow() {
   const nodes = [
-    makeNode('node-trigger', 'form_submitted', 'trigger', CENTER_X, 20, {
-      event: 'form_submission',
-      isGenericForm: true,
-      formID: [],
-      reason: '',
+    makeNode('node-trigger', 'contact', 'trigger', CENTER_X, 20, {
+      ...createDefaultContactConfig({
+        audienceMode: 'all',
+        entityType: 'lead',
+      }),
     }),
     makeNode('node-email', 'send_email', 'action', CENTER_X, 200, {
       subject: 'Welcome to our studio!',
@@ -43,10 +44,9 @@ export function createDemoWorkflow() {
       message: 'Hi {{first_name}}, ready to book your first class?',
       leadStage: 'engaged',
     }),
-    makeNode('node-wait-2', 'wait', 'wait', CENTER_X, 740, { days: 1, hours: 0, minutes: 0 }),
-    makeNode('node-ai', 'ai_agent', 'ai', CENTER_X, 920, {
-      prompt: 'Call the lead, answer questions, and help them book a trial class.',
-      leadStage: 'engaged',
+    makeNode('node-exit', 'exit_logic', 'exit', CENTER_X, 740, {
+      successGoalStages: [],
+      exitRuleStages: [],
     }),
   ]
 
@@ -54,22 +54,13 @@ export function createDemoWorkflow() {
     { id: 'e-trigger-email', source: 'node-trigger', target: 'node-email', ...EDGE_STYLE },
     { id: 'e-email-wait1', source: 'node-email', target: 'node-wait-1', ...EDGE_STYLE },
     { id: 'e-wait1-sms', source: 'node-wait-1', target: 'node-sms', ...EDGE_STYLE },
-    { id: 'e-sms-wait2', source: 'node-sms', target: 'node-wait-2', ...EDGE_STYLE },
-    { id: 'e-wait2-ai', source: 'node-wait-2', target: 'node-ai', ...EDGE_STYLE },
+    { id: 'e-sms-exit', source: 'node-sms', target: 'node-exit', ...EDGE_STYLE },
   ]
 
   return { nodes, edges, workflowName: DEMO_WORKFLOW_NAME }
 }
 
-/** A fresh canvas with only a trigger, used when creating a brand-new workflow. */
+/** A fresh empty canvas — user builds Contact → Action → Exit themselves. */
 export function createBlankWorkflow() {
-  const nodes = [
-    makeNode('node-trigger', 'form_submitted', 'trigger', CENTER_X, 40, {
-      event: 'form_submission',
-      isGenericForm: true,
-      formID: [],
-      reason: '',
-    }),
-  ]
-  return { nodes, edges: [], workflowName: 'Untitled automation' }
+  return { nodes: [], edges: [], workflowName: 'Untitled automation' }
 }

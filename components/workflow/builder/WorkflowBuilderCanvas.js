@@ -8,6 +8,7 @@ import {
   MousePointer2,
   PanelLeft,
   PanelRight,
+  Unlink,
 } from 'lucide-react'
 import {
   Background,
@@ -24,6 +25,7 @@ import { cn } from '@/lib/utils'
 import { workflowNodeTypes } from '@/components/workflow/builder/nodes'
 import { getDragPayload } from '@/components/workflow/builder/WorkflowBuilderSidebar'
 import { useWorkflowBuilderStore } from '@/components/workflow/builder/workflowBuilderStore'
+import { toast } from 'sonner'
 
 function CanvasInner() {
   const reactFlowWrapper = useRef(null)
@@ -32,12 +34,14 @@ function CanvasInner() {
   const nodes = useWorkflowBuilderStore((s) => s.nodes)
   const edges = useWorkflowBuilderStore((s) => s.edges)
   const selectedNodeId = useWorkflowBuilderStore((s) => s.selectedNodeId)
+  const selectedEdgeId = useWorkflowBuilderStore((s) => s.selectedEdgeId)
   const onNodesChange = useWorkflowBuilderStore((s) => s.onNodesChange)
   const onEdgesChange = useWorkflowBuilderStore((s) => s.onEdgesChange)
   const onConnect = useWorkflowBuilderStore((s) => s.onConnect)
   const setSelectedNodeId = useWorkflowBuilderStore((s) => s.setSelectedNodeId)
+  const setSelectedEdgeId = useWorkflowBuilderStore((s) => s.setSelectedEdgeId)
   const addNodeAtPosition = useWorkflowBuilderStore((s) => s.addNodeAtPosition)
-  const deleteSelectedNode = useWorkflowBuilderStore((s) => s.deleteSelectedNode)
+  const deleteSelectedEdge = useWorkflowBuilderStore((s) => s.deleteSelectedEdge)
   const onNodeDragStop = useWorkflowBuilderStore((s) => s.onNodeDragStop)
   const setZoom = useWorkflowBuilderStore((s) => s.setZoom)
   const sidebarCollapsed = useWorkflowBuilderStore((s) => s.sidebarCollapsed)
@@ -64,20 +68,32 @@ function CanvasInner() {
         y: event.clientY,
       })
 
-      addNodeAtPosition(payload.paletteType, position)
+      const result = addNodeAtPosition(payload.paletteType, position)
+      if (result && result.ok === false) {
+        toast.error(result.error || 'Cannot add this step yet.')
+      }
     },
     [addNodeAtPosition, screenToFlowPosition]
   )
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null)
-  }, [setSelectedNodeId])
+    setSelectedEdgeId(null)
+  }, [setSelectedEdgeId, setSelectedNodeId])
 
   const onNodeClick = useCallback(
     (_, node) => {
       setSelectedNodeId(node.id)
     },
     [setSelectedNodeId]
+  )
+
+  const onEdgeClick = useCallback(
+    (event, edge) => {
+      event.stopPropagation()
+      setSelectedEdgeId(edge.id)
+    },
+    [setSelectedEdgeId]
   )
 
   const onMoveEnd = useCallback(() => {
@@ -97,33 +113,61 @@ function CanvasInner() {
     return () => clearTimeout(timer)
   }, [fitView, getZoom, setZoom, sidebarCollapsed, propertiesPanelCollapsed])
 
+  // Delete / Backspace only disconnects a selected wire — never removes a step.
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        const tag = event.target?.tagName?.toLowerCase()
-        if (tag === 'input' || tag === 'textarea' || tag === 'select') return
-        if (selectedNodeId) {
-          event.preventDefault()
-          deleteSelectedNode()
-        }
-      }
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return
+      const tag = event.target?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+      if (!selectedEdgeId) return
+      event.preventDefault()
+      deleteSelectedEdge()
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [deleteSelectedNode, selectedNodeId])
+  }, [deleteSelectedEdge, selectedEdgeId])
 
   const nodesWithSelection = nodes.map((node) => ({
     ...node,
     selected: node.id === selectedNodeId,
   }))
 
+  const edgesWithSelection = edges.map((edge) => {
+    const selected = edge.id === selectedEdgeId
+    return {
+      ...edge,
+      selectable: true,
+      deletable: true,
+      selected,
+      style: {
+        ...(edge.style || {}),
+        stroke: selected ? 'var(--studio-primary, #6366f1)' : '#94a3b8',
+        strokeWidth: selected ? 3 : 2,
+      },
+      animated: selected,
+    }
+  })
+
   return (
     <div ref={reactFlowWrapper} className="relative h-full w-full">
-      <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/95 px-3 py-1.5 text-[11px] text-muted-foreground shadow-sm backdrop-blur dark:border-border dark:bg-card/95">
-        <MousePointer2 className="h-3.5 w-3.5" />
-        Click a step to edit · Drag to rearrange
+      <div className="pointer-events-none absolute left-4 top-4 z-10 flex max-w-[min(100%,22rem)] items-center gap-2 rounded-full border border-slate-200/80 bg-white/95 px-3 py-1.5 text-[11px] text-muted-foreground shadow-sm backdrop-blur dark:border-border dark:bg-card/95">
+        <MousePointer2 className="h-3.5 w-3.5 shrink-0" />
+        Click a wire to disconnect · Steps stay on the board to reconnect anywhere
       </div>
+
+      {selectedEdgeId ? (
+        <div className="absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-slate-200/80 bg-white/95 p-1 shadow-sm backdrop-blur dark:border-border dark:bg-card/95">
+          <button
+            type="button"
+            onClick={deleteSelectedEdge}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold text-destructive transition-colors hover:bg-destructive/10"
+          >
+            <Unlink className="h-3.5 w-3.5" />
+            Disconnect wire
+          </button>
+        </div>
+      ) : null}
 
       <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/95 p-1 shadow-sm backdrop-blur dark:border-border dark:bg-card/95">
         <button
@@ -179,7 +223,7 @@ function CanvasInner() {
 
       <ReactFlow
         nodes={nodesWithSelection}
-        edges={edges}
+        edges={edgesWithSelection}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -187,14 +231,20 @@ function CanvasInner() {
         onDragOver={onDragOver}
         onPaneClick={onPaneClick}
         onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
         onNodeDragStop={onNodeDragStop}
         onMoveEnd={onMoveEnd}
         nodeTypes={workflowNodeTypes}
         fitView
         minZoom={0.25}
         maxZoom={1.75}
+        edgesFocusable
+        elementsSelectable
+        deleteKeyCode={null}
         defaultEdgeOptions={{
           type: 'smoothstep',
+          selectable: true,
+          deletable: true,
           style: { stroke: '#94a3b8', strokeWidth: 2 },
           pathOptions: { borderRadius: 20 },
         }}
@@ -224,6 +274,7 @@ function CanvasInner() {
             if (category === 'condition') return '#6366f1'
             if (category === 'wait') return '#f59e0b'
             if (category === 'ai') return '#8b5cf6'
+            if (category === 'exit') return '#f43f5e'
             return '#0ea5e9'
           }}
           nodeStrokeColor={(node) => {

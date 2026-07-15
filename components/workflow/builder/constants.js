@@ -1,55 +1,39 @@
 import {
   Clock,
-  GitBranch,
+  Flag,
   Globe,
   ListTodo,
   Mail,
   MessageSquare,
   Sparkles,
-  Split,
   Tag,
-  Target,
-  Zap,
+  Users,
 } from 'lucide-react'
+import { createDefaultContactConfig } from '@/lib/workflow-contact'
+
+export const WORKFLOW_BUILDER_STEPS = [
+  { id: 'contact', label: 'Contact', paletteCategory: 'contact' },
+  { id: 'action', label: 'Action', paletteCategory: 'actions' },
+  { id: 'exit', label: 'Exit logic', paletteCategory: 'exit' },
+]
 
 export const PALETTE_CATEGORIES = [
   {
-    id: 'triggers',
-    label: 'Triggers',
+    id: 'contact',
+    label: 'Contact',
     items: [
       {
-        type: 'form_submitted',
-        label: 'Form Submitted',
-        description: 'Start when someone submits a form',
-        icon: Zap,
-        category: 'trigger',
-      },
-      {
-        type: 'contact_created',
-        label: 'Contact Created',
-        description: 'Start when a new contact is added',
-        icon: Sparkles,
-        category: 'trigger',
-      },
-      {
-        type: 'appointment_booked',
-        label: 'Appointment Booked',
-        description: 'Start when a class or lesson is booked',
-        icon: Target,
-        category: 'trigger',
-      },
-      {
-        type: 'tag_added',
-        label: 'Tag Added',
-        description: 'Start when a specific tag is applied',
-        icon: Tag,
+        type: 'contact',
+        label: 'Contact',
+        description: 'Choose leads or customers, then all or a dynamic list, and apply filters',
+        icon: Users,
         category: 'trigger',
       },
     ],
   },
   {
     id: 'actions',
-    label: 'Actions',
+    label: 'Action',
     items: [
       {
         type: 'send_email',
@@ -73,6 +57,13 @@ export const PALETTE_CATEGORIES = [
         category: 'ai',
       },
       {
+        type: 'wait',
+        label: 'Wait',
+        description: 'Pause the automation for a set time',
+        icon: Clock,
+        category: 'wait',
+      },
+      {
         type: 'add_tag',
         label: 'Add Tag',
         description: 'Tag the contact for segmentation',
@@ -93,41 +84,73 @@ export const PALETTE_CATEGORIES = [
         icon: Globe,
         category: 'action',
       },
-      {
-        type: 'wait',
-        label: 'Wait',
-        description: 'Pause the automation for a set time',
-        icon: Clock,
-        category: 'wait',
-      },
     ],
   },
   {
-    id: 'logic',
-    label: 'Logic',
+    id: 'exit',
+    label: 'Exit logic',
     items: [
       {
-        type: 'if_else',
-        label: 'If / Else',
-        description: 'Branch based on contact data',
-        icon: GitBranch,
-        category: 'condition',
-      },
-      {
-        type: 'split',
-        label: 'Split',
-        description: 'Split contacts into multiple paths',
-        icon: Split,
-        category: 'condition',
-      },
-      {
-        type: 'goal',
-        label: 'Goal',
-        description: 'Mark when a contact reaches a goal',
-        icon: Target,
-        category: 'action',
+        type: 'exit_logic',
+        label: 'Exit logic',
+        description: 'Stop the workflow when a goal is met or the contact leaves the audience',
+        icon: Flag,
+        category: 'exit',
       },
     ],
+  },
+]
+
+/** Kept for loading older workflows that used event-based trigger nodes. */
+const LEGACY_PALETTE_ITEMS = [
+  {
+    type: 'form_submitted',
+    label: 'Form Submitted',
+    description: 'Start when someone submits a form',
+    icon: Users,
+    category: 'trigger',
+  },
+  {
+    type: 'contact_created',
+    label: 'Contact',
+    description: 'Contact audience setup',
+    icon: Users,
+    category: 'trigger',
+  },
+  {
+    type: 'appointment_booked',
+    label: 'Appointment Booked',
+    description: 'Start when a class or lesson is booked',
+    icon: Flag,
+    category: 'trigger',
+  },
+  {
+    type: 'tag_added',
+    label: 'Tag Added',
+    description: 'Start when a specific tag is applied',
+    icon: Tag,
+    category: 'trigger',
+  },
+  {
+    type: 'if_else',
+    label: 'If / Else',
+    description: 'Branch based on contact data',
+    icon: Flag,
+    category: 'condition',
+  },
+  {
+    type: 'split',
+    label: 'Split',
+    description: 'Split contacts into multiple paths',
+    icon: Flag,
+    category: 'condition',
+  },
+  {
+    type: 'goal',
+    label: 'Goal',
+    description: 'Mark when a contact reaches a goal',
+    icon: Flag,
+    category: 'action',
   },
 ]
 
@@ -136,7 +159,7 @@ export const NODE_STYLES = {
     accent: 'border-emerald-500/40 bg-emerald-500/5',
     iconBg: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
     badge: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-    badgeLabel: 'Trigger',
+    badgeLabel: 'Contact',
   },
   action: {
     accent: 'border-border bg-card',
@@ -162,6 +185,12 @@ export const NODE_STYLES = {
     badge: 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
     badgeLabel: 'AI',
   },
+  exit: {
+    accent: 'border-rose-500/40 bg-rose-500/5',
+    iconBg: 'bg-rose-500/15 text-rose-600 dark:text-rose-400',
+    badge: 'bg-rose-500/15 text-rose-700 dark:text-rose-300',
+    badgeLabel: 'Exit',
+  },
 }
 
 export const LEAD_STAGE_OPTIONS = [
@@ -178,13 +207,30 @@ export const LEAD_STAGE_OPTIONS = [
 
 const SCHEDULE_DEFAULTS = { leadStage: 'new', description: '' }
 
+const CONTACT_TRIGGER_DEFAULTS = {
+  ...createDefaultContactConfig(),
+  exitType: 'none',
+}
+
 export const DEFAULT_NODE_CONFIG = {
-  // Triggers map to the backend `event` (+ form targeting for form submissions).
-  form_submitted: { event: 'form_submission', formID: [], isGenericForm: false, reason: '' },
-  contact_created: { event: 'custom_event', formID: [], isGenericForm: false, reason: '' },
-  appointment_booked: { event: 'custom_event', formID: [], isGenericForm: false, reason: '' },
-  tag_added: { event: 'lead_updated', formID: [], isGenericForm: false, reason: '' },
-  // Actions that the backend can persist as steps.
+  contact: { ...CONTACT_TRIGGER_DEFAULTS },
+  form_submitted: {
+    ...CONTACT_TRIGGER_DEFAULTS,
+    triggerType: 'event',
+    event: 'form_submission',
+    isGenericForm: true,
+  },
+  contact_created: { ...CONTACT_TRIGGER_DEFAULTS },
+  appointment_booked: {
+    ...CONTACT_TRIGGER_DEFAULTS,
+    triggerType: 'event',
+    event: 'custom_event',
+  },
+  tag_added: {
+    ...CONTACT_TRIGGER_DEFAULTS,
+    triggerType: 'event',
+    event: 'lead_updated',
+  },
   send_email: {
     ...SCHEDULE_DEFAULTS,
     emailType: 'message',
@@ -197,7 +243,6 @@ export const DEFAULT_NODE_CONFIG = {
   send_sms: { ...SCHEDULE_DEFAULTS, message: '', smsTemplateId: '', smsTemplateName: '' },
   ai_agent: { ...SCHEDULE_DEFAULTS, prompt: '' },
   wait: { days: 1, hours: 0, minutes: 0 },
-  // Visual-only steps (not stored by the current backend).
   add_tag: { tagName: '' },
   create_task: { title: '', assignee: 'Unassigned' },
   webhook: { url: '', method: 'POST' },
@@ -205,6 +250,10 @@ export const DEFAULT_NODE_CONFIG = {
   split: { paths: 2 },
   goal: { name: 'Conversion goal' },
   ai_chatbot: { greeting: 'Hi! How can I help you today?' },
+  exit_logic: {
+    successGoalStages: [],
+    exitRuleStages: [],
+  },
 }
 
 /** Builder node types that map directly to a backend workflow step. */
@@ -212,6 +261,7 @@ export const BACKEND_STEP_NODES = new Set(['send_email', 'send_sms', 'ai_agent']
 
 /** Node types the backend can understand (trigger config, schedulable steps, and wait offsets). */
 export const BACKEND_AWARE_NODES = new Set([
+  'contact',
   'form_submitted',
   'contact_created',
   'appointment_booked',
@@ -258,7 +308,7 @@ export function getPaletteItem(type) {
     const item = category.items.find((i) => i.type === type)
     if (item) return item
   }
-  return null
+  return LEGACY_PALETTE_ITEMS.find((i) => i.type === type) || null
 }
 
 export function getDefaultLabel(type) {

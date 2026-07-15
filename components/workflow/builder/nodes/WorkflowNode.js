@@ -18,9 +18,32 @@ function NodeSummary({ paletteType, config }) {
   if (paletteType === 'wait') {
     return (
       <p className="mt-1 text-[11px] text-muted-foreground">
-        Wait {config?.duration ?? 1} {config?.unit ?? 'days'}
+        Wait {config?.days || 0}d {config?.hours || 0}h {config?.minutes || 0}m
       </p>
     )
+  }
+  if (paletteType === 'exit_logic') {
+    const goalCount = Array.isArray(config?.successGoalStages) ? config.successGoalStages.length : 0
+    const exitCount = Array.isArray(config?.exitRuleStages) ? config.exitRuleStages.length : 0
+    if (!goalCount && !exitCount) {
+      return <p className="mt-1 truncate text-[11px] text-muted-foreground">Set goal & exit stages</p>
+    }
+    const parts = []
+    if (goalCount) parts.push(`Goal ${goalCount}`)
+    if (exitCount) parts.push(`Exit ${exitCount}`)
+    return <p className="mt-1 truncate text-[11px] text-muted-foreground">{parts.join(' · ')}</p>
+  }
+  if (paletteType === 'contact' || paletteType === 'contact_created' || paletteType === 'form_submitted') {
+    if (config?.listName) {
+      return <p className="mt-1 truncate text-[11px] text-muted-foreground">{config.listName}</p>
+    }
+    if (config?.audienceMode === 'all') {
+      return (
+        <p className="mt-1 truncate text-[11px] text-muted-foreground">
+          All {config?.entityType === 'customer' ? 'customers' : 'leads'}
+        </p>
+      )
+    }
   }
   if (paletteType === 'create_task' && config?.title) {
     return <p className="mt-1 truncate text-[11px] text-muted-foreground">{config.title}</p>
@@ -40,6 +63,7 @@ export default function WorkflowNode({ id, data, selected }) {
   const Icon = paletteItem?.icon
   const styles = NODE_STYLES[data.category] || NODE_STYLES.action
   const isTrigger = data.category === 'trigger'
+  const isExit = data.category === 'exit' || data.paletteType === 'exit_logic'
 
   return (
     <div
@@ -78,7 +102,7 @@ export default function WorkflowNode({ id, data, selected }) {
         </div>
       </div>
 
-      <Handle type="source" position={Position.Bottom} className={handleClass} />
+      {!isExit && <Handle type="source" position={Position.Bottom} className={handleClass} />}
     </div>
   )
 }

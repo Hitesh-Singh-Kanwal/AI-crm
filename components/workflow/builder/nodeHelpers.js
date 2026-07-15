@@ -1,27 +1,8 @@
 import { getPaletteItem } from '@/components/workflow/builder/constants'
-
-const EVENT_LABELS = {
-  non: 'Manual / no automatic trigger',
-  form_submission: 'When a form is submitted',
-  lead_updated: 'When a lead is updated',
-  lead_moved_stage: 'When a lead changes stage',
-  custom_event: 'On a custom event',
-}
+import { summarizeContactConfig } from '@/lib/workflow-contact'
 
 function triggerSummary(config) {
-  if (config.triggerType === 'list' || config.listID) {
-    const listLabel = config.listName || 'Dynamic list'
-    const reasonLabel = config.reason ? config.reason : 'Default (any reason)'
-    return `When lead enters list · ${listLabel} · ${reasonLabel}`
-  }
-
-  const eventLabel = EVENT_LABELS[config.event] || 'Choose what starts this workflow'
-  if (config.event === 'form_submission') {
-    if (config.isGenericForm) return `${eventLabel} · All forms`
-    const count = Array.isArray(config.formID) ? config.formID.length : 0
-    return count > 0 ? `${eventLabel} · ${count} form${count === 1 ? '' : 's'}` : `${eventLabel} · pick a form`
-  }
-  return eventLabel
+  return summarizeContactConfig(config)
 }
 
 function waitSummary(config) {
@@ -35,8 +16,18 @@ function waitSummary(config) {
   return parts.length ? `Wait ${parts.join(' ')}` : 'No delay'
 }
 
+function exitSummary(config) {
+  const goalCount = Array.isArray(config.successGoalStages) ? config.successGoalStages.length : 0
+  const exitCount = Array.isArray(config.exitRuleStages) ? config.exitRuleStages.length : 0
+  const parts = []
+  if (goalCount) parts.push(`Goal · ${goalCount} stage${goalCount === 1 ? '' : 's'}`)
+  if (exitCount) parts.push(`Exit · ${exitCount} stage${exitCount === 1 ? '' : 's'}`)
+  return parts.length ? parts.join(' · ') : 'Set success goal and exit stages'
+}
+
 export function getNodeSummary(paletteType, config = {}) {
   switch (paletteType) {
+    case 'contact':
     case 'form_submitted':
     case 'contact_created':
     case 'appointment_booked':
@@ -50,6 +41,8 @@ export function getNodeSummary(paletteType, config = {}) {
       return config.prompt ? config.prompt : 'AI call to the lead'
     case 'wait':
       return waitSummary(config)
+    case 'exit_logic':
+      return exitSummary(config)
     case 'if_else':
       return `${humanizeField(config.field)} ${humanizeOperator(config.operator)} ${config.value || '…'}`
     case 'create_task':
@@ -79,13 +72,12 @@ function humanizeField(field) {
 
 function humanizeOperator(op) {
   const map = {
-    equals: 'is',
-    not_equals: 'is not',
+    equals: 'equals',
+    not_equals: 'does not equal',
     contains: 'contains',
     is_empty: 'is empty',
   }
-  return map[op] || op || 'is'
+  return map[op] || op || ''
 }
 
-export const NODE_WIDTH = 300
-export const NODE_GAP_Y = 100
+export const NODE_GAP_Y = 160

@@ -25,13 +25,12 @@ import {
 } from '@/components/workflow/builder/constants'
 import { getNodeSummary } from '@/components/workflow/builder/nodeHelpers'
 import { useWorkflowBuilderStore } from '@/components/workflow/builder/workflowBuilderStore'
-import { WORKFLOW_EVENT_OPTIONS, isWorkflowEventFormSubmission } from '@/lib/workflow-normalize'
-import WorkflowFormMultiSelect from '@/components/workflow/WorkflowFormMultiSelect'
+import WorkflowContactStep from '@/components/workflow/WorkflowContactStep'
+import WorkflowStageMultiSelect from '@/components/workflow/WorkflowStageMultiSelect'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import Switch from '@/components/ui/switch'
 
 function Field({ label, hint, children, className }) {
   return (
@@ -141,166 +140,59 @@ function ScheduleFields({ config, onChange }) {
   )
 }
 
-function TriggerFields({ config, onChange, options }) {
-  const forms = options?.forms || []
-  const reasons = options?.reasons || []
-  const dynamicLists = options?.dynamicLists || []
-  const triggerType = config.triggerType === 'list' || config.listID ? 'list' : 'event'
-  const isFormSubmission = isWorkflowEventFormSubmission(config.event)
-
+function TriggerFields({ config, onChange }) {
   return (
     <div className="space-y-4">
-      <Field label="Trigger type">
-        <div className="inline-flex w-full rounded-lg border border-border bg-background p-1">
-          {[
-            { value: 'event', label: 'Event-based' },
-            { value: 'list', label: 'List-based' },
-          ].map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() =>
-                onChange(
-                  opt.value === 'list'
-                    ? {
-                        triggerType: 'list',
-                        listID: config.listID || '',
-                        listName: config.listName || '',
-                        reason: config.reason || '',
-                      }
-                    : {
-                        triggerType: 'event',
-                        listID: '',
-                        listName: '',
-                        event: config.event || 'non',
-                      }
-                )
-              }
-              className={cn(
-                'flex-1 rounded-md px-3 py-2 text-[12px] font-semibold',
-                triggerType === opt.value
-                  ? 'bg-[var(--studio-primary)] text-white'
-                  : 'text-muted-foreground hover:bg-muted/40'
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </Field>
+      <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+        Step 1 · Contact — pick leads or customers, then everyone or a dynamic list, then filters.
+      </div>
+      <WorkflowContactStep config={config} onChange={onChange} compact />
+    </div>
+  )
+}
 
-      {triggerType === 'list' ? (
-        <>
-          <Field label="Dynamic list">
-            <select
-              value={config.listID || ''}
-              onChange={(e) => {
-                const nextId = e.target.value
-                const selected = dynamicLists.find((l) => (l?._id || l?.id) === nextId)
-                onChange({
-                  listID: nextId,
-                  listName: selected?.name || '',
-                })
-              }}
-              className={selectClass}
-            >
-              <option value="">Select a list</option>
-              {dynamicLists.map((list) => {
-                const id = list?._id || list?.id
-                return (
-                  <option key={id} value={id}>
-                    {list?.name || 'Untitled list'}
-                  </option>
-                )
-              })}
-            </select>
-          </Field>
+function ExitLogicFields({ config, onChange }) {
+  const successGoalStages = Array.isArray(config.successGoalStages) ? config.successGoalStages : []
+  const exitRuleStages = Array.isArray(config.exitRuleStages) ? config.exitRuleStages : []
 
-          <Field label="Reason" hint="optional">
-            <Input
-              value={config.reason || ''}
-              onChange={(e) => onChange({ reason: e.target.value })}
-              placeholder="Default (any reason)"
-              className={inputClass}
-            />
-          </Field>
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+        Step 3 · Exit logic — set a success goal and/or workflow exit stages. Each uses its own stage
+        list.
+      </div>
 
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Leave reason blank for the default fallback. You can create multiple workflows for the same list with
-            different reasons.
+      <div className="space-y-3 rounded-xl border border-border bg-background p-3">
+        <div>
+          <div className="text-[13px] font-semibold text-foreground">Success goal</div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Mark the workflow successful when the contact reaches any of these stages.
           </p>
-        </>
-      ) : (
-        <>
-          <Field label="Trigger event">
-            <select
-              value={config.event || 'non'}
-              onChange={(e) => {
-                const next = e.target.value
-                onChange(
-                  isWorkflowEventFormSubmission(next)
-                    ? { event: next, triggerType: 'event' }
-                    : { event: next, formID: [], isGenericForm: false, reason: '', triggerType: 'event' }
-                )
-              }}
-              className={selectClass}
-            >
-              {WORKFLOW_EVENT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </Field>
+        </div>
+        <Field label="Stages" hint="multi-select">
+          <WorkflowStageMultiSelect
+            values={successGoalStages}
+            onChange={(next) => onChange({ successGoalStages: next })}
+            placeholder="Select success goal stages…"
+          />
+        </Field>
+      </div>
 
-          {isFormSubmission && (
-            <>
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2.5">
-                <div className="min-w-0">
-                  <p className="text-[12px] font-semibold text-foreground">Apply to all forms</p>
-                  <p className="text-[11px] text-muted-foreground">Trigger on any form submission</p>
-                </div>
-                <Switch
-                  checked={Boolean(config.isGenericForm)}
-                  onCheckedChange={(checked) =>
-                    onChange({ isGenericForm: checked, ...(checked ? { formID: [] } : {}) })
-                  }
-                />
-              </div>
-
-              {!config.isGenericForm && (
-                <Field label="Forms">
-                  <WorkflowFormMultiSelect
-                    values={config.formID || []}
-                    onChange={(formID) => onChange({ formID })}
-                    forms={forms}
-                    compact
-                    placeholder="Select forms…"
-                  />
-                </Field>
-              )}
-
-              <Field label="Reason (optional)">
-                <select
-                  value={config.reason || ''}
-                  onChange={(e) => onChange({ reason: e.target.value })}
-                  className={selectClass}
-                >
-                  <option value="">Any reason</option>
-                  {reasons.map((r) => {
-                    const value = r?.reasonCode || r?.name || ''
-                    return (
-                      <option key={value || r?._id} value={value}>
-                        {r?.name || value}
-                      </option>
-                    )
-                  })}
-                </select>
-              </Field>
-            </>
-          )}
-        </>
-      )}
+      <div className="space-y-3 rounded-xl border border-border bg-background p-3">
+        <div>
+          <div className="text-[13px] font-semibold text-foreground">Workflow exit rule</div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Remove the contact from this workflow when they reach any of these stages.
+          </p>
+        </div>
+        <Field label="Stages" hint="multi-select">
+          <WorkflowStageMultiSelect
+            values={exitRuleStages}
+            onChange={(next) => onChange({ exitRuleStages: next })}
+            placeholder="Select exit rule stages…"
+          />
+        </Field>
+      </div>
     </div>
   )
 }
@@ -496,8 +388,11 @@ function UnsupportedNote() {
 }
 
 function NodeConfigFields({ paletteType, category, config, onChange, options }) {
-  if (category === 'trigger') {
-    return <TriggerFields config={config} onChange={onChange} options={options} />
+  if (category === 'trigger' || paletteType === 'contact') {
+    return <TriggerFields config={config} onChange={onChange} />
+  }
+  if (paletteType === 'exit_logic' || category === 'exit') {
+    return <ExitLogicFields config={config} onChange={onChange} />
   }
   switch (paletteType) {
     case 'send_email':

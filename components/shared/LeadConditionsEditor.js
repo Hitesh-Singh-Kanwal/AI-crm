@@ -71,6 +71,7 @@ function FieldPicker({
   step,
   selectedGroupId,
   hiddenFields,
+  mutedFields = new Set(),
   catalog,
   entityType = 'lead',
 }) {
@@ -108,29 +109,61 @@ function FieldPicker({
             ? catalog.FILTER_GROUPS.map((g) => {
                 const available = g.fields.filter((f) => !hiddenFields.has(f.value))
                 if (available.length === 0) return null
+                const allMuted = available.every((f) => mutedFields.has(f.value))
                 return (
                   <button
                     key={g.id}
                     type="button"
-                    onClick={() => onPickGroup(g.id)}
-                    className="flex w-full flex-col rounded-xl px-3 py-2.5 text-left hover:bg-muted/40"
+                    disabled={allMuted}
+                    onClick={() => !allMuted && onPickGroup(g.id)}
+                    className={cn(
+                      'flex w-full flex-col rounded-xl px-3 py-2.5 text-left',
+                      allMuted
+                        ? 'cursor-not-allowed opacity-45'
+                        : 'hover:bg-muted/40'
+                    )}
                   >
-                    <span className="text-[13px] font-semibold text-foreground">{g.label}</span>
-                    <span className="text-[11px] text-muted-foreground">{g.description}</span>
+                    <span
+                      className={cn(
+                        'text-[13px] font-semibold',
+                        allMuted ? 'text-muted-foreground' : 'text-foreground'
+                      )}
+                    >
+                      {g.label}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {allMuted ? 'All fields already used in base conditions' : g.description}
+                    </span>
                   </button>
                 )
               })
-            : fields.map((field) => (
-                <button
-                  key={field.value}
-                  type="button"
-                  onClick={() => onPickField(field.value)}
-                  className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left hover:bg-muted/40"
-                >
-                  <span className="text-[13px] font-medium text-foreground">{field.label}</span>
-                  <span className="text-[11px] text-muted-foreground">{field.value}</span>
-                </button>
-              ))}
+            : fields.map((field) => {
+                const muted = mutedFields.has(field.value)
+                return (
+                  <button
+                    key={field.value}
+                    type="button"
+                    disabled={muted}
+                    onClick={() => !muted && onPickField(field.value)}
+                    className={cn(
+                      'flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left',
+                      muted ? 'cursor-not-allowed opacity-45' : 'hover:bg-muted/40'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'text-[13px] font-medium',
+                        muted ? 'text-muted-foreground' : 'text-foreground'
+                      )}
+                    >
+                      {field.label}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {muted ? 'In base · unavailable' : field.value}
+                    </span>
+                  </button>
+                )
+              })}
         </div>
 
         {step === 'field' ? (
@@ -169,6 +202,8 @@ function ConditionRow({
   canRemove,
   catalog,
   entityType,
+  readOnly = false,
+  mutedFields = new Set(),
 }) {
   const operators = catalog.getOperatorsForFilterField(condition.field)
   const fields = getFieldsForCondition(catalog, catalogGroupId, condition.field)
@@ -177,6 +212,19 @@ function ConditionRow({
     return (
       <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-3 text-[12px] text-muted-foreground">
         Select a filter field to continue.
+      </div>
+    )
+  }
+
+  if (readOnly) {
+    return (
+      <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5">
+        <div className="text-[12px] font-medium leading-snug text-foreground">
+          {summarizeCondition(condition, context, entityType)}
+        </div>
+        <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Base · read-only
+        </div>
       </div>
     )
   }
@@ -204,14 +252,15 @@ function ConditionRow({
           value={condition.field}
           onChange={(e) => {
             const field = e.target.value
+            if (mutedFields.has(field)) return
             const operator = catalog.getDefaultOperatorForField(field)
             onChange({ field, operator, value: catalog.emptyValueForOperator(operator) })
           }}
           className="h-9 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-[var(--studio-primary)]"
         >
           {fields.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
+            <option key={f.value} value={f.value} disabled={mutedFields.has(f.value)}>
+              {mutedFields.has(f.value) ? `${f.label} (in base)` : f.label}
             </option>
           ))}
         </select>
@@ -257,6 +306,11 @@ export default function LeadConditionsEditor({
   memberships = [],
   loadingOptions = false,
   hiddenFields = new Set(),
+  mutedFields = new Set(),
+  readOnly = false,
+  emptyTitle,
+  emptyDescription,
+  addGroupLabel = 'Add filter group',
 }) {
   const catalog = useMemo(() => getCatalog(entityType), [entityType])
   const context = useMemo(
@@ -269,14 +323,20 @@ export default function LeadConditionsEditor({
 
   const rows = useMemo(() => (Array.isArray(groups) ? groups : []), [groups])
 
-  const patchGroups = (next) => onChangeGroups?.(next)
+  const patchGroups = (next) => {
+    if (readOnly) return
+    onChangeGroups?.(next)
+  }
 
   const openNewGroupPicker = () => {
+    if (readOnly) return
     setPicker({ mode: 'new-group', step: 'group', selectedGroupId: '' })
   }
 
   const openAddFilterPicker = (groupIndex) => {
+    if (readOnly) return
     const group = rows[groupIndex]
+    if (group?.locked) return
     const catalogGroupId =
       group?.catalogGroupId || findCatalogGroupIdForField(group?.conditions?.[0]?.field, entityType)
     setPicker({
@@ -299,7 +359,8 @@ export default function LeadConditionsEditor({
   }
 
   const handlePickField = (fieldValue) => {
-    if (!picker) return
+    if (!picker || readOnly) return
+    if (mutedFields.has(fieldValue)) return
     const operator = catalog.getDefaultOperatorForField(fieldValue)
     const condition = createEmptyCondition({
       field: fieldValue,
@@ -314,6 +375,7 @@ export default function LeadConditionsEditor({
         createEmptyConditionGroup({
           catalogGroupId: picker.selectedGroupId,
           logic: 'AND',
+          locked: false,
           conditions: [condition],
         }),
       ])
@@ -337,10 +399,12 @@ export default function LeadConditionsEditor({
   }
 
   const updateGroup = (index, patch) => {
+    if (readOnly || rows[index]?.locked) return
     patchGroups(rows.map((g, i) => (i === index ? { ...g, ...patch } : g)))
   }
 
   const updateCondition = (groupIndex, conditionIndex, patch) => {
+    if (readOnly || rows[groupIndex]?.locked) return
     patchGroups(
       rows.map((g, i) => {
         if (i !== groupIndex) return g
@@ -353,6 +417,7 @@ export default function LeadConditionsEditor({
   }
 
   const removeCondition = (groupIndex, conditionIndex) => {
+    if (readOnly || rows[groupIndex]?.locked) return
     const group = rows[groupIndex]
     const nextConditions = (group.conditions || []).filter((_, i) => i !== conditionIndex)
     if (nextConditions.length === 0) {
@@ -363,14 +428,18 @@ export default function LeadConditionsEditor({
   }
 
   const removeGroup = (groupIndex) => {
+    if (readOnly || rows[groupIndex]?.locked) return
     patchGroups(rows.filter((_, i) => i !== groupIndex))
   }
 
   const duplicateGroup = (groupIndex) => {
+    if (readOnly) return
     const source = rows[groupIndex]
+    // Duplicates of locked list groups become editable extras.
     const copy = createEmptyConditionGroup({
       catalogGroupId: source.catalogGroupId,
       logic: source.logic,
+      locked: false,
       conditions: (source.conditions || []).map((c) =>
         createEmptyCondition({
           field: c.field,
@@ -389,22 +458,30 @@ export default function LeadConditionsEditor({
     <div className="space-y-4">
       {rows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center">
-          <div className="text-[13px] font-medium text-foreground">No filters yet</div>
-          <div className="mt-1 text-[12px] text-muted-foreground">
-            Choose a filter group, then pick a filter to start building this {entityLabel} list.
+          <div className="text-[13px] font-medium text-foreground">
+            {emptyTitle || (readOnly ? 'No base conditions' : 'No filters yet')}
           </div>
-          <button
-            type="button"
-            onClick={openNewGroupPicker}
-            className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--studio-primary)] px-3 text-[12px] font-semibold text-white hover:brightness-95"
-          >
-            <Plus className="h-4 w-4" />
-            Add filter group
-          </button>
+          <div className="mt-1 text-[12px] text-muted-foreground">
+            {emptyDescription ||
+              (readOnly
+                ? 'This dynamic list has no saved filters.'
+                : `Choose a filter group, then pick a filter to start building this ${entityLabel} list.`)}
+          </div>
+          {!readOnly ? (
+            <button
+              type="button"
+              onClick={openNewGroupPicker}
+              className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--studio-primary)] px-3 text-[12px] font-semibold text-white hover:brightness-95"
+            >
+              <Plus className="h-4 w-4" />
+              {addGroupLabel}
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-3">
           {rows.map((group, groupIndex) => {
+            const locked = readOnly || Boolean(group.locked)
             const catalogLabel =
               catalog.FILTER_GROUPS.find((g) => g.id === group.catalogGroupId)?.label ||
               group.catalogGroupId ||
@@ -413,32 +490,44 @@ export default function LeadConditionsEditor({
 
             return (
               <div key={group.id || groupIndex} className="space-y-3">
-                <div className="rounded-2xl border border-border bg-card">
+                <div
+                  className={cn(
+                    'rounded-2xl border bg-card',
+                    locked ? 'border-border/70 bg-muted/15' : 'border-border'
+                  )}
+                >
                   <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
                     <div>
-                      <div className="text-[13px] font-semibold text-foreground">
+                      <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-foreground">
                         Group {groupIndex + 1}
+                        {locked ? (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            {readOnly ? 'Base · read-only' : 'From list'}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="text-[11px] text-muted-foreground">{catalogLabel}</div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => duplicateGroup(groupIndex)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40"
-                        aria-label="Duplicate group"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeGroup(groupIndex)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40"
-                        aria-label="Delete group"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    {!readOnly && !group.locked ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => duplicateGroup(groupIndex)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40"
+                          aria-label="Duplicate group"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeGroup(groupIndex)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40"
+                          aria-label="Delete group"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="space-y-3 px-4 py-4">
@@ -451,25 +540,29 @@ export default function LeadConditionsEditor({
                           onRemove={() => removeCondition(groupIndex, conditionIndex)}
                           context={context}
                           loadingOptions={loadingOptions}
-                          canRemove={conditions.length > 1 || rows.length > 1}
+                          canRemove={!locked && (conditions.length > 1 || rows.length > 1)}
                           catalog={catalog}
                           entityType={entityType}
+                          readOnly={locked}
+                          mutedFields={mutedFields}
                         />
                         {conditionIndex === conditions.length - 1 ? (
-                          <div className="flex flex-wrap items-center gap-2 pl-1">
-                            <LogicPill
-                              value={group.logic || 'AND'}
-                              onChange={(logic) => updateGroup(groupIndex, { logic })}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => openAddFilterPicker(groupIndex)}
-                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground hover:bg-muted/40"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                              Add filter
-                            </button>
-                          </div>
+                          locked ? null : (
+                            <div className="flex flex-wrap items-center gap-2 pl-1">
+                              <LogicPill
+                                value={group.logic || 'AND'}
+                                onChange={(logic) => updateGroup(groupIndex, { logic })}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => openAddFilterPicker(groupIndex)}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground hover:bg-muted/40"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Add filter
+                              </button>
+                            </div>
+                          )
                         ) : (
                           <div className="pl-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                             {(group.logic || 'AND').toLowerCase()}
@@ -482,15 +575,23 @@ export default function LeadConditionsEditor({
 
                 {groupIndex === rows.length - 1 ? (
                   <div className="flex flex-wrap items-center gap-2 pl-1">
-                    <LogicPill value={conditionLogic} onChange={onChangeLogic} />
-                    <button
-                      type="button"
-                      onClick={openNewGroupPicker}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground hover:bg-muted/40"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add filter group
-                    </button>
+                    {readOnly ? (
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {(conditionLogic || 'AND').toLowerCase()}
+                      </div>
+                    ) : (
+                      <>
+                        <LogicPill value={conditionLogic} onChange={onChangeLogic} />
+                        <button
+                          type="button"
+                          onClick={openNewGroupPicker}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground hover:bg-muted/40"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          {addGroupLabel}
+                        </button>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="pl-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -503,17 +604,20 @@ export default function LeadConditionsEditor({
         </div>
       )}
 
-      <FieldPicker
-        open={Boolean(picker)}
-        onClose={closePicker}
-        step={picker?.step || 'group'}
-        selectedGroupId={picker?.selectedGroupId || ''}
-        onPickGroup={handlePickGroup}
-        onPickField={handlePickField}
-        hiddenFields={hiddenFields}
-        catalog={catalog}
-        entityType={entityType}
-      />
+      {!readOnly ? (
+        <FieldPicker
+          open={Boolean(picker)}
+          onClose={closePicker}
+          step={picker?.step || 'group'}
+          selectedGroupId={picker?.selectedGroupId || ''}
+          onPickGroup={handlePickGroup}
+          onPickField={handlePickField}
+          hiddenFields={hiddenFields}
+          mutedFields={mutedFields}
+          catalog={catalog}
+          entityType={entityType}
+        />
+      ) : null}
     </div>
   )
 }
