@@ -34,6 +34,11 @@ export default function RoleEditor({
 
   const showCompactHeader = embedded
 
+  // The "All Permissions" master (*) switch grants an action on every resource
+  // (enforced in the backend's roleMiddleware). Reflect that here: when a master
+  // column is on, the matching per-resource toggles show as on and locked.
+  const masterPerms = editingRole?.permissions?.master?.permissions?.['*'] || {}
+
   return (
     <div
       className={cn(
@@ -162,6 +167,8 @@ export default function RoleEditor({
                                     edit: false,
                                     delete: false,
                                   }
+                                const isMasterRow = sectionKey === 'master' && permKey === '*'
+                                const overridden = (action) => !isMasterRow && !!masterPerms[action]
                                 return (
                                   <TableRow
                                     key={permKey}
@@ -179,7 +186,10 @@ export default function RoleEditor({
                                     </TableCell>
                                     <TableCell className="text-center">
                                       <Switch
-                                        checked={!!current.read}
+                                        checked={!!current.read || overridden('read')}
+                                        disabled={overridden('read')}
+                                        title={overridden('read') ? 'Granted by All Permissions (Master)' : undefined}
+                                        className={cn(overridden('read') && 'opacity-70 cursor-not-allowed')}
                                         onChange={() =>
                                           togglePermission(sectionKey, permKey, 'read')
                                         }
@@ -187,7 +197,10 @@ export default function RoleEditor({
                                     </TableCell>
                                     <TableCell className="text-center">
                                       <Switch
-                                        checked={!!current.write}
+                                        checked={!!current.write || overridden('write')}
+                                        disabled={overridden('write')}
+                                        title={overridden('write') ? 'Granted by All Permissions (Master)' : undefined}
+                                        className={cn(overridden('write') && 'opacity-70 cursor-not-allowed')}
                                         onChange={() =>
                                           togglePermission(sectionKey, permKey, 'write')
                                         }
@@ -195,7 +208,10 @@ export default function RoleEditor({
                                     </TableCell>
                                     <TableCell className="text-center">
                                       <Switch
-                                        checked={!!current.edit}
+                                        checked={!!current.edit || overridden('edit')}
+                                        disabled={overridden('edit')}
+                                        title={overridden('edit') ? 'Granted by All Permissions (Master)' : undefined}
+                                        className={cn(overridden('edit') && 'opacity-70 cursor-not-allowed')}
                                         onChange={() =>
                                           togglePermission(sectionKey, permKey, 'edit')
                                         }
@@ -203,7 +219,10 @@ export default function RoleEditor({
                                     </TableCell>
                                     <TableCell className="text-center">
                                       <Switch
-                                        checked={!!current.delete}
+                                        checked={!!current.delete || overridden('delete')}
+                                        disabled={overridden('delete')}
+                                        title={overridden('delete') ? 'Granted by All Permissions (Master)' : undefined}
+                                        className={cn(overridden('delete') && 'opacity-70 cursor-not-allowed')}
                                         onChange={() =>
                                           togglePermission(sectionKey, permKey, 'delete')
                                         }
