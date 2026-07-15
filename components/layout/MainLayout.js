@@ -13,7 +13,6 @@ export default function MainLayout({ children, title, subtitle, mainClassName })
   const router = useRouter()
   const pathname = usePathname()
   const toast = useToast()
-  const [branchVersion, setBranchVersion] = useState(0)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isClient, setIsClient] = useState(false)
   const [isAuth, setIsAuth] = useState(false)
@@ -36,9 +35,12 @@ export default function MainLayout({ children, title, subtitle, mainClassName })
     }
   }, [pathname, router])
 
+  // Switching the active location changes what every location-scoped request
+  // returns, so reload the whole app — header, sidebar, and page all re-fetch
+  // under the new location rather than leaving stale data behind.
   useEffect(() => {
     const handleBranchChange = () => {
-      setBranchVersion((prev) => prev + 1)
+      window.location.reload()
     }
 
     window.addEventListener('branch-change', handleBranchChange)
@@ -67,7 +69,6 @@ export default function MainLayout({ children, title, subtitle, mainClassName })
             'flex-1 min-h-0 overflow-y-auto scrollbar-hide bg-background px-3 py-3 sm:px-4 sm:py-4 lg:px-2',
             mainClassName,
           )}
-          key={branchVersion}
         >
           {children}
         </main>

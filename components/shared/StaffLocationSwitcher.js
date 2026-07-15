@@ -37,8 +37,10 @@ export default function StaffLocationSwitcher() {
     setSelected(active)
     if (!getSelectedBranch() && active) {
       // Persist the auto-selected default so it survives a reload and so
-      // the api client's header stays in sync with what's shown here.
-      setSelectedBranch(active)
+      // the api client's header stays in sync with what's shown here. Silent:
+      // this is the already-effective location, not a user switch, so it must
+      // not trigger MainLayout's reload-on-branch-change.
+      setSelectedBranch(active, { silent: true })
     }
 
     loadLocationNames(assigned)
