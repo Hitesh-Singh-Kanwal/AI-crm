@@ -1,6 +1,8 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import MainLayout from '@/components/layout/MainLayout'
+import api from '@/lib/api'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
 import {
   AreaChart,
@@ -17,60 +19,29 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
-const kpiCards = [
-  { title: 'Total Revenue', value: '$247,280', trend: '15.3% from last period', trendType: 'up' },
-  { title: 'New Leads', value: '342', trend: '8.2% from last period', trendType: 'up' },
-  { title: 'Conversion Rate', value: '24.8%', trend: '3.1% from last period', trendType: 'up' },
-  { title: 'Avg Deal Size', value: '$2,453', trend: '0.8% from last period', trendType: 'down' },
+const DEFAULT_KPIS = [
+  { title: 'Total Revenue', value: '$0', trend: '—', trendType: 'up' },
+  { title: 'New Leads', value: '0', trend: '—', trendType: 'up' },
+  { title: 'Conversion Rate', value: '0.0%', trend: '—', trendType: 'up' },
+  { title: 'Avg Deal Size', value: '$0', trend: '—', trendType: 'up' },
 ]
 
-const revenueTrendData = [
-  { month: 'Jan', revenue: 35000, target: 30000 },
-  { month: 'Feb', revenue: 38000, target: 32000 },
-  { month: 'Mar', revenue: 42000, target: 35000 },
-  { month: 'Apr', revenue: 39000, target: 37000 },
-  { month: 'May', revenue: 45000, target: 40000 },
-  { month: 'Jun', revenue: 48000, target: 42000 },
-  { month: 'Jul', revenue: 43000, target: 41000 },
-  { month: 'Aug', revenue: 46000, target: 43000 },
-  { month: 'Sep', revenue: 49000, target: 45000 },
-  { month: 'Oct', revenue: 52000, target: 48000 },
-  { month: 'Nov', revenue: 50000, target: 47000 },
-  { month: 'Dec', revenue: 54000, target: 50000 },
+// Pie/legend colours kept from the original design; stages beyond five cycle.
+const PIPELINE_PALETTE = ['#FDBBD9', '#FB9BC7', '#FA6DAD', '#F72585', '#E12279']
+// The five hand-placed outside-label positions from the original layout.
+const PIPELINE_LABEL_POS = [
+  'absolute left-[48px] top-[20px] text-[14px] leading-[20px] text-muted-foreground',
+  'absolute left-[38px] top-[88px] text-[14px] leading-[20px] text-muted-foreground',
+  'absolute left-[66px] top-[146px] text-[14px] leading-[20px] text-muted-foreground',
+  'absolute right-[32px] top-[118px] text-[14px] leading-[20px] text-muted-foreground',
+  'absolute right-[70px] top-[20px] text-[14px] leading-[20px] text-muted-foreground',
 ]
 
-const pipelineData = [
-  { name: 'New Leads', value: 25, color: '#FDBBD9' },
-  { name: 'Contracted', value: 10, color: '#FB9BC7' },
-  { name: 'Qualified', value: 5, color: '#FA6DAD' },
-  { name: 'Proposal', value: 40, color: '#F72585' },
-  { name: 'Won', value: 20, color: '#E12279' },
-]
-
-const leadSourcesData = [
-  { name: 'Website', value: 450 },
-  { name: 'Referral', value: 320 },
-  { name: 'Social', value: 280 },
-  { name: 'Walk-in', value: 150 },
-  { name: 'Events', value: 110 },
-]
-
-const conversionFunnelData = [
-  { stage: 'Leads', count: 100, percentage: 100 },
-  { stage: 'Contracted', count: 250, percentage: 25 },
-  { stage: 'Qualified', count: 700, percentage: 70 },
-  { stage: 'Proposal', count: 400, percentage: 40 },
-  { stage: 'Won', count: 650, percentage: 65 },
-]
-
-const weeklyActivityData = [
-  { day: 'Mon', calls: 45, emails: 120, sms: 80 },
-  { day: 'Tue', calls: 52, emails: 135, sms: 90 },
-  { day: 'Wed', calls: 48, emails: 115, sms: 75 },
-  { day: 'Thu', calls: 61, emails: 140, sms: 95 },
-  { day: 'Fri', calls: 55, emails: 125, sms: 85 },
-  { day: 'Sat', calls: 30, emails: 70, sms: 50 },
-  { day: 'Sun', calls: 20, emails: 45, sms: 30 },
+const RANGE_PRESETS = [
+  { label: '7D', days: 7 },
+  { label: '30D', days: 30 },
+  { label: '90D', days: 90 },
+  { label: '12M', days: 365 },
 ]
 
 const chartCardClass =
@@ -91,9 +62,62 @@ function Trend({ type = 'up', text }) {
 }
 
 export default function ReportsPage() {
+  const [kpiCards, setKpiCards] = useState(DEFAULT_KPIS)
+  const [revenueTrendData, setRevenueTrendData] = useState([])
+  const [pipelineRaw, setPipelineRaw] = useState([])
+  const [leadSourcesData, setLeadSourcesData] = useState([])
+  const [weeklyActivityData, setWeeklyActivityData] = useState([])
+  const [conversionFunnelData, setConversionFunnelData] = useState([])
+  const [rangeDays, setRangeDays] = useState(30)
+
+  useEffect(() => {
+    let active = true
+    const to = new Date()
+    const from = new Date(to.getTime() - rangeDays * 24 * 60 * 60 * 1000)
+    const params = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() })
+    api.get(`/api/reports/overview?${params}`).then((res) => {
+      if (!active || !res.success || !res.data) return
+      const d = res.data
+      if (Array.isArray(d.kpis) && d.kpis.length) setKpiCards(d.kpis)
+      setRevenueTrendData(d.revenueTrend || [])
+      setPipelineRaw(d.pipeline || [])
+      setLeadSourcesData(d.leadSources || [])
+      setWeeklyActivityData(d.weeklyActivity || [])
+      setConversionFunnelData(d.conversionFunnel || [])
+    })
+    return () => { active = false }
+  }, [rangeDays])
+
+  const pipelineTotal = pipelineRaw.reduce((sum, p) => sum + (p.value || 0), 0)
+  const pipelineData = pipelineRaw.map((p, i) => ({
+    ...p,
+    color: PIPELINE_PALETTE[i % PIPELINE_PALETTE.length],
+    percentage: pipelineTotal ? Math.round((p.value / pipelineTotal) * 100) : 0,
+  }))
+
   return (
     <MainLayout title="Reports" subtitle="Track performance and gain insights">
       <div className="space-y-6 py-2">
+        <div className="flex justify-end">
+          <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
+            {RANGE_PRESETS.map((preset) => (
+              <button
+                key={preset.days}
+                type="button"
+                onClick={() => setRangeDays(preset.days)}
+                className={[
+                  'h-8 px-4 rounded-md text-[13px] font-medium transition-colors',
+                  rangeDays === preset.days
+                    ? 'bg-brand text-brand-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                ].join(' ')}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-4">
           {kpiCards.map((card) => (
             <div key={card.title} className={chartCardClass}>
@@ -148,12 +172,12 @@ export default function ReportsPage() {
                   </ResponsiveContainer>
                 </div>
 
-                {/* Figma-like outside labels */}
-                <div className="absolute left-[48px] top-[20px] text-[14px] leading-[20px] text-muted-foreground">New Leads: 25%</div>
-                <div className="absolute left-[38px] top-[88px] text-[14px] leading-[20px] text-muted-foreground">Contracted: 10%</div>
-                <div className="absolute left-[66px] top-[146px] text-[14px] leading-[20px] text-muted-foreground">Qualified: 5%</div>
-                <div className="absolute right-[32px] top-[118px] text-[14px] leading-[20px] text-muted-foreground">Proposal: 40%</div>
-                <div className="absolute right-[70px] top-[20px] text-[14px] leading-[20px] text-muted-foreground">Won: 20%</div>
+                {/* Outside labels — same positions as the original, filled from data */}
+                {pipelineData.slice(0, 5).map((item, i) => (
+                  <div key={item.name} className={PIPELINE_LABEL_POS[i]}>
+                    {item.name}: {item.percentage}%
+                  </div>
+                ))}
               </div>
 
               <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
@@ -236,5 +260,3 @@ export default function ReportsPage() {
     </MainLayout>
   )
 }
-
-
