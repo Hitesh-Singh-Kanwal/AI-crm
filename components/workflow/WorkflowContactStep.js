@@ -8,7 +8,10 @@ import {
   DYNAMIC_LIST_ENTITY_LABELS,
   DYNAMIC_LIST_ENTITY_TYPES,
 } from '@/lib/dynamic-list-constants'
-import { extractDynamicListsList } from '@/lib/dynamic-list-normalize'
+import {
+  buildConditionGroupsFromFlat,
+  extractDynamicListsList,
+} from '@/lib/dynamic-list-normalize'
 import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
 import {
   getContactConfigFromTrigger,
@@ -66,8 +69,50 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
   const [memberships, setMemberships] = useState([])
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [loadingLists, setLoadingLists] = useState(false)
+  const [loadingListConditions, setLoadingListConditions] = useState(false)
 
   const patch = (next) => onChange?.({ ...contact, ...next })
+
+  const applyListConditions = async (listId, listName) => {
+    const current = getContactConfigFromTrigger(config)
+    if (!listId) {
+      patch({
+        listID: '',
+        listName: '',
+        sourceListID: '',
+        audienceListId: '',
+        groups: (current.groups || []).filter((g) => !g.locked),
+        triggerType: 'list',
+      })
+      return
+    }
+
+    setLoadingListConditions(true)
+    const res = await api.get(`/api/dynamic-list/${listId}`)
+    setLoadingListConditions(false)
+
+    const list = res?.success ? res.data : null
+    const extras = (current.groups || []).filter((g) => !g.locked)
+    const listGroups = list
+      ? buildConditionGroupsFromFlat({
+          conditions: list.conditions,
+          groupLogics: list.groupLogics,
+          conditionGroups: list.conditionGroups,
+          entityType: list.entityType === 'customer' ? 'customer' : entityType,
+        }).map((group) => ({ ...group, locked: true }))
+      : []
+
+    patch({
+      listID: listId,
+      listName: list?.name || listName || '',
+      sourceListID: listId,
+      audienceListId: listId,
+      conditionLogic: list?.conditionLogic === 'OR' ? 'OR' : current.conditionLogic || 'AND',
+      groups: [...listGroups, ...extras],
+      triggerType: 'list',
+      event: 'non',
+    })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -167,6 +212,8 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
                   audienceMode: '',
                   listID: '',
                   listName: '',
+                  sourceListID: '',
+                  audienceListId: '',
                   groups: [],
                   conditionLogic: 'AND',
                   triggerType: 'list',
@@ -194,6 +241,9 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
                   audienceMode: 'all',
                   listID: '',
                   listName: '',
+                  sourceListID: '',
+                  audienceListId: '',
+                  groups: (contact.groups || []).filter((g) => !g.locked),
                   triggerType: 'list',
                   event: 'non',
                 })
@@ -221,19 +271,21 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
               </label>
               <select
                 value={contact.listID || ''}
-                disabled={loadingLists}
+                disabled={loadingLists || loadingListConditions}
                 onChange={(e) => {
                   const nextId = e.target.value
                   const selected = dynamicLists.find((l) => (l?._id || l?.id) === nextId)
-                  patch({
-                    listID: nextId,
-                    listName: selected?.name || '',
-                    triggerType: 'list',
-                  })
+                  applyListConditions(nextId, selected?.name || '')
                 }}
                 className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] outline-none focus:border-[var(--studio-primary)]"
               >
-                <option value="">{loadingLists ? 'Loading lists…' : 'Select a list'}</option>
+                <option value="">
+                  {loadingLists
+                    ? 'Loading lists…'
+                    : loadingListConditions
+                      ? 'Loading list filters…'
+                      : 'Select a list'}
+                </option>
                 {dynamicLists.map((list) => {
                   const id = list?._id || list?.id
                   return (
@@ -249,7 +301,11 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
                   No active {entityLabel} lists yet. Create one under Dynamic Lists, or choose “All{' '}
                   {entityLabel}” and apply filters.
                 </p>
-              ) : null}
+              ) : (
+                <p className="mt-2 text-[12px] text-muted-foreground">
+                  List filters load automatically and stay read-only. You can add more filters below.
+                </p>
+              )}
             </div>
           ) : null}
         </section>
@@ -261,33 +317,48 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
             <div className="text-[13px] font-semibold text-foreground">
               {compact ? 'Apply filters' : '3. Apply filters'}
               {contact.audienceMode === 'list' ? (
-                <span className="ml-2 text-[12px] font-medium text-muted-foreground">(optional)</span>
+                <span className="ml-2 text-[12px] font-medium text-muted-foreground">
+                  (list filters locked · extras optional)
+                </span>
               ) : (
                 <span className="ml-2 text-[12px] font-medium text-muted-foreground">(required)</span>
               )}
             </div>
             {!compact ? (
               <p className="mt-1 text-[12px] text-muted-foreground">
-                Same filter groups and and/or logic as Leads and Dynamic Lists.
+                {contact.audienceMode === 'list'
+                  ? 'Conditions from the selected list are shown as read-only. Add extra filter groups if needed.'
+                  : 'Same filter groups and and/or logic as Leads and Dynamic Lists.'}
               </p>
             ) : null}
           </div>
 
           <div className={cn(!compact && 'rounded-2xl border border-border bg-card p-4')}>
-            <LeadConditionsEditor
-              entityType={entityType}
-              groups={contact.groups || []}
-              conditionLogic={contact.conditionLogic || 'AND'}
-              onChangeGroups={(groups) => patch({ groups })}
-              onChangeLogic={(conditionLogic) => patch({ conditionLogic })}
-              leadReasons={leadReasons}
-              locations={locations}
-              forms={forms}
-              teachers={teachers}
-              tags={tags}
-              memberships={memberships}
-              loadingOptions={loadingOptions}
-            />
+            {loadingListConditions ? (
+              <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center text-[13px] text-muted-foreground">
+                Loading list filters…
+              </div>
+            ) : (
+              <LeadConditionsEditor
+                entityType={entityType}
+                groups={contact.groups || []}
+                conditionLogic={contact.conditionLogic || 'AND'}
+                onChangeGroups={(groups) => {
+                  // Always keep locked list groups first and intact.
+                  const locked = (contact.groups || []).filter((g) => g.locked)
+                  const nextExtras = (groups || []).filter((g) => !g.locked)
+                  patch({ groups: [...locked, ...nextExtras] })
+                }}
+                onChangeLogic={(conditionLogic) => patch({ conditionLogic })}
+                leadReasons={leadReasons}
+                locations={locations}
+                forms={forms}
+                teachers={teachers}
+                tags={tags}
+                memberships={memberships}
+                loadingOptions={loadingOptions}
+              />
+            )}
           </div>
         </section>
       ) : null}

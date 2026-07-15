@@ -169,6 +169,7 @@ function ConditionRow({
   canRemove,
   catalog,
   entityType,
+  readOnly = false,
 }) {
   const operators = catalog.getOperatorsForFilterField(condition.field)
   const fields = getFieldsForCondition(catalog, catalogGroupId, condition.field)
@@ -177,6 +178,19 @@ function ConditionRow({
     return (
       <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-3 text-[12px] text-muted-foreground">
         Select a filter field to continue.
+      </div>
+    )
+  }
+
+  if (readOnly) {
+    return (
+      <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5">
+        <div className="text-[12px] font-medium leading-snug text-foreground">
+          {summarizeCondition(condition, context, entityType)}
+        </div>
+        <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          From list · read-only
+        </div>
       </div>
     )
   }
@@ -277,6 +291,7 @@ export default function LeadConditionsEditor({
 
   const openAddFilterPicker = (groupIndex) => {
     const group = rows[groupIndex]
+    if (group?.locked) return
     const catalogGroupId =
       group?.catalogGroupId || findCatalogGroupIdForField(group?.conditions?.[0]?.field, entityType)
     setPicker({
@@ -337,10 +352,12 @@ export default function LeadConditionsEditor({
   }
 
   const updateGroup = (index, patch) => {
+    if (rows[index]?.locked) return
     patchGroups(rows.map((g, i) => (i === index ? { ...g, ...patch } : g)))
   }
 
   const updateCondition = (groupIndex, conditionIndex, patch) => {
+    if (rows[groupIndex]?.locked) return
     patchGroups(
       rows.map((g, i) => {
         if (i !== groupIndex) return g
@@ -353,6 +370,7 @@ export default function LeadConditionsEditor({
   }
 
   const removeCondition = (groupIndex, conditionIndex) => {
+    if (rows[groupIndex]?.locked) return
     const group = rows[groupIndex]
     const nextConditions = (group.conditions || []).filter((_, i) => i !== conditionIndex)
     if (nextConditions.length === 0) {
@@ -363,14 +381,17 @@ export default function LeadConditionsEditor({
   }
 
   const removeGroup = (groupIndex) => {
+    if (rows[groupIndex]?.locked) return
     patchGroups(rows.filter((_, i) => i !== groupIndex))
   }
 
   const duplicateGroup = (groupIndex) => {
     const source = rows[groupIndex]
+    // Duplicates of locked list groups become editable extras.
     const copy = createEmptyConditionGroup({
       catalogGroupId: source.catalogGroupId,
       logic: source.logic,
+      locked: false,
       conditions: (source.conditions || []).map((c) =>
         createEmptyCondition({
           field: c.field,
@@ -405,6 +426,7 @@ export default function LeadConditionsEditor({
       ) : (
         <div className="space-y-3">
           {rows.map((group, groupIndex) => {
+            const locked = Boolean(group.locked)
             const catalogLabel =
               catalog.FILTER_GROUPS.find((g) => g.id === group.catalogGroupId)?.label ||
               group.catalogGroupId ||
@@ -413,32 +435,56 @@ export default function LeadConditionsEditor({
 
             return (
               <div key={group.id || groupIndex} className="space-y-3">
-                <div className="rounded-2xl border border-border bg-card">
+                <div
+                  className={cn(
+                    'rounded-2xl border bg-card',
+                    locked ? 'border-border/70 bg-muted/15' : 'border-border'
+                  )}
+                >
                   <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
                     <div>
-                      <div className="text-[13px] font-semibold text-foreground">
+                      <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-foreground">
                         Group {groupIndex + 1}
+                        {locked ? (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            From list
+                          </span>
+                        ) : null}
                       </div>
                       <div className="text-[11px] text-muted-foreground">{catalogLabel}</div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => duplicateGroup(groupIndex)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40"
-                        aria-label="Duplicate group"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeGroup(groupIndex)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40"
-                        aria-label="Delete group"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    {locked ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => duplicateGroup(groupIndex)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40"
+                          aria-label="Duplicate as editable filter"
+                          title="Duplicate as editable filter"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => duplicateGroup(groupIndex)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40"
+                          aria-label="Duplicate group"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeGroup(groupIndex)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/40"
+                          aria-label="Delete group"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-3 px-4 py-4">
@@ -451,25 +497,28 @@ export default function LeadConditionsEditor({
                           onRemove={() => removeCondition(groupIndex, conditionIndex)}
                           context={context}
                           loadingOptions={loadingOptions}
-                          canRemove={conditions.length > 1 || rows.length > 1}
+                          canRemove={!locked && (conditions.length > 1 || rows.length > 1)}
                           catalog={catalog}
                           entityType={entityType}
+                          readOnly={locked}
                         />
                         {conditionIndex === conditions.length - 1 ? (
-                          <div className="flex flex-wrap items-center gap-2 pl-1">
-                            <LogicPill
-                              value={group.logic || 'AND'}
-                              onChange={(logic) => updateGroup(groupIndex, { logic })}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => openAddFilterPicker(groupIndex)}
-                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground hover:bg-muted/40"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                              Add filter
-                            </button>
-                          </div>
+                          locked ? null : (
+                            <div className="flex flex-wrap items-center gap-2 pl-1">
+                              <LogicPill
+                                value={group.logic || 'AND'}
+                                onChange={(logic) => updateGroup(groupIndex, { logic })}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => openAddFilterPicker(groupIndex)}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground hover:bg-muted/40"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Add filter
+                              </button>
+                            </div>
+                          )
                         ) : (
                           <div className="pl-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                             {(group.logic || 'AND').toLowerCase()}

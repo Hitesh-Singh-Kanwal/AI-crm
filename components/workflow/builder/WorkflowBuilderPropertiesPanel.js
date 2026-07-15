@@ -147,14 +147,6 @@ function TriggerFields({ config, onChange }) {
         Step 1 · Contact — pick leads or customers, then everyone or a dynamic list, then filters.
       </div>
       <WorkflowContactStep config={config} onChange={onChange} compact />
-      <Field label="Reason" hint="optional">
-        <Input
-          value={config.reason || ''}
-          onChange={(e) => onChange({ reason: e.target.value, triggerType: 'list' })}
-          placeholder="Default (any reason)"
-          className={inputClass}
-        />
-      </Field>
     </div>
   )
 }

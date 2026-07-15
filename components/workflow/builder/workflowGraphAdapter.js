@@ -172,7 +172,9 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
     hasContactAudience || triggerConfig.triggerType === 'list' || triggerConfig.listID
       ? 'list'
       : 'event'
-  const listID = String(triggerConfig.listID || '').trim()
+  const listID = String(
+    triggerConfig.audienceListId || triggerConfig.listID || ''
+  ).trim()
   const reason = String(triggerConfig.reason || '').trim()
 
   if (triggerType === 'list') {

@@ -12,6 +12,7 @@ import {
 } from '@/lib/dynamic-list-normalize'
 import {
   getContactConfigFromTrigger,
+  contactGroupsAreValid,
 } from '@/lib/workflow-contact'
 import WorkflowBuilderCanvas from '@/components/workflow/builder/WorkflowBuilderCanvas'
 import WorkflowBuilderHeader from '@/components/workflow/builder/WorkflowBuilderHeader'
@@ -111,21 +112,27 @@ export default function WorkflowBuilderClient() {
             if (trigger) {
               const { buildConditionGroupsFromFlat } = await import('@/lib/dynamic-list-normalize')
               const entityType = list.entityType === 'customer' ? 'customer' : 'lead'
-              const groups = buildConditionGroupsFromFlat({
+              const listGroups = buildConditionGroupsFromFlat({
                 conditions: list.conditions,
                 groupLogics: list.groupLogics,
                 conditionGroups: list.conditionGroups,
                 entityType,
-              })
+              }).map((group) => ({ ...group, locked: true }))
+              // Only extras explicitly marked unlocked in config (same-session / future persistence).
+              const existingExtras = (trigger.data.config.groups || []).filter(
+                (g) => g.locked === false
+              )
+              const resolvedListId = list._id || list.id || listId
               trigger.data.config = {
                 ...trigger.data.config,
                 entityType,
                 audienceMode: trigger.data.config.audienceMode || 'list',
-                listID: list._id || list.id || listId,
+                listID: resolvedListId,
                 listName: list.name || trigger.data.config.listName || '',
-                audienceListId: list._id || list.id || listId,
+                sourceListID: trigger.data.config.sourceListID || resolvedListId,
+                audienceListId: resolvedListId,
                 conditionLogic: list.conditionLogic === 'OR' ? 'OR' : 'AND',
-                groups,
+                groups: [...listGroups, ...existingExtras],
               }
             }
           }
@@ -152,7 +159,70 @@ export default function WorkflowBuilderClient() {
 
     if (config.audienceMode === 'list') {
       if (!config.listID) return { ok: false, error: 'Select a dynamic list for this trigger.' }
-      return { ok: true, listID: config.listID, listName: config.listName }
+
+      const sourceListId = config.sourceListID || config.listID
+      const extras = (config.groups || []).filter((g) => !g.locked)
+      const hasExtras = extras.some((g) => (g.conditions || []).length > 0)
+
+      if (!hasExtras) {
+        updateNodeConfig(trigger.id, {
+          sourceListID: sourceListId,
+          audienceListId: sourceListId,
+        })
+        return { ok: true, listID: sourceListId, listName: config.listName }
+      }
+
+      if (!contactGroupsAreValid(extras, config.entityType)) {
+        return {
+          ok: false,
+          error: 'Finish or remove incomplete extra filters before saving.',
+        }
+      }
+
+      const { conditions, groupLogics, conditionGroups } = flattenConditionGroups(
+        config.groups || []
+      )
+      const listPayload = buildDynamicListPayload({
+        name: `${state.workflowName || 'Workflow'} · ${config.listName || 'list'} + filters`.trim(),
+        description: `Auto-created from workflow Contact extras (source list ${sourceListId})`,
+        entityType: config.entityType,
+        conditionLogic: config.conditionLogic,
+        conditions,
+        groupLogics,
+        conditionGroups,
+        status: 'active',
+      })
+
+      const existingAudienceListId =
+        config.audienceListId && String(config.audienceListId) !== String(sourceListId)
+          ? config.audienceListId
+          : null
+
+      const res = existingAudienceListId
+        ? await api.patch(`/api/dynamic-list/${existingAudienceListId}`, listPayload)
+        : await api.post('/api/dynamic-list', listPayload)
+
+      if (!res?.success) {
+        return {
+          ok: false,
+          error: res?.error || 'Failed to save extra Contact filters as an audience list.',
+        }
+      }
+
+      const saved = res.data || {}
+      const enrollmentListId = saved._id || saved.id || existingAudienceListId
+      updateNodeConfig(trigger.id, {
+        sourceListID: sourceListId,
+        listID: sourceListId,
+        listName: config.listName,
+        audienceListId: enrollmentListId,
+        triggerType: 'list',
+      })
+      return {
+        ok: true,
+        listID: enrollmentListId,
+        listName: saved.name || listPayload.name,
+      }
     }
 
     if (config.audienceMode !== 'all') return { ok: true }
