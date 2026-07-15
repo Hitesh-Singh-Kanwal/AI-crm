@@ -5,15 +5,8 @@ import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 import api from '@/lib/api'
 import { useWorkflowOptions } from '@/lib/useWorkflowOptions'
-import {
-  buildDynamicListPayload,
-  extractDynamicListsList,
-  flattenConditionGroups,
-} from '@/lib/dynamic-list-normalize'
-import {
-  getContactConfigFromTrigger,
-  contactGroupsAreValid,
-} from '@/lib/workflow-contact'
+import { extractDynamicListsList } from '@/lib/dynamic-list-normalize'
+import { hydrateContactGroupsFromAudience } from '@/lib/workflow-contact'
 import WorkflowBuilderCanvas from '@/components/workflow/builder/WorkflowBuilderCanvas'
 import WorkflowBuilderHeader from '@/components/workflow/builder/WorkflowBuilderHeader'
 import WorkflowBuilderPropertiesPanel from '@/components/workflow/builder/WorkflowBuilderPropertiesPanel'
@@ -31,17 +24,12 @@ function getIdFromUrl() {
   return new URLSearchParams(window.location.search).get('id')
 }
 
-function getTriggerNode(nodes = []) {
-  return nodes.find((n) => n.data?.category === 'trigger') || null
-}
-
 export default function WorkflowBuilderClient() {
   const setOptions = useWorkflowBuilderStore((s) => s.setOptions)
   const loadWorkflowGraph = useWorkflowBuilderStore((s) => s.loadWorkflowGraph)
   const setSaveStatus = useWorkflowBuilderStore((s) => s.setSaveStatus)
   const setWorkflowId = useWorkflowBuilderStore((s) => s.setWorkflowId)
   const setIsActive = useWorkflowBuilderStore((s) => s.setIsActive)
-  const updateNodeConfig = useWorkflowBuilderStore((s) => s.updateNodeConfig)
   const guidedCategory = useWorkflowBuilderStore((s) => s.guidedCategory)
   const setGuidedCategory = useWorkflowBuilderStore((s) => s.setGuidedCategory)
   const nodes = useWorkflowBuilderStore((s) => s.nodes)
@@ -100,48 +88,68 @@ export default function WorkflowBuilderClient() {
       if (cancelled) return
       if (res?.success && res.data) {
         const graph = workflowToGraph(res.data)
+        const trigger = graph.nodes?.find((n) => n.data?.category === 'trigger')
         const listId =
           res.data?.listID?._id ||
           res.data?.listID ||
-          graph.nodes?.find((n) => n.data?.category === 'trigger')?.data?.config?.listID
-        if (listId) {
-          const listRes = await api.get(`/api/dynamic-list/${listId}`)
-          if (!cancelled && listRes?.success && listRes.data) {
-            const list = listRes.data
-            const trigger = graph.nodes?.find((n) => n.data?.category === 'trigger')
-            if (trigger) {
-              const { buildConditionGroupsFromFlat } = await import('@/lib/dynamic-list-normalize')
-              const entityType = list.entityType === 'customer' ? 'customer' : 'lead'
-              const listGroups = buildConditionGroupsFromFlat({
+          trigger?.data?.config?.listID
+        const audienceMode =
+          res.data?.audienceMode ||
+          trigger?.data?.config?.audienceMode ||
+          (listId ? 'list' : res.data?.baseCondition ? 'all' : '')
+
+        if (trigger && (audienceMode === 'list' || audienceMode === 'all')) {
+          let listConditionSource = null
+          let listName = trigger.data.config.listName || ''
+          let entityType =
+            res.data?.entityType === 'customer' || trigger.data.config.entityType === 'customer'
+              ? 'customer'
+              : 'lead'
+          const resolvedListId = listId ? String(listId) : ''
+
+          if (audienceMode === 'list' && resolvedListId) {
+            const listRes = await api.get(`/api/dynamic-list/${resolvedListId}`)
+            if (!cancelled && listRes?.success && listRes.data) {
+              const list = listRes.data
+              listConditionSource = {
                 conditions: list.conditions,
                 groupLogics: list.groupLogics,
                 conditionGroups: list.conditionGroups,
-                entityType,
-              }).map((group) => ({ ...group, locked: true }))
-              // Only extras explicitly marked unlocked in config (same-session / future persistence).
-              const existingExtras = (trigger.data.config.groups || []).filter(
-                (g) => g.locked === false
-              )
-              const resolvedListId = list._id || list.id || listId
-              trigger.data.config = {
-                ...trigger.data.config,
-                entityType,
-                audienceMode: trigger.data.config.audienceMode || 'list',
-                listID: resolvedListId,
-                listName: list.name || trigger.data.config.listName || '',
-                sourceListID: trigger.data.config.sourceListID || resolvedListId,
-                audienceListId: resolvedListId,
-                conditionLogic: list.conditionLogic === 'OR' ? 'OR' : 'AND',
-                groups: [...listGroups, ...existingExtras],
+                conditionLogic: list.conditionLogic,
               }
+              listName = list.name || listName
+              entityType = list.entityType === 'customer' ? 'customer' : entityType
+            }
+          }
+
+          if (!cancelled) {
+            const hydrated = hydrateContactGroupsFromAudience({
+              audienceMode,
+              entityType,
+              baseCondition: res.data?.baseCondition,
+              additionalFilter: res.data?.additionalFilter,
+              listConditionSource:
+                audienceMode === 'list' ? listConditionSource || res.data?.baseCondition : null,
+            })
+            trigger.data.config = {
+              ...trigger.data.config,
+              entityType,
+              audienceMode,
+              listID: audienceMode === 'list' ? resolvedListId : '',
+              listName: audienceMode === 'list' ? listName : '',
+              conditionLogic: hydrated.conditionLogic,
+              additionalConditionLogic: hydrated.additionalConditionLogic,
+              groups: hydrated.groups,
+              triggerType: 'list',
+              event: 'non',
             }
           }
         }
-        loadWorkflowGraph(graph)
-      } else {
+        if (!cancelled) loadWorkflowGraph(graph)
+      } else if (!cancelled) {
         setLoadError(res?.error || 'Failed to load workflow.')
       }
-      setLoading(false)
+      if (!cancelled) setLoading(false)
     })
 
     return () => {
@@ -149,133 +157,10 @@ export default function WorkflowBuilderClient() {
     }
   }, [loadWorkflowGraph])
 
-  const ensureListIdForContact = useCallback(async () => {
-    const state = useWorkflowBuilderStore.getState()
-    const trigger = getTriggerNode(state.nodes)
-    if (!trigger) return { ok: true }
-
-    const config = getContactConfigFromTrigger(trigger.data?.config)
-    if (!config.audienceMode) return { ok: true }
-
-    if (config.audienceMode === 'list') {
-      if (!config.listID) return { ok: false, error: 'Select a dynamic list for this trigger.' }
-
-      const sourceListId = config.sourceListID || config.listID
-      const extras = (config.groups || []).filter((g) => !g.locked)
-      const hasExtras = extras.some((g) => (g.conditions || []).length > 0)
-
-      if (!hasExtras) {
-        updateNodeConfig(trigger.id, {
-          sourceListID: sourceListId,
-          audienceListId: sourceListId,
-        })
-        return { ok: true, listID: sourceListId, listName: config.listName }
-      }
-
-      if (!contactGroupsAreValid(extras, config.entityType)) {
-        return {
-          ok: false,
-          error: 'Finish or remove incomplete extra filters before saving.',
-        }
-      }
-
-      const { conditions, groupLogics, conditionGroups } = flattenConditionGroups(
-        config.groups || []
-      )
-      const listPayload = buildDynamicListPayload({
-        name: `${state.workflowName || 'Workflow'} · ${config.listName || 'list'} + filters`.trim(),
-        description: `Auto-created from workflow Contact extras (source list ${sourceListId})`,
-        entityType: config.entityType,
-        conditionLogic: config.conditionLogic,
-        conditions,
-        groupLogics,
-        conditionGroups,
-        status: 'active',
-      })
-
-      const existingAudienceListId =
-        config.audienceListId && String(config.audienceListId) !== String(sourceListId)
-          ? config.audienceListId
-          : null
-
-      const res = existingAudienceListId
-        ? await api.patch(`/api/dynamic-list/${existingAudienceListId}`, listPayload)
-        : await api.post('/api/dynamic-list', listPayload)
-
-      if (!res?.success) {
-        return {
-          ok: false,
-          error: res?.error || 'Failed to save extra Contact filters as an audience list.',
-        }
-      }
-
-      const saved = res.data || {}
-      const enrollmentListId = saved._id || saved.id || existingAudienceListId
-      updateNodeConfig(trigger.id, {
-        sourceListID: sourceListId,
-        listID: sourceListId,
-        listName: config.listName,
-        audienceListId: enrollmentListId,
-        triggerType: 'list',
-      })
-      return {
-        ok: true,
-        listID: enrollmentListId,
-        listName: saved.name || listPayload.name,
-      }
-    }
-
-    if (config.audienceMode !== 'all') return { ok: true }
-
-    const { conditions, groupLogics, conditionGroups } = flattenConditionGroups(config.groups || [])
-    if (!conditions.length) {
-      return { ok: false, error: 'Add at least one filter for “All” contacts.' }
-    }
-
-    const listPayload = buildDynamicListPayload({
-      name: `${state.workflowName || 'Workflow'} audience`.trim(),
-      description: 'Auto-created from workflow Contact filters',
-      entityType: config.entityType,
-      conditionLogic: config.conditionLogic,
-      conditions,
-      groupLogics,
-      conditionGroups,
-      status: 'active',
-    })
-
-    const existingAudienceListId = config.audienceListId
-    const res = existingAudienceListId
-      ? await api.patch(`/api/dynamic-list/${existingAudienceListId}`, listPayload)
-      : await api.post('/api/dynamic-list', listPayload)
-
-    if (!res?.success) {
-      return { ok: false, error: res?.error || 'Failed to save audience list from Contact filters.' }
-    }
-
-    const saved = res.data || {}
-    const listID = saved._id || saved.id || existingAudienceListId
-    const listName = saved.name || listPayload.name
-    updateNodeConfig(trigger.id, {
-      listID,
-      listName,
-      audienceListId: listID,
-      triggerType: 'list',
-    })
-    return { ok: true, listID, listName }
-  }, [updateNodeConfig])
-
   const persist = useCallback(
     async ({ publish = false }) => {
       setSaving(true)
       setSaveStatus('saving')
-
-      const audience = await ensureListIdForContact()
-      if (!audience.ok) {
-        setSaving(false)
-        setSaveStatus('unsaved')
-        toast.error(audience.error)
-        return
-      }
 
       const state = useWorkflowBuilderStore.getState()
       const isActive = publish ? true : state.isActive
@@ -319,7 +204,7 @@ export default function WorkflowBuilderClient() {
         toast.error(res?.error || 'Failed to save workflow.')
       }
     },
-    [ensureListIdForContact, setIsActive, setSaveStatus, setWorkflowId]
+    [setIsActive, setSaveStatus, setWorkflowId]
   )
 
   const handleSave = useCallback(() => persist({ publish: false }), [persist])

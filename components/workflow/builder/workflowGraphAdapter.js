@@ -4,6 +4,11 @@ import {
   normalizeWorkflowFromApi,
 } from '@/lib/workflow-normalize'
 import {
+  buildContactAudiencePayload,
+  hydrateContactGroupsFromAudience,
+  validateContactAudienceForSave,
+} from '@/lib/workflow-contact'
+import {
   BACKEND_STEP_NODES,
   getDefaultLabel,
   getPaletteItem,
@@ -172,19 +177,21 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
     hasContactAudience || triggerConfig.triggerType === 'list' || triggerConfig.listID
       ? 'list'
       : 'event'
-  const listID = String(
-    triggerConfig.audienceListId || triggerConfig.listID || ''
-  ).trim()
   const reason = String(triggerConfig.reason || '').trim()
 
-  if (triggerType === 'list') {
+  let contactAudience = null
+  if (hasContactAudience) {
+    const validation = validateContactAudienceForSave(triggerConfig)
+    if (!validation.ok) {
+      return { ok: false, error: validation.error, warnings }
+    }
+    contactAudience = buildContactAudiencePayload(triggerConfig)
+  } else if (triggerType === 'list') {
+    const listID = String(triggerConfig.listID || '').trim()
     if (!listID) {
       return {
         ok: false,
-        error:
-          audienceMode === 'all'
-            ? 'Add filters in Contact so we can build the audience list for this workflow.'
-            : 'Select a dynamic list in the Contact step before saving.',
+        error: 'Select a dynamic list in the Contact step before saving.',
         warnings,
       }
     }
@@ -245,14 +252,19 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
   const payload = normalizeWorkflowForPatch({
     name,
     description: '',
-    ...(triggerType === 'list'
-      ? { listID, reason }
-      : {
-          event: triggerConfig.event || 'non',
-          formID: Array.isArray(triggerConfig.formID) ? triggerConfig.formID : [],
-          isGenericForm: Boolean(triggerConfig.isGenericForm),
-          reason: isWorkflowEventFormSubmission(triggerConfig.event) ? reason : '',
-        }),
+    ...(contactAudience
+      ? {
+          ...contactAudience,
+          reason,
+        }
+      : triggerType === 'list'
+        ? { listID: String(triggerConfig.listID || '').trim(), reason }
+        : {
+            event: triggerConfig.event || 'non',
+            formID: Array.isArray(triggerConfig.formID) ? triggerConfig.formID : [],
+            isGenericForm: Boolean(triggerConfig.isGenericForm),
+            reason: isWorkflowEventFormSubmission(triggerConfig.event) ? reason : '',
+          }),
     steps,
   })
 
@@ -262,13 +274,40 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
 }
 
 function triggerNodeFromWorkflow(wf) {
-  const listID = wf.listID || ''
+  const listID = normalizeWorkflowListId(wf)
   const listName = wf.listName || ''
-  const isListBased = Boolean(listID)
   const event = wf.event || 'non'
   const entityType = wf.entityType === 'customer' ? 'customer' : 'lead'
+  const audienceMode =
+    wf.audienceMode === 'all' || wf.audienceMode === 'list'
+      ? wf.audienceMode
+      : listID
+        ? 'list'
+        : wf.baseCondition
+          ? 'all'
+          : ''
+  const hasContactAudience = audienceMode === 'all' || audienceMode === 'list'
+  const isListBased = Boolean(listID) || hasContactAudience
   const paletteType = isListBased ? 'contact' : EVENT_TO_TRIGGER_NODE[event] || 'contact'
   const item = getPaletteItem(paletteType)
+
+  const hydrated = hasContactAudience
+    ? hydrateContactGroupsFromAudience({
+        audienceMode,
+        entityType,
+        baseCondition: wf.baseCondition,
+        additionalFilter: wf.additionalFilter,
+      })
+    : {
+        conditionLogic: wf.conditionLogic === 'OR' ? 'OR' : 'AND',
+        additionalConditionLogic: 'AND',
+        groups: Array.isArray(wf.conditionGroups)
+          ? wf.conditionGroups
+          : Array.isArray(wf.groups)
+            ? wf.groups
+            : [],
+      }
+
   return {
     id: 'node-trigger',
     type: 'workflowNode',
@@ -279,15 +318,12 @@ function triggerNodeFromWorkflow(wf) {
       label: item?.label || 'Contact',
       config: {
         entityType,
-        audienceMode: isListBased ? 'list' : '',
+        audienceMode: audienceMode || (isListBased ? 'list' : ''),
         listID,
         listName,
-        conditionLogic: wf.conditionLogic === 'OR' ? 'OR' : 'AND',
-        groups: Array.isArray(wf.conditionGroups)
-          ? wf.conditionGroups
-          : Array.isArray(wf.groups)
-            ? wf.groups
-            : [],
+        conditionLogic: hydrated.conditionLogic,
+        additionalConditionLogic: hydrated.additionalConditionLogic,
+        groups: hydrated.groups,
         triggerType: isListBased ? 'list' : 'event',
         event,
         formID: Array.isArray(wf.formIDs) ? wf.formIDs : [],
@@ -297,6 +333,13 @@ function triggerNodeFromWorkflow(wf) {
       },
     },
   }
+}
+
+function normalizeWorkflowListId(wf) {
+  const raw = wf?.listID
+  if (!raw) return ''
+  if (typeof raw === 'object') return String(raw?._id || raw?.id || '')
+  return String(raw)
 }
 
 function makeNodeBase(id, paletteType, y, config) {

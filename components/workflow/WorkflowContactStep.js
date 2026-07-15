@@ -15,6 +15,7 @@ import {
 import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
 import {
   getContactConfigFromTrigger,
+  splitContactConditionGroups,
   summarizeContactConfig,
 } from '@/lib/workflow-contact'
 import LeadConditionsEditor from '@/components/shared/LeadConditionsEditor'
@@ -53,6 +54,16 @@ function ChoiceCard({ selected, title, description, icon: Icon, onClick, disable
   )
 }
 
+function collectFieldsFromGroups(groups = []) {
+  const fields = new Set()
+  for (const group of groups || []) {
+    for (const condition of group.conditions || []) {
+      if (condition?.field) fields.add(condition.field)
+    }
+  }
+  return fields
+}
+
 export default function WorkflowContactStep({ config, onChange, compact = false }) {
   const contact = useMemo(() => getContactConfigFromTrigger(config), [config])
   const entityType = contact.entityType || 'lead'
@@ -73,15 +84,31 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
 
   const patch = (next) => onChange?.({ ...contact, ...next })
 
+  const { baseGroups, additionalGroups } = useMemo(
+    () => splitContactConditionGroups(contact.groups, contact.audienceMode),
+    [contact.groups, contact.audienceMode]
+  )
+
+  const mutedBaseFields = useMemo(() => collectFieldsFromGroups(baseGroups), [baseGroups])
+
+  const editorOptions = {
+    leadReasons,
+    locations,
+    forms,
+    teachers,
+    tags,
+    memberships,
+    loadingOptions,
+  }
+
   const applyListConditions = async (listId, listName) => {
-    const current = getContactConfigFromTrigger(config)
     if (!listId) {
       patch({
         listID: '',
         listName: '',
-        sourceListID: '',
-        audienceListId: '',
-        groups: (current.groups || []).filter((g) => !g.locked),
+        groups: [],
+        conditionLogic: 'AND',
+        additionalConditionLogic: 'AND',
         triggerType: 'list',
       })
       return
@@ -92,7 +119,6 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
     setLoadingListConditions(false)
 
     const list = res?.success ? res.data : null
-    const extras = (current.groups || []).filter((g) => !g.locked)
     const listGroups = list
       ? buildConditionGroupsFromFlat({
           conditions: list.conditions,
@@ -102,13 +128,13 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
         }).map((group) => ({ ...group, locked: true }))
       : []
 
+    // Selecting a list always resets additional filters (no carry-over from All / previous list).
     patch({
       listID: listId,
       listName: list?.name || listName || '',
-      sourceListID: listId,
-      audienceListId: listId,
-      conditionLogic: list?.conditionLogic === 'OR' ? 'OR' : current.conditionLogic || 'AND',
-      groups: [...listGroups, ...extras],
+      conditionLogic: list?.conditionLogic === 'OR' ? 'OR' : 'AND',
+      additionalConditionLogic: 'AND',
+      groups: listGroups,
       triggerType: 'list',
       event: 'non',
     })
@@ -173,6 +199,16 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
     contact.audienceMode === 'all' ||
     (contact.audienceMode === 'list' && Boolean(contact.listID))
 
+  const resetAudienceFilters = {
+    listID: '',
+    listName: '',
+    groups: [],
+    conditionLogic: 'AND',
+    additionalConditionLogic: 'AND',
+    triggerType: 'list',
+    event: 'non',
+  }
+
   return (
     <div className={cn('space-y-5', !compact && 'mx-auto w-full max-w-3xl space-y-8 p-6')}>
       {!compact ? (
@@ -210,14 +246,7 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
                 patch({
                   entityType: value,
                   audienceMode: '',
-                  listID: '',
-                  listName: '',
-                  sourceListID: '',
-                  audienceListId: '',
-                  groups: [],
-                  conditionLogic: 'AND',
-                  triggerType: 'list',
-                  event: 'non',
+                  ...resetAudienceFilters,
                 })
               }
             />
@@ -239,13 +268,7 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
               onClick={() =>
                 patch({
                   audienceMode: 'all',
-                  listID: '',
-                  listName: '',
-                  sourceListID: '',
-                  audienceListId: '',
-                  groups: (contact.groups || []).filter((g) => !g.locked),
-                  triggerType: 'list',
-                  event: 'non',
+                  ...resetAudienceFilters,
                 })
               }
             />
@@ -257,8 +280,7 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
               onClick={() =>
                 patch({
                   audienceMode: 'list',
-                  triggerType: 'list',
-                  event: 'non',
+                  ...resetAudienceFilters,
                 })
               }
             />
@@ -303,7 +325,7 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
                 </p>
               ) : (
                 <p className="mt-2 text-[12px] text-muted-foreground">
-                  List filters load automatically and stay read-only. You can add more filters below.
+                  List conditions load as read-only base. Add optional filters in the additional box.
                 </p>
               )}
             </div>
@@ -315,51 +337,93 @@ export default function WorkflowContactStep({ config, onChange, compact = false 
         <section className="space-y-3">
           <div>
             <div className="text-[13px] font-semibold text-foreground">
-              {compact ? 'Apply filters' : '3. Apply filters'}
-              {contact.audienceMode === 'list' ? (
-                <span className="ml-2 text-[12px] font-medium text-muted-foreground">
-                  (list filters locked · extras optional)
-                </span>
-              ) : (
-                <span className="ml-2 text-[12px] font-medium text-muted-foreground">(required)</span>
-              )}
+              {compact ? 'Filters' : '3. Filters'}
             </div>
             {!compact ? (
               <p className="mt-1 text-[12px] text-muted-foreground">
                 {contact.audienceMode === 'list'
-                  ? 'Conditions from the selected list are shown as read-only. Add extra filter groups if needed.'
-                  : 'Same filter groups and and/or logic as Leads and Dynamic Lists.'}
+                  ? 'Base conditions come from the selected list and cannot be edited. Add any extra filters in the additional box — fields already used in base are muted.'
+                  : 'Filters you build here are saved as baseCondition in the workflow payload.'}
               </p>
             ) : null}
           </div>
 
-          <div className={cn(!compact && 'rounded-2xl border border-border bg-card p-4')}>
-            {loadingListConditions ? (
-              <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center text-[13px] text-muted-foreground">
-                Loading list filters…
+          {loadingListConditions ? (
+            <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center text-[13px] text-muted-foreground">
+              Loading list filters…
+            </div>
+          ) : contact.audienceMode === 'list' ? (
+            <div className="space-y-4">
+              <div
+                className={cn(
+                  'space-y-3',
+                  !compact && 'rounded-2xl border border-border bg-muted/10 p-4'
+                )}
+              >
+                <div>
+                  <div className="text-[12px] font-semibold text-foreground">Base conditions</div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    From the selected dynamic list · read-only
+                  </p>
+                </div>
+                <LeadConditionsEditor
+                  entityType={entityType}
+                  groups={baseGroups}
+                  conditionLogic={contact.conditionLogic || 'AND'}
+                  onChangeGroups={() => {}}
+                  onChangeLogic={() => {}}
+                  readOnly
+                  emptyTitle="No base conditions"
+                  emptyDescription="This dynamic list has no saved filters."
+                  {...editorOptions}
+                />
               </div>
-            ) : (
+
+              <div
+                className={cn(
+                  'space-y-3',
+                  !compact && 'rounded-2xl border border-border bg-card p-4'
+                )}
+              >
+                <div>
+                  <div className="text-[12px] font-semibold text-foreground">Additional filters</div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Optional · fields already in base conditions are muted
+                  </p>
+                </div>
+                <LeadConditionsEditor
+                  entityType={entityType}
+                  groups={additionalGroups}
+                  conditionLogic={contact.additionalConditionLogic || 'AND'}
+                  onChangeGroups={(groups) => {
+                    const nextAdditional = (groups || []).map((g) => ({ ...g, locked: false }))
+                    patch({ groups: [...baseGroups, ...nextAdditional] })
+                  }}
+                  onChangeLogic={(additionalConditionLogic) => patch({ additionalConditionLogic })}
+                  mutedFields={mutedBaseFields}
+                  emptyTitle="No additional filters"
+                  emptyDescription="Add optional filters on top of the list base conditions."
+                  addGroupLabel="Add additional filter"
+                  {...editorOptions}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className={cn(!compact && 'rounded-2xl border border-border bg-card p-4')}>
               <LeadConditionsEditor
                 entityType={entityType}
                 groups={contact.groups || []}
                 conditionLogic={contact.conditionLogic || 'AND'}
-                onChangeGroups={(groups) => {
-                  // Always keep locked list groups first and intact.
-                  const locked = (contact.groups || []).filter((g) => g.locked)
-                  const nextExtras = (groups || []).filter((g) => !g.locked)
-                  patch({ groups: [...locked, ...nextExtras] })
-                }}
+                onChangeGroups={(groups) =>
+                  patch({ groups: (groups || []).map((g) => ({ ...g, locked: false })) })
+                }
                 onChangeLogic={(conditionLogic) => patch({ conditionLogic })}
-                leadReasons={leadReasons}
-                locations={locations}
-                forms={forms}
-                teachers={teachers}
-                tags={tags}
-                memberships={memberships}
-                loadingOptions={loadingOptions}
+                emptyTitle="No base conditions yet"
+                emptyDescription="Build the filters that define who enters this workflow."
+                {...editorOptions}
               />
-            )}
-          </div>
+            </div>
+          )}
         </section>
       ) : null}
     </div>
