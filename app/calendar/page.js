@@ -1563,30 +1563,63 @@ function formatTime(dateInput) {
   });
 }
 
+function isCancelledEventStatus(status) {
+  return status === "cancelled_no_charge" || status === "cancelled_charged";
+}
+
 function layoutOverlappingEvents(events) {
-  const sorted = [...events].sort(
-    (a, b) =>
-      new Date(a.start) - new Date(b.start) ||
-      new Date(a.end) - new Date(b.end),
-  );
+  const sorted = [...events].sort((a, b) => {
+    const startDiff = new Date(a.start) - new Date(b.start);
+    if (startDiff !== 0) return startDiff;
+    const endDiff = new Date(a.end) - new Date(b.end);
+    if (endDiff !== 0) return endDiff;
+    const aCancelled = isCancelledEventStatus(a.extendedProps?.effectiveStatus);
+    const bCancelled = isCancelledEventStatus(b.extendedProps?.effectiveStatus);
+    if (aCancelled !== bCancelled) return aCancelled ? 1 : -1;
+    return 0;
+  });
   const active = [];
   const laidOut = [];
   let maxLanes = 1;
 
   sorted.forEach((event) => {
     const eventStart = new Date(event.start);
+    const eventEnd = new Date(event.end);
     for (let i = active.length - 1; i >= 0; i--) {
       if (new Date(active[i].end) <= eventStart) active.splice(i, 1);
     }
 
-    const used = new Set(active.map((e) => e.lane));
-    let lane = 0;
-    while (used.has(lane)) lane += 1;
+    const isCancelled = isCancelledEventStatus(
+      event.extendedProps?.effectiveStatus,
+    );
+    const sameSlotLiveEvent = isCancelled
+      ? active.find(
+          (e) =>
+            !isCancelledEventStatus(e.extendedProps?.effectiveStatus) &&
+            new Date(e.start).getTime() === eventStart.getTime() &&
+            new Date(e.end).getTime() === eventEnd.getTime(),
+        )
+      : null;
 
-    const withLane = { ...event, lane };
+    let lane;
+    if (sameSlotLiveEvent) {
+      lane = sameSlotLiveEvent.lane;
+    } else {
+      const used = new Set(active.map((e) => e.lane));
+      lane = 0;
+      while (used.has(lane)) lane += 1;
+    }
+
+    const withLane = {
+      ...event,
+      lane,
+      isPeekingBehind: Boolean(sameSlotLiveEvent),
+    };
     active.push(withLane);
     laidOut.push(withLane);
-    maxLanes = Math.max(maxLanes, active.length, lane + 1);
+    if (!sameSlotLiveEvent) {
+      maxLanes = Math.max(maxLanes, active.length, lane + 1);
+    }
   });
 
   return laidOut.map((event) => ({ ...event, totalLanes: maxLanes }));
@@ -2202,6 +2235,7 @@ function TutorDayCalendar({
                 const effectiveStatus = event.extendedProps?.effectiveStatus;
                 const isCancelledEvent = effectiveStatus === "cancelled_no_charge" || effectiveStatus === "cancelled_charged";
                 const isCompletedEvent = effectiveStatus === "completed";
+                const peekOffset = event.isPeekingBehind ? 8 : 0;
 
                 return (
                   <div
@@ -2215,16 +2249,16 @@ function TutorDayCalendar({
                       isCancelledEvent ? "opacity-50" : ""
                     } ${isCompletedEvent ? "opacity-80" : ""}`}
                     style={{
-                      top,
+                      top: top + peekOffset,
                       height,
                       maxHeight: height,
                       minHeight: height,
-                      left: "2px",
-                      width: "calc(100% - 4px)",
+                      left: `${2 + peekOffset}px`,
+                      width: `calc(100% - ${4 + peekOffset}px)`,
                       borderLeft: `3px solid ${accentColor}`,
                       backgroundColor: `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`,
                       boxShadow: "0 1px 3px hsl(var(--foreground)/0.06)",
-                      zIndex: 10,
+                      zIndex: isCancelledEvent ? 5 : 10,
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.boxShadow = `0 4px 12px ${accentColor}40`;
@@ -2236,7 +2270,7 @@ function TutorDayCalendar({
                     onMouseMove={(e) => positionTooltip(e)}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.boxShadow = "0 1px 3px hsl(var(--foreground)/0.06)";
-                      e.currentTarget.style.zIndex = "10";
+                      e.currentTarget.style.zIndex = isCancelledEvent ? "5" : "10";
                       e.currentTarget.style.backgroundColor = `color-mix(in srgb, ${accentColor} 28%, hsl(var(--card)))`;
                       e.currentTarget.style.transform = "scaleX(1)";
                       hideEventTooltip();

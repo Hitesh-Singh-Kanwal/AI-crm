@@ -552,7 +552,15 @@ function EnrollmentServiceSelector({
             }
           }}
           options={activeEnrollments
-            .filter((e) => e.package)
+            .filter(
+              (e) =>
+                e.package &&
+                (e.package.services ?? []).some(
+                  (s) =>
+                    s.sessionsRemaining > 0 &&
+                    allServices.some((cat) => cat.serviceCode === s.serviceCode),
+                ),
+            )
             .map((e) => ({
               value: String(e._id),
               label: e.package.packageName || "Unnamed Package",
@@ -1828,16 +1836,20 @@ export default function AppointmentComposerPanel({
     setActiveTab("Appointment");
     setShowEnrollmentWizard(false);
     setError(null);
+    const seededEndTime = initialTime
+      ? initialDuration
+        ? addMinutes(initialTime, initialDuration)
+        : bumpHour(initialTime)
+      : "";
     setForm({
       ...EMPTY_FORM,
       date: initialDate || "",
       start_time: initialTime || "",
-      end_time: initialTime
-        ? initialDuration
-          ? addMinutes(initialTime, initialDuration)
-          : bumpHour(initialTime)
-        : "",
+      end_time: seededEndTime,
       instructor_id: initialInstructorId ? String(initialInstructorId) : "",
+      selected_time_slots: initialTime
+        ? [{ start: initialTime, end: seededEndTime }]
+        : [],
     });
   }, [open, initialDate, initialTime, initialInstructorId, initialDuration]);
 
@@ -1851,7 +1863,6 @@ export default function AppointmentComposerPanel({
       ...prev,
       customer_id: "",
       customer_ids: [],
-      instructor_id: "",
       service_id: "",
       lesson_id: "",
       enrollment_id: "",
@@ -2147,6 +2158,13 @@ export default function AppointmentComposerPanel({
       const cp = selectedEnr?.packageID;
       packageTemplateId = cp?.packageID?._id || cp?.packageID || undefined;
       selectedBillingType = selectedEnr?.package?.billingType ?? null;
+    }
+
+    // Validate: Appointment tab requires a student to be selected
+    if (activeTab === "Appointment" && !form.customer_id) {
+      setError("Please select a student before booking.");
+      setIsSaving(false);
+      return;
     }
 
     // Validate: pay_per_session requires a payment method when booking a chargeable service
