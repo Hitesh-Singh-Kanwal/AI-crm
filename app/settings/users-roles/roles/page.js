@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState, useMemo } from 'react'
-import { Search, Shield, Edit, Trash, MoreHorizontal, ChevronDown, ChevronRight } from 'lucide-react'
+import { Search, Shield, Edit, Trash, MoreHorizontal, ChevronDown, ChevronRight, CalendarDays } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import {
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import RolesDialog from './components/RolesDialog'
+import SettingsBackHeader from '../components/SettingsBackHeader'
 import { cn } from '@/lib/utils'
 
 function formatDate(value) {
@@ -304,6 +305,11 @@ export default function RolesPage() {
   return (
     <MainLayout title="Roles" subtitle="Manage roles and permissions">
       <div className="space-y-4 md:space-y-6 min-h-full flex flex-col">
+        <SettingsBackHeader
+          title="Roles & Permissions"
+          subtitle="Control access and which roles appear on the calendar"
+        />
+
         {/* Filters */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4">
           <div className="relative flex-1 max-w-full sm:max-w-md">
@@ -413,6 +419,7 @@ export default function RolesPage() {
               <TableHeader>
                 <TableRow className="border-b border-border hover:bg-transparent bg-muted/40">
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Role</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Calendar</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Permissions</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Created</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground w-12 text-right"></TableHead>
@@ -441,6 +448,16 @@ export default function RolesPage() {
                             </div>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
+                        {role.showOnCalendar ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand">
+                            <CalendarDays className="h-3 w-3" />
+                            On calendar
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="flex flex-wrap gap-1.5">
@@ -591,16 +608,27 @@ export default function RolesPage() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Role name</span>
-                    <span className="font-medium">{selectedRole.role}</span>
+                    <span className="font-medium text-right">{selectedRole.role}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Calendar</span>
+                    {selectedRole.showOnCalendar ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand">
+                        <CalendarDays className="h-3 w-3" />
+                        Visible on calendar
+                      </span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">Hidden from calendar</span>
+                    )}
+                  </div>
+                  <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Permission sections</span>
                     <span className="font-medium">{Object.keys(selectedRole.permissions || {}).length}</span>
                   </div>
                   {selectedRole.createdAt && (
-                    <div className="flex justify-between">
+                    <div className="flex justify-between gap-4">
                       <span className="text-muted-foreground">Created</span>
                       <span className="font-medium">{formatDate(selectedRole.createdAt)}</span>
                     </div>

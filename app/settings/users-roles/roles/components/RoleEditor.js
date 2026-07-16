@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Save, Trash, ChevronDown, ChevronRight } from 'lucide-react'
+import { Save, Trash, ChevronDown, ChevronRight, CalendarDays } from 'lucide-react'
 import Switch from '@/components/ui/switch'
 import {
   Table,
@@ -87,9 +87,8 @@ export default function RoleEditor({
 
       {(editingRole || isCreating) && (
         <div className="space-y-6">
-          {/* Role name */}
-          <div className="space-y-2">
-          
+          {/* Role name + calendar visibility */}
+          <div className="space-y-4">
             <div>
               <label className="my-1.5 block text-sm font-medium text-foreground">
                 Name
@@ -102,20 +101,56 @@ export default function RoleEditor({
               />
             </div>
 
-            <div className="flex max-w-md items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">Show on calendar</p>
-                <p className="text-xs text-muted-foreground">
-                  Users with this role appear as staff columns and can be assigned on the calendar.
-                </p>
+            <div
+              className={cn(
+                'max-w-md rounded-xl border p-4 transition-colors',
+                editingRole?.showOnCalendar
+                  ? 'border-brand/40 bg-brand/5'
+                  : 'border-border bg-muted/30',
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div
+                    className={cn(
+                      'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+                      editingRole?.showOnCalendar
+                        ? 'bg-brand/15 text-brand'
+                        : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    <CalendarDays className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      Show on calendar
+                    </p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                      When on, users with this role appear as staff columns and can be
+                      assigned to lessons and appointments.
+                    </p>
+                    <p
+                      className={cn(
+                        'mt-2 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium',
+                        editingRole?.showOnCalendar
+                          ? 'bg-brand/15 text-brand'
+                          : 'bg-muted text-muted-foreground',
+                      )}
+                    >
+                      {editingRole?.showOnCalendar
+                        ? 'Visible on calendar'
+                        : 'Hidden from calendar'}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={!!editingRole?.showOnCalendar}
+                  onCheckedChange={(checked) =>
+                    onChange({ ...editingRole, showOnCalendar: checked })
+                  }
+                  aria-label="Show on calendar"
+                />
               </div>
-              <Switch
-                checked={!!editingRole?.showOnCalendar}
-                onCheckedChange={(checked) =>
-                  onChange({ ...editingRole, showOnCalendar: checked })
-                }
-                aria-label="Show on calendar"
-              />
             </div>
           </div>
 

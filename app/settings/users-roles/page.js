@@ -1,32 +1,57 @@
 import MainLayout from '@/components/layout/MainLayout'
 import Link from 'next/link'
+import { Users, Shield, ChevronRight } from 'lucide-react'
+
+const cards = [
+  {
+    href: '/settings/users-roles/users',
+    title: 'Users',
+    description: 'Invite and manage team members, assign roles and locations.',
+    icon: Users,
+  },
+  {
+    href: '/settings/users-roles/roles',
+    title: 'Roles & Permissions',
+    description: 'Define access levels and which roles appear on the calendar.',
+    icon: Shield,
+  },
+]
 
 export default function UsersRolesPage() {
   return (
     <MainLayout title="Users & Roles" subtitle="Manage users and role permissions">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link
-          href="/settings/users-roles/users"
-          className="rounded-2xl border border-border bg-card p-5 shadow-sm hover:bg-muted/30 transition-colors"
-        >
-          <h3 className="text-sm font-semibold text-foreground">Users</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Create and manage team members.</p>
-        </Link>
-        <Link
-          href="/settings/users-roles/roles"
-          className="rounded-2xl border border-border bg-card p-5 shadow-sm hover:bg-muted/30 transition-colors"
-        >
-          <h3 className="text-sm font-semibold text-foreground">Roles & Permissions</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Configure role-based access controls.</p>
-        </Link>
-        {/* Customers — available from main sidebar */}
-        {/* <Link
-          href="/settings/users-roles/customers"
-          className="rounded-2xl border border-border bg-card p-5 shadow-sm hover:bg-muted/30 transition-colors"
-        >
-          <h3 className="text-sm font-semibold text-foreground">Customers</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Manage your studio's students and clients.</p>
-        </Link> */}
+      <div className="w-full space-y-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            Users & Roles
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage who can access the studio and what they can do.
+          </p>
+        </div>
+
+        <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+          {cards.map(({ href, title, description, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className="group flex items-start gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-brand/30 hover:bg-muted/30"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
+                <Icon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {description}
+                </p>
+              </div>
+            </Link>
+          ))}
+        </div>
       </div>
     </MainLayout>
   )

@@ -192,6 +192,11 @@ export default function RolesDialog({
       <DialogContent onClose={onClose} className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isCreating ? 'Create Role' : 'Edit Role'}</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            {isCreating
+              ? 'Name the role, choose whether it appears on the calendar, and set permissions.'
+              : 'Update the name, calendar visibility, and permissions for this role.'}
+          </p>
         </DialogHeader>
         {loading ? (
           <div className="flex items-center justify-center py-12">

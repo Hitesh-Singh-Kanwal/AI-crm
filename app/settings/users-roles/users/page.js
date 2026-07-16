@@ -25,6 +25,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import UsersDialog from './components/UsersDialog'
+import SettingsBackHeader from '../components/SettingsBackHeader'
 import { getCurrentUser } from '@/lib/auth'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
@@ -236,6 +237,11 @@ export default function UsersPage() {
   return (
     <MainLayout title="Users" subtitle="Manage team members and their roles">
       <div className="space-y-4 md:space-y-6 min-h-full flex flex-col">
+        <SettingsBackHeader
+          title="Users"
+          subtitle="Invite team members and assign roles"
+        />
+
         {/* Filters */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4">
           <div className="relative flex-1 max-w-full sm:max-w-md">
