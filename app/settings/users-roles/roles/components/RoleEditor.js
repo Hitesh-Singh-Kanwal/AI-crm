@@ -21,6 +21,8 @@ export default function RoleEditor({
   permissionsSchema,
   onChange,
   togglePermission,
+  toggleAllPermissions,
+  toggleColumnPermission,
   onSave,
   onDelete,
   onCancel,
@@ -160,14 +162,29 @@ export default function RoleEditor({
               Permissions
             </h3>
             <p className="text-sm text-muted-foreground">
-              Choose read (R), write (W), edit (E), and delete (D) for each resource.
+              For each resource choose what this role can do:
             </p>
+            <ul className="ml-1 space-y-1 text-xs text-muted-foreground">
+              <li><span className="font-medium text-foreground">Read</span> — view the resource.</li>
+              <li><span className="font-medium text-foreground">Write</span> — create new entries.</li>
+              <li><span className="font-medium text-foreground">Edit</span> — update existing entries.</li>
+              <li><span className="font-medium text-foreground">Delete</span> — permanently remove entries.</li>
+            </ul>
 
             <div className="space-y-4">
               {permissionsSchema &&
                 Object.entries(permissionsSchema).map(([sectionKey, sectionVal]) => {
                   const isExpanded = expandedSections[sectionKey] !== false
                   const perms = Object.entries(sectionVal.permissions || {})
+                  const permKeys = perms.map(([permKey]) => permKey)
+                  const columnAllOn = (action) =>
+                    perms.length > 0 &&
+                    perms.every(([permKey]) => {
+                      const isMasterRow = sectionKey === 'master' && permKey === '*'
+                      const current =
+                        editingRole?.permissions?.[sectionKey]?.permissions?.[permKey] || {}
+                      return !!current[action] || (!isMasterRow && !!masterPerms[action])
+                    })
                   return (
                     <div
                       key={sectionKey}
@@ -195,17 +212,20 @@ export default function RoleEditor({
                                 <TableHead className="font-semibold text-foreground">
                                   Resource
                                 </TableHead>
+                                {['read', 'write', 'edit', 'delete'].map((action) => (
+                                  <TableHead
+                                    key={action}
+                                    className="w-20 cursor-pointer select-none text-center text-xs font-medium text-muted-foreground hover:text-foreground"
+                                    title={`Toggle ${action} for every resource in this section`}
+                                    onClick={() =>
+                                      toggleColumnPermission(sectionKey, permKeys, action, !columnAllOn(action))
+                                    }
+                                  >
+                                    {action.charAt(0).toUpperCase() + action.slice(1)}
+                                  </TableHead>
+                                ))}
                                 <TableHead className="w-20 text-center text-xs font-medium text-muted-foreground">
-                                  Read
-                                </TableHead>
-                                <TableHead className="w-20 text-center text-xs font-medium text-muted-foreground">
-                                  Write
-                                </TableHead>
-                                <TableHead className="w-20 text-center text-xs font-medium text-muted-foreground">
-                                  Edit
-                                </TableHead>
-                                <TableHead className="w-20 text-center text-xs font-medium text-muted-foreground">
-                                  Delete
+                                  All
                                 </TableHead>
                               </TableRow>
                             </TableHeader>
@@ -220,6 +240,13 @@ export default function RoleEditor({
                                   }
                                 const isMasterRow = sectionKey === 'master' && permKey === '*'
                                 const overridden = (action) => !isMasterRow && !!masterPerms[action]
+                                const allOverridden =
+                                  overridden('read') && overridden('write') && overridden('edit') && overridden('delete')
+                                const allOn =
+                                  (current.read || overridden('read')) &&
+                                  (current.write || overridden('write')) &&
+                                  (current.edit || overridden('edit')) &&
+                                  (current.delete || overridden('delete'))
                                 return (
                                   <TableRow
                                     key={permKey}
@@ -227,7 +254,7 @@ export default function RoleEditor({
                                   >
                                     <TableCell>
                                       <div>
-                                        <p className="font-medium text-foreground">{permKey === '*' ? 'Master' : permKey}</p>
+                                        <p className="font-medium text-foreground">{permVal.label || (permKey === '*' ? 'Master' : permKey)}</p>
                                         {permVal.description && (
                                           <p className="text-xs text-muted-foreground">
                                             {permVal.description}
@@ -276,6 +303,21 @@ export default function RoleEditor({
                                         className={cn(overridden('delete') && 'opacity-70 cursor-not-allowed')}
                                         onChange={() =>
                                           togglePermission(sectionKey, permKey, 'delete')
+                                        }
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      <Switch
+                                        checked={allOn}
+                                        disabled={allOverridden}
+                                        title={
+                                          allOverridden
+                                            ? 'Granted by All Permissions (Master)'
+                                            : 'Toggle read, write, edit, and delete at once'
+                                        }
+                                        className={cn(allOverridden && 'opacity-70 cursor-not-allowed')}
+                                        onChange={() =>
+                                          toggleAllPermissions(sectionKey, permKey, !allOn)
                                         }
                                       />
                                     </TableCell>

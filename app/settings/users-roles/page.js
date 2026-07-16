@@ -4,16 +4,17 @@ import { Users, Shield, ChevronRight } from 'lucide-react'
 
 const cards = [
   {
-    href: '/settings/users-roles/users',
-    title: 'Users',
-    description: 'Invite and manage team members, assign roles and locations.',
-    icon: Users,
-  },
-  {
     href: '/settings/users-roles/roles',
     title: 'Roles & Permissions',
-    description: 'Define access levels and which roles appear on the calendar.',
+    description:
+      'Define what each role can access and which roles appear on the calendar before inviting team members.',
     icon: Shield,
+  },
+  {
+    href: '/settings/users-roles/users',
+    title: 'Users',
+    description: 'Invite team members, assign them a role, and manage locations.',
+    icon: Users,
   },
 ]
 
