@@ -97,8 +97,24 @@ export default function RoleEditor({
               <Input
                 value={editingRole?.role || ''}
                 onChange={(e) => onChange({ ...editingRole, role: e.target.value })}
-                placeholder="e.g. Admin, Manager, Staff"
+                placeholder="e.g. Admin, Manager, Staff, Instructor"
                 className="max-w-md"
+              />
+            </div>
+
+            <div className="flex max-w-md items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Show on calendar</p>
+                <p className="text-xs text-muted-foreground">
+                  Users with this role appear as staff columns and can be assigned on the calendar.
+                </p>
+              </div>
+              <Switch
+                checked={!!editingRole?.showOnCalendar}
+                onCheckedChange={(checked) =>
+                  onChange({ ...editingRole, showOnCalendar: checked })
+                }
+                aria-label="Show on calendar"
               />
             </div>
           </div>
