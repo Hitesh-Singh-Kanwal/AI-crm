@@ -58,6 +58,7 @@ export default function ActiveCallPanel({
   resolving = false,
   transferring = false,
   callStatus = 'connecting',
+  canManage = true,
 }) {
   const [minimized, setMinimized] = useState(false)
   const [muted, setMuted] = useState(false)
@@ -220,7 +221,7 @@ export default function ActiveCallPanel({
             </div>
           )}
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className={cn('grid gap-2', canManage ? 'grid-cols-4' : 'grid-cols-2')}>
             <CallActionButton
               icon={muted ? MicOff : Mic}
               label={muted ? 'Unmute' : 'Mute'}
@@ -228,19 +229,23 @@ export default function ActiveCallPanel({
               disabled={!isConnected}
               onClick={handleToggleMute}
             />
-            <CallActionButton
-              icon={callerOnHold ? Play : Pause}
-              label={callerOnHold ? 'Resume' : 'Hold'}
-              active={callerOnHold}
-              disabled={!isConnected}
-              onClick={handleToggleHold}
-            />
-            <CallActionButton
-              icon={ArrowRightLeft}
-              label="Transfer"
-              disabled={!isConnected || transferCandidates.length === 0}
-              onClick={() => setShowTransfer(true)}
-            />
+            {canManage && (
+              <CallActionButton
+                icon={callerOnHold ? Play : Pause}
+                label={callerOnHold ? 'Resume' : 'Hold'}
+                active={callerOnHold}
+                disabled={!isConnected}
+                onClick={handleToggleHold}
+              />
+            )}
+            {canManage && (
+              <CallActionButton
+                icon={ArrowRightLeft}
+                label="Transfer"
+                disabled={!isConnected || transferCandidates.length === 0}
+                onClick={() => setShowTransfer(true)}
+              />
+            )}
             <CallActionButton
               icon={PhoneOff}
               label="Hang up"
@@ -249,7 +254,7 @@ export default function ActiveCallPanel({
             />
           </div>
 
-          {showTransfer && (
+          {canManage && showTransfer && (
             <div className="rounded-xl border border-border bg-background p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-foreground">Transfer to agent</p>
@@ -297,19 +302,24 @@ export default function ActiveCallPanel({
           </div>
 
           <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={resolving}
-              onClick={() => onResolve?.()}
-              className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              {resolving ? 'Resolving…' : 'Resolve & close'}
-            </button>
+            {canManage && (
+              <button
+                type="button"
+                disabled={resolving}
+                onClick={() => onResolve?.()}
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {resolving ? 'Resolving…' : 'Resolve & close'}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleHangUp}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-medium text-muted-foreground hover:text-foreground"
+              className={cn(
+                'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-medium text-muted-foreground hover:text-foreground',
+                !canManage && 'flex-1',
+              )}
             >
               <Phone className="h-4 w-4" />
               Leave call

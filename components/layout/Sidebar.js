@@ -19,9 +19,7 @@ const navItems = [
     labelStyle: 'regular',
     children: [
       { name: 'All Messages', href: '/inbox/all-messages' },
-      { name: 'Human Queue', href: '/inbox/human-queue' },
-      { name: 'Calls', href: '/inbox/calls' },
-      { name: 'Talk to Assistant', href: '/inbox/talk-to-assistant' },
+      { name: 'Call Center', href: '/inbox/human-queue' },
     ],
   },
   { name: 'Leads', href: '/leads', iconSrc: '/figma/sidebar/leads.svg', iconSize: 20, labelStyle: 'regular' },
