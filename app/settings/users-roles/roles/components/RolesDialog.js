@@ -74,6 +74,7 @@ export default function RolesDialog({
                   write: !!actions.write,
                   edit: !!actions.edit,
                   delete: !!actions.delete,
+                  label: basePerm.label,
                   description: basePerm.description,
                 }
               }
@@ -116,6 +117,36 @@ export default function RolesDialog({
       }
       next.permissions[sectionKey].permissions[permKey][action] =
         !next.permissions[sectionKey].permissions[permKey][action]
+      return next
+    })
+  }
+
+  function toggleAllPermissions(sectionKey, permKey, enable) {
+    setEditingRole((prev) => {
+      if (!prev) return prev
+      const next = JSON.parse(JSON.stringify(prev))
+      if (!next.permissions[sectionKey]) next.permissions[sectionKey] = { permissions: {} }
+      next.permissions[sectionKey].permissions[permKey] = {
+        read: enable,
+        write: enable,
+        edit: enable,
+        delete: enable,
+      }
+      return next
+    })
+  }
+
+  function toggleColumnPermission(sectionKey, permKeys, action, enable) {
+    setEditingRole((prev) => {
+      if (!prev) return prev
+      const next = JSON.parse(JSON.stringify(prev))
+      if (!next.permissions[sectionKey]) next.permissions[sectionKey] = { permissions: {} }
+      for (const permKey of permKeys) {
+        if (!next.permissions[sectionKey].permissions[permKey]) {
+          next.permissions[sectionKey].permissions[permKey] = { read: false, write: false, edit: false, delete: false }
+        }
+        next.permissions[sectionKey].permissions[permKey][action] = enable
+      }
       return next
     })
   }
@@ -199,6 +230,8 @@ export default function RolesDialog({
             permissionsSchema={effectiveSchema || permissionsSchema}
             onChange={setEditingRole}
             togglePermission={togglePermission}
+            toggleAllPermissions={toggleAllPermissions}
+            toggleColumnPermission={toggleColumnPermission}
             onSave={handleSave}
             onDelete={handleDelete}
             onCancel={onClose}
