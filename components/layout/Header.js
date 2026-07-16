@@ -197,7 +197,7 @@ import StaffLocationSwitcher from "@/components/shared/StaffLocationSwitcher";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 import { getCurrentUser, logout } from "@/lib/auth";
 import { getInitials, cn } from "@/lib/utils";
-import { isSuperAdmin } from "@/lib/permissions";
+import { isSuperAdmin, hasPermission } from "@/lib/permissions";
 import { useInboxHeader } from "@/contexts/InboxHeaderContext";
 
 const INBOX_FILTERS = [
@@ -566,13 +566,15 @@ export default function Header({
               </div>
 
               {/* CREATE ENROLLMENT (desktop only) */}
-              <Button
-                type="button"
-                className="hidden md:inline-flex h-[38px] rounded-full px-4 text-[13px] font-semibold bg-brand text-brand-foreground hover:bg-brand-dark"
-                onClick={() => setCreateEnrollmentOpen(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" /> Enroll
-              </Button>
+              {hasPermission("calendar", "enrollment", "write") && (
+                <Button
+                  type="button"
+                  className="hidden md:inline-flex h-[38px] rounded-full px-4 text-[13px] font-semibold bg-brand text-brand-foreground hover:bg-brand-dark"
+                  onClick={() => setCreateEnrollmentOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" /> Enroll
+                </Button>
+              )}
 
               {/* USER PROFILE – click to open dropdown with Logout */}
               <div className="relative" ref={profileRef}>
