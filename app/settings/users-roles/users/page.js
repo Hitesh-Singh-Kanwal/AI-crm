@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Search, Mail, UserCog, MoreHorizontal } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import StyledSelect from '@/components/shared/StyledSelect'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -44,6 +45,7 @@ export default function UsersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('All')
   const [availableRoles, setAvailableRoles] = useState([])
+  const [rolesList, setRolesList] = useState([])
   const [selectedUserId, setSelectedUserId] = useState(null)
   const [selectedUser, setSelectedUser] = useState(null)
   const [loadingUserDetails, setLoadingUserDetails] = useState(false)
@@ -69,6 +71,7 @@ export default function UsersPage() {
       const result = await api.get('/api/role?limit=1000')
       if (result.success) {
         const roles = result.data || []
+        setRolesList(roles)
         // Extract unique role names
         const uniqueRoles = [...new Set(roles.map(r => r.role))].sort()
         setAvailableRoles(uniqueRoles)
@@ -76,6 +79,24 @@ export default function UsersPage() {
     } catch (e) {
       console.error('Failed to load roles:', e)
     }
+  }
+
+  // Whether a role shows its users on the calendar — the source of truth is
+  // the Role's own "Show on calendar" toggle; users just inherit it.
+  const roleShowsOnCalendar = useMemo(() => {
+    const map = {}
+    for (const r of rolesList) {
+      map[r.role] = !!r.showOnCalendar
+    }
+    return map
+  }, [rolesList])
+
+  // A user's own showOnCalendar (true/false) overrides their role; null/undefined
+  // means "inherit the role's setting".
+  function effectiveShowOnCalendar(user) {
+    return user.showOnCalendar === true || user.showOnCalendar === false
+      ? user.showOnCalendar
+      : !!roleShowsOnCalendar[user.role]
   }
 
   // Debounce search query
@@ -168,6 +189,27 @@ export default function UsersPage() {
       toast.error({ title: 'Error', message: 'Failed to load users' })
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Optimistically flip a user's calendar-visibility override, persist it,
+  // and roll back if the request fails.
+  async function handleToggleShowOnCalendar(user, nextValue) {
+    const userId = user._id || user.id
+    setUsersList((prev) =>
+      prev.map((u) => ((u._id || u.id) === userId ? { ...u, showOnCalendar: nextValue } : u))
+    )
+    try {
+      const result = await api.put(`/api/user/${userId}`, { showOnCalendar: nextValue })
+      if (!result.success) {
+        throw new Error(result.error || 'Unable to update user')
+      }
+    } catch (e) {
+      console.error('handleToggleShowOnCalendar', e)
+      toast.error({ title: 'Error', message: 'Failed to update calendar visibility' })
+      setUsersList((prev) =>
+        prev.map((u) => ((u._id || u.id) === userId ? { ...u, showOnCalendar: user.showOnCalendar } : u))
+      )
     }
   }
 
@@ -363,6 +405,7 @@ export default function UsersPage() {
                   <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Name</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Email</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Role</TableHead>
+                  <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Show on Calendar</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Status</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B]">Joined</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-[#64748B] w-12 text-right"></TableHead>
@@ -393,6 +436,23 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell className="py-3 px-4">
                       <Badge className={cn('text-xs', roleColors[user.role])}>{user.role}</Badge>
+                    </TableCell>
+                    <TableCell className="py-3 px-4">
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <Switch
+                          checked={effectiveShowOnCalendar(user)}
+                          onCheckedChange={(checked) => handleToggleShowOnCalendar(user, checked)}
+                          aria-label="Show on calendar"
+                          title={
+                            user.showOnCalendar === true || user.showOnCalendar === false
+                              ? 'Overridden for this user'
+                              : `Inherited from the "${user.role}" role`
+                          }
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {effectiveShowOnCalendar(user) ? 'Visible' : 'Hidden'}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="py-3 px-4">
                       <Badge
@@ -560,6 +620,22 @@ export default function UsersPage() {
                       {selectedUser.status}
                     </Badge>
                   </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Show on Calendar:</span>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={effectiveShowOnCalendar(selectedUser)}
+                        onCheckedChange={(checked) => {
+                          setSelectedUser((p) => ({ ...p, showOnCalendar: checked }))
+                          handleToggleShowOnCalendar(selectedUser, checked)
+                        }}
+                        aria-label="Show on calendar"
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {effectiveShowOnCalendar(selectedUser) ? 'Visible' : 'Hidden'}
+                      </span>
+                    </div>
+                  </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Joined:</span>
                     <span className="font-medium">{selectedUser.createdAt ? formatDate(selectedUser.createdAt) : 'N/A'}</span>
@@ -596,7 +672,14 @@ export default function UsersPage() {
             )}
           </DialogContent>
         </Dialog>
-        <UsersDialog open={usersDialogOpen} onClose={closeUsersDialog} users={usersList} onRefresh={loadUsers} initialUserId={usersDialogInitialId} />
+        <UsersDialog
+          open={usersDialogOpen}
+          onClose={closeUsersDialog}
+          users={usersList}
+          onRefresh={loadUsers}
+          initialUserId={usersDialogInitialId}
+          rolesList={rolesList}
+        />
       </div>
     </MainLayout>
   )
