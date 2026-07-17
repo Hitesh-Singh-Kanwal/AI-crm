@@ -155,6 +155,10 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
       toast.error("Missing fields", { description: "Service name and code are required." });
       return;
     }
+    if (!form.locationID?.length) {
+      toast.error("Missing fields", { description: "Please select at least one location." });
+      return;
+    }
 
     const validDocs = form.documents.filter((d) => d.name.trim() || d.url.trim());
 

@@ -16,6 +16,7 @@ import { formatDate } from '@/lib/utils'
 import StylePanel from '@/components/forms/StylePanel'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { getCurrentUser } from '@/lib/auth'
+import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -619,6 +620,8 @@ function FormsPageInner() {
   // Builder form metadata
   const [formName, setFormName] = useState('')
   const [formDescription, setFormDescription] = useState('')
+  const [formLocationID, setFormLocationID] = useState([]) // 'all' | string[]
+
   const [editingFormId, setEditingFormId] = useState(null)
   const [savingForm, setSavingForm] = useState(false)
   // Delete
@@ -707,6 +710,10 @@ function FormsPageInner() {
       toast.error({ title: 'Name required', message: 'Please enter a form name before saving.' })
       return
     }
+    if (!formLocationID || (formLocationID !== ALL_BRANCHES_VALUE && (!Array.isArray(formLocationID) || formLocationID.length === 0))) {
+      toast.error({ title: 'Location required', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     if (formFields.length === 0) {
       toast.error({ title: 'Empty form', message: 'Please add at least one field before saving.' })
       return
@@ -714,7 +721,14 @@ function FormsPageInner() {
     setSavingForm(true)
     try {
       const htmlCode = generateExportedHTML()
-      const payload = { name: formName.trim(), description: formDescription.trim(), htmlCode }
+      const allLocations = formLocationID === ALL_BRANCHES_VALUE
+      const payload = {
+        name: formName.trim(),
+        description: formDescription.trim(),
+        htmlCode,
+        allLocations,
+        locationID: allLocations ? [] : formLocationID,
+      }
       const result = editingFormId
         ? await api.put(`/api/formBuilder/${editingFormId}`, payload)
         : await api.post('/api/formBuilder', payload)
@@ -777,6 +791,14 @@ function FormsPageInner() {
         htmlCode: src.htmlCode,
         url: src.url,
         utms: src.utms,
+        locationID: src.allLocations
+          ? []
+          : (Array.isArray(src.locationID)
+            ? src.locationID.map((l) => l?._id || l).filter(Boolean)
+            : src.locationID?._id || src.locationID
+              ? [src.locationID?._id || src.locationID]
+              : formLocationID === ALL_BRANCHES_VALUE ? [] : formLocationID),
+        allLocations: Boolean(src.allLocations) || formLocationID === ALL_BRANCHES_VALUE,
       })
       if (cloneResult.success) {
         toast.success({ title: 'Cloned', message: `"${src.name} copy" created.` })
@@ -794,6 +816,7 @@ function FormsPageInner() {
   const openBuilderForNew = () => {
     setFormName('')
     setFormDescription('')
+    setFormLocationID([])
     setEditingFormId(null)
     setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons)])
     setSelectedField(null)
@@ -946,6 +969,15 @@ function FormsPageInner() {
       setEditingFormId(form?._id || null)
       setFormName(form?.name || '')
       setFormDescription(form?.description || '')
+      setFormLocationID(
+        form?.allLocations
+          ? ALL_BRANCHES_VALUE
+          : Array.isArray(form?.locationID)
+            ? form.locationID.map((l) => l?._id || l).filter(Boolean)
+            : form?.locationID?._id || form?.locationID
+              ? [form.locationID?._id || form.locationID]
+              : []
+      )
 
       const inferred = []
       const byName = new Map()
@@ -1100,7 +1132,13 @@ function FormsPageInner() {
         return `<input type="hidden" name="formID" value="${formID}" />`
       }
       if (field.name === 'locationID') {
-        return `<input type="hidden" name="locationID" value="" />`
+        const embedLoc =
+          formLocationID === ALL_BRANCHES_VALUE
+            ? ''
+            : Array.isArray(formLocationID)
+              ? (formLocationID[0] || '')
+              : (formLocationID || '')
+        return `<input type="hidden" name="locationID" value="${embedLoc}" />`
       }
       return `<input type="hidden" name="${field.name || field.id}" value="" />`
     }
@@ -1747,7 +1785,7 @@ ${gtagScript}
         {activeTab === 'builder' && (
           <div className="h-[calc(100vh-200px)] flex flex-col gap-3">
           {/* Form name + description row */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
             <Input
               placeholder="Form name (required)"
               value={formName}
@@ -1760,6 +1798,16 @@ ${gtagScript}
               onChange={(e) => setFormDescription(e.target.value)}
               className="max-w-sm"
             />
+            <div className="w-64">
+              <LocationSelector
+                value={formLocationID}
+                onChange={setFormLocationID}
+                multiple
+                allowAllBranches
+                showAllOption={false}
+                placeholder="Select studio(s)…"
+              />
+            </div>
             {editingFormId && (
               <span className="text-xs text-muted-foreground italic">Editing existing form</span>
             )}

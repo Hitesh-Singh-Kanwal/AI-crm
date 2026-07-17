@@ -41,6 +41,7 @@ import CustomerMembershipsTab from "@/components/membership/CustomerMembershipsT
 import CustomerWalletTab from "@/components/wallet/CustomerWalletTab";
 import CancelRefundDialog from "@/components/shared/CancelRefundDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
+import LocationSelector from "@/components/shared/LocationSelector";
 import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
 import api from "@/lib/api";
 import { useCloverConnection } from "@/app/settings/payments/clover/useCloverConnection";
@@ -670,23 +671,13 @@ function ProfileTab({ customer, locations, onUpdated }) {
                   />
                 </FormField>
                 <FormField label="Location">
-                  <div className="relative">
-                    <select
-                      value={form.locationID}
-                      onChange={(e) =>
-                        setForm({ ...form, locationID: e.target.value })
-                      }
-                      className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
-                    >
-                      <option value="">No location</option>
-                      {locations.map((loc) => (
-                        <option key={loc._id} value={loc._id}>
-                          {loc.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  </div>
+                  <LocationSelector
+                    value={form.locationID || null}
+                    onChange={(id) => setForm({ ...form, locationID: id || "" })}
+                    multiple={false}
+                    showAllOption={false}
+                    placeholder="Select location…"
+                  />
                 </FormField>
               </div>
               <div className="grid grid-cols-2 gap-3">

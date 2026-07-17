@@ -9,6 +9,7 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import { extractCategoriesList } from '../emailBuilderApi'
 
 export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
@@ -16,6 +17,7 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
   const [loading, setLoading] = useState(false)
   const [categories, setCategories] = useState([])
   const [error, setError] = useState(null)
+  const [locationID, setLocationID] = useState([])
 
   const [newName, setNewName] = useState('')
   const [saving, setSaving] = useState(false)
@@ -52,9 +54,18 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
   const handleCreate = async () => {
     const name = newName.trim()
     if (!name) return
+    if (!(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0))) {
+      toast.error({ title: 'Location required', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     setSaving(true)
     try {
-      const result = await api.post('/api/email/builder/category', { name })
+      const allLocations = locationID === ALL_BRANCHES_VALUE
+      const result = await api.post('/api/email/builder/category', {
+        name,
+        allLocations,
+        locationID: allLocations ? [] : locationID,
+      })
       if (!result.success) {
         toast.error({ title: 'Create failed', message: result.error || 'Could not create category.' })
         return
@@ -138,19 +149,38 @@ export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-2 rounded-xl border bg-muted/30 p-3">
-            <Input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. Welcome emails, Promotions…"
-              disabled={saving}
-              className="bg-background"
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+          <div className="rounded-xl border bg-muted/30 p-3 space-y-2">
+            <LocationSelector
+              value={locationID}
+              onChange={setLocationID}
+              multiple
+              allowAllBranches
+              showAllOption={false}
+              placeholder="Studios for new category…"
             />
-            <Button variant="gradient" onClick={handleCreate} disabled={saving || !newName.trim()} className="shrink-0">
-              <Plus className="h-4 w-4 mr-2" />
-              Add category
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. Welcome emails, Promotions…"
+                disabled={saving}
+                className="bg-background"
+                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              />
+              <Button
+                variant="gradient"
+                onClick={handleCreate}
+                disabled={
+                  saving ||
+                  !newName.trim() ||
+                  !(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0))
+                }
+                className="shrink-0"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add category
+              </Button>
+            </div>
           </div>
 
           {loading && (

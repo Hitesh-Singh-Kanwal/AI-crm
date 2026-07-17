@@ -9,12 +9,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
+import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 
 export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
   const toast = useToast()
   const [loading, setLoading] = useState(false)
   const [categories, setCategories] = useState([])
   const [error, setError] = useState(null)
+  const [locationID, setLocationID] = useState([])
 
   const [newName, setNewName] = useState('')
   const [saving, setSaving] = useState(false)
@@ -52,9 +54,18 @@ export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
   const handleCreate = async () => {
     const name = newName.trim()
     if (!name) return
+    if (!(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0))) {
+      toast.error({ title: 'Location required', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     setSaving(true)
     try {
-      const result = await api.post('/api/smsBuilder/categories', { name })
+      const allLocations = locationID === ALL_BRANCHES_VALUE
+      const result = await api.post('/api/smsBuilder/categories', {
+        name,
+        allLocations,
+        locationID: allLocations ? [] : locationID,
+      })
       if (!result.success) {
         toast.error({ title: 'Create failed', message: result.error || 'Could not create category.' })
         return
@@ -132,17 +143,35 @@ export default function SmsCategoriesDialog({ open, onClose, onChanged }) {
         </DialogHeader>
 
         <div className="mt-4 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="New category name"
-              disabled={saving}
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <LocationSelector
+              value={locationID}
+              onChange={setLocationID}
+              multiple
+              allowAllBranches
+              showAllOption={false}
+              placeholder="Studios for new category…"
             />
-            <Button variant="gradient" onClick={handleCreate} disabled={saving || !newName.trim()}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="New category name"
+                disabled={saving}
+              />
+              <Button
+                variant="gradient"
+                onClick={handleCreate}
+                disabled={
+                  saving ||
+                  !newName.trim() ||
+                  !(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0))
+                }
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add
+              </Button>
+            </div>
           </div>
 
           {loading && (
