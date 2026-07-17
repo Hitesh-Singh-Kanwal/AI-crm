@@ -42,7 +42,6 @@ export default function LocationSelector({
       
       updatePosition()
       
-      // Update position on scroll or resize
       window.addEventListener('scroll', updatePosition, true)
       window.addEventListener('resize', updatePosition)
       
@@ -56,11 +55,12 @@ export default function LocationSelector({
   async function loadLocations() {
     try {
       setLoading(true)
-      const result = await api.get('/api/location')
+      // /api/location already scopes: superadmin → all org locations,
+      // everyone else → only locations assigned to them.
+      const result = await api.get('/api/location?limit=200')
       if (result.success) {
         let locs = result.data || []
         
-        // Filter active only if requested
         if (filterActiveOnly) {
           locs = locs.filter(loc => loc.status?.toLowerCase() === 'active')
         }
@@ -75,9 +75,48 @@ export default function LocationSelector({
   }
 
   const isMultiple = multiple || Array.isArray(value)
+  const selectedIds = (Array.isArray(value) ? value : value ? [value] : []).map(String)
   const selectedLocations = isMultiple
-    ? locations.filter((loc) => (value || []).includes(loc._id))
-    : locations.find((loc) => loc._id === value)
+    ? locations.filter((loc) => selectedIds.includes(String(loc._id)))
+    : locations.find((loc) => String(loc._id) === String(value))
+
+  // Single accessible location → auto-select and skip the dropdown.
+  useEffect(() => {
+    if (loading || locations.length !== 1) return
+
+    const only = locations[0]
+    const onlyId = String(only._id)
+    const hasSelection = isMultiple ? selectedIds.length > 0 : Boolean(value)
+    if (hasSelection) return
+
+    if (isMultiple) onChange([onlyId])
+    else onChange(onlyId)
+    onChangeObject?.(only)
+    // Intentionally omit onChange from deps — parents often pass inline setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, locations, isMultiple, selectedIds.length, value])
+
+  if (!loading && locations.length === 1) {
+    const only = locations[0]
+    return (
+      <div
+        className={cn(
+          'flex w-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground',
+          className
+        )}
+      >
+        <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium">{only.name}</div>
+          {(only.city || only.state) && (
+            <div className="truncate text-xs text-muted-foreground">
+              {only.city && only.state ? `${only.city}, ${only.state}` : only.city || only.state}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={cn('relative', className)}>
@@ -156,22 +195,24 @@ export default function LocationSelector({
                   key={location._id}
                   type="button"
                   onClick={() => {
+                    const locationId = String(location._id)
                     if (isMultiple) {
-                      const current = Array.isArray(value) ? [...value] : []
-                      const idx = current.indexOf(location._id)
+                      const current = selectedIds.slice()
+                      const idx = current.indexOf(locationId)
                       if (idx > -1) current.splice(idx, 1)
-                      else current.push(location._id)
+                      else current.push(locationId)
                       onChange(current)
-                      // keep dropdown open to allow multiple selection
                     } else {
-                      onChange(location._id)
+                      onChange(locationId)
                       onChangeObject?.(location)
                       setOpen(false)
                     }
                   }}
                   className={cn(
                     'w-full flex items-start gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors',
-                    (isMultiple ? (value || []).includes(location._id) : value === location._id) && 'bg-brand/10 text-brand font-medium'
+                    (isMultiple
+                      ? selectedIds.includes(String(location._id))
+                      : String(value) === String(location._id)) && 'bg-brand/10 text-brand font-medium'
                   )}
                 >
                   <Building2 className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -185,7 +226,7 @@ export default function LocationSelector({
                       </div>
                     )}
                   </div>
-                  {isMultiple && (value || []).includes(location._id) && (
+                  {isMultiple && selectedIds.includes(String(location._id)) && (
                     <div className="ml-2 text-sm text-brand">✓</div>
                   )}
                 </button>

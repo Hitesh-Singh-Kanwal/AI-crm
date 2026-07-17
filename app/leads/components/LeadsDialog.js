@@ -33,6 +33,7 @@ const emptyLead = {
   email: '',
   phoneNumber: '',
   location: '',
+  locationID: [],
   stage: 'new',
   bookingStatus: 'Not Booked',
   assignedAiAgent: '',
@@ -99,6 +100,17 @@ export default function LeadsDialog({
       return
     }
 
+    const selectedLocationIDs = Array.isArray(editingLead.locationID)
+      ? editingLead.locationID.filter(Boolean)
+      : editingLead.locationID
+        ? [editingLead.locationID]
+        : []
+
+    if (selectedLocationIDs.length === 0) {
+      toast.error({ title: 'Validation Error', message: 'Please select at least one location' })
+      return
+    }
+
     const user = getCurrentUser()
     if (!user?.organisationID && !editingLead._id) {
       toast.error({ title: 'Validation Error', message: 'You must be logged in to an organisation to create leads' })
@@ -113,7 +125,7 @@ export default function LeadsDialog({
           email: editingLead.email,
           phoneNumber: editingLead.phoneNumber,
           location: editingLead.location,
-          locationID: editingLead.locationID,
+          locationID: selectedLocationIDs,
           stage: editingLead.stage,
           bookingStatus: editingLead.bookingStatus,
           assignedAiAgent: editingLead.assignedAiAgent || '',
@@ -133,6 +145,7 @@ export default function LeadsDialog({
       } else {
         const payload = {
           ...editingLead,
+          locationID: selectedLocationIDs,
           organisationID: user?.organisationID,
           callbackDate: editingLead.callbackDate || undefined,
         }

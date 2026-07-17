@@ -15,6 +15,7 @@ import api from "@/lib/api";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MultiSelectCheckboxDropdown from "@/components/shared/MultiSelectCheckboxDropdown";
 import NewEnrollmentPackageInline from "@/app/calendar/components/NewEnrollmentPackageInline";
+import LocationSelector from "@/components/shared/LocationSelector";
 // A session payment lands on CalendarEvent.payment.method, whose enum has no wallet.
 import { PURCHASE_METHODS as PAYMENT_METHODS } from "@/lib/paymentMethods";
 
@@ -414,6 +415,7 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [locationID, setLocationID] = useState(null);
   const [error, setError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -422,12 +424,17 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
       setError("Name and email are required.");
       return;
     }
+    if (!locationID) {
+      setError("Please select a location.");
+      return;
+    }
     setIsCreating(true);
     setError(null);
     const result = await onCreate({
       name: name.trim(),
       email: email.trim(),
       phoneNumber: phone.trim() || undefined,
+      locationID,
     });
     if (!result) setError("Failed to create student.");
     setIsCreating(false);
@@ -449,6 +456,16 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
         onChange={setPhone}
         type="tel"
       />
+      <div>
+        <p className="mb-1 text-[11px] font-medium text-muted-foreground">Location *</p>
+        <LocationSelector
+          value={locationID}
+          onChange={setLocationID}
+          multiple={false}
+          showAllOption={false}
+          placeholder="Select location…"
+        />
+      </div>
       {error && <p className="text-[11px] text-destructive">{error}</p>}
       <div className="flex gap-2">
         <button
@@ -2029,11 +2046,12 @@ export default function AppointmentComposerPanel({
     initialDuration,
   ]);
 
-  const handleNewCustomer = async ({ name, email, phoneNumber }) => {
+  const handleNewCustomer = async ({ name, email, phoneNumber, locationID }) => {
     const result = await api.post("/api/customer", {
       name,
       email,
       phoneNumber,
+      locationID,
     });
     if (result.success && result.data) {
       const c = result.data;
@@ -2042,6 +2060,7 @@ export default function AppointmentComposerPanel({
         ...prev,
         { value: newId, label: c.name || c.email || newId },
       ]);
+      setRawCustomers((prev) => [...prev, c]);
       return newId;
     }
     return null;
@@ -2197,12 +2216,31 @@ export default function AppointmentComposerPanel({
       return;
     }
 
+    // Create location comes from the customer / lesson / todo — never the header
+    // branch filter (header is view-only). Prefer the selected customer's studio.
+    const selectedCustomer = form.customer_id
+      ? rawCustomers.find((c) => String(c._id) === String(form.customer_id))
+      : null;
+    const selectedLesson = form.lesson_id ? lessonMap[String(form.lesson_id)] : null;
+    const selectedTodo = form.todo_id ? todoMap[String(form.todo_id)] : null;
+    const firstLoc = (raw) => {
+      if (!raw) return undefined;
+      if (Array.isArray(raw)) return raw[0]?._id || raw[0] || undefined;
+      return raw._id || raw;
+    };
+    const createLocationID =
+      firstLoc(selectedCustomer?.locationID) ||
+      firstLoc(selectedLesson?.locationID) ||
+      firstLoc(selectedTodo?.locationID) ||
+      undefined;
+
     const basePayload = {
       title:
         form.title ||
         TABS.find((t) => t.key === activeTab)?.label ||
         "Appointment",
       type: TAB_TYPE_MAP[activeTab],
+      locationID: createLocationID || undefined,
       // To-dos can be assigned to many teachers (teacherIDs); teacherID stays set
       // to the first for back-compat with single-teacher rendering/other types.
       teacherID:

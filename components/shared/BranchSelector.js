@@ -22,9 +22,10 @@ export default function BranchSelector() {
   async function loadBranches() {
     try {
       setLoading(true)
-      const result = await api.get('/api/location')
+      const result = await api.get('/api/location?limit=200')
       if (result.success) {
-        // Filter only active locations
+        // Filter only active locations — this switcher only scopes what data
+        // you see in the app; creates pick location inside each form.
         const activeLocations = (result.data || []).filter(loc => loc.status?.toLowerCase() === 'active')
         setBranches(activeLocations)
       }

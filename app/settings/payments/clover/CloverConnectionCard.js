@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import { hasPermission } from '@/lib/permissions'
+import LocationSelector from '@/components/shared/LocationSelector'
 import { useCloverConnection } from './useCloverConnection'
 import CloverWebhookSetup from './CloverWebhookSetup'
 
 export default function CloverConnectionCard() {
+  const [locationID, setLocationID] = useState(null)
   const {
     status,
     merchantId,
@@ -22,7 +24,7 @@ export default function CloverConnectionCard() {
     saveWebhookSecret,
     connect,
     disconnect,
-  } = useCloverConnection()
+  } = useCloverConnection(locationID)
   const [disconnecting, setDisconnecting] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const toast = useToast()
@@ -31,6 +33,10 @@ export default function CloverConnectionCard() {
   const canDelete = hasPermission('settings', 'payments', 'delete')
 
   async function handleConnect() {
+    if (!locationID) {
+      toast.error({ title: 'Select a location', message: 'Choose which studio location to connect Clover for.' })
+      return
+    }
     setConnecting(true)
     const result = await connect()
     if (!result.success) {
@@ -57,15 +63,32 @@ export default function CloverConnectionCard() {
         <div>
           <h3 className="text-base font-semibold text-foreground">Clover</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Accept payments directly into this location&apos;s Clover merchant account.
+            Accept payments into a location&apos;s Clover merchant account. Pick the location below — this is separate from the header view filter.
           </p>
         </div>
-        {status === 'connected' && <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">Connected</Badge>}
-        {status === 'error' && <Badge className="bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400">Reconnect required</Badge>}
-        {status === 'disconnected' && <Badge variant="secondary">Not Connected</Badge>}
+        {locationID && status === 'connected' && <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">Connected</Badge>}
+        {locationID && status === 'error' && <Badge className="bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400">Reconnect required</Badge>}
+        {locationID && status === 'disconnected' && <Badge variant="secondary">Not Connected</Badge>}
       </div>
 
-      {status === 'connected' && (
+      <div className="mt-4 max-w-sm">
+        <label className="mb-1.5 block text-sm font-medium text-foreground">Location *</label>
+        <LocationSelector
+          value={locationID}
+          onChange={setLocationID}
+          multiple={false}
+          showAllOption={false}
+          placeholder="Select location to configure…"
+        />
+      </div>
+
+      {!locationID && (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Select a location to view or manage its Clover connection.
+        </p>
+      )}
+
+      {locationID && status === 'connected' && (
         <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div>
             <dt className="text-muted-foreground">Merchant</dt>
@@ -84,13 +107,13 @@ export default function CloverConnectionCard() {
         </dl>
       )}
 
-      {status === 'error' && lastError && (
+      {locationID && status === 'error' && lastError && (
         <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
           {lastError}
         </p>
       )}
 
-      {status === 'connected' && (
+      {locationID && status === 'connected' && (
         <CloverWebhookSetup
           webhookUrl={webhookUrl}
           webhookSecretSaved={webhookSecretSaved}
@@ -101,28 +124,30 @@ export default function CloverConnectionCard() {
         />
       )}
 
-      <div className="mt-5 flex gap-3">
-        {status === 'disconnected' && (
-          <Button onClick={handleConnect} disabled={!canWrite || connecting} title={!canWrite ? 'You do not have permission to connect Clover' : undefined}>
-            {connecting ? 'Connecting…' : 'Connect Clover'}
-          </Button>
-        )}
-        {(status === 'connected' || status === 'error') && (
-          <>
-            <Button onClick={handleConnect} disabled={!canWrite || connecting} title={!canWrite ? 'You do not have permission to reconnect Clover' : undefined}>
-              {connecting ? 'Connecting…' : 'Reconnect'}
+      {locationID && (
+        <div className="mt-5 flex gap-3">
+          {status === 'disconnected' && (
+            <Button onClick={handleConnect} disabled={!canWrite || connecting} title={!canWrite ? 'You do not have permission to connect Clover' : undefined}>
+              {connecting ? 'Connecting…' : 'Connect Clover'}
             </Button>
-            <Button
-              variant="outline"
-              onClick={handleDisconnect}
-              disabled={!canDelete || disconnecting}
-              title={!canDelete ? 'You do not have permission to disconnect Clover' : undefined}
-            >
-              {disconnecting ? 'Disconnecting…' : 'Disconnect'}
-            </Button>
-          </>
-        )}
-      </div>
+          )}
+          {(status === 'connected' || status === 'error') && (
+            <>
+              <Button onClick={handleConnect} disabled={!canWrite || connecting} title={!canWrite ? 'You do not have permission to reconnect Clover' : undefined}>
+                {connecting ? 'Connecting…' : 'Reconnect'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleDisconnect}
+                disabled={!canDelete || disconnecting}
+                title={!canDelete ? 'You do not have permission to disconnect Clover' : undefined}
+              >
+                {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+              </Button>
+            </>
+          )}
+        </div>
+      )}
     </article>
   )
 }

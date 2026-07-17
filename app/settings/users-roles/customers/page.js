@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/table'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
+import LocationSelector from '@/components/shared/LocationSelector'
 import { getInitials, formatDate, cn } from '@/lib/utils'
 
 const EMPTY_FORM = {
@@ -87,7 +88,7 @@ function FormSection({ icon: Icon, title, children }) {
   )
 }
 
-function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
+function CustomerFormDialog({ open, onClose, onSaved, initial }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -235,19 +236,13 @@ function CustomerFormDialog({ open, onClose, onSaved, initial, locations }) {
             <FormSection icon={MapPin} title="Location">
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Studio location" required>
-                  <div className="relative">
-                    <select
-                      value={form.locationID}
-                      onChange={(e) => setField('locationID', e.target.value)}
-                      className={cn(inputClass, 'appearance-none pr-8')}
-                    >
-                      <option value="">Select location…</option>
-                      {locations.map((loc) => (
-                        <option key={loc._id} value={loc._id}>{loc.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  </div>
+                  <LocationSelector
+                    value={form.locationID || null}
+                    onChange={(id) => setField('locationID', id || '')}
+                    multiple={false}
+                    showAllOption={false}
+                    placeholder="Select location…"
+                  />
                 </FormField>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -662,7 +657,6 @@ export default function CustomersPage() {
         onClose={() => setDialogOpen(false)}
         onSaved={fetchCustomers}
         initial={editingCustomer}
-        locations={locations}
       />
 
       {/* Delete Confirm */}

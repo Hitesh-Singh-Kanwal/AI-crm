@@ -161,6 +161,7 @@ export default function MembershipEditPage() {
 
   async function handleSave() {
     if (!membershipName.trim()) { toast.error('Membership name is required'); return }
+    if (!locationID?.length) { toast.error('Please select at least one location'); return }
 
     const cleanedServices = [...selectedCodes].map((code) => {
       const sel = selections[code] || {}
