@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import api from '@/lib/api'
-import { getEffectiveBranch } from '@/lib/auth'
+import { resolveLocationID } from '@/app/settings/payments/clover/useCloverConnection'
 
 const initialState = {
   status: 'loading',
@@ -16,13 +16,19 @@ const initialState = {
   setupNote: null,
 }
 
-export function useStudioPhone() {
+export function useStudioPhone(locationID) {
   const [state, setState] = useState(initialState)
-  const [locationId, setLocationId] = useState(() => getEffectiveBranch())
+  const resolvedLocationID = resolveLocationID(locationID)
 
   const refresh = useCallback(async () => {
+    if (!resolvedLocationID) {
+      setState({ ...initialState, status: 'disconnected' })
+      return
+    }
     setState((prev) => ({ ...prev, status: 'loading' }))
-    const result = await api.get('/api/location-phone/status')
+    const result = await api.get(
+      `/api/location-phone/status?locationID=${encodeURIComponent(resolvedLocationID)}`,
+    )
     if (result.success && result.data) {
       setState({
         status: result.data.status || 'disconnected',
@@ -42,41 +48,37 @@ export function useStudioPhone() {
         lastError: result.error || null,
       })
     }
-  }, [])
-
-  // Re-load when the active studio changes (header branch switcher).
-  useEffect(() => {
-    const syncLocation = () => {
-      const next = getEffectiveBranch()
-      setLocationId((prev) => (prev === next ? prev : next))
-    }
-    syncLocation()
-    window.addEventListener('branch-change', syncLocation)
-    window.addEventListener('storage', syncLocation)
-    return () => {
-      window.removeEventListener('branch-change', syncLocation)
-      window.removeEventListener('storage', syncLocation)
-    }
-  }, [])
+  }, [resolvedLocationID])
 
   useEffect(() => {
     refresh()
-  }, [refresh, locationId])
+  }, [refresh])
 
   const connect = useCallback(
     async (twilioNumber) => {
-      const result = await api.post('/api/location-phone/connect', { twilioNumber })
+      if (!resolvedLocationID) {
+        return { success: false, error: 'Select a location first.' }
+      }
+      const result = await api.post('/api/location-phone/connect', {
+        twilioNumber,
+        locationID: resolvedLocationID,
+      })
       if (result.success) await refresh()
       return { success: result.success, error: result.error, data: result.data }
     },
-    [refresh],
+    [resolvedLocationID, refresh],
   )
 
   const disconnect = useCallback(async () => {
-    const result = await api.post('/api/location-phone/disconnect', {})
+    if (!resolvedLocationID) {
+      return { success: false, error: 'Select a location first.' }
+    }
+    const result = await api.post('/api/location-phone/disconnect', {
+      locationID: resolvedLocationID,
+    })
     if (result.success) await refresh()
     return { success: result.success, error: result.error }
-  }, [refresh])
+  }, [resolvedLocationID, refresh])
 
   return { ...state, refresh, connect, disconnect }
 }

@@ -2426,6 +2426,14 @@ export default function AppointmentComposerPanel({
         <NewEnrollmentPackageInline
           teacherOptions={instructorOptions}
           packageTemplates={packageTemplates}
+          customerID={form.customer_id || undefined}
+          locationID={(() => {
+            const c = rawCustomers?.find((x) => String(x._id) === String(form.customer_id))
+            const loc = c?.locationID
+            if (!loc) return undefined
+            if (Array.isArray(loc)) return loc[0]?._id || loc[0] || undefined
+            return loc._id || loc
+          })()}
           onCancel={() => setShowEnrollmentWizard(false)}
           onSubmit={async (payload) => {
             const created = await handleNewEnrollment(form.customer_id, payload);
@@ -2505,6 +2513,7 @@ export default function AppointmentComposerPanel({
     packageTemplates,
     allServices,
     enrollments,
+    rawCustomers,
   ]);
 
   const slotCount = form.selected_time_slots?.length ?? 0;

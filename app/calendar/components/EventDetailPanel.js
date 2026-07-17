@@ -1414,6 +1414,12 @@ function GroupStudentRoster({
         open={!!sellCustomer}
         customerID={sellCustomer?._id}
         customerName={sellCustomer?.name}
+        locationID={(() => {
+          const loc = sellCustomer?.locationID
+          if (!loc) return undefined
+          if (Array.isArray(loc)) return loc[0]?._id || loc[0] || undefined
+          return loc._id || loc
+        })()}
         allowedServiceCodes={groupServiceCodes}
         onClose={() => setSellCustomer(null)}
         onSuccess={handleSellSuccess}

@@ -44,7 +44,7 @@ import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import LocationSelector from "@/components/shared/LocationSelector";
 import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
 import api from "@/lib/api";
-import { useCloverConnection } from "@/app/settings/payments/clover/useCloverConnection";
+import { useCloverConnection, resolveLocationID } from "@/app/settings/payments/clover/useCloverConnection";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import WalletShortfallField, { walletPaymentFields } from "@/components/payments/WalletShortfallField";
@@ -1033,9 +1033,9 @@ function ProfileTab({ customer, locations, onUpdated }) {
 
 // ─── PaymentSchedule ─────────────────────────────────────────────────────────
 
-function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAddInstallment, billingType, customerID, onSent }) {
+function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAddInstallment, billingType, customerID, locationID, onSent }) {
   const [open, setOpen] = useState(false);
-  const { cloverReady } = useCloverConnection();
+  const { cloverReady } = useCloverConnection(locationID || plan);
 
   if (!plan) return null;
 
@@ -1377,6 +1377,7 @@ function PayInstallmentDialog({
   plan,
   installmentIndex,
   billingType,
+  locationID,
   onSuccess,
 }) {
   const [method, setMethod] = useState("cash");
@@ -1385,7 +1386,7 @@ function PayInstallmentDialog({
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
-  const { cloverReady } = useCloverConnection();
+  const { cloverReady } = useCloverConnection(locationID || plan);
 
   useEffect(() => {
     if (open && plan?.customerID) {
@@ -1542,7 +1543,7 @@ function PayInstallmentDialog({
           />
           {cloverNotConnected && (
             <p className="text-[12px] text-muted-foreground">
-              Finish Clover setup in Settings → Payments to charge a card.
+              Finish Clover setup in Settings → Integrations to charge a card.
             </p>
           )}
           <div className="flex justify-end gap-2 pt-1">
@@ -1750,7 +1751,7 @@ const BLANK_ADD_FORM = {
   },
 };
 
-function PackagesTab({ customerID }) {
+function PackagesTab({ customerID, locationID }) {
   const [customerPkgs, setCustomerPkgs] = useState([]);
   const [detailsMap, setDetailsMap] = useState({});
   const [plansMap, setPlansMap] = useState({}); // cpId -> PaymentPlan doc
@@ -1774,7 +1775,7 @@ function PackagesTab({ customerID }) {
   const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null); // { plan, index }
   const toast = useToast();
-  const { cloverReady } = useCloverConnection();
+  const { cloverReady } = useCloverConnection(locationID);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2498,6 +2499,7 @@ function PackagesTab({ customerID }) {
         plan={payInstallTarget?.plan}
         installmentIndex={payInstallTarget?.index}
         billingType={payInstallTarget?.billingType}
+        locationID={locationID}
         onSuccess={load}
       />
 
@@ -2963,7 +2965,7 @@ function PackagesTab({ customerID }) {
                   </FormField>
                   {cloverNotConnected && (
                     <p className="text-[12px] text-muted-foreground">
-                      Finish Clover setup in Settings → Payments to charge a card.
+                      Finish Clover setup in Settings → Integrations to charge a card.
                     </p>
                   )}
                 </div>
@@ -3117,7 +3119,7 @@ const BLANK_ENR_FORM = {
   },
 };
 
-function EnrollmentsTab({ customerID, customerName = "" }) {
+function EnrollmentsTab({ customerID, customerName = "", locationID }) {
   const [statusFilter, setStatusFilter] = useState("active");
   const [enrollments, setEnrollments] = useState([]);
   const [detailsMap, setDetailsMap] = useState({});
@@ -3133,7 +3135,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
   const [addForm, setAddForm] = useState(BLANK_ENR_FORM);
   const [selectedPkg, setSelectedPkg] = useState(null);
   const [adding, setAdding] = useState(false);
-  const { cloverReady } = useCloverConnection();
+  const { cloverReady } = useCloverConnection(locationID);
 
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
@@ -4204,6 +4206,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                           <FlexiblePaymentDueCard
                             enr={enr}
                             customerID={customerID}
+                            locationID={locationID}
                             onSuccess={load}
                           />
                         </div>
@@ -4216,6 +4219,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                         cpStatus={cp.status}
                         billingType={cp.billingType}
                         customerID={customerID}
+                        locationID={locationID}
                         onPayInstallment={setPayInstallTarget}
                         onChangeDate={setChangeInstallDateTarget}
                         onAddInstallment={setAddInstallTarget}
@@ -4242,6 +4246,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         plan={payInstallTarget?.plan}
         installmentIndex={payInstallTarget?.index}
         billingType={payInstallTarget?.billingType}
+        locationID={locationID}
         onSuccess={load}
       />
 
@@ -4332,6 +4337,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
         onClose={() => setCreateEnrollmentOpen(false)}
         customerID={customerID}
         customerName={customerName}
+        locationID={locationID}
         onSuccess={() => {
           toast.success("Enrollment and package created.");
           load();
@@ -4678,7 +4684,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
                           </FormField>
                           {cloverNotConnected && (
                             <p className="text-[12px] text-muted-foreground">
-                              Finish Clover setup in Settings → Payments to charge a card.
+                              Finish Clover setup in Settings → Integrations to charge a card.
                             </p>
                           )}
                         </div>
@@ -5041,7 +5047,7 @@ function EnrollmentsTab({ customerID, customerName = "" }) {
 
 // ─── Payment History Tab ─────────────────────────────────────────────────────
 
-function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
+function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
   const cp = enr.package;
   const collected = cp.amountCollected ?? 0;
   const outstanding = Math.max(0, (cp.totalPaid ?? 0) - collected);
@@ -5057,7 +5063,7 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
   );
   const [saving, setSaving] = useState(false);
   const toast = useToast();
-  const { cloverReady } = useCloverConnection();
+  const { cloverReady } = useCloverConnection(locationID);
 
   useEffect(() => {
     if (mode === "pay") fetchWalletBalance(customerID).then(setWalletBalance);
@@ -5251,7 +5257,7 @@ function FlexiblePaymentDueCard({ enr, customerID, onSuccess }) {
             />
             {cloverNotConnected && (
               <p className="text-[11px] text-muted-foreground">
-                Finish Clover setup in Settings → Payments to charge a card.
+                Finish Clover setup in Settings → Integrations to charge a card.
               </p>
             )}
             <div className="flex gap-1.5">
@@ -6045,12 +6051,14 @@ export default function CustomerDetailPage() {
             <EnrollmentsTab
               customerID={customer._id}
               customerName={customer.name || customer.email || ""}
+              locationID={resolveLocationID(customer)}
             />
           )}
           {tab === "memberships" && (
             <CustomerMembershipsTab
               customerID={customer._id}
               customerName={customer.name || customer.email || ""}
+              locationID={resolveLocationID(customer)}
             />
           )}
           {tab === "wallet" && <CustomerWalletTab customerID={customer._id} />}

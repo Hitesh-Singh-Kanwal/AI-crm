@@ -6,9 +6,11 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { hasPermission } from '@/lib/permissions'
+import LocationSelector from '@/components/shared/LocationSelector'
 import { useStudioPhone } from './useStudioPhone'
 
 export default function StudioPhoneCard() {
+  const [locationID, setLocationID] = useState(null)
   const {
     status,
     twilioNumber,
@@ -19,7 +21,7 @@ export default function StudioPhoneCard() {
     setupNote,
     connect,
     disconnect,
-  } = useStudioPhone()
+  } = useStudioPhone(locationID)
   const [numberInput, setNumberInput] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
@@ -29,6 +31,10 @@ export default function StudioPhoneCard() {
   const canDelete = canWrite
 
   async function handleConnect() {
+    if (!locationID) {
+      toast.error({ title: 'Select a location', message: 'Choose which studio location to connect this number for.' })
+      return
+    }
     const value = numberInput.trim() || twilioNumber || ''
     if (!value) {
       toast.error({ title: 'Number required', message: 'Enter the Twilio number for this studio (E.164, e.g. +15551234567).' })
@@ -49,6 +55,10 @@ export default function StudioPhoneCard() {
   }
 
   async function handleDisconnect() {
+    if (!locationID) {
+      toast.error({ title: 'Select a location', message: 'Choose which studio location to disconnect.' })
+      return
+    }
     setDisconnecting(true)
     const result = await disconnect()
     setDisconnecting(false)
@@ -65,28 +75,42 @@ export default function StudioPhoneCard() {
         <div>
           <h3 className="text-base font-semibold text-foreground">Studio Twilio number</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Each studio uses its own number for inbound and AI outbound calls. Buy or port the number
-            into the platform Twilio account, then paste it here — we configure webhooks and Vapi
-            automatically.
+            Each studio uses its own number for inbound and AI outbound calls. Pick the location below —
+            this is separate from the header view filter. Buy or port the number into the platform Twilio
+            account, then paste it here — we configure webhooks and Vapi automatically.
           </p>
         </div>
-        {status === 'loading' && <Badge variant="secondary">Loading…</Badge>}
-        {status === 'connected' && (
+        {locationID && status === 'loading' && <Badge variant="secondary">Loading…</Badge>}
+        {locationID && status === 'connected' && (
           <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
             Connected
           </Badge>
         )}
-        {status === 'error' && (
+        {locationID && status === 'error' && (
           <Badge className="bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400">Error</Badge>
         )}
-        {status === 'disconnected' && <Badge variant="secondary">Not Connected</Badge>}
+        {locationID && status === 'disconnected' && <Badge variant="secondary">Not Connected</Badge>}
       </div>
 
-      {setupNote && (
+      <div className="mt-4 max-w-sm">
+        <label className="mb-1.5 block text-sm font-medium text-foreground">Location *</label>
+        <LocationSelector
+          value={locationID}
+          onChange={setLocationID}
+          multiple={false}
+          showAllOption={false}
+        />
+      </div>
+
+      {!locationID && (
+        <p className="mt-4 text-sm text-muted-foreground">Select a location to manage its Twilio number.</p>
+      )}
+
+      {locationID && setupNote && (
         <p className="mt-4 text-sm text-muted-foreground">{setupNote}</p>
       )}
 
-      {status === 'connected' && (
+      {locationID && status === 'connected' && (
         <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-muted-foreground">Number</dt>
@@ -113,15 +137,15 @@ export default function StudioPhoneCard() {
         </dl>
       )}
 
-      {(status === 'error' || lastError) && lastError && (
+      {locationID && (status === 'error' || lastError) && lastError && (
         <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
           {lastError}
         </p>
       )}
 
-      {(status === 'disconnected' || status === 'error' || status === 'connected') && (
+      {locationID && (status === 'disconnected' || status === 'error' || status === 'connected') && (
         <div className="mt-5 space-y-3">
-          {(status === 'disconnected' || status === 'error' || status === 'connected') && canWrite && (
+          {canWrite && (
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input
                 value={numberInput}

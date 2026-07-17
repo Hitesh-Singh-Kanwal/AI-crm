@@ -15,6 +15,8 @@ export default function CreateEnrollmentSheet({
   /** When set, student is fixed and the selector is hidden. */
   customerID: fixedCustomerID = null,
   customerName = '',
+  /** Studio for Clover readiness when student is fixed (customer location). */
+  locationID: fixedLocationID = null,
   /** When set, only group/specific service lines are sellable and only packages containing them are listed. */
   allowedServiceCodes = null,
   onSuccess,
@@ -30,6 +32,12 @@ export default function CreateEnrollmentSheet({
   const resolvedCustomerID = fixedCustomerID
     ? String(fixedCustomerID)
     : selectedCustomerID
+
+  const resolvedLocationID = (() => {
+    if (fixedLocationID) return String(fixedLocationID)
+    const opt = customerOptions.find((c) => c.value === selectedCustomerID)
+    return opt?.locationID || null
+  })()
 
   const sellablePackages = useMemo(() => {
     if (!allowedServiceCodes) return packageTemplates
@@ -75,10 +83,17 @@ export default function CreateEnrollmentSheet({
       }
       if (customersRes?.success && Array.isArray(customersRes.data)) {
         setCustomerOptions(
-          customersRes.data.map((c) => ({
-            value: String(c._id ?? c.id),
-            label: c.name || c.email || String(c._id),
-          })),
+          customersRes.data.map((c) => {
+            const loc = c.locationID
+            const locationID = Array.isArray(loc)
+              ? (loc[0]?._id || loc[0] || null)
+              : (loc?._id || loc || null)
+            return {
+              value: String(c._id ?? c.id),
+              label: c.name || c.email || String(c._id),
+              locationID: locationID ? String(locationID) : null,
+            }
+          }),
         )
       }
       if (packagesRes?.success && Array.isArray(packagesRes.data)) {
@@ -331,6 +346,7 @@ export default function CreateEnrollmentSheet({
                 packageTemplates={sellablePackages}
                 allowedServiceCodes={allowedServiceCodes}
                 customerID={resolvedCustomerID}
+                locationID={resolvedLocationID}
                 onCancel={handleClose}
                 onSubmit={handleCreateEnrollmentAndPackage}
               />
@@ -373,6 +389,7 @@ export default function CreateEnrollmentSheet({
               )}
               <AssignMembershipForm
                 customerID={resolvedCustomerID}
+                locationID={resolvedLocationID}
                 onSuccess={() => { handleClose(); onSuccess?.() }}
                 onCancel={handleClose}
               />

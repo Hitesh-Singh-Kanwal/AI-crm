@@ -19,16 +19,31 @@ const initialState = {
   webhookLastError: null,
 }
 
+/** Normalize customer/plan/location refs to a single location id string. */
+export function resolveLocationID(source) {
+  if (source == null || source === '') return null
+  if (typeof source === 'string' || typeof source === 'number') return String(source)
+  if (Array.isArray(source)) {
+    return source.length ? resolveLocationID(source[0]) : null
+  }
+  if (source.locationID !== undefined) {
+    return resolveLocationID(source.locationID)
+  }
+  if (source._id) return String(source._id)
+  return null
+}
+
 export function useCloverConnection(locationID) {
   const [state, setState] = useState(initialState)
+  const resolvedLocationID = resolveLocationID(locationID)
 
   const refresh = useCallback(async () => {
-    if (!locationID) {
+    if (!resolvedLocationID) {
       setState({ ...initialState, status: 'disconnected' })
       return
     }
     setState((prev) => ({ ...prev, status: 'loading' }))
-    const result = await api.get(`/api/payments/clover/status?locationID=${encodeURIComponent(locationID)}`)
+    const result = await api.get(`/api/payments/clover/status?locationID=${encodeURIComponent(resolvedLocationID)}`)
     if (result.success && result.data) {
       setState({
         status: result.data.status || 'disconnected',
@@ -45,43 +60,43 @@ export function useCloverConnection(locationID) {
     } else {
       setState({ ...initialState, status: 'disconnected', lastError: result.error || null })
     }
-  }, [locationID])
+  }, [resolvedLocationID])
 
   useEffect(() => {
     refresh()
   }, [refresh])
 
   const connect = useCallback(async () => {
-    if (!locationID) {
+    if (!resolvedLocationID) {
       return { success: false, error: 'Select a location first.' }
     }
-    const result = await api.get(`/api/payments/clover/connect?locationID=${encodeURIComponent(locationID)}`)
+    const result = await api.get(`/api/payments/clover/connect?locationID=${encodeURIComponent(resolvedLocationID)}`)
     if (result.success && result.data?.authorizeUrl) {
       window.location.href = result.data.authorizeUrl
       return { success: true }
     }
     return { success: false, error: result.error || 'Unable to start the Clover connection.' }
-  }, [locationID])
+  }, [resolvedLocationID])
 
   const disconnect = useCallback(async () => {
-    if (!locationID) {
+    if (!resolvedLocationID) {
       return { success: false, error: 'Select a location first.' }
     }
-    const result = await api.post('/api/payments/clover/disconnect', { locationID })
+    const result = await api.post('/api/payments/clover/disconnect', { locationID: resolvedLocationID })
     if (result.success) {
       await refresh()
     }
     return { success: result.success, error: result.error }
-  }, [locationID, refresh])
+  }, [resolvedLocationID, refresh])
 
   const saveWebhookSecret = useCallback(async (secret) => {
-    if (!locationID) {
+    if (!resolvedLocationID) {
       return { success: false, error: 'Select a location first.' }
     }
-    const result = await api.post('/api/payments/clover/webhook-secret', { secret, locationID })
+    const result = await api.post('/api/payments/clover/webhook-secret', { secret, locationID: resolvedLocationID })
     if (result.success) await refresh()
     return { success: result.success, error: result.error }
-  }, [locationID, refresh])
+  }, [resolvedLocationID, refresh])
 
   // Clover only sends a webhook when a payment happens, so "a webhook has arrived"
   // can't gate the first payment. A saved secret is what we can require up front.
