@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import LocationsDialog from './components/LocationsDialog'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
-import { filterByBranch } from '@/lib/branch-filter'
+import { getEffectiveBranch } from '@/lib/auth'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
@@ -143,8 +143,13 @@ export default function LocationsPage() {
     }
   }
 
-  // Filter locations by branch
-  const displayedLocations = filterByBranch(locationsList)
+  // Locations ARE branches (a location's own _id is the branch id), so when a
+  // branch is selected in the header we show just that one location instead
+  // of filtering by a `branch_id` field the location records don't have.
+  const effectiveBranch = getEffectiveBranch()
+  const displayedLocations = effectiveBranch
+    ? locationsList.filter((loc) => (loc._id || loc.id) === effectiveBranch)
+    : locationsList
 
   function handlePageChange(newPage) {
     setCurrentPage(newPage)

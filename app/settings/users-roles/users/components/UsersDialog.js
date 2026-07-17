@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { UserPlus, X } from 'lucide-react'
+import { UserPlus, X, CalendarDays } from 'lucide-react'
 import LocationSelector from '@/components/shared/LocationSelector'
 import RoleSelector from '@/components/shared/RoleSelector'
 import StatusSelector from '@/components/shared/StatusSelector'
@@ -14,12 +14,21 @@ import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 
-export default function UsersDialog({ open, onClose, users = [], onRefresh, initialUserId = null }) {
+export default function UsersDialog({ open, onClose, users = [], onRefresh, initialUserId = null, rolesList = [] }) {
   const [editingUser, setEditingUser] = useState(null)
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState('create') // 'create' or 'edit'
   const [inviteMode, setInviteMode] = useState(false) // create-mode only: invite by email vs set password now
   const toast = useToast()
+
+  // Whether the selected role shows its users on the calendar — the default
+  // this user's toggle starts at, unless explicitly overridden below.
+  const roleShowsOnCalendar = !!rolesList.find((r) => r.role === editingUser?.role)?.showOnCalendar
+  const showOnCalendarOverridden =
+    editingUser?.showOnCalendar === true || editingUser?.showOnCalendar === false
+  const effectiveShowOnCalendar = showOnCalendarOverridden
+    ? editingUser.showOnCalendar
+    : roleShowsOnCalendar
 
   useEffect(() => {
     if (!open) {
@@ -77,6 +86,7 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
           locationID: editingUser.locationID || [],
           phoneNumber: editingUser.phoneNumber || null,
           status: editingUser.status || 'active',
+          showOnCalendar: editingUser.showOnCalendar ?? null,
         })
         if (result.success) {
           toast.success({ title: 'Saved', message: 'User updated' })
@@ -94,6 +104,7 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
           role: editingUser.role,
           locationID: editingUser.locationID || [],
           permissions: editingUser.permissions,
+          showOnCalendar: editingUser.showOnCalendar ?? null,
         })
         if (result.success) {
           toast.success({ title: 'Invite sent', message: `An invite email was sent to ${editingUser.email}` })
@@ -201,6 +212,38 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
                   />
                 </div>
               </div>
+
+              {editingUser.role && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
+                  <div className="flex items-start gap-2">
+                    <CalendarDays className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Show on calendar</p>
+                      <p className="text-xs text-muted-foreground">
+                        {showOnCalendarOverridden
+                          ? `Overridden for this user (the "${editingUser.role}" role default is ${roleShowsOnCalendar ? 'on' : 'off'}).`
+                          : `Following the "${editingUser.role}" role's default. Toggle to override just for this user.`}
+                      </p>
+                      {showOnCalendarOverridden && (
+                        <button
+                          type="button"
+                          className="mt-1 text-xs font-medium text-brand hover:underline"
+                          onClick={() => setEditingUser((p) => ({ ...p, showOnCalendar: null }))}
+                        >
+                          Reset to role default
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={effectiveShowOnCalendar}
+                    onCheckedChange={(checked) =>
+                      setEditingUser((p) => ({ ...p, showOnCalendar: checked }))
+                    }
+                    aria-label="Show on calendar"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Account Settings Section */}
