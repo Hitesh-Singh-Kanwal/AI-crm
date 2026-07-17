@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
+import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
@@ -27,6 +28,15 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
   const [name, setName] = useState(initialTemplate?.name || '')
   const [subCategory, setSubCategory] = useState(initialTemplate?.subCategory || '')
   const [categoryId, setCategoryId] = useState(initialTemplate?.categoryID?._id || '')
+  const [locationID, setLocationID] = useState(
+    initialTemplate?.allLocations
+      ? ALL_BRANCHES_VALUE
+      : Array.isArray(initialTemplate?.locationID)
+        ? initialTemplate.locationID.map((l) => l?._id || l).filter(Boolean)
+        : initialTemplate?.locationID?._id || initialTemplate?.locationID
+          ? [initialTemplate.locationID?._id || initialTemplate.locationID]
+          : []
+  )
   const [reasonCode, setReasonCode] = useState(initialTemplate?.reason || '')
   const [message, setMessage] = useState(initialTemplate?.message || '')
 
@@ -37,6 +47,15 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
     setName(initialTemplate.name || '')
     setSubCategory(initialTemplate.subCategory || '')
     setCategoryId(initialTemplate.categoryID?._id || '')
+    setLocationID(
+      initialTemplate.allLocations
+        ? ALL_BRANCHES_VALUE
+        : Array.isArray(initialTemplate.locationID)
+          ? initialTemplate.locationID.map((l) => l?._id || l).filter(Boolean)
+          : initialTemplate.locationID?._id || initialTemplate.locationID
+            ? [initialTemplate.locationID?._id || initialTemplate.locationID]
+            : []
+    )
     setReasonCode(initialTemplate.reason || '')
     setMessage(initialTemplate.message || '')
   }, [initialTemplate])
@@ -79,6 +98,33 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
     fetchReasons()
   }, [fetchCategories, fetchReasons, dataVersion])
 
+  const locationScopedCategories = useMemo(() => {
+    if (!locationID || (locationID !== ALL_BRANCHES_VALUE && (!Array.isArray(locationID) || locationID.length === 0))) {
+      return categories
+    }
+    if (locationID === ALL_BRANCHES_VALUE) {
+      return categories
+    }
+    return categories.filter((cat) => {
+      if (cat.allLocations) return true
+      const catLocs = (Array.isArray(cat.locationID) ? cat.locationID : cat.locationID ? [cat.locationID] : [])
+        .map((l) => String(l?._id || l))
+      return locationID.every((id) => catLocs.includes(String(id)))
+    })
+  }, [categories, locationID])
+
+  useEffect(() => {
+    if (!locationScopedCategories.length) {
+      setCategoryId('')
+      return
+    }
+    setCategoryId((prev) =>
+      locationScopedCategories.some((c) => String(c._id) === String(prev))
+        ? prev
+        : locationScopedCategories[0]._id
+    )
+  }, [locationScopedCategories])
+
   const meta = useMemo(() => {
     const chars = String(message || '').length
     const parts = Math.max(1, Math.ceil(chars / 160))
@@ -91,6 +137,7 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
     !!name.trim() &&
     !!message.trim() &&
     !!categoryId &&
+    !!(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0)) &&
     !!subCategory.trim() &&
     !!String(reasonCode || '').trim()
 
@@ -99,15 +146,22 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
       toast.error({ title: 'Missing reason', message: 'Reason is required.' })
       return
     }
+    if (!(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0))) {
+      toast.error({ title: 'Missing location', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     if (!canSave) return
     setSaving(true)
     try {
+      const allLocations = locationID === ALL_BRANCHES_VALUE
       const payload = {
         name: name.trim(),
         subCategory: subCategory.trim(),
         categoryID: categoryId,
         reason: String(reasonCode || '').trim(),
         message: String(message || ''),
+        allLocations,
+        locationID: allLocations ? [] : locationID,
       }
       const result = await api.post('/api/smsBuilder', payload)
       if (!result.success) {
@@ -196,6 +250,18 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
+                <Label>Studio location *</Label>
+                <LocationSelector
+                  value={locationID}
+                  onChange={setLocationID}
+                  multiple
+                  allowAllBranches
+                  showAllOption={false}
+                  placeholder="Select studio(s)…"
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label>Template name</Label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Class Reminder" />
               </div>
@@ -209,7 +275,7 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
                 ) : (
                   <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
                     <option value="">Select category</option>
-                    {categories.map((c) => (
+                    {locationScopedCategories.map((c) => (
                       <option key={c._id} value={c._id}>
                         {c.name}
                       </option>

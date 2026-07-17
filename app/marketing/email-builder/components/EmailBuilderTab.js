@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import { useToast } from '@/components/ui/toast'
 import StylePanel from '@/components/forms/StylePanel'
 import api from '@/lib/api'
@@ -308,6 +309,7 @@ export default function EmailBuilderTab({ onCreated }) {
 
   const [categories, setCategories] = useState([])
   const [categoryId, setCategoryId] = useState('')
+  const [locationID, setLocationID] = useState([]) // 'all' | string[]
   // Per backend contract:
   // - `subject` is used as the template "name"
   // - `body` is used as the template "description"
@@ -335,9 +337,38 @@ export default function EmailBuilderTab({ onCreated }) {
     if (result.success) {
       const list = extractCategoriesList(result)
       setCategories(list)
-      setCategoryId((prev) => (prev || (list.length > 0 ? list[0]._id : '')))
     }
   }, [])
+
+  const locationScopedCategories = useMemo(() => {
+    if (!locationID || (locationID !== ALL_BRANCHES_VALUE && (!Array.isArray(locationID) || locationID.length === 0))) {
+      return categories
+    }
+    // "All branches" is resolved on the server (org-wide for superadmin, assigned
+    // locations for staff). Keep the header-scoped category list and let the API
+    // enforce coverage — filtering to allLocations-only wrongly hides staff categories.
+    if (locationID === ALL_BRANCHES_VALUE) {
+      return categories
+    }
+    return categories.filter((cat) => {
+      if (cat.allLocations) return true
+      const catLocs = (Array.isArray(cat.locationID) ? cat.locationID : cat.locationID ? [cat.locationID] : [])
+        .map((l) => String(l?._id || l))
+      return locationID.every((id) => catLocs.includes(String(id)))
+    })
+  }, [categories, locationID])
+
+  useEffect(() => {
+    if (!locationScopedCategories.length) {
+      setCategoryId('')
+      return
+    }
+    setCategoryId((prev) =>
+      locationScopedCategories.some((c) => c._id === prev)
+        ? prev
+        : locationScopedCategories[0]._id
+    )
+  }, [locationScopedCategories])
 
   const fetchReasons = useCallback(async () => {
     const result = await api.get('/api/lead-reasons')
@@ -504,10 +535,14 @@ export default function EmailBuilderTab({ onCreated }) {
     if (!categoryId) {
       toast.error({
         title: 'Missing category',
-        message: categories.length === 0
-          ? 'Create a category under Templates → Categories first.'
+        message: locationScopedCategories.length === 0
+          ? 'Create a category for this studio under Templates → Categories first.'
           : 'Please select a category.',
       })
+      return
+    }
+    if (!locationID || (locationID !== ALL_BRANCHES_VALUE && (!Array.isArray(locationID) || locationID.length === 0))) {
+      toast.error({ title: 'Missing location', message: 'Select one or more studios, or All branches.' })
       return
     }
     const htmlToSave = String(effectiveHtmlBody || '').trim()
@@ -517,6 +552,7 @@ export default function EmailBuilderTab({ onCreated }) {
     }
     setSaving(true)
     try {
+      const allLocations = locationID === ALL_BRANCHES_VALUE
       const payload = {
         categoryID: categoryId,
         subject: templateName.trim(),
@@ -524,6 +560,8 @@ export default function EmailBuilderTab({ onCreated }) {
         leadStage: String(leadStage || '').trim(),
         reason: String(reasonCode || '').trim(),
         htmlBody: htmlToSave,
+        allLocations,
+        locationID: allLocations ? [] : locationID,
       }
       const result = await api.post('/api/email/builder/', payload)
       if (!result.success) {
@@ -607,6 +645,19 @@ export default function EmailBuilderTab({ onCreated }) {
                     </summary>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-4 pb-4 border-t border-slate-100 pt-3">
                       <div className="sm:col-span-2">
+                        <Label className="text-xs text-slate-600">Studio location *</Label>
+                        <div className="mt-1.5">
+                          <LocationSelector
+                            value={locationID}
+                            onChange={setLocationID}
+                            multiple
+                            allowAllBranches
+                            showAllOption={false}
+                            placeholder="Select studio(s)…"
+                          />
+                        </div>
+                      </div>
+                      <div className="sm:col-span-2">
                         <Label className="text-xs text-slate-600">Category</Label>
                         <select
                           value={categoryId}
@@ -614,7 +665,7 @@ export default function EmailBuilderTab({ onCreated }) {
                           className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
                         >
                           <option value="">Select a category…</option>
-                          {categories.map((cat) => (
+                          {locationScopedCategories.map((cat) => (
                             <option key={cat._id} value={cat._id}>{cat.name}</option>
                           ))}
                         </select>
