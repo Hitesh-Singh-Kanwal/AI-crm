@@ -5,12 +5,16 @@ import { Building2, ChevronDown } from 'lucide-react'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 
+const ALL = 'all'
+
 export default function LocationSelector({
   value,
   onChange,
   onChangeObject,
   placeholder = 'Select location...',
   showAllOption = false,
+  /** Marketing: pick every studio the user can access */
+  allowAllBranches = false,
   filterActiveOnly = true,
   className = '',
   multiple = false,
@@ -39,12 +43,12 @@ export default function LocationSelector({
           })
         }
       }
-      
+
       updatePosition()
-      
+
       window.addEventListener('scroll', updatePosition, true)
       window.addEventListener('resize', updatePosition)
-      
+
       return () => {
         window.removeEventListener('scroll', updatePosition, true)
         window.removeEventListener('resize', updatePosition)
@@ -55,16 +59,14 @@ export default function LocationSelector({
   async function loadLocations() {
     try {
       setLoading(true)
-      // /api/location already scopes: superadmin → all org locations,
-      // everyone else → only locations assigned to them.
       const result = await api.get('/api/location?limit=200')
       if (result.success) {
         let locs = result.data || []
-        
+
         if (filterActiveOnly) {
           locs = locs.filter(loc => loc.status?.toLowerCase() === 'active')
         }
-        
+
         setLocations(locs)
       }
     } catch (e) {
@@ -74,8 +76,17 @@ export default function LocationSelector({
     }
   }
 
+  const isAllBranches = allowAllBranches && value === ALL
   const isMultiple = multiple || Array.isArray(value)
-  const selectedIds = (Array.isArray(value) ? value : value ? [value] : []).map(String)
+  const selectedIds = (
+    isAllBranches
+      ? []
+      : Array.isArray(value)
+        ? value
+        : value && value !== ALL
+          ? [value]
+          : []
+  ).map(String)
   const selectedLocations = isMultiple
     ? locations.filter((loc) => selectedIds.includes(String(loc._id)))
     : locations.find((loc) => String(loc._id) === String(value))
@@ -83,20 +94,20 @@ export default function LocationSelector({
   // Single accessible location → auto-select and skip the dropdown.
   useEffect(() => {
     if (loading || locations.length !== 1) return
+    if (allowAllBranches && isAllBranches) return
 
     const only = locations[0]
     const onlyId = String(only._id)
-    const hasSelection = isMultiple ? selectedIds.length > 0 : Boolean(value)
+    const hasSelection = isMultiple ? selectedIds.length > 0 : Boolean(value) && value !== ALL
     if (hasSelection) return
 
     if (isMultiple) onChange([onlyId])
     else onChange(onlyId)
     onChangeObject?.(only)
-    // Intentionally omit onChange from deps — parents often pass inline setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, locations, isMultiple, selectedIds.length, value])
+  }, [loading, locations, isMultiple, selectedIds.length, value, allowAllBranches, isAllBranches])
 
-  if (!loading && locations.length === 1) {
+  if (!loading && locations.length === 1 && !allowAllBranches) {
     const only = locations[0]
     return (
       <div
@@ -118,6 +129,21 @@ export default function LocationSelector({
     )
   }
 
+  const label = loading
+    ? 'Loading...'
+    : isAllBranches
+      ? 'All branches'
+      : isMultiple
+        ? (selectedLocations && selectedLocations.length > 0
+            ? selectedLocations.map((s) => s.name).join(', ')
+            : placeholder)
+        : (selectedLocations ? selectedLocations.name : placeholder)
+
+  const showPlaceholderStyle =
+    !loading &&
+    !isAllBranches &&
+    (!selectedLocations || (isMultiple && selectedLocations.length === 0))
+
   return (
     <div className={cn('relative', className)}>
       <button
@@ -136,16 +162,10 @@ export default function LocationSelector({
         )}
         disabled={loading || disabled}
       >
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className={cn('truncate', ((!selectedLocations || (isMultiple && selectedLocations.length === 0)) && 'text-muted-foreground'))}>
-            {loading
-              ? 'Loading...'
-              : isMultiple
-                ? (selectedLocations && selectedLocations.length > 0
-                    ? selectedLocations.map((s) => s.name).join(', ')
-                    : placeholder)
-                : (selectedLocations ? selectedLocations.name : placeholder)}
+          <span className={cn('truncate', showPlaceholderStyle && 'text-muted-foreground')}>
+            {label}
           </span>
         </div>
         <ChevronDown className={cn('h-4 w-4 text-muted-foreground shrink-0 transition-transform', open && 'rotate-180')} />
@@ -153,11 +173,11 @@ export default function LocationSelector({
 
       {open && (
         <>
-          <div 
-            className="fixed inset-0 z-10" 
+          <div
+            className="fixed inset-0 z-10"
             onClick={() => setOpen(false)}
           />
-          <div 
+          <div
             ref={dropdownRef}
             className="fixed z-30 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto overflow-x-hidden"
             style={{
@@ -166,6 +186,25 @@ export default function LocationSelector({
               width: `${dropdownPosition.width}px`
             }}
           >
+            {allowAllBranches && locations.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(ALL)
+                    setOpen(false)
+                  }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors',
+                    isAllBranches && 'bg-brand/10 text-brand font-medium'
+                  )}
+                >
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  <span>All branches</span>
+                </button>
+                <div className="h-px bg-border my-1" />
+              </>
+            )}
             {showAllOption && (
               <>
                 <button
@@ -176,7 +215,7 @@ export default function LocationSelector({
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors',
-                    ((!isMultiple && !value) || (isMultiple && (!value || value.length === 0))) && 'bg-brand/10 text-brand font-medium'
+                    ((!isMultiple && !value) || (isMultiple && (!value || value.length === 0))) && !isAllBranches && 'bg-brand/10 text-brand font-medium'
                   )}
                 >
                   <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -196,8 +235,8 @@ export default function LocationSelector({
                   type="button"
                   onClick={() => {
                     const locationId = String(location._id)
-                    if (isMultiple) {
-                      const current = selectedIds.slice()
+                    if (isMultiple || allowAllBranches) {
+                      const current = isAllBranches ? [] : selectedIds.slice()
                       const idx = current.indexOf(locationId)
                       if (idx > -1) current.splice(idx, 1)
                       else current.push(locationId)
@@ -210,9 +249,11 @@ export default function LocationSelector({
                   }}
                   className={cn(
                     'w-full flex items-start gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors',
-                    (isMultiple
-                      ? selectedIds.includes(String(location._id))
-                      : String(value) === String(location._id)) && 'bg-brand/10 text-brand font-medium'
+                    !isAllBranches &&
+                      (isMultiple || allowAllBranches
+                        ? selectedIds.includes(String(location._id))
+                        : String(value) === String(location._id)) &&
+                      'bg-brand/10 text-brand font-medium'
                   )}
                 >
                   <Building2 className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -220,13 +261,13 @@ export default function LocationSelector({
                     <div className="font-medium truncate">{location.name}</div>
                     {(location.city || location.state) && (
                       <div className="text-xs text-muted-foreground truncate">
-                        {location.city && location.state 
-                          ? `${location.city}, ${location.state}` 
+                        {location.city && location.state
+                          ? `${location.city}, ${location.state}`
                           : location.city || location.state}
                       </div>
                     )}
                   </div>
-                  {isMultiple && selectedIds.includes(String(location._id)) && (
+                  {!isAllBranches && (isMultiple || allowAllBranches) && selectedIds.includes(String(location._id)) && (
                     <div className="ml-2 text-sm text-brand">✓</div>
                   )}
                 </button>
@@ -238,3 +279,5 @@ export default function LocationSelector({
     </div>
   )
 }
+
+export { ALL as ALL_BRANCHES_VALUE }
