@@ -1,5 +1,5 @@
 export const chartCardClass =
-  'rounded-[20px] border-2 p-5 bg-card border-border text-card-foreground shadow-sm'
+  'h-full rounded-[20px] border-2 p-5 bg-card border-border text-card-foreground shadow-sm'
 
 export function Trend({ type = 'up', text }) {
   const isUp = type === 'up'

@@ -13,7 +13,7 @@ export function SectionLabel({ children }) {
 export function Card({ children, className = '' }) {
   return (
     <div
-      className={`bg-card text-card-foreground border border-border shadow-sm ${className} overflow-hidden`}
+      className={`h-full bg-card text-card-foreground border border-border shadow-sm ${className} overflow-hidden`}
       style={{ borderRadius: 20 }}
     >
       {children}

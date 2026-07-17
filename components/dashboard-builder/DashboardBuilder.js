@@ -64,18 +64,27 @@ const SPAN_CLASS = {
 }
 
 function SortableWidget({ id, title, size, editing, onRemove, children }) {
+  // Dragging the real node (via transform) rather than a cloned DragOverlay
+  // guarantees the dragged widget is always the exact same size as before —
+  // a clone has to re-measure things like recharts' ResponsiveContainer in
+  // its new position, which is what caused some widgets to render at the
+  // wrong size mid-drag.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 30 : 'auto',
   }
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={cn('group relative col-span-1', SPAN_CLASS[size] || SPAN_CLASS.full)}
+      className={cn(
+        'group relative col-span-1 h-full',
+        SPAN_CLASS[size] || SPAN_CLASS.full,
+        isDragging && 'shadow-2xl ring-2 ring-brand/40 rounded-2xl'
+      )}
     >
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
         {editing && (
@@ -99,7 +108,7 @@ function SortableWidget({ id, title, size, editing, onRemove, children }) {
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className={cn(editing && 'rounded-2xl ring-2 ring-brand/30 ring-offset-2 ring-offset-background')}>
+      <div className={cn('h-full', editing && 'rounded-2xl ring-2 ring-brand/30 ring-offset-2 ring-offset-background')}>
         {children}
       </div>
     </div>

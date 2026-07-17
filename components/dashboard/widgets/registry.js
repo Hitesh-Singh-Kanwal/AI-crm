@@ -1,38 +1,24 @@
-import StatCardWidget from './StatCardWidget'
-import BookingRateTrendWidget from './BookingRateTrendWidget'
-import RevenueFromIntrosWidget from './RevenueFromIntrosWidget'
-import HumanInterventionRequiredWidget from './HumanInterventionRequiredWidget'
-import AiAgentRevenueWidget from './AiAgentRevenueWidget'
+import OverviewStatsWidget from './OverviewStatsWidget'
+import BookingTrendAndFollowUpWidget from './BookingTrendAndFollowUpWidget'
+import RevenueAndAiAgentWidget from './RevenueAndAiAgentWidget'
 import ApiExpenseWidget from './ApiExpenseWidget'
-import HumanInterventionByStageWidget from './HumanInterventionByStageWidget'
-import HumanInterventionBookingRateWidget from './HumanInterventionBookingRateWidget'
-import FollowUpEffectivenessWidget from './FollowUpEffectivenessWidget'
+import HumanInterventionWidget from './HumanInterventionWidget'
+import LeadsAndStudioBreakdownWidget from './LeadsAndStudioBreakdownWidget'
 import ResponseRateWidget from './ResponseRateWidget'
-import LeadsBySourceWidget from './LeadsBySourceWidget'
-import PerStudioBreakdownWidget from './PerStudioBreakdownWidget'
-import GrossRevenueWidget from './GrossRevenueWidget'
-import NetRevenueWidget from './NetRevenueWidget'
+import GrossNetRevenueWidget from './GrossNetRevenueWidget'
 
 // Registry order is the default layout order for a user who has never
-// customized their dashboard. `size` ('third' | 'half' | 'full', default
-// 'full') controls how much of the 6-column row a widget occupies. Every
-// entry here is its own independently draggable/hideable widget — nothing
-// is bundled, so any card can be moved into any row on its own.
+// customized their dashboard. Every entry is one row-level widget that
+// drags/hides as a whole unit — no widget is split up internally, so
+// related cards that used to share a row (e.g. a chart next to its table)
+// stay bundled together instead of being independently draggable.
 export const dashboardWidgetRegistry = [
-  { id: 'stat-total-leads', title: 'Total Leads', component: StatCardWidget, size: 'third', props: { statKey: 'totalLeads', label: 'TOTAL LEADS', format: 'number' } },
-  { id: 'stat-total-bookings', title: 'Total Bookings', component: StatCardWidget, size: 'third', props: { statKey: 'totalBookings', label: 'TOTAL BOOKINGS', format: 'number' } },
-  { id: 'stat-booking-rate', title: 'Booking Rate', component: StatCardWidget, size: 'third', props: { statKey: 'bookingRate', label: 'BOOKING RATE', format: 'percent' } },
-  { id: 'booking-rate-trend', title: 'Booking Rate Trend', component: BookingRateTrendWidget, size: 'half' },
-  { id: 'follow-up-effectiveness', title: 'Follow-up Effectiveness', component: FollowUpEffectivenessWidget, size: 'half' },
-  { id: 'revenue-from-intros', title: 'Revenue Collected from Intros', component: RevenueFromIntrosWidget, size: 'third' },
-  { id: 'human-intervention-required', title: 'Human Intervention Required', component: HumanInterventionRequiredWidget, size: 'third' },
-  { id: 'ai-agent-revenue', title: 'AI Agent Revenue', component: AiAgentRevenueWidget, size: 'half' },
+  { id: 'overview-stats', title: 'Overview Stats', component: OverviewStatsWidget, size: 'full' },
+  { id: 'booking-trend-follow-up', title: 'Booking Rate Trend & Follow-up Effectiveness', component: BookingTrendAndFollowUpWidget, size: 'full' },
+  { id: 'revenue-ai-agent', title: 'Revenue & AI Agent Revenue', component: RevenueAndAiAgentWidget, size: 'full' },
   { id: 'api-expense', title: 'API Expense by Channel', component: ApiExpenseWidget, size: 'full' },
-  { id: 'human-intervention-by-stage', title: 'Human Intervention by Reason', component: HumanInterventionByStageWidget, size: 'half' },
-  { id: 'human-intervention-booking-rate', title: 'Human Intervention Booking Rate', component: HumanInterventionBookingRateWidget, size: 'half' },
-  { id: 'leads-by-source', title: 'Leads by Source & Conversion Rate', component: LeadsBySourceWidget, size: 'half' },
-  { id: 'per-studio-breakdown', title: 'Per Studio Breakdown', component: PerStudioBreakdownWidget, size: 'half' },
+  { id: 'human-intervention', title: 'Human Intervention', component: HumanInterventionWidget, size: 'full' },
+  { id: 'leads-and-studio-breakdown', title: 'Leads by Source & Per Studio Breakdown', component: LeadsAndStudioBreakdownWidget, size: 'full' },
   { id: 'response-rate', title: 'Response Rate by Day & Time', component: ResponseRateWidget, size: 'full' },
-  { id: 'gross-revenue', title: 'Gross Revenue', component: GrossRevenueWidget, size: 'third' },
-  { id: 'net-revenue', title: 'Net Revenue', component: NetRevenueWidget, size: 'third' },
+  { id: 'gross-net-revenue', title: 'Gross & Net Revenue', component: GrossNetRevenueWidget, size: 'full' },
 ]
