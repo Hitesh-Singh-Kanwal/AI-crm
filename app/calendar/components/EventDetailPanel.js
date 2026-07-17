@@ -14,6 +14,7 @@ import api from "@/lib/api";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import LocationSelector from "@/components/shared/LocationSelector";
 import MiniStudentPanel from "./MiniStudentPanel";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 
@@ -179,6 +180,7 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [locationID, setLocationID] = useState(null);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -187,15 +189,20 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
       setError("Name and email are required.");
       return;
     }
+    if (!locationID) {
+      setError("Please select a location.");
+      return;
+    }
     setSaving(true);
     setError(null);
     const res = await api.post("/api/customer", {
       name: name.trim(),
       email: email.trim(),
       phoneNumber: phone.trim() || undefined,
+      locationID,
     });
     if (!res.success || !res.data) {
-      setError("Failed to create customer.");
+      setError(res.error || "Failed to create customer.");
       setSaving(false);
       return;
     }
@@ -249,6 +256,18 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
             placeholder="Phone number"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
+          />
+        </div>
+        <div>
+          <p className="text-[11px] font-medium text-muted-foreground mb-1">
+            Location *
+          </p>
+          <LocationSelector
+            value={locationID}
+            onChange={setLocationID}
+            multiple={false}
+            showAllOption={false}
+            placeholder="Select location…"
           />
         </div>
       </div>

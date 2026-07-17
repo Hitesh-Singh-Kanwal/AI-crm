@@ -74,6 +74,10 @@ export default function LessonDialog({ open, onClose, lesson, onRefresh }) {
       toast.error('Missing fields', { description: 'Name is required.' })
       return
     }
+    if (!form.locationID?.length) {
+      toast.error('Missing fields', { description: 'Please select at least one location.' })
+      return
+    }
     setSaving(true)
     try {
       const payload = {

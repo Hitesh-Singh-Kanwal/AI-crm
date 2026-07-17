@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import LocationSelector from '@/components/shared/LocationSelector'
 import {
   Table,
   TableBody,
@@ -60,7 +61,7 @@ function FormField({ label, required, children }) {
   )
 }
 
-function TeacherFormDialog({ open, onClose, onSaved, initial, locations }) {
+function TeacherFormDialog({ open, onClose, onSaved, initial }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -174,19 +175,13 @@ function TeacherFormDialog({ open, onClose, onSaved, initial, locations }) {
           </div>
           {!isEdit && (
             <FormField label="Studio location" required>
-              <div className="relative">
-                <select
-                  value={form.locationID}
-                  onChange={(e) => setField('locationID', e.target.value)}
-                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] text-foreground outline-none focus:border-primary"
-                >
-                  <option value="">Select location…</option>
-                  {locations.map((loc) => (
-                    <option key={loc._id} value={loc._id}>{loc.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              </div>
+              <LocationSelector
+                value={form.locationID || null}
+                onChange={(id) => setField('locationID', id || '')}
+                multiple={false}
+                showAllOption={false}
+                placeholder="Select location…"
+              />
             </FormField>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -282,7 +277,6 @@ function TeacherFormDialog({ open, onClose, onSaved, initial, locations }) {
 export default function TeachersPage() {
   const router = useRouter()
   const [teachers, setTeachers] = useState([])
-  const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -299,12 +293,6 @@ export default function TeachersPage() {
   const [deleting, setDeleting] = useState(false)
 
   const toast = useToast()
-
-  useEffect(() => {
-    api.get('/api/location?limit=200').then((res) => {
-      if (res.success) setLocations(res.data || [])
-    })
-  }, [])
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 350)
@@ -540,7 +528,6 @@ export default function TeachersPage() {
         onClose={() => setDialogOpen(false)}
         onSaved={fetchTeachers}
         initial={editingTeacher}
-        locations={locations}
       />
 
       {/* Delete Confirm Dialog */}

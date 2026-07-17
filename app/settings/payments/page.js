@@ -32,7 +32,7 @@ function CloverCallbackStatusHandler() {
 
 export default function PaymentsSettingsPage() {
   return (
-    <MainLayout title="Payments" subtitle="Connect payment providers for this location.">
+    <MainLayout title="Payments" subtitle="Connect payment providers per studio location.">
       <Suspense fallback={null}>
         <CloverCallbackStatusHandler />
       </Suspense>

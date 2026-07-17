@@ -377,6 +377,10 @@ export default function PackageEditPage() {
       toast.error('Package name is required')
       return
     }
+    if (!locationID?.length) {
+      toast.error('Please select at least one location')
+      return
+    }
 
     const cleanedServices = services
       .filter((s) => s.serviceName.trim())
