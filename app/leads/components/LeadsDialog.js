@@ -100,11 +100,15 @@ export default function LeadsDialog({
       return
     }
 
-    const selectedLocationIDs = Array.isArray(editingLead.locationID)
-      ? editingLead.locationID.filter(Boolean)
-      : editingLead.locationID
-        ? [editingLead.locationID]
-        : []
+    const selectedLocationIDs = (
+      Array.isArray(editingLead.locationID)
+        ? editingLead.locationID
+        : editingLead.locationID
+          ? [editingLead.locationID]
+          : []
+    )
+      .map((l) => String(l?._id ?? l))
+      .filter(Boolean)
 
     if (selectedLocationIDs.length === 0) {
       toast.error({ title: 'Validation Error', message: 'Please select at least one location' })
@@ -219,11 +223,13 @@ export default function LeadsDialog({
             <div>
               <label className="block text-sm font-medium mb-1">Location *</label>
               <LocationSelector
-                value={Array.isArray(editingLead.locationID)
-                  ? editingLead.locationID
-                  : editingLead.locationID
-                    ? [editingLead.locationID]
-                    : []}
+                value={
+                  Array.isArray(editingLead.locationID)
+                    ? editingLead.locationID.map((l) => String(l?._id ?? l)).filter(Boolean)
+                    : editingLead.locationID
+                      ? [String(editingLead.locationID?._id ?? editingLead.locationID)]
+                      : []
+                }
                 onChange={(ids) => setEditingLead((prev) => ({ ...prev, locationID: ids }))}
                 placeholder="Select location(s)"
                 showAllOption={false}

@@ -415,7 +415,7 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [locationID, setLocationID] = useState(null);
+  const [locationID, setLocationID] = useState([]);
   const [error, setError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -424,8 +424,8 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
       setError("Name and email are required.");
       return;
     }
-    if (!locationID) {
-      setError("Please select a location.");
+    if (!Array.isArray(locationID) || locationID.length === 0) {
+      setError("Please select at least one location.");
       return;
     }
     setIsCreating(true);
@@ -461,9 +461,9 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
         <LocationSelector
           value={locationID}
           onChange={setLocationID}
-          multiple={false}
+          multiple
           showAllOption={false}
-          placeholder="Select location…"
+          placeholder="Select location(s)…"
         />
       </div>
       {error && <p className="text-[11px] text-destructive">{error}</p>}

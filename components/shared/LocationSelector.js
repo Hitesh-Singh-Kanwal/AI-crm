@@ -235,7 +235,7 @@ export default function LocationSelector({
                   type="button"
                   onClick={() => {
                     const locationId = String(location._id)
-                    if (isMultiple || allowAllBranches) {
+                    if (isMultiple) {
                       const current = isAllBranches ? [] : selectedIds.slice()
                       const idx = current.indexOf(locationId)
                       if (idx > -1) current.splice(idx, 1)
@@ -250,7 +250,7 @@ export default function LocationSelector({
                   className={cn(
                     'w-full flex items-start gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors',
                     !isAllBranches &&
-                      (isMultiple || allowAllBranches
+                      (isMultiple
                         ? selectedIds.includes(String(location._id))
                         : String(value) === String(location._id)) &&
                       'bg-brand/10 text-brand font-medium'
@@ -267,7 +267,7 @@ export default function LocationSelector({
                       </div>
                     )}
                   </div>
-                  {!isAllBranches && (isMultiple || allowAllBranches) && selectedIds.includes(String(location._id)) && (
+                  {!isAllBranches && isMultiple && selectedIds.includes(String(location._id)) && (
                     <div className="ml-2 text-sm text-brand">✓</div>
                   )}
                 </button>

@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
+import { locationBadgeLabel } from './locationScope'
 
 const FILES_PAGE_SIZE = 10
 import KnowledgeBaseUploadDialog from './KnowledgeBaseUploadDialog'
@@ -313,7 +314,9 @@ export default function KnowledgeBaseTab() {
         <div className="grid grid-cols-1 gap-3">
           {!loading &&
             !error &&
-            files.map((doc, index) => (
+            files.map((doc, index) => {
+              const locLabel = locationBadgeLabel(doc)
+              return (
             <Card
               key={doc._id}
               className="group hover:shadow-md hover:border-border transition-all duration-200 rounded-xl animate-fade-in"
@@ -325,7 +328,14 @@ export default function KnowledgeBaseTab() {
                     {fileTypeIcons[getFileTypeFromUrl(doc.url)] || fileTypeIcons.unknown}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{doc.name}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="font-medium truncate">{doc.name}</p>
+                      {locLabel && (
+                        <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
+                          {locLabel}
+                        </Badge>
+                      )}
+                    </div>
                     <div className="flex items-center gap-3 mt-0.5 text-sm text-muted-foreground">
                       {doc.description ? <span className="truncate max-w-[26ch]">{doc.description}</span> : <span>—</span>}
                       <span>·</span>
@@ -373,7 +383,8 @@ export default function KnowledgeBaseTab() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+              )
+            })}
 
           {!loading && !error && files.length === 0 && (
             <Card className="border-dashed">

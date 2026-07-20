@@ -7,7 +7,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
+import LocationSelector from '@/components/shared/LocationSelector'
 import api from '@/lib/api'
+import { hasLocationSelection, initLocationID, toLocationPayload } from './locationScope'
 
 function normalizeName(v) {
   return (v || '').trim()
@@ -26,10 +28,17 @@ export default function ScriptEditorDialog({ open, onClose, initialScript, onSav
   const [name, setName] = useState('')
   const [script, setScript] = useState('')
   const [type, setType] = useState('call')
+  const [locationID, setLocationID] = useState([])
 
   const canSave = useMemo(() => {
-    return !!normalizeName(name) && !!normalizeName(subCategory) && !!normalizeName(script) && !!normalizeName(type)
-  }, [name, subCategory, script, type])
+    return (
+      !!normalizeName(name) &&
+      !!normalizeName(subCategory) &&
+      !!normalizeName(script) &&
+      !!normalizeName(type) &&
+      hasLocationSelection(locationID)
+    )
+  }, [name, subCategory, script, type, locationID])
 
   async function fetchCategories() {
     setLoadingCats(true)
@@ -57,12 +66,17 @@ export default function ScriptEditorDialog({ open, onClose, initialScript, onSav
     setName(initialScript?.name || '')
     setScript(initialScript?.script || '')
     setType(initialScript?.type || 'call')
+    setLocationID(initLocationID(initialScript))
 
     fetchCategories()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialScript?._id])
 
   async function handleSave() {
+    if (!hasLocationSelection(locationID)) {
+      toast.error({ title: 'Missing location', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     if (!canSave) return
     setSaving(true)
     try {
@@ -73,6 +87,7 @@ export default function ScriptEditorDialog({ open, onClose, initialScript, onSav
         name: normalizeName(name),
         script,
         type: normalizeName(type),
+        ...toLocationPayload(locationID),
       }
 
       const result = isEditing
@@ -103,6 +118,19 @@ export default function ScriptEditorDialog({ open, onClose, initialScript, onSav
 
         <div className="mt-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5 md:col-span-2">
+              <p className="text-sm font-medium">Studio location *</p>
+              <LocationSelector
+                value={locationID}
+                onChange={setLocationID}
+                multiple
+                allowAllBranches
+                showAllOption={false}
+                placeholder="Select studio(s)…"
+                disabled={saving}
+              />
+            </div>
+
             <div className="space-y-1.5">
               <p className="text-sm font-medium">Category</p>
               <Select value={categoryID} onChange={(e) => setCategoryID(e.target.value)} disabled={saving || loadingCats}>
@@ -162,4 +190,3 @@ export default function ScriptEditorDialog({ open, onClose, initialScript, onSav
     </Dialog>
   )
 }
-

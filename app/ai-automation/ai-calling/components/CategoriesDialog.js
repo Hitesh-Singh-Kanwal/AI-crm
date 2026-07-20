@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
+import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import api from '@/lib/api'
+import { hasLocationSelection, toLocationPayload } from './locationScope'
 
 function normalizeCategoryName(name) {
   return (name || '').trim()
@@ -19,6 +21,7 @@ export default function CategoriesDialog({ open, onClose }) {
   const [saving, setSaving] = useState(false)
   const [categories, setCategories] = useState([])
   const [newName, setNewName] = useState('')
+  const [locationID, setLocationID] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [editingName, setEditingName] = useState('')
 
@@ -50,6 +53,7 @@ export default function CategoriesDialog({ open, onClose }) {
   useEffect(() => {
     if (!open) return
     setNewName('')
+    setLocationID([])
     setEditingId(null)
     setEditingName('')
     fetchCategories()
@@ -59,9 +63,16 @@ export default function CategoriesDialog({ open, onClose }) {
   async function handleCreate() {
     const name = normalizeCategoryName(newName)
     if (!name) return
+    if (!hasLocationSelection(locationID)) {
+      toast.error({ title: 'Location required', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     setSaving(true)
     try {
-      const result = await api.post('/api/ai-script/category', { name })
+      const result = await api.post('/api/ai-script/category', {
+        name,
+        ...toLocationPayload(locationID),
+      })
       if (result.success) {
         toast.success({ title: 'Created', message: 'Category created successfully.' })
         setNewName('')
@@ -141,25 +152,39 @@ export default function CategoriesDialog({ open, onClose }) {
         </DialogHeader>
 
         <div className="mt-4 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Input
-              placeholder="New category name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreate()
-              }}
-              disabled={saving}
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <LocationSelector
+              value={locationID}
+              onChange={setLocationID}
+              multiple
+              allowAllBranches
+              showAllOption={false}
+              placeholder="Studios for new category…"
             />
-            <Button
-              variant="gradient"
-              className="shrink-0"
-              onClick={handleCreate}
-              disabled={saving || !normalizeCategoryName(newName)}
-            >
-              <Plus className="h-4 w-4" />
-              Create
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Input
+                placeholder="New category name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreate()
+                }}
+                disabled={saving}
+              />
+              <Button
+                variant="gradient"
+                className="shrink-0"
+                onClick={handleCreate}
+                disabled={
+                  saving ||
+                  !normalizeCategoryName(newName) ||
+                  !(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0))
+                }
+              >
+                <Plus className="h-4 w-4" />
+                Create
+              </Button>
+            </div>
           </div>
 
           <div className="flex items-center justify-between">

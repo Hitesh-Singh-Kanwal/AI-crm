@@ -348,7 +348,6 @@ function HumanQueuePageContent() {
   const [historyDetailItem, setHistoryDetailItem] = useState(null)
   const [answeringId, setAnsweringId] = useState(null)
   const [resolvingId, setResolvingId] = useState(null)
-  const [transferring, setTransferring] = useState(false)
   const [tabCounts, setTabCounts] = useState({
     waiting: 0, active: 0, resolved: 0, callbacks: 0,
   })
@@ -732,30 +731,6 @@ function HumanQueuePageContent() {
     }
   }
 
-  const handleTransfer = async (escalationId, toAgentId) => {
-    if (!canManageCalls) {
-      toast.error({ title: 'No access', message: 'Call Center write or edit permission is required.' })
-      return
-    }
-    if (!escalationId || !toAgentId) return
-    setTransferring(true)
-    try {
-      const r = await api.post(`/api/human-queue/${escalationId}/transfer`, { targetUserId: toAgentId })
-      if (!r.success) {
-        toast.error({ title: 'Transfer failed', message: r.error || 'Could not transfer.' })
-        return
-      }
-      disconnectConnection(activeConnection)
-      setActiveConnection(null)
-      setActiveCall(null)
-      setCallStatus('idle')
-      toast.success({ title: 'Transferred', message: 'Call transferred to another agent.' })
-      fetchQueueData()
-    } finally {
-      setTransferring(false)
-    }
-  }
-
   const handleHoldChange = async (onHold) => {
     const callId = activeCall?.id || activeCall?._id
     if (!callId) return
@@ -840,14 +815,11 @@ function HumanQueuePageContent() {
           <ActiveCallPanel
             call={activeCall}
             connection={activeConnection}
-            agents={agents}
             callStatus={callStatus}
             resolving={resolvingId === (activeCall.id || activeCall._id)}
-            transferring={transferring}
             canManage={canManageCalls}
             onEndCall={handleEndCall}
             onResolve={() => handleResolve(activeCall.id || activeCall._id)}
-            onTransfer={(agentId) => handleTransfer(activeCall.id || activeCall._id, agentId)}
             onHoldChange={handleHoldChange}
             onClose={handleCloseCallPanel}
           />
@@ -1482,39 +1454,7 @@ function HumanQueuePageContent() {
 
                       {isOnCall && (activeCall?.id || activeCall?._id) === (selectedEscalation.id || selectedEscalation._id) && (
                         <div className="rounded-xl border border-emerald-300/50 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-                          You are on this call. Use the call panel for mute, hold, and transfer.
-                        </div>
-                      )}
-
-                      {canManageCalls && ['claimed', 'in_progress'].includes(selectedEscalation.status) && (
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                            <ArrowRightLeft className="h-3.5 w-3.5" />
-                            Transfer to agent
-                          </label>
-                          <select
-                            defaultValue=""
-                            disabled={!['claimed', 'in_progress'].includes(selectedEscalation.status)}
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                handleTransfer(selectedEscalation.id || selectedEscalation._id, e.target.value)
-                                e.target.value = ''
-                              }
-                            }}
-                            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none disabled:opacity-60"
-                          >
-                            <option value="">Select agent</option>
-                            {agents
-                              .filter((a) => {
-                                const currentId = String(selectedEscalation.assignedUserId || '')
-                                return a.id !== currentId && a.availability === 'available'
-                              })
-                              .map((agent) => (
-                                <option key={agent.id} value={agent.id}>
-                                  {agent.name} ({agent.activeChats}/{agent.maxConcurrent})
-                                </option>
-                              ))}
-                          </select>
+                          You are on this call. Use the call panel for mute, hold, and hang up.
                         </div>
                       )}
 

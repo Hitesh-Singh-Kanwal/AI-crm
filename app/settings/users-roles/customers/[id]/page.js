@@ -504,7 +504,11 @@ function ProfileTab({ customer, locations, onUpdated }) {
       name: customer.name || "",
       email: customer.email || "",
       phoneNumber: customer.phoneNumber || "",
-      locationID: String(customer.locationID?._id ?? customer.locationID ?? ""),
+      locationID: Array.isArray(customer.locationID)
+        ? customer.locationID.map((l) => String(l?._id ?? l)).filter(Boolean)
+        : customer.locationID
+          ? [String(customer.locationID?._id ?? customer.locationID)]
+          : [],
       dateOfBirth: customer.dateOfBirth
         ? String(customer.dateOfBirth).slice(0, 10)
         : "",
@@ -523,6 +527,10 @@ function ProfileTab({ customer, locations, onUpdated }) {
   async function saveProfile(e) {
     e.preventDefault();
     if (!form.name.trim() || !form.email.trim()) return;
+    if (!Array.isArray(form.locationID) || form.locationID.length === 0) {
+      toast.error("Please select at least one location.");
+      return;
+    }
     setSaving(true);
     const addr = {
       street: form.address.street.trim(),
@@ -549,9 +557,19 @@ function ProfileTab({ customer, locations, onUpdated }) {
     setSaving(false);
   }
 
-  const locationName = (id) => {
-    const loc = locations.find((l) => String(l._id) === String(id));
-    return loc?.name || "—";
+  const locationName = (raw) => {
+    const ids = Array.isArray(raw)
+      ? raw.map((l) => String(l?._id ?? l)).filter(Boolean)
+      : raw
+        ? [String(raw?._id ?? raw)]
+        : [];
+    if (!ids.length) return "—";
+    const names = ids
+      .map((id) => locations.find((l) => String(l._id) === id)?.name)
+      .filter(Boolean);
+    if (!names.length) return "—";
+    if (names.length <= 2) return names.join(", ");
+    return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
   };
 
   return (
@@ -672,11 +690,11 @@ function ProfileTab({ customer, locations, onUpdated }) {
                 </FormField>
                 <FormField label="Location">
                   <LocationSelector
-                    value={form.locationID || null}
-                    onChange={(id) => setForm({ ...form, locationID: id || "" })}
-                    multiple={false}
+                    value={Array.isArray(form.locationID) ? form.locationID : form.locationID ? [form.locationID] : []}
+                    onChange={(ids) => setForm({ ...form, locationID: ids })}
+                    multiple
                     showAllOption={false}
-                    placeholder="Select location…"
+                    placeholder="Select location(s)…"
                   />
                 </FormField>
               </div>
@@ -814,9 +832,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
                     { label: "Phone", value: customer.phoneNumber || "—" },
                     {
                       label: "Location",
-                      value: locationName(
-                        customer.locationID?._id ?? customer.locationID,
-                      ),
+                      value: locationName(customer.locationID),
                     },
                   ].map(({ label, value }) => (
                     <div key={label}>

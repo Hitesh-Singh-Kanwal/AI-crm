@@ -44,8 +44,8 @@ export function useStudioPhone(locationID) {
     } else {
       setState({
         ...initialState,
-        status: 'disconnected',
-        lastError: result.error || null,
+        status: 'error',
+        lastError: result.error || 'Unable to load studio phone status.',
       })
     }
   }, [resolvedLocationID])
