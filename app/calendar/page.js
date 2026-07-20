@@ -2115,8 +2115,8 @@ function TutorDayCalendar({
   }
 
   return (
-    <div className="flex flex-col rounded-[12px] border border-border bg-background shadow-sm overflow-hidden">
-      <div className="sticky top-0 z-40 border-b border-border bg-background/95 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
+    <div className="flex flex-col rounded-[12px] border border-border bg-background shadow-sm">
+      <div className="sticky top-0 z-40 rounded-t-[12px] border-b border-border bg-background/95 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
         <div className="flex shrink-0 border-b border-border bg-muted/30">
           <div className="w-[86px] shrink-0 border-r border-border flex items-end pb-2 px-2 bg-muted/30 z-10">
             <span className="text-[10px] font-medium text-muted-foreground leading-tight">{focusDateLabel}</span>

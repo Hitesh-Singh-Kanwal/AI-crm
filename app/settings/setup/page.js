@@ -67,12 +67,17 @@ function SortableServiceRow({ service, selectedIds, toggleOne, onEdit, onDelete,
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
   return (
-    <TableRow ref={setNodeRef} style={style} className="border-b border-border hover:bg-muted/30 transition-colors">
-      <TableCell className="py-3 pl-2 pr-0 w-8">
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      className="border-b border-border hover:bg-muted/30 transition-colors cursor-pointer"
+      onClick={() => onEdit(service)}
+    >
+      <TableCell className="py-3 pl-2 pr-0 w-8" onClick={(e) => e.stopPropagation()}>
         <DragHandle {...attributes} {...listeners} />
       </TableCell>
-      <TableCell className="py-3 pl-2 pr-0">
-        <Checkbox checked={selectedIds.includes(service._id)} onClick={() => toggleOne(service._id)} className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand" />
+      <TableCell className="py-3 pl-2 pr-0" onClick={(e) => e.stopPropagation()}>
+        <Checkbox checked={selectedIds.includes(service._id)} onClick={(e) => { e.stopPropagation(); toggleOne(service._id) }} className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand" />
       </TableCell>
       <TableCell className="py-3 px-4">
         <div className="flex items-center gap-3">
@@ -99,7 +104,7 @@ function SortableServiceRow({ service, selectedIds, toggleOne, onEdit, onDelete,
           <div className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-sm text-foreground">{service.documents.length}</span></div>
         ) : <span className="text-sm text-muted-foreground">—</span>}
       </TableCell>
-      <TableCell className="py-3 px-4">
+      <TableCell className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
         <Checkbox
           checked={!!service.showOnMemberships}
           onClick={() => onToggleMemberships(service)}
@@ -111,7 +116,7 @@ function SortableServiceRow({ service, selectedIds, toggleOne, onEdit, onDelete,
           {service.isActive ? 'Active' : 'Inactive'}
         </span>
       </TableCell>
-      <TableCell className="py-3 pr-4 pl-0">
+      <TableCell className="py-3 pr-4 pl-0" onClick={(e) => e.stopPropagation()}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground"><MoreHorizontal className="h-4 w-4" /></button>

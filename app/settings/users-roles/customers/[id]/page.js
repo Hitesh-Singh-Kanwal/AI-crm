@@ -579,7 +579,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
         {[
           { label: "Member Since", value: formatDate(customer.createdAt) },
           {
-            label: `Completed (${sessionStats.usedCount} sess)`,
+            label: `Sessions Used (${sessionStats.usedCount})`,
             value: `$${sessionStats.usedValue.toFixed(2)}`,
             accent: "text-blue-500",
           },
@@ -994,7 +994,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
             {(() => {
               const now = new Date();
               const past = customerEvents
-                .filter((ev) => new Date(ev.startDateTime) <= now)
+                .filter((ev) => new Date(ev.endDateTime ?? ev.startDateTime) <= now)
                 .sort(
                   (a, b) =>
                     new Date(b.startDateTime) - new Date(a.startDateTime),
