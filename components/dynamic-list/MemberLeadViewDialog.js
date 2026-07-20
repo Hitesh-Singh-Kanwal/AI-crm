@@ -31,11 +31,17 @@ function stageTone(stage) {
   if (key === 'engaged' || key === 'interested') {
     return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
   }
-  if (key === 'booked' || key === 'actualized') {
+  if (key === 'booked' || key === 'converted' || key === 'actualized') {
     return 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30'
   }
-  if (key === 'cold' || key === 'no show') {
+  if (key === 'cold' || key === 'no_show' || key === 'no show' || key === 'dormant') {
     return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30'
+  }
+  if (key === 'pending_payment' || key === 'needs_reschedule' || key === 'rescheduled') {
+    return 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30'
+  }
+  if (key === 'declined' || key === 'no_sale') {
+    return 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30'
   }
   if (key === 'qualified') {
     return 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30'

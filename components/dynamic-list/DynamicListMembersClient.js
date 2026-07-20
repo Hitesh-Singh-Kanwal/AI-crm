@@ -43,8 +43,10 @@ function stageBadgeClass(stage) {
   const key = String(stage || '').toLowerCase()
   if (key === 'new') return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
   if (key === 'engaged' || key === 'interested') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
-  if (key === 'booked' || key === 'actualized') return 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
-  if (key === 'cold' || key === 'no show') return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
+  if (key === 'booked' || key === 'converted' || key === 'actualized') return 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
+  if (key === 'cold' || key === 'no_show' || key === 'no show' || key === 'dormant') return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
+  if (key === 'pending_payment' || key === 'needs_reschedule' || key === 'rescheduled') return 'bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-300'
+  if (key === 'declined' || key === 'no_sale') return 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
   if (key === 'qualified') return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300'
   if (key === 'disqualified') return 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
   return 'bg-muted text-muted-foreground'

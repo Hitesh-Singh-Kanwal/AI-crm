@@ -28,6 +28,7 @@ import { useToast } from '@/components/ui/toast'
 import StylePanel from '@/components/forms/StylePanel'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { LEAD_STAGE_VALUES, formatLeadStageLabel } from '@/lib/lead-stages'
 import EmailHtmlPanel from './EmailHtmlPanel'
 import EmailCanvasModeTabs from './EmailCanvasModeTabs'
 import EmailPreviewFrame from './EmailPreviewFrame'
@@ -61,18 +62,6 @@ const contentBlocks = [
   { id: 'link', name: 'Link', icon: Link2 },
   { id: 'columns', name: 'Columns', icon: Columns },
   { id: 'divider', name: 'Divider', icon: Minus },
-]
-
-const LEAD_STAGES = [
-  'new',
-  'engaged',
-  'cold',
-  'booked',
-  'actualized',
-  'no show',
-  'qualified',
-  'disqualified',
-  'human intervention',
 ]
 
 function escapeHtml(str) {
@@ -687,9 +676,9 @@ export default function EmailBuilderTab({ onCreated }) {
                           className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
                         >
                           <option value="">Select lead stage…</option>
-                          {LEAD_STAGES.map((s) => (
+                          {LEAD_STAGE_VALUES.map((s) => (
                             <option key={s} value={s}>
-                              {s}
+                              {formatLeadStageLabel(s)}
                             </option>
                           ))}
                         </select>

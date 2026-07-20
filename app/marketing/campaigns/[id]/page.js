@@ -7,6 +7,7 @@ import { Clock3, Mail, MessageSquare, Pencil, Phone, RefreshCw } from 'lucide-re
 import MainLayout from '@/components/layout/MainLayout'
 import CampaignEditDialog from '@/components/campaign/CampaignEditDialog'
 import api from '@/lib/api'
+import { formatLeadStageLabel } from '@/lib/lead-stages'
 
 function getStepsCount(steps) {
   if (!Array.isArray(steps)) return 0
@@ -212,7 +213,7 @@ export default function CampaignDetailsPage() {
                           <div className="rounded-lg border border-border bg-card px-3 py-2">
                             <div className="text-[10px] text-muted-foreground">Lead Stage</div>
                             <div className="mt-0.5 text-[12px] font-medium text-foreground">
-                              {step?.leadStage || '—'}
+                              {step?.leadStage ? formatLeadStageLabel(step.leadStage) : '—'}
                             </div>
                           </div>
                           <div className="rounded-lg border border-border bg-card px-3 py-2">

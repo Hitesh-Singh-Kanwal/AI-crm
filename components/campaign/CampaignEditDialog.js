@@ -13,6 +13,7 @@ import {
   CAMPAIGN_STEP_TYPES,
   campaignToEditForm,
   createEmptyCampaignStep,
+  formatLeadStageLabel,
 } from '@/lib/campaign-normalize'
 
 export default function CampaignEditDialog({ campaign, onClose, onSaved }) {
@@ -243,7 +244,7 @@ export default function CampaignEditDialog({ campaign, onClose, onSaved }) {
                     >
                       {CAMPAIGN_LEAD_STAGE_OPTIONS.map((opt) => (
                         <option key={opt} value={opt}>
-                          {opt}
+                          {formatLeadStageLabel(opt)}
                         </option>
                       ))}
                     </select>

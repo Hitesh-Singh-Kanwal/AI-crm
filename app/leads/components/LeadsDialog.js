@@ -11,17 +11,9 @@ import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import LocationSelector from '@/components/shared/LocationSelector'
 import PhoneNumberInput from '@/components/shared/PhoneNumberInput'
+import { getLeadStageOptions } from '@/lib/lead-stages'
 
-const stageOptions = [
-  { value: 'new', label: 'New' },
-  { value: 'engaged', label: 'Engaged' },
-  { value: 'bookingInProgress', label: 'Booking In Progress' },
-  { value: 'cold', label: 'Cold' },
-  { value: 'booked', label: 'Booked' },
-  { value: 'disqualified', label: 'Disqualified' },
-  { value: 'qualified', label: 'Qualified' },
-  { value: 'lost', label: 'Lost' },
-]
+const stageOptions = getLeadStageOptions()
 
 const bookingStatusOptions = [
   { value: 'Not Booked', label: 'Not Booked' },

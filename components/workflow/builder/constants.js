@@ -193,17 +193,11 @@ export const NODE_STYLES = {
   },
 }
 
-export const LEAD_STAGE_OPTIONS = [
-  'new',
-  'engaged',
-  'cold',
-  'booked',
-  'actualized',
-  'no show',
-  'qualified',
-  'disqualified',
-  'human intervention',
-]
+export {
+  LEAD_STAGE_VALUES as LEAD_STAGE_OPTIONS,
+  formatLeadStageLabel,
+  getLeadStageOptions,
+} from '@/lib/lead-stages'
 
 const SCHEDULE_DEFAULTS = { description: '' }
 

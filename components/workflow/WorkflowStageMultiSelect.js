@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { LEAD_STAGE_OPTIONS } from '@/components/workflow/builder/constants'
-import { formatFieldDisplayValue } from '@/lib/dynamic-list-normalize'
+import { formatLeadStageLabel } from '@/lib/lead-stages'
 
 export default function WorkflowStageMultiSelect({
   values = [],
@@ -21,11 +21,11 @@ export default function WorkflowStageMultiSelect({
 
   const normalizedOptions = options.map((opt) => {
     if (typeof opt === 'string') {
-      return { value: opt, label: formatFieldDisplayValue(opt) || opt }
+      return { value: opt, label: formatLeadStageLabel(opt) || opt }
     }
     return {
       value: String(opt.value),
-      label: opt.label || formatFieldDisplayValue(opt.value) || String(opt.value),
+      label: opt.label || formatLeadStageLabel(opt.value) || String(opt.value),
     }
   })
 
