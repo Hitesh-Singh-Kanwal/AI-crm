@@ -426,6 +426,41 @@
   background: hsl(var(--muted) / 0.7);
 }
 
+@media (max-width: 1023px) {
+  .calendar-shell--month .fc .fc-col-header-cell-cushion {
+    padding: 6px 2px;
+    font-size: 10px;
+  }
+
+  .calendar-shell--month .fc .fc-daygrid-day-frame {
+    min-height: 88px;
+    padding: 4px 2px;
+  }
+
+  .calendar-shell--month .fc .fc-daygrid-day-number {
+    min-width: 20px;
+    height: 20px;
+    margin-bottom: 2px;
+    font-size: 10px;
+  }
+
+  .calendar-shell--month .fc .fc-daygrid-day-events {
+    gap: 2px;
+  }
+}
+
+@media (max-width: 639px) {
+  .calendar-shell--month .fc .fc-daygrid-day-frame {
+    min-height: 72px;
+    padding: 3px 1px;
+  }
+
+  .calendar-shell--month .fc .fc-col-header-cell-cushion {
+    padding: 4px 1px;
+    font-size: 9px;
+  }
+}
+
 .calendar-shell .fc .fc-daygrid-day.fc-day-other {
   background: hsl(var(--muted) / 0.35);
 }

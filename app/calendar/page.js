@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -11,6 +12,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, ChevronDown, Settings2 } from 
 import AppointmentComposerPanel from "./components/AppointmentComposerPanel";
 import EventDetailPanel from "./components/EventDetailPanel";
 import api from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 const COLORS = {
   border: "hsl(var(--border))",
@@ -494,15 +496,13 @@ function SegmentedButton({ active, children, className, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={[
+      className={cn(
         "h-8 px-3 text-[11px] leading-none select-none bg-background border border-border transition-colors",
         active
           ? "font-bold text-foreground"
           : "font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50",
         className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      )}
       style={{ boxShadow: COLORS.shadow }}
     >
       {children}
@@ -567,7 +567,7 @@ function useCloseOnOuterScroll(open, setOpen, rootRef) {
   }, [open, setOpen, rootRef]);
 }
 
-/** Like View Options: mousedown outside closes. Skips when native `type="time"` picker is open (clicks hit outside the root). */
+/** Like View Options: pointerdown outside closes. Skips when native `type="time"` picker is open (clicks hit outside the root). */
 function useCloseOnClickOutside(open, setOpen, rootRef) {
   useEffect(() => {
     if (!open) return;
@@ -583,8 +583,14 @@ function useCloseOnClickOutside(open, setOpen, rootRef) {
       if (isNativeTimePickerActive(rootRef)) return;
       setOpen(false);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    // pointerdown covers mouse + touch; avoid closing on the same gesture that opened
+    const id = window.setTimeout(() => {
+      document.addEventListener("pointerdown", handler);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("pointerdown", handler);
+    };
   }, [open, setOpen, rootRef]);
 }
 
@@ -632,7 +638,7 @@ function CalendarDatePicker({ focusDate, label, onSelectDate }) {
   };
 
   return (
-    <div ref={ref} className="relative min-w-[160px]">
+    <div ref={ref} className="relative min-w-0 max-w-[min(100%,220px)] sm:min-w-[160px] sm:max-w-none">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -738,7 +744,7 @@ function CalendarDatePicker({ focusDate, label, onSelectDate }) {
   );
 }
 
-function ViewOptionsDropdown({ hideEmptySlots, setHideEmptySlots, goToToday }) {
+function ViewOptionsDropdown({ hideEmptySlots, setHideEmptySlots, goToToday, compact = false }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const hasActive = hideEmptySlots;
@@ -747,24 +753,24 @@ function ViewOptionsDropdown({ hideEmptySlots, setHideEmptySlots, goToToday }) {
   useCloseOnClickOutside(open, setOpen, ref);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative shrink-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={[
-          "h-8 rounded-[20px] px-3 border text-[11px] font-bold transition-colors flex items-center gap-1.5",
+          "h-8 rounded-[20px] px-2.5 sm:px-3 border text-[11px] font-bold transition-colors flex items-center gap-1.5",
           hasActive
             ? "border-[var(--studio-primary)] bg-[color-mix(in_srgb,var(--studio-primary)_12%,transparent)] text-[var(--studio-primary)]"
             : "border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
         ].join(" ")}
         style={{ boxShadow: COLORS.shadow }}
       >
-        View Options
+        {compact ? "Options" : "View Options"}
         <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-[calc(100%+6px)] z-50 min-w-[160px] rounded-xl border border-border bg-popover shadow-lg py-1.5">
+        <div className="absolute left-0 top-[calc(100%+6px)] z-[60] min-w-[160px] rounded-xl border border-border bg-popover shadow-lg py-1.5">
           <button
             type="button"
             onClick={() => { goToToday(); setOpen(false); }}
@@ -896,13 +902,14 @@ function ListEventRow({ event, onEventClick }) {
     <button
       type="button"
       onClick={() => raw && onEventClick?.(raw)}
-      className={`w-full text-left group flex items-stretch gap-0 rounded-xl border border-border bg-card hover:bg-muted/40 transition-colors overflow-hidden ${isCancelled ? "opacity-60" : ""}`}
+      className={`w-full text-left group flex flex-col sm:flex-row items-stretch gap-0 rounded-xl border border-border bg-card hover:bg-muted/40 transition-colors overflow-hidden ${isCancelled ? "opacity-60" : ""}`}
     >
-      {/* Accent left bar */}
-      <div className="w-1 shrink-0" style={{ backgroundColor: accentColor }} />
+      {/* Accent left bar — desktop/tablet side; on mobile use top strip via border */}
+      <div className="hidden sm:block w-1 shrink-0" style={{ backgroundColor: accentColor }} />
+      <div className="sm:hidden h-1 w-full shrink-0" style={{ backgroundColor: accentColor }} />
 
       {/* Time column */}
-      <div className="w-28 shrink-0 flex flex-col justify-center px-3 py-3 border-r border-border">
+      <div className="w-full sm:w-28 shrink-0 flex flex-row sm:flex-col items-center sm:items-start justify-between sm:justify-center gap-2 px-3 py-2.5 sm:py-3 border-b sm:border-b-0 sm:border-r border-border">
         {event.allDay ? (
           <span className="text-[11px] font-semibold text-muted-foreground">All day</span>
         ) : (
@@ -910,14 +917,14 @@ function ListEventRow({ event, onEventClick }) {
             <span className="text-[12px] font-bold text-foreground leading-tight">{startLabel}</span>
             <span className="text-[10px] text-muted-foreground leading-tight">{endLabel}</span>
             {durationLabel && (
-              <span className="mt-0.5 text-[10px] text-muted-foreground/70 leading-tight">{durationLabel}</span>
+              <span className="sm:mt-0.5 text-[10px] text-muted-foreground/70 leading-tight">{durationLabel}</span>
             )}
           </>
         )}
       </div>
 
       {/* Main content */}
-      <div className="flex-1 min-w-0 flex flex-col justify-center px-4 py-3 gap-1">
+      <div className="flex-1 min-w-0 flex flex-col justify-center px-3 sm:px-4 py-2.5 sm:py-3 gap-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span
             className={`text-[13px] font-semibold text-foreground leading-tight ${
@@ -954,14 +961,14 @@ function ListEventRow({ event, onEventClick }) {
 
       {/* Teacher column */}
       {tutorName && (
-        <div className="flex items-center gap-2 px-4 py-3 border-l border-border shrink-0">
+        <div className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-3 border-t sm:border-t-0 sm:border-l border-border shrink-0">
           <span
             className="h-6 w-6 rounded-full text-[9px] font-bold grid place-items-center text-white shrink-0"
             style={{ backgroundColor: accentColor }}
           >
             {initials}
           </span>
-          <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+          <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap truncate max-w-[140px] sm:max-w-none">
             {tutorName}
           </span>
         </div>
@@ -993,8 +1000,8 @@ function ListCalendarView({ events, focusDate, onEventClick }) {
   return (
     <div className="flex flex-col overflow-hidden rounded-[12px] border border-border bg-background">
       {/* List header bar */}
-      <div className="shrink-0 flex items-center justify-between px-5 py-2.5 border-b border-border bg-muted/30">
-        <div className="flex items-center gap-2">
+      <div className="shrink-0 flex items-center justify-between gap-2 px-3 sm:px-5 py-2.5 border-b border-border bg-muted/30">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className="text-[12px] font-semibold text-foreground">
             {totalEvents} event{totalEvents !== 1 ? "s" : ""}
           </span>
@@ -1005,7 +1012,7 @@ function ListCalendarView({ events, focusDate, onEventClick }) {
         <button
           type="button"
           onClick={() => setShowEmpty((v) => !v)}
-          className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0 whitespace-nowrap"
         >
           {showEmpty ? "Hide empty days" : "Show empty days"}
         </button>
@@ -1018,7 +1025,7 @@ function ListCalendarView({ events, focusDate, onEventClick }) {
             return (
               <div key={day.toISOString()} className={isPast ? "opacity-55" : ""}>
                 <div
-                  className={`sticky top-0 z-10 flex items-center gap-3 px-5 py-2 border-b border-border/60 ${
+                  className={`sticky top-0 z-10 flex items-center gap-3 px-3 sm:px-5 py-2 border-b border-border/60 ${
                     isToday
                       ? "bg-[color-mix(in_srgb,var(--studio-primary)_8%,hsl(var(--background)))]"
                       : "bg-background/95 backdrop-blur-sm"
@@ -1042,13 +1049,13 @@ function ListCalendarView({ events, focusDate, onEventClick }) {
                 </div>
 
                 {dayEvents.length > 0 ? (
-                  <div className="flex flex-col gap-2 px-4 py-3">
+                  <div className="flex flex-col gap-2 px-3 sm:px-4 py-3">
                     {dayEvents.map((event) => (
                       <ListEventRow key={event.id} event={event} onEventClick={onEventClick} />
                     ))}
                   </div>
                 ) : (
-                  <div className="px-5 py-3 text-[11px] text-muted-foreground/40 italic">
+                  <div className="px-3 sm:px-5 py-3 text-[11px] text-muted-foreground/40 italic">
                     No events scheduled
                   </div>
                 )}
@@ -2543,7 +2550,8 @@ function TutorWeekCalendar({
   })}`;
 
   return (
-    <div className="flex flex-col rounded-[12px] border border-border bg-background shadow-sm">
+    <div className="flex flex-col rounded-[12px] border border-border bg-background shadow-sm overflow-x-auto">
+      <div className="min-w-[720px] lg:min-w-0">
       <div className="sticky top-0 z-40 border-b border-border bg-background/95 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
         <div className="flex shrink-0 border-b border-border bg-muted/30">
           <div className="w-[86px] shrink-0 border-r border-border flex items-end pb-2 px-2">
@@ -2556,7 +2564,7 @@ function TutorWeekCalendar({
             return (
               <div
                 key={key}
-                className="flex-1 px-3 py-2.5 text-center"
+                className="flex-1 px-2 sm:px-3 py-2.5 text-center min-w-[96px] lg:min-w-0"
                 style={{
                   borderRight:
                     idx < weekDays.length - 1
@@ -2619,7 +2627,7 @@ function TutorWeekCalendar({
           return (
             <div
               key={`${key}-week-col`}
-              className="relative flex-1 group/col cursor-pointer overflow-hidden"
+              className="relative flex-1 group/col cursor-pointer overflow-hidden min-w-[96px] lg:min-w-0"
               style={{
                 height: paddedWeekHeight,
                 borderRight:
@@ -2706,6 +2714,7 @@ function TutorWeekCalendar({
           </div>
         )}
       </div>
+      </div>
       {overflowPopover && (
         <TimedEventsOverflowPopover
           events={overflowPopover.events}
@@ -2723,10 +2732,9 @@ function SlotSizePicker({ value, startMins, onApply }) {
   const [open, setOpen] = useState(false);
   const [startTime, setStartTime] = useState("06:00");
   const [pendingMins, setPendingMins] = useState(value);
+  const [menuStyle, setMenuStyle] = useState(null);
   const rootRef = useRef(null);
-
-  useCloseOnOuterScroll(open, setOpen, rootRef);
-  useCloseOnClickOutside(open, setOpen, rootRef);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -2736,6 +2744,97 @@ function SlotSizePicker({ value, startMins, onApply }) {
     const m = base % 60;
     setStartTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
   }, [open, value, startMins]);
+
+  const placeMenu = useCallback(() => {
+    const trigger = rootRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const menuWidth = 208; // w-52
+    const gap = 8;
+    const pad = 12;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = rect.right - menuWidth;
+    left = Math.max(pad, Math.min(left, vw - menuWidth - pad));
+
+    const estimatedHeight = menuRef.current?.offsetHeight || 220;
+    const spaceBelow = vh - rect.bottom - gap - pad;
+    const spaceAbove = rect.top - gap - pad;
+    const openAbove = spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
+
+    const top = openAbove
+      ? Math.max(pad, rect.top - gap - estimatedHeight)
+      : Math.min(rect.bottom + gap, Math.max(pad, vh - estimatedHeight - pad));
+
+    setMenuStyle({
+      position: "fixed",
+      top,
+      left,
+      width: Math.min(menuWidth, vw - pad * 2),
+      zIndex: 100,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setMenuStyle(null);
+      return;
+    }
+    placeMenu();
+    const raf = requestAnimationFrame(placeMenu);
+    window.addEventListener("resize", placeMenu);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", placeMenu);
+    };
+  }, [open, placeMenu]);
+
+  // Close on outside pointer / outer scroll — include portaled menu
+  useEffect(() => {
+    if (!open) return;
+
+    const isInside = (node) => {
+      if (!(node instanceof Node)) return false;
+      return Boolean(rootRef.current?.contains(node) || menuRef.current?.contains(node));
+    };
+
+    const isTimePicker = () => {
+      const ae = document.activeElement;
+      return (
+        ae instanceof HTMLInputElement &&
+        ae.type === "time" &&
+        Boolean(menuRef.current?.contains(ae))
+      );
+    };
+
+    const onPointerDown = (e) => {
+      const path =
+        typeof e.composedPath === "function" && e.composedPath().length > 0
+          ? e.composedPath()
+          : [e.target];
+      if (path.some((n) => isInside(n))) return;
+      if (isTimePicker()) return;
+      setOpen(false);
+    };
+
+    const onScroll = (e) => {
+      if (isInside(e.target)) return;
+      if (isTimePicker()) return;
+      setOpen(false);
+    };
+
+    const id = window.setTimeout(() => {
+      document.addEventListener("pointerdown", onPointerDown);
+      window.addEventListener("scroll", onScroll, true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [open]);
 
   const isActive =
     value !== DEFAULT_SLOT_MINS ||
@@ -2749,13 +2848,79 @@ function SlotSizePicker({ value, startMins, onApply }) {
     setOpen(false);
   }
 
+  const menu =
+    open && menuStyle && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={menuRef}
+            style={menuStyle}
+            className="rounded-xl border border-border bg-popover shadow-lg p-3 space-y-3"
+          >
+            <div>
+              <p className="text-[11px] font-semibold text-foreground mb-1.5">Slot Size</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[30, 45, 50, 60, 90].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setPendingMins(m)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                      pendingMins === m
+                        ? "bg-primary border-primary text-white"
+                        : "bg-muted/50 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {m}m
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold text-foreground mb-1.5">Start Time</p>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="h-8 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary transition-colors"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const resetMins = DEFAULT_SLOT_MINS;
+                  const snapped = snapSlotStartMinutes(FULL_START_HOUR * 60, resetMins);
+                  setStartTime("06:00");
+                  setPendingMins(resetMins);
+                  onApply(resetMins, snapped);
+                  setOpen(false);
+                }}
+                className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-muted-foreground hover:bg-muted/40"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={handleApply}
+                className="flex-1 h-8 rounded-lg bg-primary text-[11px] font-semibold text-white hover:bg-primary/90 transition-colors"
+              >
+                Apply
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={[
-          "h-8 rounded-[20px] border px-3 text-[11px] font-bold transition-colors inline-flex items-center gap-1.5",
+          "h-8 rounded-[20px] border px-2.5 sm:px-3 text-[11px] font-bold transition-colors inline-flex items-center gap-1.5",
           isActive
             ? "border-primary bg-primary/10 text-primary"
             : "border-border bg-background text-foreground hover:bg-muted",
@@ -2763,66 +2928,9 @@ function SlotSizePicker({ value, startMins, onApply }) {
         style={{ boxShadow: COLORS.shadow }}
       >
         Slot: {value}m
-        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
-
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-border bg-popover shadow-lg p-3 z-50 space-y-3">
-          <div>
-            <p className="text-[11px] font-semibold text-foreground mb-1.5">Slot Size</p>
-            <div className="flex flex-wrap gap-1.5">
-              {[30, 45, 50, 60, 90].map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setPendingMins(m)}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
-                    pendingMins === m
-                      ? "bg-primary border-primary text-white"
-                      : "bg-muted/50 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  {m}m
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[11px] font-semibold text-foreground mb-1.5">Start Time</p>
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="h-8 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary transition-colors"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                const resetMins = DEFAULT_SLOT_MINS;
-                const snapped = snapSlotStartMinutes(FULL_START_HOUR * 60, resetMins);
-                setStartTime("06:00");
-                setPendingMins(resetMins);
-                onApply(resetMins, snapped);
-                setOpen(false);
-              }}
-              className="flex-1 h-8 rounded-lg border border-border bg-background text-[11px] font-semibold text-muted-foreground hover:bg-muted/40"
-            >
-              Reset
-            </button>
-            <button
-              type="button"
-              onClick={handleApply}
-              className="flex-1 h-8 rounded-lg bg-primary text-[11px] font-semibold text-white hover:bg-primary/90 transition-colors"
-            >
-              Apply
-            </button>
-          </div>
-        </div>
-      )}
+      {menu}
     </div>
   );
 }
@@ -2846,46 +2954,47 @@ const STATUS_DOT = {
   no_show_charged:     "bg-orange-500",
 };
 
-function StatusFilterDropdown({ value, onChange }) {
+function StatusFilterDropdown({ value, onChange, compact = false }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const current = STATUS_FILTER_OPTIONS.find((o) => o.value === value) ?? STATUS_FILTER_OPTIONS[0];
+  const triggerLabel =
+    compact && value === "all"
+      ? "Status"
+      : compact && current.label.length > 12
+        ? current.label.split("–")[0].trim()
+        : current.label;
 
   useCloseOnOuterScroll(open, setOpen, rootRef);
+  useCloseOnClickOutside(open, setOpen, rootRef);
 
   return (
-    <div
-      ref={rootRef}
-      className="relative"
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
-      }}
-    >
+    <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="h-8 rounded-[20px] border border-border bg-background px-3 text-[11px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5"
+        className="h-8 rounded-[20px] border border-border bg-background px-2.5 sm:px-3 text-[11px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5 max-w-[140px] sm:max-w-none"
         style={{ boxShadow: COLORS.shadow }}
       >
         {value !== "all" && (
           <span className={`h-2 w-2 rounded-full shrink-0 ${STATUS_DOT[value] ?? "bg-muted-foreground"}`} />
         )}
-        {current.label}
+        <span className="truncate">{triggerLabel}</span>
         <ChevronDown
-          className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full mt-2 w-44 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-50"
+          className="absolute left-0 top-full mt-2 w-48 max-w-[calc(100vw-1.5rem)] rounded-xl border border-border bg-popover shadow-lg py-1.5 z-[60]"
         >
           {STATUS_FILTER_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               type="button"
               onClick={() => { onChange(opt.value); setOpen(false); }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] transition-colors ${
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-[12px] transition-colors ${
                 value === opt.value
                   ? "font-bold text-foreground bg-muted/60"
                   : "text-foreground hover:bg-muted/40"
@@ -2962,7 +3071,7 @@ function PrivateLessonSummaryBar({ viewMode, focusDate, events, allServices = []
   const total = cells.reduce((s, c) => s + c.count, 0);
 
   return (
-    <div className="shrink-0 px-6 py-2 border-b border-border/50 flex items-center gap-3 overflow-x-auto scrollbar-hide">
+    <div className="shrink-0 px-3 sm:px-6 py-2 border-b border-border/50 flex items-center gap-3 overflow-x-auto scrollbar-hide">
       <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 shrink-0">
         Private Lessons
       </span>
@@ -2992,36 +3101,39 @@ function PrivateLessonSummaryBar({ viewMode, focusDate, events, allServices = []
   );
 }
 
-function TeacherFilterDropdown({ instructors, value, onChange }) {
+function TeacherFilterDropdown({ instructors, value, onChange, compact = false }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef(null);
   const rootRef = useRef(null);
   const current = value ? instructors.find((i) => i.key === value) : null;
+  const triggerLabel = current
+    ? current.name
+    : compact
+      ? "Teacher"
+      : "T";
 
   const filtered = query.trim()
     ? instructors.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()))
     : instructors;
 
   useCloseOnOuterScroll(open, setOpen, rootRef);
+  useCloseOnClickOutside(open, setOpen, rootRef);
 
   useEffect(() => {
     if (!open) { setQuery(""); return; }
+    // Skip auto-focus on touch devices — the soft keyboard can scroll the page
+    // and immediately close the menu via useCloseOnOuterScroll.
+    if (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches) return;
     setTimeout(() => inputRef.current?.focus(), 0);
   }, [open]);
 
   return (
-    <div
-      ref={rootRef}
-      className="relative"
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
-      }}
-    >
+    <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="h-8 rounded-[20px] border border-border bg-background px-3 text-[11px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5"
+        className="h-8 rounded-[20px] border border-border bg-background px-2.5 sm:px-3 text-[11px] font-bold text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5 max-w-[130px] sm:max-w-none"
         style={{ boxShadow: COLORS.shadow }}
       >
         {current && (
@@ -3032,15 +3144,15 @@ function TeacherFilterDropdown({ instructors, value, onChange }) {
             {current.initials}
           </span>
         )}
-        {current ? current.name : "T"}
+        <span className="truncate">{triggerLabel}</span>
         <ChevronDown
-          className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-border bg-popover shadow-lg z-50 overflow-hidden"
+          className="absolute left-0 top-full mt-2 w-52 max-w-[calc(100vw-1.5rem)] rounded-xl border border-border bg-popover shadow-lg z-[60] overflow-hidden"
         >
           <div className="p-2 border-b border-border">
             <input
@@ -3057,7 +3169,7 @@ function TeacherFilterDropdown({ instructors, value, onChange }) {
               <button
                 type="button"
                 onClick={() => { onChange(null); setOpen(false); }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] transition-colors ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-[12px] transition-colors ${
                   !value ? "font-bold text-foreground bg-muted/60" : "text-foreground hover:bg-muted/40"
                 }`}
               >
@@ -3073,7 +3185,7 @@ function TeacherFilterDropdown({ instructors, value, onChange }) {
                   key={inst.key}
                   type="button"
                   onClick={() => { onChange(inst.key); setOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] transition-colors ${
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-[12px] transition-colors ${
                     value === inst.key ? "font-bold text-foreground bg-muted/60" : "text-foreground hover:bg-muted/40"
                   }`}
                 >
@@ -3444,99 +3556,181 @@ export default function CalendarPage() {
     >
       <div className="w-full min-h-0">
         <div className="bg-background rounded-[24px_0px_24px_24px] w-full flex flex-col pt-3 sm:pt-4">
-          <div className="shrink-0 px-6 py-1.5 flex items-center justify-between gap-3 border-b border-border/50">
-            <div className="flex items-center gap-2">
-              <ViewOptionsDropdown
-                hideEmptySlots={hideEmptySlots}
-                setHideEmptySlots={setHideEmptySlots}
-                goToToday={goToToday}
-              />
-              <div className="flex items-center gap-2 ml-1">
-                <IconCircleButton ariaLabel="Previous" onClick={() => shiftView(-1)}>
-                  <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-                </IconCircleButton>
-                <CalendarDatePicker
-                  focusDate={focusDate}
-                  label={headerLabel}
-                  onSelectDate={navigateToDate}
-                />
-                <IconCircleButton ariaLabel="Next" onClick={() => shiftView(1)}>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </IconCircleButton>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {isLoadingEvents && (
-                <svg className="h-4 w-4 animate-spin text-muted-foreground" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                </svg>
-              )}
-
-              <div className="flex items-center">
-                <SegmentedButton
-                  active={viewMode === VIEW_MODE.DAY}
-                  className="rounded-[30px_0px_0px_30px]"
-                  onClick={() => switchToMode(VIEW_MODE.DAY)}
-                >
-                  Day
-                </SegmentedButton>
-                <SegmentedButton
-                  active={viewMode === VIEW_MODE.WEEK}
-                  className="rounded-none border-l-0"
-                  onClick={() => switchToMode(VIEW_MODE.WEEK)}
-                >
-                  Week
-                </SegmentedButton>
-                <SegmentedButton
-                  active={viewMode === VIEW_MODE.MONTH}
-                  className="rounded-none border-l-0"
-                  onClick={() => switchToMode(VIEW_MODE.MONTH)}
-                >
-                  Month
-                </SegmentedButton>
-                <SegmentedButton
-                  active={viewMode === VIEW_MODE.LIST}
-                  className="rounded-[0px_30px_30px_0px] border-l-0"
-                  onClick={() => switchToMode(VIEW_MODE.LIST)}
-                >
-                  List
-                </SegmentedButton>
+          <div className="shrink-0 px-3 sm:px-6 py-2 border-b border-border/50 space-y-2 lg:space-y-0 relative z-50 overflow-visible">
+            {/* Row 1: date nav + create (mobile) / full desktop toolbar */}
+            <div className="flex items-center justify-between gap-2 lg:gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="hidden lg:block">
+                  <ViewOptionsDropdown
+                    hideEmptySlots={hideEmptySlots}
+                    setHideEmptySlots={setHideEmptySlots}
+                    goToToday={goToToday}
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                  <IconCircleButton ariaLabel="Previous" onClick={() => shiftView(-1)}>
+                    <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                  </IconCircleButton>
+                  <CalendarDatePicker
+                    focusDate={focusDate}
+                    label={headerLabel}
+                    onSelectDate={navigateToDate}
+                  />
+                  <IconCircleButton ariaLabel="Next" onClick={() => shiftView(1)}>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </IconCircleButton>
+                </div>
               </div>
 
-              {instructors.length > 0 && (
-                <TeacherFilterDropdown
-                  instructors={instructors}
-                  value={selectedTeacherId}
-                  onChange={setSelectedTeacherId}
-                />
-              )}
-              <StatusFilterDropdown value={statusFilter} onChange={setStatusFilter} />
-              <SlotSizePicker
-                value={customSlotMins}
-                startMins={slotAlignMins}
-                onApply={(mins, startOff) => {
-                  setCustomSlotMins(mins);
-                  setSlotAlignMins(startOff);
-                  try { localStorage.setItem("cal_slotMins", String(mins)); localStorage.setItem("cal_startMins", String(startOff)); } catch {}
-                  api.patch("/api/organisation/calendar-settings", { slotMins: mins, startMins: startOff });
-                }}
-              />
+              <div className="hidden lg:flex items-center gap-2">
+                {isLoadingEvents && (
+                  <svg className="h-4 w-4 animate-spin text-muted-foreground shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                )}
 
+                <div className="flex items-center shrink-0">
+                  <SegmentedButton
+                    active={viewMode === VIEW_MODE.DAY}
+                    className="rounded-[30px_0px_0px_30px]"
+                    onClick={() => switchToMode(VIEW_MODE.DAY)}
+                  >
+                    Day
+                  </SegmentedButton>
+                  <SegmentedButton
+                    active={viewMode === VIEW_MODE.WEEK}
+                    className="rounded-none border-l-0"
+                    onClick={() => switchToMode(VIEW_MODE.WEEK)}
+                  >
+                    Week
+                  </SegmentedButton>
+                  <SegmentedButton
+                    active={viewMode === VIEW_MODE.MONTH}
+                    className="rounded-none border-l-0"
+                    onClick={() => switchToMode(VIEW_MODE.MONTH)}
+                  >
+                    Month
+                  </SegmentedButton>
+                  <SegmentedButton
+                    active={viewMode === VIEW_MODE.LIST}
+                    className="rounded-[0px_30px_30px_0px] border-l-0"
+                    onClick={() => switchToMode(VIEW_MODE.LIST)}
+                  >
+                    List
+                  </SegmentedButton>
+                </div>
+
+                {instructors.length > 0 && (
+                  <TeacherFilterDropdown
+                    instructors={instructors}
+                    value={selectedTeacherId}
+                    onChange={setSelectedTeacherId}
+                  />
+                )}
+                <StatusFilterDropdown value={statusFilter} onChange={setStatusFilter} />
+                <SlotSizePicker
+                  value={customSlotMins}
+                  startMins={slotAlignMins}
+                  onApply={(mins, startOff) => {
+                    setCustomSlotMins(mins);
+                    setSlotAlignMins(startOff);
+                    try { localStorage.setItem("cal_slotMins", String(mins)); localStorage.setItem("cal_startMins", String(startOff)); } catch {}
+                    api.patch("/api/organisation/calendar-settings", { slotMins: mins, startMins: startOff });
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setIsAppointmentPanelOpen(true)}
+                  className="h-8 rounded-[20px] bg-brand px-4 text-[11px] font-bold text-brand-foreground hover:bg-brand-dark active:scale-[0.98] transition-all shrink-0"
+                >
+                  + Create
+                </button>
+              </div>
 
               <button
                 type="button"
                 onClick={() => setIsAppointmentPanelOpen(true)}
-                className="h-8 rounded-[20px] bg-brand px-4 text-[11px] font-bold text-brand-foreground hover:bg-brand-dark active:scale-[0.98] transition-all shrink-0"
+                className="lg:hidden h-8 rounded-[20px] bg-brand px-3 text-[11px] font-bold text-brand-foreground hover:bg-brand-dark active:scale-[0.98] transition-all shrink-0"
               >
                 + Create
               </button>
             </div>
+
+            {/* Mobile / tablet only: view switcher + filter chips */}
+            <div className="lg:hidden space-y-2">
+              <div className="flex items-center gap-2">
+                {isLoadingEvents && (
+                  <svg className="h-4 w-4 animate-spin text-muted-foreground shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                )}
+                <div className="flex items-center flex-1 min-w-0">
+                  <SegmentedButton
+                    active={viewMode === VIEW_MODE.DAY}
+                    className="flex-1 rounded-[30px_0px_0px_30px] px-0"
+                    onClick={() => switchToMode(VIEW_MODE.DAY)}
+                  >
+                    Day
+                  </SegmentedButton>
+                  <SegmentedButton
+                    active={viewMode === VIEW_MODE.WEEK}
+                    className="flex-1 rounded-none border-l-0 px-0"
+                    onClick={() => switchToMode(VIEW_MODE.WEEK)}
+                  >
+                    Week
+                  </SegmentedButton>
+                  <SegmentedButton
+                    active={viewMode === VIEW_MODE.MONTH}
+                    className="flex-1 rounded-none border-l-0 px-0"
+                    onClick={() => switchToMode(VIEW_MODE.MONTH)}
+                  >
+                    Month
+                  </SegmentedButton>
+                  <SegmentedButton
+                    active={viewMode === VIEW_MODE.LIST}
+                    className="flex-1 rounded-[0px_30px_30px_0px] border-l-0 px-0"
+                    onClick={() => switchToMode(VIEW_MODE.LIST)}
+                  >
+                    List
+                  </SegmentedButton>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <ViewOptionsDropdown
+                  compact
+                  hideEmptySlots={hideEmptySlots}
+                  setHideEmptySlots={setHideEmptySlots}
+                  goToToday={goToToday}
+                />
+                {instructors.length > 0 && (
+                  <TeacherFilterDropdown
+                    compact
+                    instructors={instructors}
+                    value={selectedTeacherId}
+                    onChange={setSelectedTeacherId}
+                  />
+                )}
+                <StatusFilterDropdown compact value={statusFilter} onChange={setStatusFilter} />
+                <SlotSizePicker
+                  value={customSlotMins}
+                  startMins={slotAlignMins}
+                  onApply={(mins, startOff) => {
+                    setCustomSlotMins(mins);
+                    setSlotAlignMins(startOff);
+                    try { localStorage.setItem("cal_slotMins", String(mins)); localStorage.setItem("cal_startMins", String(startOff)); } catch {}
+                    api.patch("/api/organisation/calendar-settings", { slotMins: mins, startMins: startOff });
+                  }}
+                />
+              </div>
+            </div>
           </div>
 
 
-          <div className="px-6 pt-6 pb-6">
+          <div className="px-3 sm:px-6 pt-4 sm:pt-6 pb-6">
             <div className="flex gap-4 min-w-0">
               <div className="flex-1 min-w-0">
                 {viewMode === VIEW_MODE.DAY ? (

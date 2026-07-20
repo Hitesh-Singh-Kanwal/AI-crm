@@ -24,8 +24,8 @@ export default function ContactDetails({ contact, leadData, onClose }) {
 
   return (
     <aside
-      className="bg-card h-full border-l border-border rounded-r-lg overflow-y-auto"
-      style={{ fontFamily: "'DM Sans', 'Inter', sans-serif", minWidth: 280, maxWidth: 340 }}
+      className="bg-card h-full w-full border-l-0 lg:border-l border-border rounded-none lg:rounded-r-lg overflow-y-auto lg:min-w-[280px] lg:max-w-[340px]"
+      style={{ fontFamily: "'DM Sans', 'Inter', sans-serif" }}
     >
       {/* Header */}
       <div className="relative flex flex-col items-center pt-8 pb-4 px-5 border-b border-border">

@@ -1630,7 +1630,7 @@ export default function EventDetailPanel({
     <Sheet open={open} onClose={onClose}>
       <SheetContent onClose={onClose} className="flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-4 shrink-0">
+        <div className="flex items-center justify-between border-b border-border px-4 sm:px-5 py-4 shrink-0">
           {selectedStudentId ? (
             <button
               type="button"
@@ -1664,7 +1664,7 @@ export default function EventDetailPanel({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
           {selectedStudentId ? (
             <MiniStudentPanel
               customerId={selectedStudentId}
@@ -1978,7 +1978,7 @@ export default function EventDetailPanel({
 
         {/* Footer — hidden when viewing mini student panel */}
         {!selectedStudentId && (
-          <div className="border-t border-border p-5 space-y-2 shrink-0">
+          <div className="border-t border-border p-4 sm:p-5 space-y-2 shrink-0">
             {isEditing ? (
               <div className="space-y-2">
                 {isRecurring && (

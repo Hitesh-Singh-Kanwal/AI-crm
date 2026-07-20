@@ -2588,7 +2588,7 @@ export default function MiniStudentPanel({
 
   return (
     <>
-      <aside className="h-full w-[380px] shrink-0 rounded-xl border border-border bg-card shadow-lg flex flex-col">
+      <aside className="h-full w-full max-w-full sm:w-[380px] shrink-0 rounded-xl border border-border bg-card shadow-lg flex flex-col">
         {/* Header */}
         <div className="flex items-center gap-2 border-b border-border px-4 py-3 shrink-0">
           <button

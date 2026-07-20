@@ -8,10 +8,10 @@ function Sheet({ open, onClose, children, side = 'right', width }) {
   if (!open) return null
 
   const sideClasses = {
-    right: 'right-0 h-full w-[400px] sm:w-[540px] border-l',
-    left: 'left-0 h-full w-[400px] sm:w-[540px] border-r',
-    top: 'top-0 left-0 right-0 h-[400px] sm:h-[500px] border-b',
-    bottom: 'bottom-0 left-0 right-0 h-[400px] sm:h-[500px] border-t',
+    right: 'right-0 h-full w-full max-w-[400px] sm:max-w-[540px] border-l',
+    left: 'left-0 h-full w-full max-w-[400px] sm:max-w-[540px] border-r',
+    top: 'top-0 left-0 right-0 h-[min(400px,85vh)] sm:h-[500px] border-b',
+    bottom: 'bottom-0 left-0 right-0 h-[min(400px,85vh)] sm:h-[500px] border-t',
   }
 
   const animationClasses = {
@@ -26,7 +26,7 @@ function Sheet({ open, onClose, children, side = 'right', width }) {
       <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
       <div
         className={`fixed ${sideClasses[side]} z-50 bg-card border-border shadow-2xl ${animationClasses[side]}`}
-        style={width ? { width } : undefined}
+        style={width ? { width, maxWidth: '100%' } : undefined}
       >
         {children}
       </div>

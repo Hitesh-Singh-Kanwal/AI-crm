@@ -8,6 +8,7 @@ import ConversationView from '@/app/inbox/components/ConversationView'
 import ContactDetails from '@/app/inbox/components/ContactDetails'
 import NewConversationDialog from '@/app/inbox/components/NewConversationDialog'
 import BatchSendDialog from '@/app/inbox/components/BatchSendDialog'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useInboxHeader } from '@/contexts/InboxHeaderContext'
 import { cn, getContactDisplayName } from '@/lib/utils'
 import api from '@/lib/api'
@@ -139,6 +140,7 @@ function InboxPageContent() {
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [showDetails, setShowDetails] = useState(true)
   const [showContactList, setShowContactList] = useState(true)
+  const [isLgUp, setIsLgUp] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [contactFilter, setContactFilter] = useState('All')
   const [conversations, setConversations] = useState([])
@@ -306,6 +308,24 @@ function InboxPageContent() {
   useEffect(() => {
     fetchInboxData()
   }, [fetchInboxData])
+
+  // Track desktop breakpoint so mobile master–detail doesn't fight desktop split panes
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const sync = () => {
+      const matches = mq.matches
+      setIsLgUp(matches)
+      if (!matches) {
+        setShowDetails(false)
+      } else {
+        setShowDetails(true)
+        setShowContactList(true)
+      }
+    }
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
 
   // Sync URL ?filter= with contactFilter (header tabs use URL)
   const urlFilter = searchParams?.get('filter') || 'all'
@@ -703,6 +723,7 @@ function InboxPageContent() {
     setSelectedConversation(conversationId)
     setConversations((prev) => prev.map((conv) => (conv.id === conversationId ? { ...conv, unread: 0 } : conv)))
     setShowContactList(false)
+    if (!isLgUp) setShowDetails(false)
     if (conversationId.startsWith('lead-')) {
       fetchLeadMessages(conversationId, 1)
     } else if (conversationId.startsWith('email-')) {
@@ -718,18 +739,20 @@ function InboxPageContent() {
   }, [selectedConversation, threadMeta, fetchLeadMessages])
 
   useEffect(() => {
+    // Desktop: keep a conversation selected. Mobile: stay on the list until the user picks one.
+    if (!isLgUp) return
     if (!selectedConversation && displayedConversations.length > 0) {
       const firstId = displayedConversations[0].id
       setSelectedConversation(firstId)
       if (firstId.startsWith('lead-')) fetchLeadMessages(firstId, 1)
       else if (firstId.startsWith('email-')) fetchConversationEmailHistory(firstId)
     }
-  }, [displayedConversations, selectedConversation, fetchLeadMessages, fetchConversationEmailHistory])
+  }, [displayedConversations, selectedConversation, fetchLeadMessages, fetchConversationEmailHistory, isLgUp])
 
   if (loading) {
     return (
-      <MainLayout title="Inbox" subtitle="Manage all your conversations in one place">
-        <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+      <MainLayout title="Inbox" subtitle="Manage all your conversations in one place" mainClassName="overflow-hidden flex flex-col">
+        <div className="flex items-center justify-center flex-1 min-h-0">
           <GlobalLoader variant="center" size="md" text="Loading conversations…" />
         </div>
       </MainLayout>
@@ -738,8 +761,8 @@ function InboxPageContent() {
 
   if (error) {
     return (
-      <MainLayout title="Inbox" subtitle="Manage all your conversations in one place">
-        <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] gap-3 text-muted-foreground">
+      <MainLayout title="Inbox" subtitle="Manage all your conversations in one place" mainClassName="overflow-hidden flex flex-col">
+        <div className="flex flex-col items-center justify-center flex-1 min-h-0 gap-3 text-muted-foreground">
           <p>{error}</p>
           <button onClick={fetchInboxData} className="text-sm underline">Retry</button>
         </div>
@@ -748,7 +771,7 @@ function InboxPageContent() {
   }
 
   return (
-    <MainLayout title="Inbox" subtitle="Manage all your conversations in one place">
+    <MainLayout title="Inbox" subtitle="Manage all your conversations in one place" mainClassName="overflow-hidden flex flex-col !px-0 !py-0 sm:!px-0 sm:!py-0 lg:!px-2 lg:!py-2">
       <NewConversationDialog
         open={newConvOpen}
         onClose={() => setNewConvOpen(false)}
@@ -759,9 +782,15 @@ function InboxPageContent() {
         onClose={() => setBatchOpen(false)}
         onSent={handleBatchSent}
       />
-      <div className="flex flex-col lg:flex-row gap-0 h-full min-h-0">
-        {/* Left: Contact list */}
-        <div className={cn('h-full min-h-0', showContactList ? 'flex flex-col' : 'hidden lg:flex flex-col')}>
+      <div className="flex flex-col lg:flex-row gap-0 h-full min-h-0 flex-1">
+        {/* Left: Contact list — full screen on mobile until a thread is opened */}
+        <div
+          className={cn(
+            'h-full min-h-0',
+            showContactList ? 'flex flex-col' : 'hidden',
+            'lg:flex lg:flex-col',
+          )}
+        >
           <ContactList
             conversations={displayedConversations}
             selectedConversation={selectedConversation}
@@ -775,8 +804,13 @@ function InboxPageContent() {
           />
         </div>
 
-        {/* Middle: Conversation */}
-        <div className="flex flex-col min-h-0 h-full w-full lg:flex-1">
+        {/* Middle: Conversation — hidden on mobile while the list is visible */}
+        <div
+          className={cn(
+            'flex-col min-h-0 h-full w-full lg:flex-1',
+            showContactList ? 'hidden lg:flex' : 'flex',
+          )}
+        >
           <ConversationView
             conversation={selectedConvData}
             messages={conversationMessages}
@@ -800,12 +834,25 @@ function InboxPageContent() {
           />
         </div>
 
-        {/* Right: Details */}
+        {/* Right: Details — desktop side panel */}
         {showDetails && selectedConvData && (
           <div className="hidden lg:flex flex-col w-80 min-h-0 h-full">
             <ContactDetails contact={selectedConvData.contact} leadData={selectedLeadData} onClose={() => setShowDetails(false)} />
           </div>
         )}
+
+        {/* Mobile / tablet: details as full-height sheet */}
+        <Sheet open={!isLgUp && showDetails && !!selectedConvData} onClose={() => setShowDetails(false)} side="right">
+          <SheetContent className="p-0">
+            {selectedConvData && (
+              <ContactDetails
+                contact={selectedConvData.contact}
+                leadData={selectedLeadData}
+                onClose={() => setShowDetails(false)}
+              />
+            )}
+          </SheetContent>
+        </Sheet>
       </div>
     </MainLayout>
   )
@@ -814,8 +861,8 @@ function InboxPageContent() {
 export default function InboxPage() {
   return (
     <Suspense fallback={
-      <MainLayout title="Inbox" subtitle="Manage all your conversations in one place">
-        <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+      <MainLayout title="Inbox" subtitle="Manage all your conversations in one place" mainClassName="overflow-hidden flex flex-col">
+        <div className="flex items-center justify-center flex-1 min-h-0">
           <GlobalLoader variant="center" size="md" text="Loading conversations…" />
         </div>
       </MainLayout>

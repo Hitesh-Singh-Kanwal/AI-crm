@@ -16,8 +16,7 @@ export default function ContactList({
 }) {
   return (
     <aside
-      className="hidden lg:flex flex-col min-h-0 bg-card h-full rounded-l-lg border-r border-border shadow-none"
-      style={{ width: '330px' }}
+      className="flex flex-col min-h-0 bg-card h-full w-full lg:w-[330px] lg:shrink-0 rounded-none lg:rounded-l-lg border-r border-border shadow-none"
     >
       {/* Header */}
       <div className="px-3 py-3 flex items-center justify-between gap-4">
@@ -50,24 +49,20 @@ export default function ContactList({
 
       {/* Search wrap */}
       <div className="px-3 pb-3">
-        <div
-          className="flex items-center gap-2 p-2 bg-background border border-border rounded-lg shadow-sm"
-          style={{ height: 48 }}
-        >
-          <div className="flex items-center gap-2" style={{ width: 274 }}>
-            <Search className="h-5 w-5 text-muted-foreground" />
+        <div className="flex items-center gap-2 p-2 h-12 bg-background border border-border rounded-lg shadow-sm">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Search className="h-5 w-5 text-muted-foreground shrink-0" />
             <Input
               placeholder="Search contacts..."
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="border-0 p-0 focus:ring-0 focus:border-0 text-sm bg-transparent text-foreground placeholder:text-muted-foreground"
-              style={{ width: 220 }}
+              className="border-0 p-0 focus:ring-0 focus:border-0 text-sm bg-transparent text-foreground placeholder:text-muted-foreground w-full min-w-0"
             />
           </div>
 
           {/* send icon to the right of search (as in Figma) */}
           <button
-            className="ml-auto w-8 h-8 bg-muted border border-border rounded-lg flex items-center justify-center shadow-sm"
+            className="ml-auto w-8 h-8 shrink-0 bg-muted border border-border rounded-lg flex items-center justify-center shadow-sm"
             title="New conversation"
             onClick={() => onNewConversation?.()}
           >
@@ -96,7 +91,7 @@ export default function ContactList({
               >
                 <div className="flex items-center gap-3">
                   {/* unread dot */}
-                  <div className={cn('w-2.5 h-2.5 rounded-full', conv.unread ? 'bg-[color:var(--studio-primary)]' : 'bg-transparent')} />
+                  <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', conv.unread ? 'bg-[color:var(--studio-primary)]' : 'bg-transparent')} />
                   <Avatar className="h-10 w-10 flex-shrink-0">
                     <AvatarFallback className="bg-[color:var(--studio-primary)] text-white font-semibold">
                       {getInitials(getContactDisplayName(conv.contact))}
@@ -107,13 +102,13 @@ export default function ContactList({
                       <p className={cn('text-sm font-medium truncate', isActive ? 'text-[color:var(--studio-primary)]' : 'text-foreground')}>
                         {getContactDisplayName(conv.contact)}
                       </p>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(conv.timestamp)}</span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">{formatDateTime(conv.timestamp)}</span>
                     </div>
-                    <div className="mt-1 flex items-center justify-between">
+                    <div className="mt-1 flex items-center justify-between gap-2">
                       <p className={cn('text-sm truncate', isActive ? 'text-[color:var(--studio-primary)] font-medium' : 'text-muted-foreground')}>
                         {conv.lastMessage}
                       </p>
-                      <div className="flex items-center gap-2 ml-2">
+                      <div className="flex items-center gap-2 ml-2 shrink-0">
                         {conv.unread > 0 && (
                           <span className="inline-flex items-center justify-center text-xs font-medium rounded-full bg-[color:var(--studio-primary)] text-white w-5 h-5">
                             {conv.unread}

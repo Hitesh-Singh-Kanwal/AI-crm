@@ -77,8 +77,8 @@ export default function ConversationView({
   }, [hasMore, loadingMore, onLoadMore])
   if (!conversation) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-card rounded-2xl border border-border shadow-md">
-        <div className="text-center">
+      <div className="flex-1 flex items-center justify-center bg-card rounded-none lg:rounded-2xl border-0 lg:border border-border shadow-none lg:shadow-md">
+        <div className="text-center px-6">
           <Mail className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-base font-semibold text-foreground mb-2">No Conversation Selected</h3>
           <p className="text-sm text-muted-foreground">Select a conversation from the left to view messages</p>
@@ -88,17 +88,17 @@ export default function ConversationView({
   }
 
   return (
-    <main className="flex-1 flex flex-col min-h-0 bg-card h-full border-l border-border overflow-hidden">
+    <main className="flex-1 flex flex-col min-h-0 bg-card h-full border-l-0 lg:border-l border-border overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-border bg-card flex-shrink-0">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
+      <div className="p-3 sm:p-4 border-b border-border bg-card flex-shrink-0">
+        <div className="flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {onBackClick && (
-              <Button variant="ghost" size="icon" onClick={onBackClick} className="lg:hidden h-9 w-9">
+              <Button variant="ghost" size="icon" onClick={onBackClick} className="lg:hidden h-9 w-9 shrink-0">
                 <ArrowLeft className="h-4 w-4 text-muted-foreground" />
               </Button>
             )}
-            <div className="relative">
+            <div className="relative shrink-0">
               <Avatar className="h-10 w-10">
                 <AvatarFallback className="bg-[color:var(--studio-primary)] text-white font-semibold text-sm">
                   {getInitials(getContactDisplayName(conversation.contact))}
@@ -116,10 +116,10 @@ export default function ConversationView({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={onToggleDetails}
-              className="px-3 py-1 rounded-md text-sm bg-[color:var(--studio-primary)] text-white"
+              className="px-2.5 sm:px-3 py-1 rounded-md text-xs sm:text-sm whitespace-nowrap bg-[color:var(--studio-primary)] text-white"
             >
               View profile
             </button>
@@ -131,7 +131,7 @@ export default function ConversationView({
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar-hide py-3 px-4 bg-muted/40">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar-hide py-3 px-3 sm:px-4 bg-muted/40">
         {loadingMore && (
           <div className="text-center text-xs text-muted-foreground py-2">Loading older messages…</div>
         )}
@@ -167,7 +167,7 @@ export default function ConversationView({
                     </div>
                   )}
 
-                  <div className={cn('max-w-[70%]')}>
+                  <div className={cn('max-w-[85%] sm:max-w-[75%] lg:max-w-[70%]')}>
                     <div
                       className={cn(
                         'px-4 py-3 rounded-xl break-words shadow-sm',
