@@ -111,6 +111,24 @@ const FREQUENCY_OPTIONS = [
   { value: "monthly", label: "Monthly" },
 ];
 
+const WEEKDAY_OPTIONS = [
+  { value: 0, label: "Su" },
+  { value: 1, label: "Mo" },
+  { value: 2, label: "Tu" },
+  { value: 3, label: "We" },
+  { value: 4, label: "Th" },
+  { value: 5, label: "Fr" },
+  { value: 6, label: "Sa" },
+];
+
+const MONTHLY_WEEK_OPTIONS = [
+  { value: 1, label: "1st" },
+  { value: 2, label: "2nd" },
+  { value: 3, label: "3rd" },
+  { value: 4, label: "4th" },
+  { value: -1, label: "Last" },
+];
+
 const EMPTY_FORM = {
   lesson_id: "",
   todo_id: "",
@@ -131,6 +149,9 @@ const EMPTY_FORM = {
   recurrence_enabled: false,
   recurrence_frequency: "weekly",
   recurrence_end_date: "",
+  recurrence_days_of_week: [],
+  recurrence_monthly_weekday: null,
+  recurrence_monthly_weeks: [],
   event_color: "",
   payment_collected: false,
   payment_amount: "",
@@ -1445,6 +1466,60 @@ function DateTimeRow({ form, setField, lessonDuration }) {
 // ─── Recurrence block ─────────────────────────────────────────────────────────
 
 function RecurrenceBlock({ form, setField }) {
+  const isWeekly = form.recurrence_frequency === "weekly";
+  const isMonthly = form.recurrence_frequency === "monthly";
+
+  // Default to the appointment's own weekday the first time weekly recurrence
+  // is used, so the picker never starts out empty.
+  useEffect(() => {
+    if (
+      form.recurrence_enabled &&
+      isWeekly &&
+      (form.recurrence_days_of_week?.length ?? 0) === 0 &&
+      form.date
+    ) {
+      const weekday = new Date(`${form.date}T00:00:00`).getDay();
+      if (!Number.isNaN(weekday)) setField("recurrence_days_of_week", [weekday]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.recurrence_enabled, isWeekly, form.date]);
+
+  // Default to "the Nth weekday this date falls on" the first time monthly
+  // recurrence is used — e.g. picking Jul 14 (a Tuesday) defaults to "2nd Tue".
+  useEffect(() => {
+    if (
+      form.recurrence_enabled &&
+      isMonthly &&
+      form.recurrence_monthly_weekday == null &&
+      (form.recurrence_monthly_weeks?.length ?? 0) === 0 &&
+      form.date
+    ) {
+      const d = new Date(`${form.date}T00:00:00`);
+      if (!Number.isNaN(d.getTime())) {
+        const occurrence = Math.ceil(d.getDate() / 7);
+        setField("recurrence_monthly_weekday", d.getDay());
+        setField("recurrence_monthly_weeks", [occurrence >= 5 ? -1 : occurrence]);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.recurrence_enabled, isMonthly, form.date]);
+
+  function toggleDay(value) {
+    const current = form.recurrence_days_of_week || [];
+    const next = current.includes(value)
+      ? current.filter((d) => d !== value)
+      : [...current, value].sort();
+    setField("recurrence_days_of_week", next);
+  }
+
+  function toggleMonthlyWeek(value) {
+    const current = form.recurrence_monthly_weeks || [];
+    const next = current.includes(value)
+      ? current.filter((w) => w !== value)
+      : [...current, value].sort();
+    setField("recurrence_monthly_weeks", next);
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -1457,25 +1532,108 @@ function RecurrenceBlock({ form, setField }) {
         />
       </div>
       {form.recurrence_enabled && (
-        <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-3">
-          <div>
-            <FieldLabel>Frequency</FieldLabel>
-            <StyledSelect
-              value={form.recurrence_frequency}
-              onChange={(v) => setField("recurrence_frequency", v)}
-              options={FREQUENCY_OPTIONS}
-              placeholder="Select"
-            />
+        <div className="mt-2 flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <FieldLabel>Frequency</FieldLabel>
+              <StyledSelect
+                value={form.recurrence_frequency}
+                onChange={(v) => setField("recurrence_frequency", v)}
+                options={FREQUENCY_OPTIONS}
+                placeholder="Select"
+              />
+            </div>
+            <div>
+              <FieldLabel>Until</FieldLabel>
+              <input
+                type="date"
+                value={form.recurrence_end_date}
+                onChange={(e) => setField("recurrence_end_date", e.target.value)}
+                className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary transition-colors"
+              />
+            </div>
           </div>
-          <div>
-            <FieldLabel>Until</FieldLabel>
-            <input
-              type="date"
-              value={form.recurrence_end_date}
-              onChange={(e) => setField("recurrence_end_date", e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary transition-colors"
-            />
-          </div>
+          {isWeekly && (
+            <div>
+              <FieldLabel>Repeat on</FieldLabel>
+              <div className="flex gap-1.5">
+                {WEEKDAY_OPTIONS.map((day) => {
+                  const active = (form.recurrence_days_of_week || []).includes(
+                    day.value,
+                  );
+                  return (
+                    <button
+                      key={day.value}
+                      type="button"
+                      onClick={() => toggleDay(day.value)}
+                      className={[
+                        "h-8 w-8 shrink-0 rounded-full text-[10px] font-semibold transition-colors",
+                        active
+                          ? "bg-brand text-brand-foreground"
+                          : "bg-background border border-border text-muted-foreground hover:border-primary",
+                      ].join(" ")}
+                    >
+                      {day.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {isMonthly && (
+            <div className="flex flex-col gap-2">
+              <div>
+                <FieldLabel>On weekday</FieldLabel>
+                <div className="flex gap-1.5">
+                  {WEEKDAY_OPTIONS.map((day) => {
+                    const active = form.recurrence_monthly_weekday === day.value;
+                    return (
+                      <button
+                        key={day.value}
+                        type="button"
+                        onClick={() =>
+                          setField("recurrence_monthly_weekday", day.value)
+                        }
+                        className={[
+                          "h-8 w-8 shrink-0 rounded-full text-[10px] font-semibold transition-colors",
+                          active
+                            ? "bg-brand text-brand-foreground"
+                            : "bg-background border border-border text-muted-foreground hover:border-primary",
+                        ].join(" ")}
+                      >
+                        {day.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <FieldLabel>Which week(s)</FieldLabel>
+                <div className="flex flex-wrap gap-1.5">
+                  {MONTHLY_WEEK_OPTIONS.map((week) => {
+                    const active = (form.recurrence_monthly_weeks || []).includes(
+                      week.value,
+                    );
+                    return (
+                      <button
+                        key={week.value}
+                        type="button"
+                        onClick={() => toggleMonthlyWeek(week.value)}
+                        className={[
+                          "h-8 shrink-0 rounded-full px-3 text-[11px] font-semibold transition-colors",
+                          active
+                            ? "bg-brand text-brand-foreground"
+                            : "bg-background border border-border text-muted-foreground hover:border-primary",
+                        ].join(" ")}
+                      >
+                        {week.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2276,6 +2434,23 @@ export default function AppointmentComposerPanel({
               enabled: true,
               frequency: form.recurrence_frequency,
               endDate: form.recurrence_end_date,
+              daysOfWeek:
+                form.recurrence_frequency === "weekly" &&
+                form.recurrence_days_of_week?.length > 0
+                  ? form.recurrence_days_of_week
+                  : undefined,
+              monthlyWeekday:
+                form.recurrence_frequency === "monthly" &&
+                form.recurrence_monthly_weekday != null &&
+                form.recurrence_monthly_weeks?.length > 0
+                  ? form.recurrence_monthly_weekday
+                  : undefined,
+              monthlyWeeks:
+                form.recurrence_frequency === "monthly" &&
+                form.recurrence_monthly_weekday != null &&
+                form.recurrence_monthly_weeks?.length > 0
+                  ? form.recurrence_monthly_weeks
+                  : undefined,
             }
           : { enabled: false },
       payment: form.payment_collected
