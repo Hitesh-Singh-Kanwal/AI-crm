@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import LocationSelector from '@/components/shared/LocationSelector'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import Switch from '@/components/ui/switch'
@@ -26,6 +27,7 @@ import {
   clampVapiElevenLabsSpeedForUi,
   clampVapiLlmTemperature,
 } from '@/lib/vapiVoice'
+import { hasLocationSelection, initLocationID, locationBadgeLabel, toLocationPayload } from './locationScope'
 
 const API_BASE = (
   typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL
@@ -142,6 +144,7 @@ export default function PersonasTab({
   const [ttsModelId, setTtsModelId] = useState(DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID)
   const [llmModel, setLlmModel] = useState('gpt-4o-mini')
   const [temperature, setTemperature] = useState(0.65)
+  const [locationID, setLocationID] = useState([])
   const [modalSaving, setModalSaving] = useState(false)
 
   // ── voice preview ──
@@ -240,6 +243,7 @@ export default function PersonasTab({
     setTargetPersona(persona)
     setVoice(getNextCopyName(persona.voice || 'Persona', personas))
     loadPersonaIntoModal(persona)
+    setLocationID(initLocationID(persona))
     setModalMode('duplicate')
     setModalOpen(true)
   }
@@ -248,6 +252,7 @@ export default function PersonasTab({
     setTargetPersona(persona)
     setVoice(persona.voice || '')
     loadPersonaIntoModal(persona)
+    setLocationID(initLocationID(persona))
     setModalMode('edit')
     setModalOpen(true)
   }
@@ -257,10 +262,15 @@ export default function PersonasTab({
     setModalOpen(false)
     setTargetPersona(null)
     setModalMode(null)
+    setLocationID([])
   }
 
   const handleModalSave = async () => {
     if (!targetPersona) return
+    if (!hasLocationSelection(locationID)) {
+      toast.error({ title: 'Missing location', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     setModalSaving(true)
     try {
       const payload = {
@@ -273,6 +283,7 @@ export default function PersonasTab({
         ttsModelId: ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
         llmModel: llmModel || 'gpt-4o-mini',
         temperature: clampVapiLlmTemperature(Number(temperature)),
+        ...toLocationPayload(locationID),
       }
 
       let result
@@ -354,6 +365,7 @@ export default function PersonasTab({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {personas.map((persona, index) => {
               const p = { ...persona, ...overrides[persona._id] }
+              const locLabel = !p.isDefault ? locationBadgeLabel(p) : null
               return (
               <Card
                 key={p._id}
@@ -384,6 +396,11 @@ export default function PersonasTab({
                         {p.isDefault && (
                           <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
                             Default
+                          </Badge>
+                        )}
+                        {locLabel && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 font-normal">
+                            {locLabel}
                           </Badge>
                         )}
                       </div>
@@ -654,6 +671,21 @@ export default function PersonasTab({
               <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">
+                    Studio location <span className="text-destructive">*</span>
+                  </label>
+                  <LocationSelector
+                    value={locationID}
+                    onChange={setLocationID}
+                    multiple
+                    allowAllBranches
+                    showAllOption={false}
+                    placeholder="Select studio(s)…"
+                    disabled={modalSaving}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">
                     Voice name <span className="text-destructive">*</span>
                   </label>
                   <Input
@@ -800,7 +832,7 @@ export default function PersonasTab({
                 <Button
                   variant="gradient"
                   onClick={handleModalSave}
-                  disabled={modalSaving || !voice.trim()}
+                  disabled={modalSaving || !voice.trim() || !hasLocationSelection(locationID)}
                 >
                   {modalSaving
                     ? modalMode === 'duplicate' ? 'Duplicating…' : 'Saving…'

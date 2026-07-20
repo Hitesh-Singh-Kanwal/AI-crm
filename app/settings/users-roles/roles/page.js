@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState, useMemo } from 'react'
-import { Search, Shield, Edit, Trash, MoreHorizontal, ChevronDown, ChevronRight, CalendarDays } from 'lucide-react'
+import { Search, Shield, Edit, Trash, MoreHorizontal, ChevronDown, ChevronRight, CalendarDays, Headphones } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -450,14 +450,23 @@ export default function RolesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="py-3 px-4">
-                        {role.showOnCalendar ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand">
-                            <CalendarDays className="h-3 w-3" />
-                            On calendar
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {role.showOnCalendar ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand">
+                              <CalendarDays className="h-3 w-3" />
+                              On calendar
+                            </span>
+                          ) : null}
+                          {role.isCallCenterAgent ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand">
+                              <Headphones className="h-3 w-3" />
+                              Call Center
+                            </span>
+                          ) : null}
+                          {!role.showOnCalendar && !role.isCallCenterAgent && (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="flex flex-wrap gap-1.5">
@@ -621,6 +630,17 @@ export default function RolesPage() {
                       </span>
                     ) : (
                       <span className="text-sm text-muted-foreground">Hidden from calendar</span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Call Center</span>
+                    {selectedRole.isCallCenterAgent ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand">
+                        <Headphones className="h-3 w-3" />
+                        Call Center Agent
+                      </span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">Not an agent</span>
                     )}
                   </div>
                   <div className="flex justify-between gap-4">

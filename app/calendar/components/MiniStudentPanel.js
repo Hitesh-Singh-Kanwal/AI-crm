@@ -2550,6 +2550,12 @@ export default function MiniStudentPanel({
       onClose={() => setShowCreateEnrollmentSheet(false)}
       customerID={customerId}
       customerName={customerName}
+      locationID={(() => {
+        const loc = customer?.locationID
+        if (!loc) return undefined
+        if (Array.isArray(loc)) return loc[0]?._id || loc[0] || undefined
+        return loc._id || loc
+      })()}
       onSuccess={reloadEnrollments}
     />
   );

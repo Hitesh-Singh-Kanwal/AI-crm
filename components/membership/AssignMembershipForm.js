@@ -14,7 +14,7 @@ import { PURCHASE_METHODS } from '@/lib/paymentMethods'
 
 // Shared membership-assignment form. Used inside the customer Memberships tab and
 // the enroll menu's Membership tab.
-export default function AssignMembershipForm({ customerID, onSuccess, onCancel }) {
+export default function AssignMembershipForm({ customerID, locationID, onSuccess, onCancel }) {
   const [templates, setTemplates] = useState([])
   const [membershipID, setMembershipID] = useState('')
   const [billingType, setBillingType] = useState('one_time')
@@ -27,7 +27,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
   const [walletBalance, setWalletBalance] = useState(null)
   const [useWallet, setUseWallet] = useState(false)
   const [walletAmount, setWalletAmount] = useState('')
-  const { cloverReady } = useCloverConnection()
+  const { cloverReady } = useCloverConnection(locationID)
 
   useEffect(() => {
     api.get('/api/membership?isActive=true&limit=200').then((res) => {
@@ -338,7 +338,7 @@ export default function AssignMembershipForm({ customerID, onSuccess, onCancel }
 
       <div className="flex flex-col gap-1.5 pt-2">
         {cloverNotConnected && (
-          <p className="text-[11px] text-amber-600 text-right">Finish Clover setup in Settings → Payments to charge a card.</p>
+          <p className="text-[11px] text-amber-600 text-right">Finish Clover setup in Settings → Integrations to charge a card.</p>
         )}
         <div className="flex justify-end gap-2">
           {onCancel && <Button variant="outline" onClick={onCancel} disabled={submitting}>Cancel</Button>}

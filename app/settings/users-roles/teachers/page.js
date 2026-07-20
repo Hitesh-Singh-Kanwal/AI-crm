@@ -47,7 +47,7 @@ const EMPTY_FORM = {
   specialties: [],
   bio: '',
   status: 'active',
-  locationID: '',
+  locationID: [],
 }
 
 function FormField({ label, required, children }) {
@@ -79,7 +79,11 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
             specialties: initial.specialties || [],
             bio: initial.bio || '',
             status: initial.status || 'active',
-            locationID: String(initial.locationID?.[0]?._id ?? initial.locationID?.[0] ?? ''),
+            locationID: Array.isArray(initial.locationID)
+              ? initial.locationID.map((l) => String(l?._id ?? l)).filter(Boolean)
+              : initial.locationID
+                ? [String(initial.locationID?._id ?? initial.locationID)]
+                : [],
           }
         : EMPTY_FORM
       )
@@ -106,8 +110,8 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
       setError('Name and email are required.')
       return
     }
-    if (!isEdit && !form.locationID) {
-      setError('Please select a location.')
+    if (!isEdit && !(Array.isArray(form.locationID) && form.locationID.length > 0)) {
+      setError('Please select at least one location.')
       return
     }
     setSaving(true)
@@ -129,7 +133,7 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
         email: form.email.trim(),
         phoneNumber: form.phoneNumber.trim() || undefined,
         role: 'teacher',
-        locationID: [form.locationID],
+        locationID: form.locationID,
         specialties: form.specialties,
         bio: form.bio.trim() || undefined,
       })
@@ -176,11 +180,11 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
           {!isEdit && (
             <FormField label="Studio location" required>
               <LocationSelector
-                value={form.locationID || null}
-                onChange={(id) => setField('locationID', id || '')}
-                multiple={false}
+                value={form.locationID}
+                onChange={(ids) => setField('locationID', ids)}
+                multiple
                 showAllOption={false}
-                placeholder="Select location…"
+                placeholder="Select location(s)…"
               />
             </FormField>
           )}

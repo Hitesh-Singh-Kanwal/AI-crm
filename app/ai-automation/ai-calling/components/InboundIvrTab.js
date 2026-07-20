@@ -27,7 +27,16 @@ import Switch from '@/components/ui/switch'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
+import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import { cn } from '@/lib/utils'
+import {
+  hasLocationSelection,
+  initLocationID,
+  locationBadgeLabel,
+  normalizeWorkingLocation,
+  toLocationPayload,
+  workingLocationQueryParam,
+} from './locationScope'
 
 const DIGIT_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
 
@@ -79,6 +88,9 @@ export default function InboundIvrTab() {
   const [seeding, setSeeding] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
 
+  // Working studio scope for this tab (view + mutations)
+  const [workingLocationID, setWorkingLocationID] = useState([])
+
   // ── Inbound mode ──
   const [inboundMode, setInboundMode] = useState('ivr')
   const [directAssistantId, setDirectAssistantId] = useState('')
@@ -93,6 +105,7 @@ export default function InboundIvrTab() {
   const [menuPrompt, setMenuPrompt] = useState('')
   const [assistantId, setAssistantId] = useState('')
   const [enabled, setEnabled] = useState(true)
+  const [routeLocationID, setRouteLocationID] = useState([])
 
   const usedDigits = useMemo(
     () => new Set(routes.filter((r) => r._id !== editingRoute?._id).map((r) => r.digit)),
@@ -102,7 +115,17 @@ export default function InboundIvrTab() {
     () => DIGIT_OPTIONS.filter((v) => !usedDigits.has(v)),
     [usedDigits],
   )
-  const canSave = Boolean(label.trim() && digit)
+  const canSave = Boolean(label.trim() && digit && hasLocationSelection(routeLocationID))
+
+  const locationQuery = workingLocationQueryParam(workingLocationID)
+  const withLocationQuery = useCallback(
+    (path) => {
+      if (!locationQuery) return path
+      const sep = path.includes('?') ? '&' : '?'
+      return `${path}${sep}locationID=${encodeURIComponent(locationQuery)}`
+    },
+    [locationQuery],
+  )
 
   const resetEditor = () => {
     setEditingRoute(null)
@@ -111,6 +134,9 @@ export default function InboundIvrTab() {
     setMenuPrompt('')
     setAssistantId('')
     setEnabled(true)
+    setRouteLocationID(
+      hasLocationSelection(workingLocationID) ? workingLocationID : [],
+    )
   }
 
   const fetchAssistants = useCallback(async () => {
@@ -130,10 +156,10 @@ export default function InboundIvrTab() {
     setError(null)
     try {
       const [routesResult, previewResult, voiceSetupResult, settingsResult] = await Promise.all([
-        api.get('/api/inbound-routes'),
-        api.get('/api/inbound-routes/menu-preview'),
+        api.get(withLocationQuery('/api/inbound-routes')),
+        api.get(withLocationQuery('/api/inbound-routes/menu-preview')),
         api.get('/api/human-queue/voice-setup'),
-        api.get('/api/inbound-routes/settings'),
+        api.get(withLocationQuery('/api/inbound-routes/settings')),
       ])
 
       if (!routesResult.success) {
@@ -161,20 +187,30 @@ export default function InboundIvrTab() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [withLocationQuery])
 
   useEffect(() => {
     fetchRoutes()
     fetchAssistants()
   }, [fetchRoutes, fetchAssistants])
 
+  const requireWorkingLocation = () => {
+    if (!hasLocationSelection(workingLocationID)) {
+      toast.error({ title: 'Location required', message: 'Select one or more studios, or All branches.' })
+      return false
+    }
+    return true
+  }
+
   const handleModeSelect = async (newMode) => {
     if (newMode === inboundMode || savingSettings) return
+    if (!requireWorkingLocation()) return
     setSavingSettings(true)
     try {
       const result = await api.patch('/api/inbound-routes/settings', {
         mode: newMode,
         directAssistantId: directAssistantId || null,
+        ...toLocationPayload(workingLocationID),
       })
       if (!result.success) {
         toast.error({ title: 'Failed to save', message: result.error || 'Could not update inbound mode.' })
@@ -198,11 +234,13 @@ export default function InboundIvrTab() {
 
   const handleSelectDirectAssistant = async (assistant) => {
     if (activatingId || assistant._id === directAssistantId) return
+    if (!requireWorkingLocation()) return
     setActivatingId(assistant._id)
     try {
       const result = await api.patch('/api/inbound-routes/settings', {
         mode: 'direct',
         directAssistantId: assistant._id,
+        ...toLocationPayload(workingLocationID),
       })
       if (!result.success) {
         toast.error({ title: 'Failed to save', message: result.error || 'Could not set direct assistant.' })
@@ -219,12 +257,15 @@ export default function InboundIvrTab() {
   }
 
   const openCreate = () => {
+    if (!requireWorkingLocation()) return
     resetEditor()
     setDigit(availableDigits[0] || '1')
+    setRouteLocationID(workingLocationID)
     setEditorOpen(true)
   }
 
   const openEdit = (route) => {
+    const routeLoc = initLocationID(route)
     setEditingRoute(route)
     setDigit(route.digit || '1')
     setLabel(route.label || '')
@@ -235,13 +276,23 @@ export default function InboundIvrTab() {
         : route.aiAssistantId || '',
     )
     setEnabled(route.enabled !== false)
+    setRouteLocationID(
+      hasLocationSelection(routeLoc)
+        ? routeLoc
+        : hasLocationSelection(workingLocationID)
+          ? workingLocationID
+          : [],
+    )
     setEditorOpen(true)
   }
 
   const handleSeedDefaults = async () => {
+    if (!requireWorkingLocation()) return
     setSeeding(true)
     try {
-      const result = await api.post('/api/inbound-routes/seed-defaults', {})
+      const result = await api.post('/api/inbound-routes/seed-defaults', {
+        ...toLocationPayload(workingLocationID),
+      })
       if (!result.success) {
         toast.error({ title: 'Seed failed', message: result.error || 'Could not create default options.' })
         return
@@ -260,6 +311,10 @@ export default function InboundIvrTab() {
   }
 
   const handleSave = async () => {
+    if (!hasLocationSelection(routeLocationID)) {
+      toast.error({ title: 'Location required', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     if (!canSave) return
     setSaving(true)
     try {
@@ -269,6 +324,7 @@ export default function InboundIvrTab() {
         menuPrompt: menuPrompt.trim(),
         enabled,
         aiAssistantId: assistantId || null,
+        ...toLocationPayload(routeLocationID),
       }
       const result = editingRoute
         ? await api.patch(`/api/inbound-routes/${editingRoute._id}`, payload)
@@ -321,17 +377,45 @@ export default function InboundIvrTab() {
   const webhookReady = Boolean(setupInfo?.ivrWebhookUrl)
   const twimlReady = Boolean(voiceSetup?.twimlAppVoiceUrl)
 
-  if (loading) {
-    return (
-      <TabsContent value="inbound-ivr" className="mt-6 flex items-center justify-center py-20">
-        <LoadingSpinner size="lg" text="Loading inbound settings…" />
-      </TabsContent>
-    )
-  }
+  return (
+    <TabsContent value="inbound-ivr" className="mt-6 flex-1 min-h-0 flex flex-col gap-6">
 
-  if (error) {
-    return (
-      <TabsContent value="inbound-ivr" className="mt-6">
+      {/* Working studio scope */}
+      <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Studio scope</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pick a studio (or All branches) to load and edit IVR routes and inbound settings for that scope.
+          </p>
+        </div>
+        <LocationSelector
+          value={
+            workingLocationID === ALL_BRANCHES_VALUE
+              ? ALL_BRANCHES_VALUE
+              : Array.isArray(workingLocationID) && workingLocationID.length
+                ? workingLocationID[0]
+                : null
+          }
+          onChange={(id) => setWorkingLocationID(normalizeWorkingLocation(id))}
+          multiple={false}
+          allowAllBranches
+          showAllOption={false}
+          placeholder="Select a studio…"
+        />
+        {!hasLocationSelection(workingLocationID) && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            Select a studio to manage inbound IVR for that branch.
+          </p>
+        )}
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <LoadingSpinner size="lg" text="Loading inbound settings…" />
+        </div>
+      )}
+
+      {error && !loading && (
         <Card className="border-destructive/40 bg-destructive/5">
           <CardContent className="py-10 text-center space-y-3">
             <XCircle className="h-8 w-8 mx-auto text-destructive" />
@@ -341,13 +425,10 @@ export default function InboundIvrTab() {
             </Button>
           </CardContent>
         </Card>
-      </TabsContent>
-    )
-  }
+      )}
 
-  return (
-    <TabsContent value="inbound-ivr" className="mt-6 flex-1 min-h-0 flex flex-col gap-6">
-
+      {!loading && !error && (
+        <>
       {/* ── Mode selector ──────────────────────────────────────────────────────── */}
       <div>
         <div className="mb-3">
@@ -631,6 +712,15 @@ export default function InboundIvrTab() {
                         </span>
                       </div>
 
+                      {(() => {
+                        const locLabel = locationBadgeLabel(route)
+                        return locLabel ? (
+                          <Badge variant="secondary" className="text-[10px] font-normal w-fit">
+                            {locLabel}
+                          </Badge>
+                        ) : null
+                      })()}
+
                       {/* Actions */}
                       <div className="flex gap-1.5 pt-1 border-t border-border">
                         <Button
@@ -815,6 +905,23 @@ export default function InboundIvrTab() {
           </DialogHeader>
 
           <div className="space-y-5 pt-1">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Studio location *
+              </label>
+              <div className="mt-1.5">
+                <LocationSelector
+                  value={routeLocationID}
+                  onChange={setRouteLocationID}
+                  multiple
+                  allowAllBranches
+                  showAllOption={false}
+                  placeholder="Select studio(s)…"
+                  disabled={saving}
+                />
+              </div>
+            </div>
+
             {/* Row: digit + label */}
             <div className="grid grid-cols-[80px_1fr] gap-3">
               <div>
@@ -895,6 +1002,8 @@ export default function InboundIvrTab() {
           </div>
         </DialogContent>
       </Dialog>
+        </>
+      )}
     </TabsContent>
   )
 }

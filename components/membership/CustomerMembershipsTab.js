@@ -37,12 +37,12 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function PayInstallmentDialog({ target, onClose, onPaid }) {
+function PayInstallmentDialog({ target, onClose, onPaid, locationID }) {
   const [method, setMethod] = useState('cash')
   const [shortfallMethod, setShortfallMethod] = useState('cash')
   const [walletBalance, setWalletBalance] = useState(0)
   const [paying, setPaying] = useState(false)
-  const { cloverReady } = useCloverConnection()
+  const { cloverReady } = useCloverConnection(locationID || target?.plan)
 
   const customerID = target?.plan?.customerID
   useEffect(() => {
@@ -114,7 +114,7 @@ function PayInstallmentDialog({ target, onClose, onPaid }) {
           onShortfallMethodChange={setShortfallMethod}
         />
         {cloverNotConnected && (
-          <p className="mt-2 text-[11px] text-amber-600">Finish Clover setup in Settings → Payments to charge a card.</p>
+          <p className="mt-2 text-[11px] text-amber-600">Finish Clover setup in Settings → Integrations to charge a card.</p>
         )}
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" size="sm" onClick={onClose} disabled={paying}>Cancel</Button>
@@ -127,7 +127,7 @@ function PayInstallmentDialog({ target, onClose, onPaid }) {
   )
 }
 
-export default function CustomerMembershipsTab({ customerID }) {
+export default function CustomerMembershipsTab({ customerID, locationID }) {
   const [memberships, setMemberships] = useState([])
   const [plansMap, setPlansMap] = useState({})
   const [loading, setLoading] = useState(true)
@@ -140,7 +140,7 @@ export default function CustomerMembershipsTab({ customerID }) {
   const [freezing, setFreezing] = useState(false)
   const [calendarEvents, setCalendarEvents] = useState([])
   const [expandedServices, setExpandedServices] = useState(new Set())
-  const { cloverReady } = useCloverConnection()
+  const { cloverReady } = useCloverConnection(locationID)
 
   function toggleService(key) {
     setExpandedServices((prev) => {
@@ -521,6 +521,7 @@ export default function CustomerMembershipsTab({ customerID }) {
           <div className="flex-1 overflow-y-auto px-6 py-5">
             <AssignMembershipForm
               customerID={customerID}
+              locationID={locationID}
               onCancel={() => setAssignOpen(false)}
               onSuccess={() => { setAssignOpen(false); load() }}
             />
@@ -528,7 +529,7 @@ export default function CustomerMembershipsTab({ customerID }) {
         </SheetContent>
       </Sheet>
 
-      <PayInstallmentDialog target={payTarget} onClose={() => setPayTarget(null)} onPaid={() => { setPayTarget(null); load() }} />
+      <PayInstallmentDialog target={payTarget} locationID={locationID} onClose={() => setPayTarget(null)} onPaid={() => { setPayTarget(null); load() }} />
 
       <CancelRefundDialog
         open={Boolean(cancelTarget)}

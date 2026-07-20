@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
 
 function RedirectToIntegrations() {
   const router = useRouter()
@@ -16,8 +15,8 @@ function RedirectToIntegrations() {
   return null
 }
 
-/** Payments settings now live under Settings → Integrations (Clover only). */
-export default function PaymentsSettingsPage() {
+/** Phone settings now live under Settings → Integrations. */
+export default function PhoneSettingsPage() {
   return (
     <Suspense fallback={null}>
       <RedirectToIntegrations />

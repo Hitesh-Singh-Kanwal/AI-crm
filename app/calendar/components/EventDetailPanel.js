@@ -180,7 +180,7 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [locationID, setLocationID] = useState(null);
+  const [locationID, setLocationID] = useState([]);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -189,8 +189,8 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
       setError("Name and email are required.");
       return;
     }
-    if (!locationID) {
-      setError("Please select a location.");
+    if (!Array.isArray(locationID) || locationID.length === 0) {
+      setError("Please select at least one location.");
       return;
     }
     setSaving(true);
@@ -265,9 +265,9 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
           <LocationSelector
             value={locationID}
             onChange={setLocationID}
-            multiple={false}
+            multiple
             showAllOption={false}
-            placeholder="Select location…"
+            placeholder="Select location(s)…"
           />
         </div>
       </div>
@@ -1414,6 +1414,12 @@ function GroupStudentRoster({
         open={!!sellCustomer}
         customerID={sellCustomer?._id}
         customerName={sellCustomer?.name}
+        locationID={(() => {
+          const loc = sellCustomer?.locationID
+          if (!loc) return undefined
+          if (Array.isArray(loc)) return loc[0]?._id || loc[0] || undefined
+          return loc._id || loc
+        })()}
         allowedServiceCodes={groupServiceCodes}
         onClose={() => setSellCustomer(null)}
         onSuccess={handleSellSuccess}

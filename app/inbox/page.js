@@ -461,9 +461,45 @@ function InboxPageContent() {
 
     try {
       if (isTalkToAssistant) {
+        const fromNumber =
+          selectedLeadData?.phoneNumber ||
+          fallbackContact?.phoneNumber ||
+          null
+        const locationRaw = selectedLeadData?.locationID
+        const locationID = Array.isArray(locationRaw)
+          ? String(locationRaw[0]?._id ?? locationRaw[0] ?? '')
+          : String(locationRaw?._id ?? locationRaw ?? '')
+
+        if (!fromNumber) {
+          toast.error({
+            title: 'Missing phone',
+            message: 'Select a lead with a phone number to message the assistant.',
+          })
+          return
+        }
+        if (!locationID) {
+          toast.error({
+            title: 'Missing studio',
+            message: 'Assign the lead to a studio, then connect that studio phone in Settings → Integrations.',
+          })
+          return
+        }
+
+        const phoneStatus = await api.get(
+          `/api/location-phone/status?locationID=${encodeURIComponent(locationID)}`,
+        )
+        const toNumber = phoneStatus?.data?.twilioNumber
+        if (!phoneStatus.success || !toNumber || phoneStatus.data?.status !== 'connected') {
+          toast.error({
+            title: 'Studio phone not connected',
+            message: 'Connect a Twilio number for this studio in Settings → Integrations.',
+          })
+          return
+        }
+
         const assistantResult = await api.post('/api/sms/incoming_sms', {
-          From: '+919935638678',
-          To: '+18777302307',
+          From: fromNumber,
+          To: toNumber,
           Body: content.trim(),
           MessageSid: `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
         })

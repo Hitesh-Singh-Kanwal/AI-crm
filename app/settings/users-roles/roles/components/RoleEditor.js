@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Save, Trash, ChevronDown, ChevronRight, CalendarDays } from 'lucide-react'
+import { Save, Trash, ChevronDown, ChevronRight, CalendarDays, Headphones } from 'lucide-react'
 import Switch from '@/components/ui/switch'
 import {
   Table,
@@ -103,55 +103,107 @@ export default function RoleEditor({
               />
             </div>
 
-            <div
-              className={cn(
-                'max-w-md rounded-xl border p-4 transition-colors',
-                editingRole?.showOnCalendar
-                  ? 'border-brand/40 bg-brand/5'
-                  : 'border-border bg-muted/30',
-              )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div
-                    className={cn(
-                      'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-                      editingRole?.showOnCalendar
-                        ? 'bg-brand/15 text-brand'
-                        : 'bg-muted text-muted-foreground',
-                    )}
-                  >
-                    <CalendarDays className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      Show on calendar
-                    </p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                      When on, users with this role appear as staff columns and can be
-                      assigned to lessons and appointments.
-                    </p>
-                    <p
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
+              <div
+                className={cn(
+                  'flex h-full flex-col rounded-xl border p-4 transition-colors',
+                  editingRole?.showOnCalendar
+                    ? 'border-brand/40 bg-brand/5'
+                    : 'border-border bg-muted/30',
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div
                       className={cn(
-                        'mt-2 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium',
+                        'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
                         editingRole?.showOnCalendar
                           ? 'bg-brand/15 text-brand'
                           : 'bg-muted text-muted-foreground',
                       )}
                     >
-                      {editingRole?.showOnCalendar
-                        ? 'Visible on calendar'
-                        : 'Hidden from calendar'}
-                    </p>
+                      <CalendarDays className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        Show on calendar
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                        Appear as staff on the calendar and can be assigned to lessons.
+                      </p>
+                    </div>
                   </div>
+                  <Switch
+                    checked={!!editingRole?.showOnCalendar}
+                    onCheckedChange={(checked) =>
+                      onChange({ ...editingRole, showOnCalendar: checked })
+                    }
+                    aria-label="Show on calendar"
+                  />
                 </div>
-                <Switch
-                  checked={!!editingRole?.showOnCalendar}
-                  onCheckedChange={(checked) =>
-                    onChange({ ...editingRole, showOnCalendar: checked })
-                  }
-                  aria-label="Show on calendar"
-                />
+                <p
+                  className={cn(
+                    'mt-3 inline-flex w-fit rounded-full px-2 py-0.5 text-[11px] font-medium',
+                    editingRole?.showOnCalendar
+                      ? 'bg-brand/15 text-brand'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {editingRole?.showOnCalendar
+                    ? 'Visible on calendar'
+                    : 'Hidden from calendar'}
+                </p>
+              </div>
+
+              <div
+                className={cn(
+                  'flex h-full flex-col rounded-xl border p-4 transition-colors',
+                  editingRole?.isCallCenterAgent
+                    ? 'border-brand/40 bg-brand/5'
+                    : 'border-border bg-muted/30',
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div
+                      className={cn(
+                        'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+                        editingRole?.isCallCenterAgent
+                          ? 'bg-brand/15 text-brand'
+                          : 'bg-muted text-muted-foreground',
+                      )}
+                    >
+                      <Headphones className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        Call Center Agent
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                        Appear in Team Availability and can take escalated calls.
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={!!editingRole?.isCallCenterAgent}
+                    onCheckedChange={(checked) =>
+                      onChange({ ...editingRole, isCallCenterAgent: checked })
+                    }
+                    aria-label="Call Center Agent"
+                  />
+                </div>
+                <p
+                  className={cn(
+                    'mt-3 inline-flex w-fit rounded-full px-2 py-0.5 text-[11px] font-medium',
+                    editingRole?.isCallCenterAgent
+                      ? 'bg-brand/15 text-brand'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {editingRole?.isCallCenterAgent
+                    ? 'Call Center Agent'
+                    : 'Not a Call Center Agent'}
+                </p>
               </div>
             </div>
           </div>

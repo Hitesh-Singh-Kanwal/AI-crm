@@ -164,6 +164,8 @@ export default function NewEnrollmentPackageInline({
   allowedServiceCodes,
   /** Student the package is being sold to — used to read wallet balance. */
   customerID,
+  /** Studio location for Clover readiness (customer location). */
+  locationID,
   onCancel,
   onSubmit,
 }) {
@@ -176,7 +178,7 @@ export default function NewEnrollmentPackageInline({
   const [error, setError] = useState("");
   const [catalogServices, setCatalogServices] = useState([]);
   const [walletBalance, setWalletBalance] = useState(null);
-  const { cloverReady } = useCloverConnection();
+  const { cloverReady } = useCloverConnection(locationID);
 
   useEffect(() => {
     api.get("/api/calendar-service?limit=200").then((res) => {

@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
+import LocationSelector from '@/components/shared/LocationSelector'
 import api from '@/lib/api'
+import { hasLocationSelection, initLocationID, toLocationPayload } from './locationScope'
 
 function normalize(v) {
   return (v || '').trim()
@@ -17,21 +19,34 @@ export default function KnowledgeBaseEditDialog({ open, onClose, file, onSaved }
   const [saving, setSaving] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [locationID, setLocationID] = useState([])
 
-  const canSave = useMemo(() => !!normalize(name), [name])
+  const canSave = useMemo(
+    () => !!normalize(name) && hasLocationSelection(locationID),
+    [name, locationID],
+  )
 
   useEffect(() => {
     if (!open) return
     setSaving(false)
     setName(file?.name || '')
     setDescription(file?.description || '')
+    setLocationID(initLocationID(file))
   }, [open, file?._id])
 
   async function handleSave() {
+    if (!hasLocationSelection(locationID)) {
+      toast.error({ title: 'Missing location', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     if (!file?._id || !canSave) return
     setSaving(true)
     try {
-      const payload = { name: normalize(name), description: normalize(description) }
+      const payload = {
+        name: normalize(name),
+        description: normalize(description),
+        ...toLocationPayload(locationID),
+      }
       const result = await api.put(`/api/ai-script/file/${file._id}`, payload)
       if (result.success) {
         toast.success({ title: 'Updated', message: 'File updated successfully.' })
@@ -57,6 +72,19 @@ export default function KnowledgeBaseEditDialog({ open, onClose, file, onSaved }
 
         <div className="mt-5 space-y-4">
           <div className="space-y-1.5">
+            <p className="text-sm font-medium">Studio location *</p>
+            <LocationSelector
+              value={locationID}
+              onChange={setLocationID}
+              multiple
+              allowAllBranches
+              showAllOption={false}
+              placeholder="Select studio(s)…"
+              disabled={saving}
+            />
+          </div>
+
+          <div className="space-y-1.5">
             <p className="text-sm font-medium">Name</p>
             <Input value={name} onChange={(e) => setName(e.target.value)} disabled={saving} />
           </div>
@@ -79,4 +107,3 @@ export default function KnowledgeBaseEditDialog({ open, onClose, file, onSaved }
     </Dialog>
   )
 }
-

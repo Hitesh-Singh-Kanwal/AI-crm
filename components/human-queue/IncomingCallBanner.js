@@ -8,6 +8,7 @@ export default function IncomingCallBanner({
   onAnswerNext,
   answeringId,
   isOnCall,
+  canAnswer = true,
 }) {
   if (waitingCalls.length === 0) return null
 
@@ -49,7 +50,7 @@ export default function IncomingCallBanner({
           </div>
         </div>
 
-        {!isOnCall && (
+        {!isOnCall && canAnswer && (
           <button
             type="button"
             disabled={answeringId === nextId}
