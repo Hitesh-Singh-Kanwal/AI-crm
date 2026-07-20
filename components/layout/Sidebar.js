@@ -207,7 +207,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
     <>
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/50 z-[100] lg:hidden"
           onClick={() => setMobileOpen(false)}
           aria-hidden="true"
         />
@@ -218,7 +218,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
         ref={sidebarRef}
         className={cn(
           'flex flex-col h-screen transition-all duration-300 justify-between items-center',
-          'lg:relative fixed inset-y-0 left-0 z-50',
+          'lg:relative fixed inset-y-0 left-0 z-[110]',
           'w-[136px] min-w-[136px]',
           mobileOpen ? 'flex translate-x-0' : 'hidden lg:flex -translate-x-full lg:translate-x-0',
           'bg-sidebar-gradient rounded-r-[40px]'
