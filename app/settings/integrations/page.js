@@ -4,7 +4,6 @@ import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import { useToast } from '@/components/ui/toast'
-import StudioPhoneCard from '@/app/settings/phone/StudioPhoneCard'
 import CloverConnectionCard from '@/app/settings/payments/clover/CloverConnectionCard'
 
 function CloverCallbackStatusHandler() {
@@ -36,13 +35,12 @@ export default function IntegrationsPage() {
   return (
     <MainLayout
       title="Integrations"
-      subtitle="Connect phone and payments for this studio."
+      subtitle="Connect payments for this studio. Studio phone numbers are set under Settings → Studio."
     >
       <Suspense fallback={null}>
         <CloverCallbackStatusHandler />
       </Suspense>
       <div className="space-y-4">
-        <StudioPhoneCard />
         <CloverConnectionCard />
       </div>
     </MainLayout>

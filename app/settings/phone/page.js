@@ -1,25 +1,24 @@
 'use client'
 
-import { useEffect, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import MainLayout from '@/components/layout/MainLayout'
 
-function RedirectToIntegrations() {
+/** Studio phone now lives on Settings → Studio (create/edit location). */
+function RedirectToStudio() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-
   useEffect(() => {
-    const qs = searchParams.toString()
-    router.replace(qs ? `/settings/integrations?${qs}` : '/settings/integrations')
-  }, [router, searchParams])
-
+    router.replace('/settings/studio')
+  }, [router])
   return null
 }
 
-/** Phone settings now live under Settings → Integrations. */
-export default function PhoneSettingsPage() {
+export default function PhoneSettingsRedirectPage() {
   return (
-    <Suspense fallback={null}>
-      <RedirectToIntegrations />
-    </Suspense>
+    <MainLayout title="Studio phone" subtitle="Redirecting…">
+      <Suspense fallback={null}>
+        <RedirectToStudio />
+      </Suspense>
+    </MainLayout>
   )
 }

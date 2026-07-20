@@ -480,19 +480,18 @@ function InboxPageContent() {
         if (!locationID) {
           toast.error({
             title: 'Missing studio',
-            message: 'Assign the lead to a studio, then connect that studio phone in Settings → Integrations.',
+            message: 'Assign the lead to a studio, then add that studio’s phone in Settings → Studio.',
           })
           return
         }
 
-        const phoneStatus = await api.get(
-          `/api/location-phone/status?locationID=${encodeURIComponent(locationID)}`,
-        )
-        const toNumber = phoneStatus?.data?.twilioNumber
-        if (!phoneStatus.success || !toNumber || phoneStatus.data?.status !== 'connected') {
+        const locationResult = await api.get(`/api/location/${encodeURIComponent(locationID)}`)
+        const studio = locationResult?.data
+        const toNumber = studio?.phoneNumber
+        if (!locationResult.success || !toNumber || studio?.phoneStatus !== 'connected') {
           toast.error({
             title: 'Studio phone not connected',
-            message: 'Connect a Twilio number for this studio in Settings → Integrations.',
+            message: 'Add a Twilio number for this studio in Settings → Studio.',
           })
           return
         }

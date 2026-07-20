@@ -499,10 +499,31 @@ export default function LocationsPage() {
                     </div>
                   )}
                   {selectedLocation.phoneNumber && (
-                    <div className="flex justify-between">
+                    <div className="flex justify-between gap-3">
                       <span className="text-muted-foreground">Phone:</span>
-                      <span className="font-medium">{selectedLocation.phoneNumber}</span>
+                      <span className="font-medium text-right">{selectedLocation.phoneNumber}</span>
                     </div>
+                  )}
+                  <div className="flex justify-between gap-3 items-center">
+                    <span className="text-muted-foreground">Calling:</span>
+                    <Badge
+                      variant={
+                        selectedLocation.phoneStatus === 'connected'
+                          ? 'success'
+                          : selectedLocation.phoneStatus === 'error'
+                            ? 'error'
+                            : 'secondary'
+                      }
+                    >
+                      {selectedLocation.phoneStatus === 'connected'
+                        ? 'Connected'
+                        : selectedLocation.phoneStatus === 'error'
+                          ? 'Error'
+                          : 'Not connected'}
+                    </Badge>
+                  </div>
+                  {selectedLocation.phoneStatus === 'error' && selectedLocation.phoneLastError && (
+                    <p className="text-xs text-destructive">{selectedLocation.phoneLastError}</p>
                   )}
                   {selectedLocation.createdAt && (
                     <div className="flex justify-between">
