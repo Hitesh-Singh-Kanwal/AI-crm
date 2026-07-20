@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils'
 import WorkflowEmailTemplatePickerDialog from '@/components/workflow/WorkflowEmailTemplatePickerDialog'
 import WorkflowSmsTemplatePickerDialog from '@/components/workflow/WorkflowSmsTemplatePickerDialog'
 import {
-  LEAD_STAGE_OPTIONS,
   NODE_STYLES,
   getPaletteItem,
   isBackendSupportedNode,
@@ -108,19 +107,6 @@ function TemplateSelector({ icon: Icon, name, onPick, onClear, hint }) {
 function ScheduleFields({ config, onChange }) {
   return (
     <div className="space-y-4">
-      <Field label="Lead stage">
-        <select
-          value={config.leadStage || 'new'}
-          onChange={(e) => onChange({ leadStage: e.target.value })}
-          className={selectClass}
-        >
-          {LEAD_STAGE_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
-      </Field>
       <div className="flex items-start gap-2 rounded-lg bg-muted/40 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
         <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>

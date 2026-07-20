@@ -36,6 +36,8 @@ function cloneFlow(nodes, edges) {
 function makeSnapshot(state) {
   return {
     workflowName: state.workflowName,
+    workflowDescription: state.workflowDescription,
+    isFavorite: state.isFavorite,
     nodes: state.nodes,
     edges: state.edges,
     isPublished: state.isPublished,
@@ -79,6 +81,8 @@ const blank = createBlankWorkflow()
 export const useWorkflowBuilderStore = create((set, get) => ({
   workflowId: null,
   workflowName: blank.workflowName,
+  workflowDescription: '',
+  isFavorite: false,
   nodes: blank.nodes,
   edges: blank.edges,
   selectedNodeId: null,
@@ -154,6 +158,14 @@ export const useWorkflowBuilderStore = create((set, get) => ({
     set({ workflowName, saveStatus: 'unsaved' })
   },
 
+  setWorkflowDescription: (workflowDescription) => {
+    set({ workflowDescription, saveStatus: 'unsaved' })
+  },
+
+  setIsFavorite: (isFavorite) => {
+    set({ isFavorite: Boolean(isFavorite), saveStatus: 'unsaved' })
+  },
+
   setIsActive: (isActive) => {
     set({ isActive, saveStatus: 'unsaved' })
   },
@@ -165,11 +177,21 @@ export const useWorkflowBuilderStore = create((set, get) => ({
   setSaveStatus: (saveStatus) => set({ saveStatus }),
 
   /** Replace the whole canvas with a graph loaded from the API (or a blank/new flow). */
-  loadWorkflowGraph: ({ workflowId = null, workflowName, nodes = [], edges = [], isActive = true }) => {
+  loadWorkflowGraph: ({
+    workflowId = null,
+    workflowName,
+    workflowDescription = '',
+    isFavorite = false,
+    nodes = [],
+    edges = [],
+    isActive = true,
+  }) => {
     const latches = nextWorkflowUnlockLatches(nodes, { actionsUnlocked: false, exitUnlocked: false })
     set({
       workflowId,
       workflowName: workflowName ?? get().workflowName,
+      workflowDescription: String(workflowDescription || ''),
+      isFavorite: Boolean(isFavorite),
       nodes,
       edges,
       isActive,
@@ -452,6 +474,8 @@ export const useWorkflowBuilderStore = create((set, get) => ({
     set({
       workflowId: null,
       workflowName: fresh.workflowName,
+      workflowDescription: '',
+      isFavorite: false,
       nodes: fresh.nodes,
       edges: fresh.edges,
       selectedNodeId: null,

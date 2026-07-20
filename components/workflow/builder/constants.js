@@ -205,7 +205,7 @@ export const LEAD_STAGE_OPTIONS = [
   'human intervention',
 ]
 
-const SCHEDULE_DEFAULTS = { leadStage: 'new', description: '' }
+const SCHEDULE_DEFAULTS = { description: '' }
 
 const CONTACT_TRIGGER_DEFAULTS = {
   ...createDefaultContactConfig(),
@@ -259,7 +259,7 @@ export const DEFAULT_NODE_CONFIG = {
 /** Builder node types that map directly to a backend workflow step. */
 export const BACKEND_STEP_NODES = new Set(['send_email', 'send_sms', 'ai_agent'])
 
-/** Node types the backend can understand (trigger config, schedulable steps, and wait offsets). */
+/** Node types the backend can understand (trigger config, schedulable steps, wait offsets, exit). */
 export const BACKEND_AWARE_NODES = new Set([
   'contact',
   'form_submitted',
@@ -270,6 +270,7 @@ export const BACKEND_AWARE_NODES = new Set([
   'send_sms',
   'ai_agent',
   'wait',
+  'exit_logic',
 ])
 
 export function isBackendSupportedNode(paletteType) {

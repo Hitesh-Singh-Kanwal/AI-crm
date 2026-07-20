@@ -12,6 +12,7 @@ import WorkflowBuilderHeader from '@/components/workflow/builder/WorkflowBuilder
 import WorkflowBuilderPropertiesPanel from '@/components/workflow/builder/WorkflowBuilderPropertiesPanel'
 import WorkflowBuilderSidebar from '@/components/workflow/builder/WorkflowBuilderSidebar'
 import WorkflowStepGuide from '@/components/workflow/builder/WorkflowStepGuide'
+import PublishWorkflowDialog from '@/components/workflow/builder/PublishWorkflowDialog'
 import { useWorkflowBuilderStore } from '@/components/workflow/builder/workflowBuilderStore'
 import {
   graphToWorkflowPayload,
@@ -35,9 +36,18 @@ export default function WorkflowBuilderClient() {
   const nodes = useWorkflowBuilderStore((s) => s.nodes)
   const syncWorkflowUnlocks = useWorkflowBuilderStore((s) => s.syncWorkflowUnlocks)
 
+  const setWorkflowName = useWorkflowBuilderStore((s) => s.setWorkflowName)
+  const setWorkflowDescription = useWorkflowBuilderStore((s) => s.setWorkflowDescription)
+  const setIsFavorite = useWorkflowBuilderStore((s) => s.setIsFavorite)
+  const workflowName = useWorkflowBuilderStore((s) => s.workflowName)
+  const workflowDescription = useWorkflowBuilderStore((s) => s.workflowDescription)
+  const isFavorite = useWorkflowBuilderStore((s) => s.isFavorite)
+  const isActive = useWorkflowBuilderStore((s) => s.isActive)
+
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState('')
+  const [publishOpen, setPublishOpen] = useState(false)
 
   const [dynamicLists, setDynamicLists] = useState([])
   const { forms, reasons } = useWorkflowOptions(true)
@@ -145,7 +155,14 @@ export default function WorkflowBuilderClient() {
             }
           }
         }
-        if (!cancelled) loadWorkflowGraph(graph)
+        if (!cancelled) {
+          loadWorkflowGraph({
+            ...graph,
+            workflowDescription: res.data?.description || '',
+            isFavorite: Boolean(res.data?.isFavorite),
+            isActive: (res.data?.status || 'active') !== 'inactive',
+          })
+        }
       } else if (!cancelled) {
         setLoadError(res?.error || 'Failed to load workflow.')
       }
@@ -158,15 +175,34 @@ export default function WorkflowBuilderClient() {
   }, [loadWorkflowGraph])
 
   const persist = useCallback(
-    async ({ publish = false }) => {
+    async ({ publish = false, meta = null } = {}) => {
       setSaving(true)
       setSaveStatus('saving')
 
       const state = useWorkflowBuilderStore.getState()
-      const isActive = publish ? true : state.isActive
+      const name = meta?.name != null ? String(meta.name).trim() : state.workflowName
+      const description =
+        meta?.description != null ? String(meta.description) : state.workflowDescription || ''
+      const favorite =
+        meta?.isFavorite != null ? Boolean(meta.isFavorite) : Boolean(state.isFavorite)
+      const isActive =
+        meta?.status != null
+          ? meta.status === 'active'
+          : publish
+            ? true
+            : state.isActive
+
+      if (meta) {
+        setWorkflowName(name)
+        setWorkflowDescription(description)
+        setIsFavorite(favorite)
+        setIsActive(isActive)
+      }
 
       const { ok, payload, warnings, error } = graphToWorkflowPayload({
-        workflowName: state.workflowName,
+        workflowName: name,
+        workflowDescription: description,
+        isFavorite: favorite,
         nodes: state.nodes,
         edges: state.edges,
         isActive,
@@ -176,7 +212,7 @@ export default function WorkflowBuilderClient() {
         setSaving(false)
         setSaveStatus('unsaved')
         toast.error(error)
-        return
+        return false
       }
 
       const existingId = state.workflowId
@@ -195,24 +231,54 @@ export default function WorkflowBuilderClient() {
           url.searchParams.set('id', newId)
           window.history.replaceState({}, '', url)
         }
-        if (publish) setIsActive(true)
+        setIsActive(isActive)
         setSaveStatus('saved')
         ;(warnings || []).forEach((w) => toast.warning(w))
-        toast.success(publish ? 'Workflow published' : existingId ? 'Workflow updated' : 'Workflow created')
-      } else {
-        setSaveStatus('unsaved')
-        toast.error(res?.error || 'Failed to save workflow.')
+        toast.success(
+          publish ? 'Workflow published' : existingId ? 'Workflow updated' : 'Workflow created'
+        )
+        return true
       }
+
+      setSaveStatus('unsaved')
+      toast.error(res?.error || 'Failed to save workflow.')
+      return false
     },
-    [setIsActive, setSaveStatus, setWorkflowId]
+    [
+      setIsActive,
+      setIsFavorite,
+      setSaveStatus,
+      setWorkflowDescription,
+      setWorkflowId,
+      setWorkflowName,
+    ]
   )
 
   const handleSave = useCallback(() => persist({ publish: false }), [persist])
-  const handlePublish = useCallback(() => persist({ publish: true }), [persist])
+  const handlePublishClick = useCallback(() => setPublishOpen(true), [])
+  const handlePublishConfirm = useCallback(
+    async (meta) => {
+      const ok = await persist({ publish: true, meta })
+      if (ok) setPublishOpen(false)
+    },
+    [persist]
+  )
 
   return (
     <div className="flex h-[calc(100vh-5.5rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)] dark:border-border dark:bg-background md:h-[calc(100vh-6rem)]">
-      <WorkflowBuilderHeader onSave={handleSave} onPublish={handlePublish} saving={saving} />
+      <WorkflowBuilderHeader onSave={handleSave} onPublish={handlePublishClick} saving={saving} />
+      <PublishWorkflowDialog
+        open={publishOpen}
+        onClose={() => !saving && setPublishOpen(false)}
+        onConfirm={handlePublishConfirm}
+        busy={saving}
+        initialValues={{
+          name: workflowName,
+          description: workflowDescription,
+          status: isActive ? 'active' : 'inactive',
+          isFavorite,
+        }}
+      />
       <WorkflowStepGuide
         activeCategory={guidedCategory}
         onSelectCategory={setGuidedCategory}

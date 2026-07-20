@@ -50,6 +50,32 @@ function waitToMinutes(config = {}) {
   return days * 1440 + hours * 60 + minutes
 }
 
+function normalizeExitLogicForPayload(exitLogic) {
+  if (!exitLogic || typeof exitLogic !== 'object') return null
+  const successGoalStages = Array.isArray(exitLogic.successGoalStages)
+    ? exitLogic.successGoalStages.map((s) => String(s || '').trim()).filter(Boolean)
+    : []
+  const exitRuleStages = Array.isArray(exitLogic.exitRuleStages)
+    ? exitLogic.exitRuleStages.map((s) => String(s || '').trim()).filter(Boolean)
+    : []
+
+  if (!successGoalStages.length && !exitRuleStages.length) {
+    return null
+  }
+
+  return {
+    successGoalStages,
+    exitRuleStages,
+  }
+}
+
+function buildExitLogicFromNode(config = {}) {
+  return normalizeExitLogicForPayload({
+    successGoalStages: config.successGoalStages,
+    exitRuleStages: config.exitRuleStages,
+  })
+}
+
 /** Convert a total number of minutes from the trigger into backend day/hour/minute. */
 function minutesToSchedule(totalMinutes) {
   const total = Math.max(0, Math.round(totalMinutes))
@@ -123,7 +149,6 @@ function stepFromNode(node, offsetMinutes) {
 
   const base = {
     type,
-    leadStage: config.leadStage || 'new',
     description: config.description || node.data?.label || '',
     day: schedule.day,
     hour: schedule.hour,
@@ -157,7 +182,14 @@ function stepFromNode(node, offsetMinutes) {
  * Convert the visual builder graph into a payload accepted by POST/PATCH /api/workflow.
  * Returns { ok, payload, warnings, error }.
  */
-export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], isActive = true }) {
+export function graphToWorkflowPayload({
+  workflowName,
+  workflowDescription = '',
+  isFavorite = false,
+  nodes = [],
+  edges = [],
+  isActive = true,
+}) {
   const warnings = []
 
   const name = String(workflowName || '').trim()
@@ -216,6 +248,7 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
 
   let offsetMinutes = 0
   const steps = []
+  let exitLogic = null
 
   for (const nodeId of order) {
     const node = nodeMap.get(nodeId)
@@ -228,6 +261,7 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
     }
 
     if (paletteType === 'exit_logic') {
+      exitLogic = buildExitLogicFromNode(node.data?.config || {})
       continue
     }
 
@@ -241,6 +275,16 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
     warnings.push(`"${label}" isn't supported by the current backend and was skipped.`)
   }
 
+  // Exit node may be on the canvas but not connected into the walked chain.
+  if (!exitLogic) {
+    const exitNode = nodes.find(
+      (n) => n.data?.paletteType === 'exit_logic' || n.data?.category === 'exit'
+    )
+    if (exitNode) {
+      exitLogic = buildExitLogicFromNode(exitNode.data?.config || {})
+    }
+  }
+
   if (steps.length === 0) {
     return {
       ok: false,
@@ -251,7 +295,8 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
 
   const payload = normalizeWorkflowForPatch({
     name,
-    description: '',
+    description: String(workflowDescription || '').trim(),
+    isFavorite: Boolean(isFavorite),
     ...(contactAudience
       ? {
           ...contactAudience,
@@ -266,9 +311,16 @@ export function graphToWorkflowPayload({ workflowName, nodes = [], edges = [], i
             reason: isWorkflowEventFormSubmission(triggerConfig.event) ? reason : '',
           }),
     steps,
+    exitLogic,
   })
 
   payload.status = isActive ? 'active' : 'inactive'
+  payload.isFavorite = Boolean(isFavorite)
+  if (exitLogic) {
+    payload.exitLogic = exitLogic
+  } else {
+    payload.exitLogic = null
+  }
 
   return { ok: true, payload, warnings }
 }
@@ -362,7 +414,6 @@ function actionNodeFromStep(step, index, y) {
   const id = `node-step-${index}-${Math.random().toString(36).slice(2, 6)}`
 
   const base = {
-    leadStage: step.leadStage || 'new',
     description: step.description || '',
   }
 
@@ -460,6 +511,26 @@ export function workflowToGraph(apiWorkflow) {
     connect(actionNodeFromStep(step, index, y))
     prevMinutes = total
   })
+
+  const exitLogic =
+    (wf.exitLogic && typeof wf.exitLogic === 'object' ? wf.exitLogic : null) ||
+    (Array.isArray(wf.successGoalStages) || Array.isArray(wf.exitRuleStages)
+      ? {
+          successGoalStages: wf.successGoalStages,
+          exitRuleStages: wf.exitRuleStages,
+        }
+      : null)
+
+  if (exitLogic) {
+    connect(
+      makeNodeBase(`node-exit-${Math.random().toString(36).slice(2, 6)}`, 'exit_logic', y, {
+        successGoalStages: Array.isArray(exitLogic.successGoalStages)
+          ? exitLogic.successGoalStages
+          : [],
+        exitRuleStages: Array.isArray(exitLogic.exitRuleStages) ? exitLogic.exitRuleStages : [],
+      })
+    )
+  }
 
   return {
     workflowId: apiWorkflow?._id || apiWorkflow?.id || null,

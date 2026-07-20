@@ -37,12 +37,10 @@ export function createDemoWorkflow() {
       subject: 'Welcome to our studio!',
       emailType: 'message',
       body: 'Hi {{first_name}}, thanks for reaching out! We can’t wait to see you in class.',
-      leadStage: 'new',
     }),
     makeNode('node-wait-1', 'wait', 'wait', CENTER_X, 380, { days: 1, hours: 0, minutes: 0 }),
     makeNode('node-sms', 'send_sms', 'action', CENTER_X, 560, {
       message: 'Hi {{first_name}}, ready to book your first class?',
-      leadStage: 'engaged',
     }),
     makeNode('node-exit', 'exit_logic', 'exit', CENTER_X, 740, {
       successGoalStages: [],
