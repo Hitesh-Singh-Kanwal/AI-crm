@@ -6,13 +6,11 @@ import {
   ArrowRightLeft,
   CheckCircle2,
   ChevronDown,
-  Circle,
   Clock3,
   Headphones,
   PhoneCall,
   PhoneForwarded,
   PhoneMissed,
-  Radio,
   Settings,
   UserCheck,
   Users,
@@ -25,6 +23,8 @@ import { cn, formatDateTime, getInitials } from '@/lib/utils'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
+import { getCurrentUser } from '@/lib/auth'
+import { canManageCallCenter, hasPermission } from '@/lib/permissions'
 import {
   disconnectConnection,
   joinConferenceCall,
@@ -51,12 +51,6 @@ const LEGACY_TAB_MAP = {
 const LIVE_POLL_MS = 8000
 const HISTORY_POLL_MS = 30000
 const CALLBACK_POLL_MS = 15000
-
-const MY_STATUSES = [
-  { id: 'available', label: 'Available', color: 'bg-emerald-500' },
-  { id: 'on_call', label: 'On Call', color: 'bg-[var(--studio-primary)]' },
-  { id: 'away', label: 'Away', color: 'bg-amber-500' },
-]
 
 const TRANSFER_MODE_OPTIONS = [
   {
@@ -190,7 +184,7 @@ function playIncomingRing() {
 
 // ── Settings Panel ────────────────────────────────────────────────────────────
 
-function SettingsPanel({ onClose }) {
+function SettingsPanel({ onClose, canEdit }) {
   const toast = useToast()
   const [settings, setSettings] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -207,9 +201,10 @@ function SettingsPanel({ onClose }) {
     }).finally(() => setLoading(false))
   }, [])
 
-  const hasChanges = draft && settings && draft.transferMode !== settings.transferMode
+  const hasChanges = canEdit && draft && settings && draft.transferMode !== settings.transferMode
 
   const handleSave = async () => {
+    if (!canEdit) return
     setSaving(true)
     try {
       const r = await api.patch('/api/human-queue/settings', { transferMode: draft.transferMode })
@@ -231,7 +226,9 @@ function SettingsPanel({ onClose }) {
         <div>
           <h2 className="text-sm font-semibold text-foreground">Call Routing Settings</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Choose how the AI routes calls when a caller asks to speak with a human
+            {canEdit
+              ? 'Choose how the AI routes calls when a caller asks to speak with a human'
+              : 'View-only — you can see the current routing configuration'}
           </p>
         </div>
         <button
@@ -262,12 +259,19 @@ function SettingsPanel({ onClose }) {
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => setDraft((d) => ({ ...d, transferMode: opt.id }))}
+                    disabled={!canEdit}
+                    onClick={() => {
+                      if (!canEdit) return
+                      setDraft((d) => ({ ...d, transferMode: opt.id }))
+                    }}
                     className={cn(
                       'flex items-start gap-3 rounded-xl border p-4 text-left transition-all',
                       isSelected
                         ? 'border-[var(--studio-primary)] bg-[var(--studio-primary-light)]/40'
-                        : 'border-border bg-background hover:border-[var(--studio-primary)]/40',
+                        : 'border-border bg-background',
+                      canEdit
+                        ? 'hover:border-[var(--studio-primary)]/40'
+                        : 'cursor-default opacity-90',
                     )}
                   >
                     <span className={cn(
@@ -295,6 +299,12 @@ function SettingsPanel({ onClose }) {
             </p>
           </div>
 
+          {!canEdit && (
+            <p className="text-xs text-muted-foreground">
+              You have view-only access. Ask an admin for Queue Settings write permission to make changes.
+            </p>
+          )}
+
           {hasChanges && (
             <button
               type="button"
@@ -319,6 +329,7 @@ function HumanQueuePageContent() {
   const toast = useToast()
   const rawTab = searchParams?.get('tab') || 'waiting'
   const activeTab = normalizeTab(rawTab)
+  const currentUser = getCurrentUser()
 
   // Redirect legacy tab URLs once
   useEffect(() => {
@@ -337,7 +348,6 @@ function HumanQueuePageContent() {
   const [historyDetailItem, setHistoryDetailItem] = useState(null)
   const [answeringId, setAnsweringId] = useState(null)
   const [resolvingId, setResolvingId] = useState(null)
-  const [transferring, setTransferring] = useState(false)
   const [tabCounts, setTabCounts] = useState({
     waiting: 0, active: 0, resolved: 0, callbacks: 0,
   })
@@ -347,8 +357,13 @@ function HumanQueuePageContent() {
   const [activeConnection, setActiveConnection] = useState(null)
   const [activeCall, setActiveCall] = useState(null)
   const [callStatus, setCallStatus] = useState('idle')
-  const [myStatus, setMyStatus] = useState('available')
   const [soundEnabled, setSoundEnabled] = useState(true)
+
+  const canViewSettings = hasPermission('inbox', 'QueueSettings', 'read')
+  const canEditSettings = hasPermission('inbox', 'QueueSettings', 'write')
+  // Server flags from /agents (authoritative — uses fresh DB permissions)
+  const [canManageCalls, setCanManageCalls] = useState(false)
+  const [canToggleOwnAvailability, setCanToggleOwnAvailability] = useState(false)
 
   // Clear history detail when leaving Resolved tab
   useEffect(() => {
@@ -400,23 +415,32 @@ function HumanQueuePageContent() {
     })
   }, [])
 
+  const applyAgentsPermissionPayload = useCallback((payload) => {
+    if (Array.isArray(payload)) {
+      setAgents(payload)
+      const localManage = canManageCallCenter()
+      setCanManageCalls(localManage)
+      setCanToggleOwnAvailability(localManage)
+      return
+    }
+    setAgents(Array.isArray(payload?.agents) ? payload.agents : [])
+    setCanManageCalls(Boolean(payload?.canManageCalls))
+    setCanToggleOwnAvailability(Boolean(payload?.canToggleOwnAvailability))
+  }, [])
+
   const fetchQueueData = useCallback(async ({ silent = false } = {}) => {
     try {
       if (!silent) setLoading(true)
       else setRefreshing(true)
 
-      const requests = [
+      const results = await Promise.all([
         api.get(`/api/human-queue?tab=${encodeURIComponent(activeTab)}`),
+        api.get('/api/human-queue/agents'),
         api.get('/api/human-queue/stats'),
-      ]
-      // Agents only needed on live tabs (answer / transfer / availability)
-      const includeAgents = activeTab !== 'resolved'
-      if (includeAgents) requests.splice(1, 0, api.get('/api/human-queue/agents'))
-
-      const results = await Promise.all(requests)
+      ])
       const queueResult = results[0]
-      const agentsResult = includeAgents ? results[1] : null
-      const statsResult = includeAgents ? results[2] : results[1]
+      const agentsResult = results[1]
+      const statsResult = results[2]
 
       if (queueResult.success) {
         const list = extractList(queueResult)
@@ -465,7 +489,7 @@ function HumanQueuePageContent() {
         }
       }
 
-      if (agentsResult?.success) setAgents(extractList(agentsResult))
+      if (agentsResult?.success) applyAgentsPermissionPayload(agentsResult.data)
       if (statsResult.success && statsResult.data) {
         setTabCounts((prev) => ({
           waiting: statsResult.data.waiting ?? statsResult.data.unassigned ?? prev.waiting ?? 0,
@@ -485,15 +509,16 @@ function HumanQueuePageContent() {
     }
   // clearActiveCallUi is stable (empty deps); do not add toast or it restarts the poll loop.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab])
+  }, [activeTab, applyAgentsPermissionPayload])
 
   const fetchCallbacks = useCallback(async ({ silent = false, filter = callbackFilter } = {}) => {
     try {
       if (!silent) setCallbacksLoading(true)
       const url = filter ? `/api/callback-requests?status=${filter}` : '/api/callback-requests'
-      const [listResult, statsResult] = await Promise.all([
+      const [listResult, statsResult, agentsResult] = await Promise.all([
         api.get(url),
         api.get('/api/callback-requests/stats'),
+        api.get('/api/human-queue/agents'),
       ])
       if (listResult.success) {
         setCallbacks(Array.isArray(listResult.data?.items) ? listResult.data.items : [])
@@ -502,13 +527,13 @@ function HumanQueuePageContent() {
         setCallbackStats(statsResult.data)
         setTabCounts((prev) => ({ ...prev, callbacks: statsResult.data.pending || 0 }))
       }
+      if (agentsResult?.success) applyAgentsPermissionPayload(agentsResult.data)
     } catch (error) {
       console.error(error)
     } finally {
       if (!silent) setCallbacksLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callbackFilter])
+  }, [callbackFilter, applyAgentsPermissionPayload])
 
   useEffect(() => {
     let cancelled = false
@@ -552,18 +577,11 @@ function HumanQueuePageContent() {
     [escalations, activeTab],
   )
   useEffect(() => {
-    if (activeTab === 'callbacks' || activeTab === 'resolved' || !soundEnabled || myStatus === 'away') return
+    if (activeTab === 'callbacks' || activeTab === 'resolved' || !soundEnabled) return
     const count = tabCounts.waiting ?? waitingCalls.length
     if (count > prevWaitingCountRef.current) playIncomingRing()
     prevWaitingCountRef.current = count
-  }, [tabCounts.waiting, waitingCalls.length, soundEnabled, myStatus, activeTab])
-
-  // Sync myStatus with activeConnection
-  useEffect(() => {
-    if (activeConnection) { setMyStatus('on_call'); return undefined }
-    if (myStatus === 'on_call') setMyStatus('available')
-    return undefined
-  }, [activeConnection, myStatus])
+  }, [tabCounts.waiting, waitingCalls.length, soundEnabled, activeTab])
 
   // ── Agent availability toggle ──
   const handleToggleAgentAvailability = async (agentId, newValue) => {
@@ -594,6 +612,10 @@ function HumanQueuePageContent() {
 
   // ── Callbacks actions ──
   const handleMarkCalled = async (cbId) => {
+    if (!canManageCalls) {
+      toast.error({ title: 'No access', message: 'Call Center write or edit permission is required.' })
+      return
+    }
     setMarkingCalledId(cbId)
     try {
       const r = await api.post(`/api/callback-requests/${cbId}/mark-called`, {})
@@ -608,6 +630,10 @@ function HumanQueuePageContent() {
   }
 
   const handleCancelCallback = async (cbId) => {
+    if (!canManageCalls) {
+      toast.error({ title: 'No access', message: 'Call Center write or edit permission is required.' })
+      return
+    }
     setCancellingCallbackId(cbId)
     try {
       const r = await api.post(`/api/callback-requests/${cbId}/cancel`, {})
@@ -625,8 +651,16 @@ function HumanQueuePageContent() {
   const handleAnswer = async (item) => {
     const itemId = item.id || item._id
     if (!itemId || !item.conferenceName) return
-    if (myStatus === 'away') {
-      toast.error({ title: 'You are away', message: 'Set your status to Available before answering calls.' })
+    if (!isCallCenterAgent) {
+      toast.error({ title: 'No access', message: 'Your role must be marked as Call Center Agent to answer calls.' })
+      return
+    }
+    if (!canManageCalls) {
+      toast.error({ title: 'No access', message: 'Call Center write or edit permission is required to answer calls.' })
+      return
+    }
+    if (!isOnlineForCalls) {
+      toast.error({ title: 'You are offline', message: 'Toggle yourself online in Team Availability before answering calls.' })
       return
     }
     if (activeConnection) {
@@ -697,26 +731,6 @@ function HumanQueuePageContent() {
     }
   }
 
-  const handleTransfer = async (escalationId, toAgentId) => {
-    if (!escalationId || !toAgentId) return
-    setTransferring(true)
-    try {
-      const r = await api.post(`/api/human-queue/${escalationId}/transfer`, { targetUserId: toAgentId })
-      if (!r.success) {
-        toast.error({ title: 'Transfer failed', message: r.error || 'Could not transfer.' })
-        return
-      }
-      disconnectConnection(activeConnection)
-      setActiveConnection(null)
-      setActiveCall(null)
-      setCallStatus('idle')
-      toast.success({ title: 'Transferred', message: 'Call transferred to another agent.' })
-      fetchQueueData()
-    } finally {
-      setTransferring(false)
-    }
-  }
-
   const handleHoldChange = async (onHold) => {
     const callId = activeCall?.id || activeCall?._id
     if (!callId) return
@@ -733,6 +747,10 @@ function HumanQueuePageContent() {
   }
 
   const handleResolve = async (escalationId) => {
+    if (!canManageCalls) {
+      toast.error({ title: 'No access', message: 'Call Center write or edit permission is required.' })
+      return
+    }
     if (!escalationId) return
     setResolvingId(escalationId)
     try {
@@ -779,21 +797,29 @@ function HumanQueuePageContent() {
   const onlineAgents = agents.filter((a) => a.isAvailableForCalls)
   const availableAgents = agents.filter((a) => a.availability === 'available').length
   const isOnCall = Boolean(activeConnection)
+  // Role toggle "Call Center Agent" → user appears in the agents list from the API
+  const isCallCenterAgent = Boolean(
+    currentUser?.email && agents.some((a) => a.email === currentUser.email),
+  )
+  // Must be a Call Center Agent AND toggled online to answer live calls
+  const isOnlineForCalls = Boolean(
+    currentUser?.email &&
+      agents.some((a) => a.email === currentUser.email && a.isAvailableForCalls),
+  )
+  const canAnswerCalls = isCallCenterAgent && canManageCalls && isOnlineForCalls
 
   return (
-    <MainLayout title="Human Queue" subtitle="Live voice escalations from AI agents">
+    <MainLayout title="Call Center" subtitle="Live voice escalations from AI agents">
       <div className="space-y-4">
         {activeCall && (
           <ActiveCallPanel
             call={activeCall}
             connection={activeConnection}
-            agents={agents}
             callStatus={callStatus}
             resolving={resolvingId === (activeCall.id || activeCall._id)}
-            transferring={transferring}
+            canManage={canManageCalls}
             onEndCall={handleEndCall}
             onResolve={() => handleResolve(activeCall.id || activeCall._id)}
-            onTransfer={(agentId) => handleTransfer(activeCall.id || activeCall._id, agentId)}
             onHoldChange={handleHoldChange}
             onClose={handleCloseCallPanel}
           />
@@ -845,62 +871,49 @@ function HumanQueuePageContent() {
 
             {/* Right controls */}
             <div className="flex flex-wrap items-center gap-2">
+              {/* Sound toggle */}
               {activeTab !== 'callbacks' && (
-                <>
-                  {/* My status */}
-                  <div className="flex items-center gap-1 rounded-full border border-border bg-background p-1">
-                    {MY_STATUSES.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        disabled={isOnCall && s.id !== 'on_call'}
-                        onClick={() => setMyStatus(s.id)}
-                        className={cn(
-                          'inline-flex items-center gap-1.5 rounded-full px-3 h-8 text-xs font-medium transition-all disabled:opacity-50',
-                          myStatus === s.id ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-                        )}
-                      >
-                        <Circle className={cn('h-2 w-2 fill-current', s.color.replace('bg-', 'text-'))} />
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
-                  {/* Sound toggle */}
-                  <button
-                    type="button"
-                    onClick={() => setSoundEnabled((v) => !v)}
-                    className={cn(
-                      'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium',
-                      soundEnabled
-                        ? 'border-[var(--studio-primary)]/30 bg-[var(--studio-primary-light)]/30 text-[var(--studio-primary)]'
-                        : 'border-border text-muted-foreground',
-                    )}
-                  >
-                    <Volume2 className="h-3.5 w-3.5" />
-                    {soundEnabled ? 'Ring on' : 'Ring off'}
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => setSoundEnabled((v) => !v)}
+                  className={cn(
+                    'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium',
+                    soundEnabled
+                      ? 'border-[var(--studio-primary)]/30 bg-[var(--studio-primary-light)]/30 text-[var(--studio-primary)]'
+                      : 'border-border text-muted-foreground',
+                  )}
+                >
+                  <Volume2 className="h-3.5 w-3.5" />
+                  {soundEnabled ? 'Ring on' : 'Ring off'}
+                </button>
               )}
-              {/* Settings toggle */}
-              <button
-                type="button"
-                onClick={() => setShowSettings((v) => !v)}
-                className={cn(
-                  'inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors',
-                  showSettings
-                    ? 'border-[var(--studio-primary)] bg-[var(--studio-primary-light)]/40 text-[var(--studio-primary)]'
-                    : 'border-border text-muted-foreground hover:text-foreground',
-                )}
-                title="Escalation settings"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
+              {/* Settings — only shown with QueueSettings read */}
+              {canViewSettings && (
+                <button
+                  type="button"
+                  onClick={() => setShowSettings((v) => !v)}
+                  className={cn(
+                    'inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors',
+                    showSettings
+                      ? 'border-[var(--studio-primary)] bg-[var(--studio-primary-light)]/40 text-[var(--studio-primary)]'
+                      : 'border-border text-muted-foreground hover:text-foreground',
+                  )}
+                  title={canEditSettings ? 'Escalation settings' : 'View escalation settings'}
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
         </section>
 
         {/* ── Settings Panel ── */}
-        {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+        {canViewSettings && showSettings && (
+          <SettingsPanel
+            onClose={() => setShowSettings(false)}
+            canEdit={canEditSettings}
+          />
+        )}
 
         {/* ── Callbacks tab ── */}
         {activeTab === 'callbacks' ? (
@@ -999,7 +1012,7 @@ function HumanQueuePageContent() {
                             )}
                           </div>
 
-                          {isPending && (
+                          {isPending && canManageCalls && (
                             <div className="mt-3 flex items-center gap-2">
                               <button
                                 type="button"
@@ -1021,6 +1034,11 @@ function HumanQueuePageContent() {
                               </button>
                             </div>
                           )}
+                          {isPending && !canManageCalls && (
+                            <p className="mt-3 text-xs text-muted-foreground">
+                              View only — Call Center write or edit is required to update callbacks.
+                            </p>
+                          )}
                         </div>
                       )
                     })}
@@ -1031,7 +1049,7 @@ function HumanQueuePageContent() {
           )
         ) : loading ? (
           <div className="flex items-center justify-center py-20">
-            <GlobalLoader variant="inline" size="md" text="Loading human queue…" />
+            <GlobalLoader variant="inline" size="md" text="Loading call center…" />
           </div>
         ) : (
           <section className="space-y-4">
@@ -1041,17 +1059,17 @@ function HumanQueuePageContent() {
                 onAnswerNext={handleAnswer}
                 answeringId={answeringId}
                 isOnCall={isOnCall}
+                canAnswer={canAnswerCalls}
               />
             )}
 
             {/* Stats row — live tabs only */}
             {activeTab !== 'resolved' && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {[
                   { label: 'Waiting', value: tabCounts.waiting || 0, icon: PhoneCall, tone: 'text-amber-600' },
                   { label: 'Active', value: tabCounts.active || 0, icon: Headphones, tone: 'text-emerald-600' },
                   { label: 'Online agents', value: `${onlineAgents.length}/${agents.length}`, icon: Users, tone: 'text-[var(--studio-primary)]' },
-                  { label: 'Your status', value: MY_STATUSES.find((s) => s.id === myStatus)?.label, icon: Radio, tone: 'text-foreground' },
                 ].map((stat) => (
                   <div key={stat.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                     <div className="flex items-center gap-2 text-muted-foreground">
@@ -1231,10 +1249,10 @@ function HumanQueuePageContent() {
                                   {statusLabel(item.status)}
                                 </span>
                               </div>
-                              {isWaiting && !isOnCall && (
+                              {isWaiting && !isOnCall && canAnswerCalls && (
                                 <button
                                   type="button"
-                                  disabled={answeringId === itemId || voiceSetupReady === false || myStatus === 'away'}
+                                  disabled={answeringId === itemId || voiceSetupReady === false}
                                   onClick={() => handleAnswer(item)}
                                   className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--studio-primary)] px-3 text-xs font-semibold text-white hover:brightness-95 disabled:opacity-60"
                                 >
@@ -1285,35 +1303,52 @@ function HumanQueuePageContent() {
                         No active team members.
                       </div>
                     ) : (
-                      agents.map((agent) => (
-                        <div
-                          key={agent.id}
-                          className="flex items-center justify-between rounded-xl border border-border bg-background p-2.5"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="relative shrink-0">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback className="text-[10px] bg-muted">{getInitials(agent.name)}</AvatarFallback>
-                              </Avatar>
+                      agents.map((agent) => {
+                        const isMe = currentUser && agent.email && agent.email === currentUser.email
+                        return (
+                          <div
+                            key={agent.id}
+                            className="flex items-center justify-between rounded-xl border border-border bg-background p-2.5"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="relative shrink-0">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback className="text-[10px] bg-muted">{getInitials(agent.name)}</AvatarFallback>
+                                </Avatar>
+                                <span className={cn(
+                                  'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card',
+                                  agent.isAvailableForCalls ? 'bg-emerald-500' : 'bg-slate-400',
+                                )} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">
+                                  {agent.name}
+                                  {isMe && <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(you)</span>}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {agent.activeChats}/{agent.maxConcurrent} calls
+                                </p>
+                              </div>
+                            </div>
+                            {isMe && canToggleOwnAvailability ? (
+                              <Toggle
+                                checked={Boolean(agent.isAvailableForCalls)}
+                                onChange={(v) => handleToggleAgentAvailability(agent.id, v)}
+                                disabled={togglingAgentId === agent.id}
+                              />
+                            ) : (
                               <span className={cn(
-                                'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card',
-                                agent.isAvailableForCalls ? 'bg-emerald-500' : 'bg-slate-400',
-                              )} />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-foreground truncate">{agent.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {agent.activeChats}/{agent.maxConcurrent} calls
-                              </p>
-                            </div>
+                                'text-[10px] font-medium px-2 py-0.5 rounded-full',
+                                agent.isAvailableForCalls
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+                                  : 'bg-muted text-muted-foreground',
+                              )}>
+                                {agent.isAvailableForCalls ? 'Online' : 'Offline'}
+                              </span>
+                            )}
                           </div>
-                          <Toggle
-                            checked={Boolean(agent.isAvailableForCalls)}
-                            onChange={(v) => handleToggleAgentAvailability(agent.id, v)}
-                            disabled={togglingAgentId === agent.id}
-                          />
-                        </div>
-                      ))
+                        )
+                      })
                     )}
                   </div>
                   {onlineAgents.length === 0 && agents.length > 0 && (
@@ -1392,7 +1427,7 @@ function HumanQueuePageContent() {
                         </div>
                       </div>
 
-                      {selectedEscalation.status === 'waiting' && (
+                      {selectedEscalation.status === 'waiting' && canAnswerCalls && (
                         <Button
                           className="w-full h-11"
                           onClick={() => handleAnswer(selectedEscalation)}
@@ -1400,61 +1435,40 @@ function HumanQueuePageContent() {
                             answeringId === (selectedEscalation.id || selectedEscalation._id)
                             || voiceSetupReady === false
                             || isOnCall
-                            || myStatus === 'away'
                           }
                         >
                           <PhoneCall className="h-4 w-4 mr-2" />
                           {answeringId ? 'Connecting…' : 'Answer Call'}
                         </Button>
                       )}
+                      {selectedEscalation.status === 'waiting' && isCallCenterAgent && canManageCalls && !isOnlineForCalls && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
+                          Toggle yourself online in Team Availability to answer calls.
+                        </p>
+                      )}
+                      {selectedEscalation.status === 'waiting' && isCallCenterAgent && !canManageCalls && (
+                        <p className="text-xs text-muted-foreground text-center">
+                          View only — Call Center write or edit is required to answer calls.
+                        </p>
+                      )}
 
                       {isOnCall && (activeCall?.id || activeCall?._id) === (selectedEscalation.id || selectedEscalation._id) && (
                         <div className="rounded-xl border border-emerald-300/50 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-                          You are on this call. Use the call panel for mute, hold, and transfer.
+                          You are on this call. Use the call panel for mute, hold, and hang up.
                         </div>
                       )}
 
-                      {['claimed', 'in_progress'].includes(selectedEscalation.status) && (
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                            <ArrowRightLeft className="h-3.5 w-3.5" />
-                            Transfer to agent
-                          </label>
-                          <select
-                            defaultValue=""
-                            disabled={!['claimed', 'in_progress'].includes(selectedEscalation.status)}
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                handleTransfer(selectedEscalation.id || selectedEscalation._id, e.target.value)
-                                e.target.value = ''
-                              }
-                            }}
-                            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none disabled:opacity-60"
-                          >
-                            <option value="">Select agent</option>
-                            {agents
-                              .filter((a) => {
-                                const currentId = String(selectedEscalation.assignedUserId || '')
-                                return a.id !== currentId && a.availability === 'available'
-                              })
-                              .map((agent) => (
-                                <option key={agent.id} value={agent.id}>
-                                  {agent.name} ({agent.activeChats}/{agent.maxConcurrent})
-                                </option>
-                              ))}
-                          </select>
-                        </div>
+                      {canManageCalls && (
+                        <button
+                          type="button"
+                          disabled={resolvingId === (selectedEscalation.id || selectedEscalation._id)}
+                          onClick={() => handleResolve(selectedEscalation.id || selectedEscalation._id)}
+                          className="inline-flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-[var(--studio-primary)] text-white text-sm font-medium hover:brightness-95 disabled:opacity-60"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          {resolvingId ? 'Resolving…' : 'Mark as Resolved'}
+                        </button>
                       )}
-
-                      <button
-                        type="button"
-                        disabled={resolvingId === (selectedEscalation.id || selectedEscalation._id)}
-                        onClick={() => handleResolve(selectedEscalation.id || selectedEscalation._id)}
-                        className="inline-flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-[var(--studio-primary)] text-white text-sm font-medium hover:brightness-95 disabled:opacity-60"
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        {resolvingId ? 'Resolving…' : 'Mark as Resolved'}
-                      </button>
                     </div>
                   )}
                 </div>
@@ -1472,9 +1486,9 @@ export default function HumanQueuePage() {
   return (
     <Suspense
       fallback={
-        <MainLayout title="Human Queue" subtitle="Live voice escalations from AI agents">
+        <MainLayout title="Call Center" subtitle="Live voice escalations from AI agents">
           <div className="flex items-center justify-center py-20">
-            <GlobalLoader variant="inline" size="md" text="Loading human queue…" />
+            <GlobalLoader variant="inline" size="md" text="Loading call center…" />
           </div>
         </MainLayout>
       }

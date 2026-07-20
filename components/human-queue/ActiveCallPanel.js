@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  ArrowRightLeft,
   CheckCircle2,
   Mic,
   MicOff,
@@ -12,7 +11,6 @@ import {
   Phone,
   PhoneOff,
   Play,
-  User,
   X,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -49,31 +47,20 @@ function CallActionButton({ icon: Icon, label, active, danger, disabled, onClick
 export default function ActiveCallPanel({
   call,
   connection,
-  agents = [],
   onEndCall,
   onResolve,
-  onTransfer,
   onHoldChange,
   onClose,
   resolving = false,
-  transferring = false,
   callStatus = 'connecting',
+  canManage = true,
 }) {
   const [minimized, setMinimized] = useState(false)
   const [muted, setMuted] = useState(false)
   const [callerOnHold, setCallerOnHold] = useState(false)
-  const [showTransfer, setShowTransfer] = useState(false)
-  const [selectedAgentId, setSelectedAgentId] = useState('')
-  const [notes, setNotes] = useState('')
 
   const isConnected = callStatus === 'connected' || callStatus === 'on_hold'
   const { formatted: callDuration } = useCallTimer(isConnected, call?.inProgressAt || call?.claimedAt)
-
-  const transferCandidates = useMemo(() => {
-    const currentId = String(call?.assignedUserId || call?.assignedAgentId || '')
-    return agents.filter((agent) => agent.id !== currentId && agent.availability === 'available')
-  }, [agents, call])
-
   useEffect(() => {
     if (!connection) return undefined
 
@@ -99,13 +86,6 @@ export default function ActiveCallPanel({
     } catch {
       // parent shows toast
     }
-  }
-
-  const handleTransfer = async () => {
-    if (!selectedAgentId) return
-    await onTransfer?.(selectedAgentId)
-    setShowTransfer(false)
-    setSelectedAgentId('')
   }
 
   const handleHangUp = () => {
@@ -220,7 +200,7 @@ export default function ActiveCallPanel({
             </div>
           )}
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className={cn('grid gap-2', canManage ? 'grid-cols-3' : 'grid-cols-2')}>
             <CallActionButton
               icon={muted ? MicOff : Mic}
               label={muted ? 'Unmute' : 'Mute'}
@@ -228,19 +208,15 @@ export default function ActiveCallPanel({
               disabled={!isConnected}
               onClick={handleToggleMute}
             />
-            <CallActionButton
-              icon={callerOnHold ? Play : Pause}
-              label={callerOnHold ? 'Resume' : 'Hold'}
-              active={callerOnHold}
-              disabled={!isConnected}
-              onClick={handleToggleHold}
-            />
-            <CallActionButton
-              icon={ArrowRightLeft}
-              label="Transfer"
-              disabled={!isConnected || transferCandidates.length === 0}
-              onClick={() => setShowTransfer(true)}
-            />
+            {canManage && (
+              <CallActionButton
+                icon={callerOnHold ? Play : Pause}
+                label={callerOnHold ? 'Resume' : 'Hold'}
+                active={callerOnHold}
+                disabled={!isConnected}
+                onClick={handleToggleHold}
+              />
+            )}
             <CallActionButton
               icon={PhoneOff}
               label="Hang up"
@@ -249,67 +225,25 @@ export default function ActiveCallPanel({
             />
           </div>
 
-          {showTransfer && (
-            <div className="rounded-xl border border-border bg-background p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-foreground">Transfer to agent</p>
-                <button
-                  type="button"
-                  onClick={() => setShowTransfer(false)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <select
-                value={selectedAgentId}
-                onChange={(event) => setSelectedAgentId(event.target.value)}
-                className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none"
-              >
-                <option value="">Select available agent</option>
-                {transferCandidates.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name} ({agent.activeChats}/{agent.maxConcurrent} active)
-                  </option>
-                ))}
-              </select>
+          <div className="flex gap-2">
+            {canManage && (
               <button
                 type="button"
-                disabled={!selectedAgentId || transferring}
-                onClick={handleTransfer}
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[var(--studio-primary)] text-sm font-medium text-white hover:brightness-95 disabled:opacity-60"
+                disabled={resolving}
+                onClick={() => onResolve?.()}
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
               >
-                <User className="h-4 w-4" />
-                {transferring ? 'Transferring…' : 'Confirm transfer'}
+                <CheckCircle2 className="h-4 w-4" />
+                {resolving ? 'Resolving…' : 'Resolve & close'}
               </button>
-            </div>
-          )}
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Call notes</label>
-            <textarea
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Add notes while on the call…"
-              rows={2}
-              className="mt-1.5 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--studio-primary)]/30"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={resolving}
-              onClick={() => onResolve?.()}
-              className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              {resolving ? 'Resolving…' : 'Resolve & close'}
-            </button>
+            )}
             <button
               type="button"
               onClick={handleHangUp}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-medium text-muted-foreground hover:text-foreground"
+              className={cn(
+                'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-medium text-muted-foreground hover:text-foreground',
+                !canManage && 'flex-1',
+              )}
             >
               <Phone className="h-4 w-4" />
               Leave call

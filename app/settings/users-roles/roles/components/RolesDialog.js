@@ -85,6 +85,7 @@ export default function RolesDialog({
             setEditingRole({
               role: role.role,
               showOnCalendar: !!role.showOnCalendar,
+              isCallCenterAgent: !!role.isCallCenterAgent,
               permissions: rolePermissions,
               _id: role._id,
             })
@@ -104,6 +105,7 @@ export default function RolesDialog({
       setEditingRole({
         role: '',
         showOnCalendar: false,
+        isCallCenterAgent: false,
         permissions: deepClonePermissions(permissionsSchema),
       })
     }
@@ -160,6 +162,7 @@ export default function RolesDialog({
       const payload = {
         role: editingRole.role,
         showOnCalendar: !!editingRole.showOnCalendar,
+        isCallCenterAgent: !!editingRole.isCallCenterAgent,
         permissions: editingRole.permissions,
       }
       const url = editingRole._id ? `${API_BASE}/api/role/${editingRole._id}` : `${API_BASE}/api/role`

@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
 import api, { getApiBaseUrl } from '@/lib/api'
 import {
   clampBackgroundSoundVolume,
@@ -16,6 +17,7 @@ import {
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import BackgroundSoundUploadDialog from './BackgroundSoundUploadDialog'
+import { locationBadgeLabel } from './locationScope'
 
 const PAGE_SIZE = 12
 
@@ -303,6 +305,7 @@ export default function BackgroundSoundsTab() {
               const isPlaying = playingId === sound._id
               const isEditing = editingId === sound._id
               const isSaving = savingId === sound._id
+              const locLabel = locationBadgeLabel(sound)
               return (
                 <Card key={sound._id} className="rounded-xl border-border/80 hover:shadow-md transition-all">
                   <CardContent className="p-4 space-y-3">
@@ -378,6 +381,11 @@ export default function BackgroundSoundsTab() {
                             <p className="text-[11px] text-muted-foreground mt-0.5">
                               Uploaded {formatUploadedAt(sound.uploadedAt || sound.createdAt)}
                             </p>
+                            {locLabel && (
+                              <Badge variant="secondary" className="mt-1.5 text-[10px] font-normal">
+                                {locLabel}
+                              </Badge>
+                            )}
                           </>
                         )}
                       </div>

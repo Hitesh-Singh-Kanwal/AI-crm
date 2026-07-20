@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast, toast as toastApi } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import LocationSelector from '@/components/shared/LocationSelector'
 import api, { getApiBaseUrl } from '@/lib/api'
 import {
   DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
@@ -36,6 +37,7 @@ import {
   resolveBackgroundSoundForSave,
   resolveBackgroundSoundOptionValue,
 } from '@/lib/backgroundSound'
+import { hasLocationSelection, initLocationID, locationBadgeLabel, toLocationPayload } from './locationScope'
 
 const ASSISTANTS_PAGE_SIZE = 9
 const DEFAULT_LLM = 'gpt-4o-mini'
@@ -117,6 +119,7 @@ export default function AiAssistTab() {
   const [successEvaluationEnabled, setSuccessEvaluationEnabled] = useState(true)
   const [successEvaluationPrompt, setSuccessEvaluationPrompt] = useState(DEFAULT_SUCCESS_EVALUATION_PROMPT)
   const [successEvaluationRubric, setSuccessEvaluationRubric] = useState(DEFAULT_SUCCESS_EVALUATION_RUBRIC)
+  const [locationID, setLocationID] = useState([])
 
   // --- preview state ---
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -158,7 +161,7 @@ export default function AiAssistTab() {
     [knowledgeFiles, selectedKnowledgeFileId]
   )
 
-  const canSave = !!name.trim() && !!selectedPersona && !!selectedScript
+  const canSave = !!name.trim() && !!selectedPersona && !!selectedScript && hasLocationSelection(locationID)
   const selectableBackgroundSounds = useMemo(
     () => getSelectableBackgroundSounds(backgroundSounds, getApiBaseUrl()),
     [backgroundSounds]
@@ -259,6 +262,7 @@ export default function AiAssistTab() {
     setSuccessEvaluationEnabled(true)
     setSuccessEvaluationPrompt(DEFAULT_SUCCESS_EVALUATION_PROMPT)
     setSuccessEvaluationRubric(DEFAULT_SUCCESS_EVALUATION_RUBRIC)
+    setLocationID([])
   }
 
   const syncVoiceTuningFromPersona = useCallback((persona) => {
@@ -381,6 +385,7 @@ export default function AiAssistTab() {
           : DEFAULT_SUCCESS_EVALUATION_PROMPT
       )
       setSuccessEvaluationRubric(full.successEvaluationRubric || DEFAULT_SUCCESS_EVALUATION_RUBRIC)
+      setLocationID(initLocationID(full))
     } catch (e) {
       console.error(e)
       toast.error({ title: 'Error', message: 'Could not load assistant details.' })
@@ -438,6 +443,10 @@ export default function AiAssistTab() {
 
   // ── save (create or update) ──
   const handleSave = async () => {
+    if (!hasLocationSelection(locationID)) {
+      toast.error({ title: 'Missing location', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     if (!canSave) return
     setSaving(true)
     try {
@@ -477,6 +486,7 @@ export default function AiAssistTab() {
         successEvaluationEnabled,
         successEvaluationPrompt: String(successEvaluationPrompt || '').trim(),
         successEvaluationRubric: String(successEvaluationRubric || DEFAULT_SUCCESS_EVALUATION_RUBRIC),
+        ...toLocationPayload(locationID),
       }
 
       const isEditing = !!editingAssistant
@@ -597,7 +607,9 @@ export default function AiAssistTab() {
       {!loading && !error && assistants.length > 0 && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {assistants.map((assistant) => (
+            {assistants.map((assistant) => {
+              const locLabel = locationBadgeLabel(assistant)
+              return (
               <Card key={assistant._id} className="rounded-xl border-border/80 hover:shadow-md transition-all flex flex-col">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
@@ -608,6 +620,11 @@ export default function AiAssistTab() {
                         {' · '}
                         Provider: <span className="font-medium">{assistant.persona?.provider || '—'}</span>
                       </p>
+                      {locLabel && (
+                        <Badge variant="secondary" className="mt-1.5 text-[10px] font-normal">
+                          {locLabel}
+                        </Badge>
+                      )}
                     </div>
                     <Badge variant="outline" className="text-[10px] shrink-0">
                       {formatBackgroundSoundLabel(assistant.backgroundSound, backgroundSounds)}
@@ -655,7 +672,8 @@ export default function AiAssistTab() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+            )
+            })}
           </div>
 
           {/* Pagination */}
@@ -732,6 +750,19 @@ export default function AiAssistTab() {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5 md:col-span-2">
+                <p className="text-sm font-medium">Studio location *</p>
+                <LocationSelector
+                  value={locationID}
+                  onChange={setLocationID}
+                  multiple
+                  allowAllBranches
+                  showAllOption={false}
+                  placeholder="Select studio(s)…"
+                  disabled={editorLoading}
+                />
+              </div>
+
               <div className="space-y-1.5 md:col-span-2">
                 <p className="text-sm font-medium">Assistant name</p>
                 <Input

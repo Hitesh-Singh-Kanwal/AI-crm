@@ -436,7 +436,7 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [locationID, setLocationID] = useState(null);
+  const [locationID, setLocationID] = useState([]);
   const [error, setError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -445,8 +445,8 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
       setError("Name and email are required.");
       return;
     }
-    if (!locationID) {
-      setError("Please select a location.");
+    if (!Array.isArray(locationID) || locationID.length === 0) {
+      setError("Please select at least one location.");
       return;
     }
     setIsCreating(true);
@@ -482,9 +482,9 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
         <LocationSelector
           value={locationID}
           onChange={setLocationID}
-          multiple={false}
+          multiple
           showAllOption={false}
-          placeholder="Select location…"
+          placeholder="Select location(s)…"
         />
       </div>
       {error && <p className="text-[11px] text-destructive">{error}</p>}
@@ -2601,6 +2601,14 @@ export default function AppointmentComposerPanel({
         <NewEnrollmentPackageInline
           teacherOptions={instructorOptions}
           packageTemplates={packageTemplates}
+          customerID={form.customer_id || undefined}
+          locationID={(() => {
+            const c = rawCustomers?.find((x) => String(x._id) === String(form.customer_id))
+            const loc = c?.locationID
+            if (!loc) return undefined
+            if (Array.isArray(loc)) return loc[0]?._id || loc[0] || undefined
+            return loc._id || loc
+          })()}
           onCancel={() => setShowEnrollmentWizard(false)}
           onSubmit={async (payload) => {
             const created = await handleNewEnrollment(form.customer_id, payload);
@@ -2680,6 +2688,7 @@ export default function AppointmentComposerPanel({
     packageTemplates,
     allServices,
     enrollments,
+    rawCustomers,
   ]);
 
   const slotCount = form.selected_time_slots?.length ?? 0;

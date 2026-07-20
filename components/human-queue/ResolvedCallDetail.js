@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { RefreshCw, User } from 'lucide-react'
-import api from '@/lib/api'
+import { Headphones, RefreshCw, User } from 'lucide-react'
+import api, { getApiBaseUrl } from '@/lib/api'
+import { getToken } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import SuccessEvaluationDisplay from '@/components/ai-calling/SuccessEvaluationDisplay'
@@ -16,6 +17,14 @@ function formatDuration(startedAt, endedAt) {
   const totalSec = Math.round(ms / 1000)
   const m = Math.floor(totalSec / 60)
   const s = totalSec % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function formatRecordingDuration(seconds) {
+  if (seconds == null || !Number.isFinite(Number(seconds))) return null
+  const total = Math.max(0, Math.round(Number(seconds)))
+  const m = Math.floor(total / 60)
+  const s = total % 60
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
@@ -59,22 +68,28 @@ function getStereoUrl(call) {
 
 /**
  * Full call history detail (recording + transcript) for a resolved Human Queue item.
- * Loads AiCallDetail via the queue item's vapiCallId.
+ * Loads AiCallDetail via the queue item's vapiCallId + human conference recording.
  */
 export default function ResolvedCallDetail({ queueItem, onBack }) {
   const [call, setCall] = useState(null)
+  const [freshItem, setFreshItem] = useState(queueItem || null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState(null)
+  const [humanAudioUrl, setHumanAudioUrl] = useState(null)
+  const [humanAudioError, setHumanAudioError] = useState(null)
+  const [humanAudioLoading, setHumanAudioLoading] = useState(false)
 
-  const vapiCallId = queueItem?.vapiCallId || null
-  const callerName = queueItem?.leadName || queueItem?.callerName || call?.customer?.name || call?.leadID?.name || 'Unknown caller'
-  const callerPhone = queueItem?.phone || queueItem?.callerPhone || call?.customer?.number || call?.leadID?.phoneNumber || ''
+  const activeItem = freshItem || queueItem
+  const vapiCallId = activeItem?.vapiCallId || null
+  const queueItemId = activeItem?.id || activeItem?._id || null
+  const callerName = activeItem?.leadName || activeItem?.callerName || call?.customer?.name || call?.leadID?.name || 'Unknown caller'
+  const callerPhone = activeItem?.phone || activeItem?.callerPhone || call?.customer?.number || call?.leadID?.phoneNumber || ''
 
   const loadCall = async ({ silent = false } = {}) => {
     if (!vapiCallId) {
       setCall(null)
-      setError('No Vapi call ID on this queue item — recording may not be available.')
+      setError(null)
       setLoading(false)
       return
     }
@@ -84,7 +99,7 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
       const r = await api.get(`/api/ai-calling/by-call-id/${encodeURIComponent(vapiCallId)}`)
       if (!r.success || !r.data) {
         setCall(null)
-        setError(r.error || 'Call recording / transcript not found yet. It may still be syncing from Vapi.')
+        setError(r.error || 'AI call recording / transcript not found yet. It may still be syncing from Vapi.')
         return
       }
       setCall(r.data)
@@ -97,9 +112,76 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
   }
 
   useEffect(() => {
+    setFreshItem(queueItem || null)
+  }, [queueItem])
+
+  useEffect(() => {
+    let cancelled = false
+    async function refreshQueueItem() {
+      const id = queueItem?.id || queueItem?._id
+      if (!id) return
+      try {
+        const r = await api.get(`/api/human-queue/${encodeURIComponent(id)}`)
+        if (!cancelled && r.success && r.data) setFreshItem(r.data)
+      } catch {
+        // keep list snapshot
+      }
+    }
+    refreshQueueItem()
+    return () => { cancelled = true }
+  }, [queueItem?.id, queueItem?._id])
+
+  useEffect(() => {
     loadCall()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vapiCallId])
+
+  useEffect(() => {
+    let objectUrl = null
+    let cancelled = false
+
+    async function loadHumanRecording() {
+      if (!queueItemId) {
+        setHumanAudioUrl(null)
+        setHumanAudioError(null)
+        return
+      }
+
+      setHumanAudioLoading(true)
+      setHumanAudioError(null)
+      try {
+        const token = getToken()
+        const res = await fetch(
+          `${getApiBaseUrl()}/api/human-queue/${encodeURIComponent(queueItemId)}/human-recording`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        )
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
+          throw new Error(
+            body?.message
+            || body?.error
+            || 'No human call recording yet. It is created after an agent joins the live conference.',
+          )
+        }
+        const blob = await res.blob()
+        objectUrl = URL.createObjectURL(blob)
+        if (!cancelled) setHumanAudioUrl(objectUrl)
+      } catch (err) {
+        if (!cancelled) {
+          setHumanAudioUrl(null)
+          setHumanAudioError(err?.message || 'Could not load human call recording')
+        }
+      } finally {
+        if (!cancelled) setHumanAudioLoading(false)
+      }
+    }
+
+    loadHumanRecording()
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [queueItemId, activeItem?.humanRecordingSid, activeItem?.humanRecordingUrl])
 
   const handleSync = async () => {
     if (!call?._id) return
@@ -119,23 +201,23 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
   const recordingUrl = getRecordingUrl(call)
   const stereoUrl = getStereoUrl(call)
 
-  const startedAt = call?.startedAt || queueItem?.createdAt || null
+  const startedAt = call?.startedAt || activeItem?.createdAt || null
   const endedAt =
     call?.endedAt
-    || queueItem?.resolvedAt
-    || queueItem?.abandonedAt
-    || queueItem?.callerLeftAt
+    || activeItem?.resolvedAt
+    || activeItem?.abandonedAt
+    || activeItem?.callerLeftAt
     || null
   const duration = formatDuration(startedAt, endedAt)
   const endedReasonDisplay =
     formatEndedReason(call?.endedReason)
-    || endedReasonLabel(queueItem?.endedReason)
-    || (queueItem?.redirectSucceeded ? 'Transferred to human' : null)
+    || endedReasonLabel(activeItem?.endedReason)
+    || (activeItem?.redirectSucceeded ? 'Transferred to human' : null)
     || null
 
   const assistantLabel =
     call?.dbAssistantId?.name
-    || queueItem?.assistantName
+    || activeItem?.assistantName
     || call?.assistantName
     || 'AI Agent'
   const evalRubric = call?.dbAssistantId?.successEvaluationRubric || null
@@ -183,8 +265,8 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
                 <div className="min-w-0">
                   <p className="text-lg font-semibold text-foreground truncate">{callerName}</p>
                   <p className="text-sm text-muted-foreground truncate">{callerPhone}</p>
-                  {queueItem?.intent && (
-                    <p className="text-xs text-muted-foreground mt-1 truncate">{queueItem.intent}</p>
+                  {activeItem?.intent && (
+                    <p className="text-xs text-muted-foreground mt-1 truncate">{activeItem.intent}</p>
                   )}
                 </div>
               </div>
@@ -195,15 +277,48 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
                     <span className="text-xs font-normal text-muted-foreground ml-1">cost</span>
                   </p>
                 )}
-                <p>Escalated {formatDateTime(queueItem?.createdAt)}</p>
-                {(queueItem?.endedAt || queueItem?.resolvedAt || queueItem?.abandonedAt) && (
-                  <p>Ended {formatDateTime(queueItem.endedAt || queueItem.resolvedAt || queueItem.abandonedAt)}</p>
+                <p>Escalated {formatDateTime(activeItem?.createdAt)}</p>
+                {(activeItem?.endedAt || activeItem?.resolvedAt || activeItem?.abandonedAt) && (
+                  <p>Ended {formatDateTime(activeItem.endedAt || activeItem.resolvedAt || activeItem.abandonedAt)}</p>
                 )}
               </div>
             </div>
           </div>
 
           <div className="px-5 py-5 space-y-6">
+            <div className="rounded-xl border border-emerald-300/40 bg-emerald-50/60 dark:border-emerald-500/20 dark:bg-emerald-500/10 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Headphones className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Human call recording</p>
+                  <p className="text-xs text-muted-foreground">
+                    Agent ↔ customer conference
+                    {formatRecordingDuration(activeItem?.humanRecordingDuration)
+                      ? ` · ${formatRecordingDuration(activeItem.humanRecordingDuration)}`
+                      : ''}
+                    {activeItem?.humanRecordingStatus ? ` · ${activeItem.humanRecordingStatus}` : ''}
+                  </p>
+                </div>
+              </div>
+              {humanAudioLoading && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <GlobalLoader variant="inline" size="sm" />
+                  Loading recording…
+                </div>
+              )}
+              {humanAudioUrl && (
+                <audio controls className="w-full" src={humanAudioUrl} preload="metadata" />
+              )}
+              {!humanAudioLoading && !humanAudioUrl && (
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  {humanAudioError
+                    || (!activeItem?.agentCallSid && !activeItem?.inProgressAt
+                      ? 'No human agent joined this call, so there is no human conversation recording. The AI transcript below is from before the transfer.'
+                      : 'Human recording is not available for this call yet.')}
+                </p>
+              )}
+            </div>
+
             {error && !call && (
               <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
                 {error}
@@ -230,7 +345,7 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
                 <div className="space-y-2">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Summary</p>
                   <p className="text-sm text-foreground bg-muted/50 rounded-lg p-3">
-                    {call.analysis?.summary || call.summary || queueItem?.aiSummary || 'No summary available'}
+                    {call.analysis?.summary || call.summary || activeItem?.aiSummary || 'No summary available'}
                   </p>
                 </div>
 
@@ -244,7 +359,7 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
 
                 {(recordingUrl || stereoUrl) && (
                   <div className="space-y-3">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Recording</p>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">AI call recording</p>
                     {recordingUrl && (
                       <audio controls className="w-full" src={recordingUrl} />
                     )}
@@ -313,7 +428,7 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
 
                 {!recordingUrl && !stereoUrl && messages.length === 0 && (
                   <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-                    Recording and transcript are not available yet. Try Sync from Vapi.
+                    AI recording and transcript are not available yet. Try Sync from Vapi.
                   </div>
                 )}
               </>
@@ -322,7 +437,7 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
             {!call && !error && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <User className="h-4 w-4" />
-                No call detail loaded.
+                No AI call detail loaded.
               </div>
             )}
           </div>

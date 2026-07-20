@@ -15,6 +15,7 @@ import ScriptPreviewDialog from './ScriptPreviewDialog'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
+import { locationBadgeLabel } from './locationScope'
 
 const SCRIPTS_PAGE_SIZE = 9
 
@@ -273,7 +274,9 @@ export default function ScriptsTab() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {!loading &&
           !error &&
-          scripts.map((script, index) => (
+          scripts.map((script, index) => {
+            const locLabel = locationBadgeLabel(script)
+            return (
           <Card
             key={script._id}
             className={cn(
@@ -305,6 +308,11 @@ export default function ScriptsTab() {
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                         {script.type || 'call'}
                       </Badge>
+                      {locLabel && (
+                        <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0">
+                          {locLabel}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -410,7 +418,8 @@ export default function ScriptsTab() {
               </div>
             </CardContent>
           </Card>
-        ))}
+            )
+          })}
       </div>
 
       {!loading && !error && scripts.length > 0 && (

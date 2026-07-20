@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
+import LocationSelector from '@/components/shared/LocationSelector'
 import api from '@/lib/api'
 import {
   DEFAULT_BACKGROUND_SOUND_VOLUME,
   clampBackgroundSoundVolume,
   formatBackgroundSoundVolumeLabel,
 } from '@/lib/backgroundSound'
+import { appendLocationFields, hasLocationSelection } from './locationScope'
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024
 const ALLOWED_AUDIO_EXT = /\.(mp3|wav|ogg|m4a|webm)$/i
@@ -37,8 +39,12 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
   const [description, setDescription] = useState('')
   const [file, setFile] = useState(null)
   const [volume, setVolume] = useState(DEFAULT_BACKGROUND_SOUND_VOLUME)
+  const [locationID, setLocationID] = useState([])
 
-  const canUpload = useMemo(() => !!file && !!normalize(name), [file, name])
+  const canUpload = useMemo(
+    () => !!file && !!normalize(name) && hasLocationSelection(locationID),
+    [file, name, locationID],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -47,6 +53,7 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
     setDescription('')
     setFile(null)
     setVolume(DEFAULT_BACKGROUND_SOUND_VOLUME)
+    setLocationID([])
     if (fileInputRef.current) fileInputRef.current.value = ''
   }, [open])
 
@@ -68,6 +75,10 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
   }
 
   async function handleUpload() {
+    if (!hasLocationSelection(locationID)) {
+      toast.error({ title: 'Missing location', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     if (!canUpload) return
     setSaving(true)
     try {
@@ -76,6 +87,7 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
       fd.append('description', normalize(description))
       fd.append('volume', String(clampBackgroundSoundVolume(volume)))
       fd.append('file', file)
+      appendLocationFields(fd, locationID)
 
       const result = await api.request('/api/ai-background-sound/upload', {
         method: 'POST',
@@ -108,6 +120,21 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
           <p className="text-xs text-muted-foreground">
             Upload a short ambient loop (MP3, WAV, M4A, OGG, WEBM). Max 10 MB. Vapi plays it softly in the background during calls.
           </p>
+
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium">
+              Studio location <span className="text-red-500">*</span>
+            </p>
+            <LocationSelector
+              value={locationID}
+              onChange={setLocationID}
+              multiple
+              allowAllBranches
+              showAllOption={false}
+              placeholder="Select studio(s)…"
+              disabled={saving}
+            />
+          </div>
 
           <div className="space-y-1.5">
             <p className="text-sm font-medium">

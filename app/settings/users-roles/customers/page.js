@@ -43,7 +43,7 @@ const EMPTY_FORM = {
   email: '',
   phoneNumber: '',
   credits: 0,
-  locationID: '',
+  locationID: [],
   dateOfBirth: '',
   gender: '',
   address: {
@@ -103,7 +103,11 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
             email: initial.email || '',
             phoneNumber: initial.phoneNumber || '',
             credits: initial.credits ?? 0,
-            locationID: String(initial.locationID?._id ?? initial.locationID ?? ''),
+            locationID: Array.isArray(initial.locationID)
+              ? initial.locationID.map((l) => String(l?._id ?? l)).filter(Boolean)
+              : initial.locationID
+                ? [String(initial.locationID?._id ?? initial.locationID)]
+                : [],
             dateOfBirth: initial.dateOfBirth ? String(initial.dateOfBirth).slice(0, 10) : '',
             gender: initial.gender || '',
             address: {
@@ -131,8 +135,8 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
       setError('Name and email are required.')
       return
     }
-    if (!form.locationID) {
-      setError('Please select a location.')
+    if (!Array.isArray(form.locationID) || form.locationID.length === 0) {
+      setError('Please select at least one location.')
       return
     }
     setSaving(true)
@@ -237,11 +241,11 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Studio location" required>
                   <LocationSelector
-                    value={form.locationID || null}
-                    onChange={(id) => setField('locationID', id || '')}
-                    multiple={false}
+                    value={form.locationID}
+                    onChange={(ids) => setField('locationID', ids)}
+                    multiple
                     showAllOption={false}
-                    placeholder="Select location…"
+                    placeholder="Select location(s)…"
                   />
                 </FormField>
               </div>
@@ -406,9 +410,17 @@ export default function CustomersPage() {
     setDeleting(false)
   }
 
-  const locationName = (id) => {
-    const loc = locations.find((l) => String(l._id) === String(id))
-    return loc?.name || '—'
+  const locationName = (raw) => {
+    const ids = Array.isArray(raw)
+      ? raw.map((l) => String(l?._id ?? l)).filter(Boolean)
+      : raw
+        ? [String(raw?._id ?? raw)]
+        : []
+    if (!ids.length) return '—'
+    const names = ids.map((id) => locations.find((l) => String(l._id) === id)?.name).filter(Boolean)
+    if (!names.length) return '—'
+    if (names.length <= 2) return names.join(', ')
+    return `${names.slice(0, 2).join(', ')} +${names.length - 2}`
   }
 
   const openCreateListFromFilters = () => {

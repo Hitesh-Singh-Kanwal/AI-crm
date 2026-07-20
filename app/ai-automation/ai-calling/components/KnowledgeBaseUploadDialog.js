@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
+import LocationSelector from '@/components/shared/LocationSelector'
 import api from '@/lib/api'
+import { appendLocationFields, hasLocationSelection } from './locationScope'
 
 function normalize(v) {
   return (v || '').trim()
@@ -20,10 +22,11 @@ export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded })
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [file, setFile] = useState(null)
+  const [locationID, setLocationID] = useState([])
 
   const canUpload = useMemo(
-    () => !!file && !!normalize(name) && !!normalize(description),
-    [file, name, description],
+    () => !!file && !!normalize(name) && !!normalize(description) && hasLocationSelection(locationID),
+    [file, name, description, locationID],
   )
 
   useEffect(() => {
@@ -32,9 +35,14 @@ export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded })
     setName('')
     setDescription('')
     setFile(null)
+    setLocationID([])
   }, [open])
 
   async function handleUpload() {
+    if (!hasLocationSelection(locationID)) {
+      toast.error({ title: 'Missing location', message: 'Select one or more studios, or All branches.' })
+      return
+    }
     if (!canUpload) return
     setSaving(true)
     try {
@@ -42,6 +50,7 @@ export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded })
       fd.append('name', normalize(name))
       fd.append('description', normalize(description))
       fd.append('file', file)
+      appendLocationFields(fd, locationID)
 
       const result = await api.request('/api/ai-script/file/upload', {
         method: 'POST',
@@ -72,6 +81,19 @@ export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded })
         </DialogHeader>
 
         <div className="mt-5 space-y-4">
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium">Studio location <span className="text-red-500">*</span></p>
+            <LocationSelector
+              value={locationID}
+              onChange={setLocationID}
+              multiple
+              allowAllBranches
+              showAllOption={false}
+              placeholder="Select studio(s)…"
+              disabled={saving}
+            />
+          </div>
+
           <div className="space-y-1.5">
             <p className="text-sm font-medium">Name <span className="text-red-500">*</span></p>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. AiScriptCallFile" disabled={saving} />
@@ -124,4 +146,3 @@ export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded })
     </Dialog>
   )
 }
-
