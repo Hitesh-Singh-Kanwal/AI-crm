@@ -133,6 +133,7 @@ const EMPTY_FORM = {
   lesson_id: "",
   todo_id: "",
   service_id: "",
+  location_id: "",
   instructor_id: "",
   instructor_ids: [],
   customer_id: "",
@@ -1889,6 +1890,16 @@ function GroupClassFields({
             placeholder="Select service…"
           />
         </div>
+        <div>
+          <FieldLabel>Location</FieldLabel>
+          <LocationSelector
+            value={form.location_id}
+            onChange={(v) => setField("location_id", v)}
+            multiple={false}
+            showAllOption={false}
+            placeholder="Select location…"
+          />
+        </div>
       </div>
       <WhenSection
         form={form}
@@ -2376,6 +2387,8 @@ export default function AppointmentComposerPanel({
 
     // Create location comes from the customer / lesson / todo — never the header
     // branch filter (header is view-only). Prefer the selected customer's studio.
+    // Group Class events have none of those at creation time (students are
+    // enrolled afterward), so they fall back to the explicit Location field.
     const selectedCustomer = form.customer_id
       ? rawCustomers.find((c) => String(c._id) === String(form.customer_id))
       : null;
@@ -2390,7 +2403,14 @@ export default function AppointmentComposerPanel({
       firstLoc(selectedCustomer?.locationID) ||
       firstLoc(selectedLesson?.locationID) ||
       firstLoc(selectedTodo?.locationID) ||
+      form.location_id ||
       undefined;
+
+    if (activeTab === "Group Class" && !createLocationID) {
+      setError("Select a location to create this group class.");
+      setIsSaving(false);
+      return;
+    }
 
     const basePayload = {
       title:

@@ -47,6 +47,7 @@ const navItems = [
     children: [
       { name: 'Overview', href: '/reports' },
       { name: "Teacher's Commissions", href: '/reports/teacher-commissions' },
+      { name: 'Callback Report', href: '/reports/callbacks' },
     ],
   },
   {
