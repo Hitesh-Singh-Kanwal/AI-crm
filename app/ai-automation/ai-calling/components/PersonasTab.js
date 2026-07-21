@@ -66,6 +66,16 @@ function getNextCopyName(baseName, personas = []) {
   return `${root} copy ${maxCopy + 1}`
 }
 
+/** Seed / catalog personas — shared for all studios; not location-scoped. */
+function isSharedPersona(p) {
+  if (!p) return false
+  if (p.isDefault) return true
+  if (!p.organisationID) return true
+  const emptyLoc = !p.locationID?.length
+  const notAllLocs = !p.allLocations
+  return emptyLoc && notAllLocs
+}
+
 export default function PersonasTab({
   personas,
   personasLoading,
@@ -91,7 +101,7 @@ export default function PersonasTab({
   const [overrides, setOverrides] = useState({})
 
   const toggleFavorite = async (persona) => {
-    if (togglingIds.has(persona._id)) return
+    if (togglingIds.has(persona._id) || isSharedPersona(persona)) return
     const current = { ...persona, ...overrides[persona._id] }
     const next = !current.isFavorite
     setTogglingIds((prev) => new Set(prev).add(persona._id))
@@ -113,7 +123,7 @@ export default function PersonasTab({
   }
 
   const toggleStatus = async (persona) => {
-    if (togglingIds.has(persona._id) || persona.isDefault) return
+    if (togglingIds.has(persona._id) || isSharedPersona(persona)) return
     const current = { ...persona, ...overrides[persona._id] }
     const next = current.status === 'active' ? 'inactive' : 'active'
     setTogglingIds((prev) => new Set(prev).add(persona._id))
@@ -252,7 +262,7 @@ export default function PersonasTab({
     setTargetPersona(persona)
     setVoice(persona.voice || '')
     loadPersonaIntoModal(persona)
-    setLocationID(initLocationID(persona))
+    setLocationID(isSharedPersona(persona) ? [] : initLocationID(persona))
     setModalMode('edit')
     setModalOpen(true)
   }
@@ -302,10 +312,12 @@ export default function PersonasTab({
       }
 
       toast.success({
-        title: modalMode === 'duplicate' ? 'Persona duplicated' : 'Persona updated',
+        title: modalMode === 'duplicate' ? 'Persona duplicated' : 'Persona saved',
         message: modalMode === 'duplicate'
-          ? `"${result.data?.voice || voice}" created successfully.`
-          : 'Persona updated successfully.',
+          ? `"${result.data?.voice || voice}" created for your studio.`
+          : isSharedPersona(targetPersona)
+            ? `"${result.data?.voice || voice}" saved for your studio.`
+            : 'Persona updated successfully.',
       })
       closeModal()
       onRefresh?.()
@@ -320,7 +332,7 @@ export default function PersonasTab({
   return (
     <TabsContent value="personas" className="mt-6 flex-1 min-h-0 flex flex-col gap-6">
       <p className="text-sm text-muted-foreground">
-        Voice personas used for AI calls. Duplicate, edit, or remove as needed.
+        ElevenLabs voice personas are shared across every studio. Duplicate or customize to save a copy for your location.
       </p>
 
       <div className="relative max-w-sm">
@@ -365,7 +377,8 @@ export default function PersonasTab({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {personas.map((persona, index) => {
               const p = { ...persona, ...overrides[persona._id] }
-              const locLabel = !p.isDefault ? locationBadgeLabel(p) : null
+              const shared = isSharedPersona(p)
+              const locLabel = !shared ? locationBadgeLabel(p) : null
               return (
               <Card
                 key={p._id}
@@ -398,6 +411,11 @@ export default function PersonasTab({
                             Default
                           </Badge>
                         )}
+                        {shared && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 font-normal">
+                            Shared
+                          </Badge>
+                        )}
                         {locLabel && (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 font-normal">
                             {locLabel}
@@ -406,7 +424,7 @@ export default function PersonasTab({
                       </div>
                       {/* Heart + Status toggles */}
                       <div className="flex items-center gap-1 mt-1.5">
-                        {!p.isDefault && (
+                        {!shared && (
                           <Switch
                             checked={p.status === 'active'}
                             onChange={() => toggleStatus(p)}
@@ -418,8 +436,14 @@ export default function PersonasTab({
                         <button
                           type="button"
                           onClick={() => toggleFavorite(p)}
-                          disabled={togglingIds.has(p._id)}
-                          title={p.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                          disabled={togglingIds.has(p._id) || shared}
+                          title={
+                            shared
+                              ? 'Duplicate or edit to customize for your studio'
+                              : p.isFavorite
+                                ? 'Remove from favorites'
+                                : 'Add to favorites'
+                          }
                           className={cn(
                             'h-6 w-6 flex items-center justify-center rounded-full transition-all duration-200 disabled:opacity-40',
                             p.isFavorite
@@ -537,57 +561,46 @@ export default function PersonasTab({
                     </Button>
                   </div>
 
-                  {/* Actions
-                      Rules:
-                      - Duplicate: only for provider === "11labs"
-                      - Edit:      only for provider === "11labs" AND isDefault === false
-                      - Delete:    only for isDefault === false
-                  */}
-                  {(persona.provider === '11labs' || !persona.isDefault) && (
-                    <div className="flex items-center gap-2 border-t border-border/50 pt-1">
-                      {persona.provider === '11labs' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 text-xs h-8"
-                          onClick={() => openDuplicate(p)}
-                          disabled={p.status === 'inactive'}
-                        >
-                          <Copy className="h-3.5 w-3.5 mr-1.5" />
-                          Duplicate
-                        </Button>
-                      )}
-                      {!p.isDefault && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 text-xs h-8"
-                          onClick={() => openEdit(p)}
-                          disabled={p.status === 'inactive'}
-                        >
-                          <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                          Edit
-                        </Button>
-                      )}
-                      {!p.isDefault && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onDeletePersona(p._id)
-                          }}
-                          disabled={deletingId === p._id}
-                          title="Delete"
-                        >
-                          {deletingId === p._id
-                            ? <GlobalLoader variant="inline" size="xs" />
-                            : <Trash2 className="h-3.5 w-3.5" />}
-                        </Button>
-                      )}
-                    </div>
-                  )}
+                  {/* Actions — shared catalog: duplicate/edit to customize; org copies: full control */}
+                  <div className="flex items-center gap-2 border-t border-border/50 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 text-xs h-8"
+                      onClick={() => openDuplicate(p)}
+                      disabled={p.status === 'inactive'}
+                    >
+                      <Copy className="h-3.5 w-3.5 mr-1.5" />
+                      Duplicate
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 text-xs h-8"
+                      onClick={() => openEdit(p)}
+                      disabled={p.status === 'inactive'}
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                      {shared ? 'Customize' : 'Edit'}
+                    </Button>
+                    {!shared && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDeletePersona(p._id)
+                        }}
+                        disabled={deletingId === p._id}
+                        title="Delete"
+                      >
+                        {deletingId === p._id
+                          ? <GlobalLoader variant="inline" size="xs" />
+                          : <Trash2 className="h-3.5 w-3.5" />}
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             )
@@ -644,7 +657,11 @@ export default function PersonasTab({
         <DialogContent onClose={closeModal}>
           <DialogHeader>
             <DialogTitle>
-              {modalMode === 'duplicate' ? 'Duplicate persona' : 'Edit persona'}
+              {modalMode === 'duplicate'
+                ? 'Duplicate persona'
+                : isSharedPersona(targetPersona)
+                  ? 'Customize for your studio'
+                  : 'Edit persona'}
             </DialogTitle>
           </DialogHeader>
 
