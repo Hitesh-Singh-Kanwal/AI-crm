@@ -423,6 +423,8 @@ function ProfileTab({ customer, locations, onUpdated }) {
     scheduledCount: 0,
     remainingCount: 0,
     totalCount: 0,
+    completedCount: 0,
+    completedValue: 0,
   });
   const toast = useToast();
 
@@ -463,15 +465,23 @@ function ProfileTab({ customer, locations, onUpdated }) {
         );
         let usedCount = 0,
           remainingCount = 0,
-          totalCount = 0;
+          totalCount = 0,
+          completedCount = 0;
         let usedValue = 0,
-          remainingValue = 0;
+          remainingValue = 0,
+          completedValue = 0;
         detResults.forEach((res) => {
           if (!res.success) return;
           const services = res.data?.services ?? [];
           services.forEach((svc) => {
             const price = Number(svc.pricePerSession) || 0;
             const used = svc.sessionsUsed ?? 0;
+            // sessionsUsed is the count deducted from the package balance —
+            // it includes sessions booked for a future date, not just ones
+            // that have actually happened. sessionsCompleted (derived
+            // server-side from past/completed CalendarEvents) is the true
+            // attendance count.
+            const completed = svc.sessionsCompleted ?? 0;
             const sched = svc.sessionsScheduled ?? 0;
             const remaining = Math.max(0, (svc.sessionsTotal ?? 0) - used);
             usedCount += used;
@@ -479,6 +489,8 @@ function ProfileTab({ customer, locations, onUpdated }) {
             totalCount += svc.sessionsTotal ?? 0;
             usedValue += used * price;
             remainingValue += remaining * price;
+            completedCount += completed;
+            completedValue += completed * price;
           });
         });
         // Derive scheduled count from future calendar events
@@ -495,6 +507,8 @@ function ProfileTab({ customer, locations, onUpdated }) {
           scheduledCount,
           remainingCount,
           totalCount,
+          completedCount,
+          completedValue,
         });
       });
   }, [customer?._id, customerEvents]);
@@ -579,8 +593,8 @@ function ProfileTab({ customer, locations, onUpdated }) {
         {[
           { label: "Member Since", value: formatDate(customer.createdAt) },
           {
-            label: `Sessions Used (${sessionStats.usedCount})`,
-            value: `$${sessionStats.usedValue.toFixed(2)}`,
+            label: `Sessions Completed (${sessionStats.completedCount ?? 0})`,
+            value: `$${(sessionStats.completedValue ?? 0).toFixed(2)}`,
             accent: "text-blue-500",
           },
           {
