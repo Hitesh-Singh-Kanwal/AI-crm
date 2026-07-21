@@ -202,7 +202,7 @@ export default function LeadsPage() {
       toast.info('Already a customer', { description: `${lead.name} has already been converted to a customer.` })
       return
     }
-    const confirmed = window.confirm(`Convert "${lead.name}" to a customer? This will create a Customer record and set the lead stage to Actualized.`)
+    const confirmed = window.confirm(`Convert "${lead.name}" to a customer? This will create a Customer record and mark the lead as Converted.`)
     if (!confirmed) return
 
     setConvertingId(lead._id)

@@ -12,6 +12,7 @@ import { getCustomerFilterFieldDef } from '@/lib/customer-list-filter-catalog'
 import { getFieldValueOptions as getCustomerFieldValueOptions } from '@/lib/customer-filter-fields'
 import { getFieldValueOptions as getLeadFieldValueOptions } from '@/lib/lead-filter-fields'
 import { formatFieldDisplayValue } from '@/lib/dynamic-list-normalize'
+import { useLeadStages } from '@/lib/lead-stages'
 
 const inputClass =
   'h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]'
@@ -39,6 +40,7 @@ export default function CatalogConditionValueInput({
   memberships = [],
   loadingOptions = false,
 }) {
+  const { stages } = useLeadStages()
   const getFilterFieldDef = entityType === 'customer' ? getCustomerFilterFieldDef : getLeadFilterFieldDef
   const getFieldValueOptions = entityType === 'customer' ? getCustomerFieldValueOptions : getLeadFieldValueOptions
   const def = getFilterFieldDef(field)
@@ -105,7 +107,7 @@ export default function CatalogConditionValueInput({
     )
   }
 
-  const context = { leadReasons, locations, forms, teachers, tags, memberships }
+  const context = { leadReasons, locations, forms, teachers, tags, memberships, stages }
   let labeledOptions = null
   if (def.optionsKey) {
     labeledOptions = getFieldValueOptions(def.optionsKey === 'source' ? 'source' : def.value, context)

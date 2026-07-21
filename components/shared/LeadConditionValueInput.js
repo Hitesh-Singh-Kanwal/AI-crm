@@ -16,12 +16,13 @@ export default function LeadConditionValueInput({
   leadReasons = [],
   locations = [],
   forms = [],
+  stages,
   loadingOptions = false,
 }) {
   const field = condition?.field || 'stage'
   const operator = condition?.operator || 'eq'
   const def = getConditionFieldDef(field)
-  const context = { leadReasons, locations, forms }
+  const context = { leadReasons, locations, forms, stages }
   const labeledOptions = getFieldValueOptions(field, context)
   const inputType = def?.inputType || 'text'
   const isMulti = operator === 'in' || operator === 'ne'

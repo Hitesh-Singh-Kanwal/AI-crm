@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { LEAD_STAGE_OPTIONS } from '@/components/workflow/builder/constants'
-import { formatLeadStageLabel } from '@/lib/lead-stages'
+import { formatLeadStageLabel, useLeadStages } from '@/lib/lead-stages'
 
 export default function WorkflowStageMultiSelect({
   values = [],
   onChange,
-  options = LEAD_STAGE_OPTIONS,
+  options: optionsProp,
   placeholder = 'Select stages…',
   searchPlaceholder = 'Search stages…',
   compact = true,
@@ -18,6 +17,9 @@ export default function WorkflowStageMultiSelect({
   const [query, setQuery] = useState('')
   const containerRef = useRef(null)
   const inputRef = useRef(null)
+
+  const { stages: orgStages } = useLeadStages()
+  const options = optionsProp ?? orgStages
 
   const normalizedOptions = options.map((opt) => {
     if (typeof opt === 'string') {

@@ -4,10 +4,10 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useLeadStages } from '@/lib/lead-stages'
 import {
   buildCampaignPatchPayload,
   CAMPAIGN_EVENT_OPTIONS,
-  CAMPAIGN_LEAD_STAGE_OPTIONS,
   CAMPAIGN_STATUS_OPTIONS,
   CAMPAIGN_STEP_STATUS_OPTIONS,
   CAMPAIGN_STEP_TYPES,
@@ -17,6 +17,7 @@ import {
 } from '@/lib/campaign-normalize'
 
 export default function CampaignEditDialog({ campaign, onClose, onSaved }) {
+  const { stages: leadStageOptions } = useLeadStages()
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -242,9 +243,9 @@ export default function CampaignEditDialog({ campaign, onClose, onSaved }) {
                       onChange={(e) => updateStep(idx, { leadStage: e.target.value })}
                       className="h-10 w-full rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-[var(--studio-primary)]"
                     >
-                      {CAMPAIGN_LEAD_STAGE_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {formatLeadStageLabel(opt)}
+                      {leadStageOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
                         </option>
                       ))}
                     </select>

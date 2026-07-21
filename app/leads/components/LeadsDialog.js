@@ -11,9 +11,7 @@ import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import LocationSelector from '@/components/shared/LocationSelector'
 import PhoneNumberInput from '@/components/shared/PhoneNumberInput'
-import { getLeadStageOptions } from '@/lib/lead-stages'
-
-const stageOptions = getLeadStageOptions()
+import { useLeadStages } from '@/lib/lead-stages'
 
 const bookingStatusOptions = [
   { value: 'Not Booked', label: 'Not Booked' },
@@ -49,6 +47,7 @@ export default function LeadsDialog({
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState('create')
   const toast = useToast()
+  const { stages: stageOptions } = useLeadStages()
 
   useEffect(() => {
     if (!open) {

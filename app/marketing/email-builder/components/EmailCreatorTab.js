@@ -11,11 +11,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
 import { extractLeadReasonsList } from '../emailBuilderApi'
-import { LEAD_STAGE_VALUES, formatLeadStageLabel } from '@/lib/lead-stages'
+import { useLeadStages } from '@/lib/lead-stages'
 
 export default function EmailCreatorTab({ onCreated }) {
   const toast = useToast()
 
+  const { stages: leadStageOptions } = useLeadStages()
   const [to, setTo] = useState('')
   const [leadStage, setLeadStage] = useState('')
   const [reasonCode, setReasonCode] = useState('')
@@ -98,9 +99,9 @@ export default function EmailCreatorTab({ onCreated }) {
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
               >
                 <option value="">Select lead stage…</option>
-                {LEAD_STAGE_VALUES.map((s) => (
-                  <option key={s} value={s}>
-                    {formatLeadStageLabel(s)}
+                {leadStageOptions.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
                   </option>
                 ))}
               </select>

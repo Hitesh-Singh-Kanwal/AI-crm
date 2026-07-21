@@ -18,10 +18,11 @@ import {
   extractLeadReasonsList,
   getTemplateCategoryId,
 } from '../emailBuilderApi'
-import { LEAD_STAGE_VALUES, formatLeadStageLabel } from '@/lib/lead-stages'
+import { useLeadStages } from '@/lib/lead-stages'
 
 export default function EmailTemplateEditorDialog({ open, onClose, templateId, onSaved }) {
   const toast = useToast()
+  const { stages: leadStageOptions } = useLeadStages()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -213,9 +214,9 @@ export default function EmailTemplateEditorDialog({ open, onClose, templateId, o
                       className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                     >
                       <option value="">Select lead stage…</option>
-                      {LEAD_STAGE_VALUES.map((s) => (
-                        <option key={s} value={s}>
-                          {formatLeadStageLabel(s)}
+                      {leadStageOptions.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
                         </option>
                       ))}
                     </select>

@@ -1,8 +1,9 @@
 'use client'
 
 import { DATE_RANGE_PRESETS, applyDateRangePreset, getDateRangePresetValue } from '@/lib/dynamic-list-member-filters'
-import { STAGE_OPTIONS, UPLOAD_TYPE_OPTIONS } from '@/lib/dynamic-list-constants'
+import { UPLOAD_TYPE_OPTIONS } from '@/lib/dynamic-list-constants'
 import { getFieldValueOptions } from '@/lib/lead-filter-fields'
+import { useLeadStages } from '@/lib/lead-stages'
 import FilterFieldWithOperator from '@/components/shared/FilterFieldWithOperator'
 import FilterLogicToggle from '@/components/shared/FilterLogicToggle'
 import { uploadFiltersIncludeFormSubmission } from '@/lib/lead-page-filters'
@@ -26,15 +27,12 @@ export default function LeadAdvancedFilterFields({
   loadingOptions = false,
   showEscalated = true,
 }) {
+  const { stages: stageOptions } = useLeadStages()
   const reasonOptions = getLeadReasonOptions(leadReasons)
   const bookingOptions = getFieldValueOptions('bookingStatus', { leadReasons, locations, forms }) || []
   const sourceOptions = getFieldValueOptions('source', { leadReasons, locations, forms }) || []
   const locationOptions = getFieldValueOptions('locationID', { leadReasons, locations, forms }) || []
   const formOptions = getFieldValueOptions('formID', { leadReasons, locations, forms }) || []
-  const stageOptions = STAGE_OPTIONS.map((value) => ({
-    value,
-    label: formatFieldDisplayValue(value),
-  }))
   const uploadTypeOptions = UPLOAD_TYPE_OPTIONS.map((value) => ({
     value,
     label: formatFieldDisplayValue(value),
