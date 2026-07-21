@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { UserPlus, X } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { UserPlus } from 'lucide-react'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
-import { cn } from '@/lib/utils'
 import LocationSelector from '@/components/shared/LocationSelector'
 import PhoneNumberInput from '@/components/shared/PhoneNumberInput'
 import { getLeadStageOptions } from '@/lib/lead-stages'
@@ -31,6 +31,7 @@ const emptyLead = {
   assignedAiAgent: '',
   assignedHumanAgent: '',
   isEscalated: false,
+  agentFollowupEnabled: true,
   callbackDate: '',
   notes: '',
 }
@@ -59,7 +60,12 @@ export default function LeadsDialog({
     if (initialLeadId && leads && leads.length > 0) {
       const found = leads.find((l) => l._id === initialLeadId)
       if (found) {
-        setEditingLead({ ...found, callbackDate: toDateInputValue(found.callbackDate), notes: found.notes || '' })
+        setEditingLead({
+          ...found,
+          callbackDate: toDateInputValue(found.callbackDate),
+          notes: found.notes || '',
+          agentFollowupEnabled: found.agentFollowupEnabled !== false,
+        })
         setMode(viewOnly ? 'view' : 'edit')
       }
     } else {
@@ -116,7 +122,7 @@ export default function LeadsDialog({
     setLoading(true)
     try {
       if (editingLead._id) {
-        const result = await api.put(`/api/lead/${editingLead._id}`, {
+        const result = await api.patch(`/api/lead/${editingLead._id}`, {
           name: editingLead.name,
           email: editingLead.email,
           phoneNumber: editingLead.phoneNumber,
@@ -127,6 +133,7 @@ export default function LeadsDialog({
           assignedAiAgent: editingLead.assignedAiAgent || '',
           assignedHumanAgent: editingLead.assignedHumanAgent || '',
           isEscalated: editingLead.isEscalated || false,
+          agentFollowupEnabled: editingLead.agentFollowupEnabled !== false,
           callbackDate: editingLead.callbackDate || null,
           notes: editingLead.notes || '',
         })
@@ -143,6 +150,7 @@ export default function LeadsDialog({
           ...editingLead,
           locationID: selectedLocationIDs,
           organisationID: user?.organisationID,
+          agentFollowupEnabled: editingLead.agentFollowupEnabled !== false,
           callbackDate: editingLead.callbackDate || undefined,
         }
         const result = await api.post('/api/lead', payload)
@@ -309,6 +317,21 @@ export default function LeadsDialog({
                 />
                 <span className="text-sm font-medium">Is Escalated</span>
               </label>
+            </div>
+            <div className="md:col-span-2 flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 px-4 py-3">
+              <div>
+                <div className="text-sm font-medium">Agent follow-up</div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  When off, this lead is opted out of automated AI follow-ups (even if location settings allow them).
+                </p>
+              </div>
+              <Switch
+                checked={editingLead.agentFollowupEnabled !== false}
+                onCheckedChange={(checked) =>
+                  setEditingLead({ ...editingLead, agentFollowupEnabled: checked })
+                }
+                disabled={viewOnly}
+              />
             </div>
           </div>
         </div>
