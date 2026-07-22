@@ -48,6 +48,7 @@ const EMPTY_FORM = {
   bio: '',
   status: 'active',
   locationID: [],
+  weeklyCapacity: '',
 }
 
 function FormField({ label, required, children }) {
@@ -79,6 +80,9 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
             specialties: initial.specialties || [],
             bio: initial.bio || '',
             status: initial.status || 'active',
+            weeklyCapacity: initial.weeklyCapacity === null || initial.weeklyCapacity === undefined
+              ? ''
+              : String(initial.weeklyCapacity),
             locationID: Array.isArray(initial.locationID)
               ? initial.locationID.map((l) => String(l?._id ?? l)).filter(Boolean)
               : initial.locationID
@@ -116,14 +120,18 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
     }
     setSaving(true)
 
+    const weeklyCapacity = form.weeklyCapacity.trim() === '' ? null : Number(form.weeklyCapacity)
+
     let result
     if (isEdit) {
-      result = await api.put(`/api/teacher/${initial._id}`, {
+      // Teacher edits go through /api/user — /api/teacher is a read-only router.
+      result = await api.put(`/api/user/${initial._id}`, {
         name: form.name.trim(),
         phoneNumber: form.phoneNumber.trim() || undefined,
         specialties: form.specialties,
         bio: form.bio.trim() || undefined,
         status: form.status,
+        weeklyCapacity,
       })
     } else {
       // Teachers are Users with role "teacher" — created via the invite flow
@@ -136,6 +144,7 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
         locationID: form.locationID,
         specialties: form.specialties,
         bio: form.bio.trim() || undefined,
+        weeklyCapacity,
       })
     }
 
@@ -213,6 +222,17 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
               </div>
             </FormField>
           </div>
+
+          <FormField label="Weekly capacity (lessons/sessions)">
+            <input
+              type="number"
+              min="0"
+              value={form.weeklyCapacity}
+              onChange={(e) => setField('weeklyCapacity', e.target.value)}
+              placeholder="Not set"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+            />
+          </FormField>
 
           <FormField label="Specialties">
             <div className="space-y-2">

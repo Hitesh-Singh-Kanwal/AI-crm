@@ -6,20 +6,70 @@ import AdminDashboard from '@/components/dashboard/AdminDashboard'
 import DashboardBuilder from '@/components/dashboard-builder/DashboardBuilder'
 import DateRangePresets from '@/components/dashboard-builder/DateRangePresets'
 import { dashboardWidgetRegistry } from '@/components/dashboard/widgets/registry'
+import { ownerDashboardWidgetRegistry } from '@/components/owner-dashboard/widgets/registry'
 import { isAdmin } from '@/lib/auth'
-import { useDashboardOverview } from '@/lib/hooks/useAnalyticsOverview'
+import { hasPermission } from '@/lib/permissions'
+import { useDashboardOverview, useOwnerDashboardOverview } from '@/lib/hooks/useAnalyticsOverview'
 import { Button } from '@/components/ui/button'
 
 export default function Dashboard() {
   const admin = isAdmin()
+  const canSeeOwnerOverview = hasPermission('dashboard', 'OwnerOverview', 'read')
+
   const [rangeDays, setRangeDays] = useState(30)
   const { data: overview, error, isLoading, isValidating, mutate } = useDashboardOverview(rangeDays, {
     enabled: !admin,
   })
+  const {
+    data: ownerOverview,
+    error: ownerError,
+    isLoading: ownerLoading,
+    isValidating: ownerValidating,
+    mutate: ownerMutate,
+  } = useOwnerDashboardOverview(rangeDays, { enabled: canSeeOwnerOverview })
+
+  const ownerDataLoading = ownerLoading && !ownerOverview
+
+  const ownerSection = canSeeOwnerOverview && (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-foreground">Owner Overview</h2>
+        <p className="text-sm text-muted-foreground">Student health, revenue, lessons, and funnel performance</p>
+      </div>
+
+      {ownerError && !ownerOverview && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <p className="text-sm text-foreground">
+            Couldn’t load owner overview data.{' '}
+            <span className="text-muted-foreground">{ownerError.message || 'Please try again.'}</span>
+          </p>
+          <Button variant="outline" size="sm" className="h-8" onClick={() => ownerMutate()}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      <DashboardBuilder
+        page="owner-dashboard"
+        widgets={ownerDashboardWidgetRegistry}
+        sharedProps={ownerOverview || {}}
+        dataLoading={ownerDataLoading}
+        toolbarExtra={
+          <div className="flex items-center gap-2">
+            {ownerValidating && ownerOverview && (
+              <span className="text-[11px] text-muted-foreground">Updating…</span>
+            )}
+            <DateRangePresets value={rangeDays} onChange={setRangeDays} />
+          </div>
+        }
+      />
+    </div>
+  )
 
   if (admin) {
     return (
       <MainLayout title="Dashboard" subtitle="Welcome back! Here's what's happening today.">
+        {canSeeOwnerOverview && <>{ownerSection}<div className="my-8 border-t border-border" /></>}
         <AdminDashboard />
       </MainLayout>
     )
@@ -29,6 +79,8 @@ export default function Dashboard() {
 
   return (
     <MainLayout title="Dashboard" subtitle="Track performance and gain insights">
+      {canSeeOwnerOverview && <>{ownerSection}<div className="my-8 border-t border-border" /></>}
+
       {error && !overview && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3">
           <p className="text-sm text-foreground">

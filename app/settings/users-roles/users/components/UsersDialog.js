@@ -76,6 +76,10 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
       return
     }
 
+    const weeklyCapacity = editingUser.weeklyCapacity === '' || editingUser.weeklyCapacity === undefined
+      ? null
+      : Number(editingUser.weeklyCapacity)
+
     setLoading(true)
     try {
       if (editingUser._id) {
@@ -87,6 +91,7 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
           phoneNumber: editingUser.phoneNumber || null,
           status: editingUser.status || 'active',
           showOnCalendar: editingUser.showOnCalendar ?? null,
+          ...(effectiveShowOnCalendar ? { weeklyCapacity } : {}),
         })
         if (result.success) {
           toast.success({ title: 'Saved', message: 'User updated' })
@@ -105,6 +110,7 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
           locationID: editingUser.locationID || [],
           permissions: editingUser.permissions,
           showOnCalendar: editingUser.showOnCalendar ?? null,
+          ...(effectiveShowOnCalendar ? { weeklyCapacity } : {}),
         })
         if (result.success) {
           toast.success({ title: 'Invite sent', message: `An invite email was sent to ${editingUser.email}` })
@@ -116,7 +122,10 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
         }
       } else {
         // create with password set now
-        const result = await api.post('/api/user', editingUser)
+        const result = await api.post('/api/user', {
+          ...editingUser,
+          ...(effectiveShowOnCalendar ? { weeklyCapacity } : {}),
+        })
         if (result.success) {
           toast.success({ title: 'Created', message: 'User created' })
           closeEdit()
@@ -242,6 +251,25 @@ export default function UsersDialog({ open, onClose, users = [], onRefresh, init
                     }
                     aria-label="Show on calendar"
                   />
+                </div>
+              )}
+
+              {effectiveShowOnCalendar && (
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Weekly Capacity
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={editingUser.weeklyCapacity ?? ''}
+                    onChange={(e) => setEditingUser((p) => ({ ...p, weeklyCapacity: e.target.value }))}
+                    placeholder="Not set"
+                    className="max-w-[160px]"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Lessons/sessions this person can be booked for per week. Used by the Instructor Utilization dashboard widget.
+                  </p>
                 </div>
               )}
             </div>

@@ -75,6 +75,8 @@ const navItems = [
     children: [
       { name: 'Studio', href: '/settings/studio' },
       { name: 'Users & Roles', href: '/settings/users-roles' },
+      { name: 'Curriculum', href: '/settings/curriculum' },
+      { name: 'Goals', href: '/settings/goals' },
       { name: 'Setup', href: '/settings/setup' },
       { name: 'Integrations', href: '/settings/integrations' },
       { name: 'Billing', href: '/settings/billing' },

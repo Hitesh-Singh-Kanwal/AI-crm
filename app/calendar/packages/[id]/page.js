@@ -290,8 +290,16 @@ export default function PackageEditPage() {
     })
   }, [])
 
+  const [curriculums, setCurriculums] = useState([])
+  useEffect(() => {
+    api.get('/api/curriculum').then((res) => {
+      if (res.success) setCurriculums(Array.isArray(res.data) ? res.data : [])
+    })
+  }, [])
+
   const [packageName, setPackageName] = useState('')
   const [locationID, setLocationID] = useState([])
+  const [curriculumID, setCurriculumID] = useState('')
   const [description, setDescription] = useState('')
   const [sortOrder, setSortOrder] = useState('')
   const [color, setColor] = useState(() => randomColor())
@@ -315,6 +323,7 @@ export default function PackageEditPage() {
                 ? [pkg.locationID]
                 : []
         )
+        setCurriculumID(pkg.curriculumID?._id || pkg.curriculumID || '')
         setDescription(pkg.description || '')
         setSortOrder(pkg.sortOrder ?? '')
         setColor(pkg.color || randomColor())
@@ -404,6 +413,7 @@ export default function PackageEditPage() {
     const payload = {
       packageName: packageName.trim(),
       locationID: locationID || undefined,
+      curriculumID: curriculumID || null,
       description: description.trim() || undefined,
       sortOrder: sortOrder === '' ? 0 : Number(sortOrder),
       color,
@@ -718,6 +728,24 @@ export default function PackageEditPage() {
 
           {/* Total Days + Active */}
           <div className="mt-6 pt-4 border-t border-border space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Label htmlFor="pkg-curriculum" className="whitespace-nowrap text-sm">Curriculum Tier</Label>
+              <div className="relative">
+                <select
+                  id="pkg-curriculum"
+                  value={curriculumID}
+                  onChange={(e) => setCurriculumID(e.target.value)}
+                  className="h-8 min-w-[180px] appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-sm text-foreground outline-none focus:border-primary"
+                >
+                  <option value="">Unassigned</option>
+                  {curriculums.map((c) => (
+                    <option key={c._id} value={c._id}>{c.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              </div>
+            </div>
+
             <div className="flex items-center gap-3 flex-wrap">
               <Label htmlFor="pkg-days" className="whitespace-nowrap text-sm">Total Days</Label>
               <Input
