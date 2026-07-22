@@ -130,12 +130,15 @@ export default function FollowupSettingsPage() {
     return options
   }, [locations])
 
+  const isLocationScope = scope !== ORG_SCOPE
+
   const activeScopeLabel = useMemo(() => {
     if (scope === ORG_SCOPE) return 'Organization default'
     return locations.find((loc) => String(loc._id) === String(scope))?.name || 'Selected location'
   }, [scope, locations])
 
-  const scheduleDisabled = form.agentFollowupEnabled === false
+  // Enable/disable is per-location only — never blocks other locations from org default view.
+  const scheduleDisabled = isLocationScope && form.agentFollowupEnabled === false
 
   const loadLocations = useCallback(async () => {
     const result = await api.get('/api/location?limit=200')
@@ -255,7 +258,8 @@ export default function FollowupSettingsPage() {
   }
 
   function validateForm() {
-    if (form.agentFollowupEnabled === false) return true
+    // Location can be saved with follow-ups turned off for that location only.
+    if (isLocationScope && form.agentFollowupEnabled === false) return true
 
     if (!Array.isArray(form.followups) || form.followups.length < MIN_FOLLOWUPS) {
       toast.error({ title: 'Validation', message: 'Add at least one follow-up.' })
@@ -308,7 +312,6 @@ export default function FollowupSettingsPage() {
     setSaving(true)
     try {
       const body = {
-        agentFollowupEnabled: form.agentFollowupEnabled !== false,
         followups: form.followups.map((step) => ({
           intervalHours: Number(step.intervalHours),
           intervalMinutes: Number(step.intervalMinutes),
@@ -316,15 +319,19 @@ export default function FollowupSettingsPage() {
         })),
       }
 
-      if (scope !== ORG_SCOPE) {
+      if (isLocationScope) {
+        // Toggle applies only to this location — other locations are unchanged.
         body.locationID = scope
+        body.agentFollowupEnabled = form.agentFollowupEnabled !== false
       }
 
       const result = await api.put('/api/followup-settings', body)
       if (result.success) {
         toast.success({
           title: 'Saved',
-          message: `Follow-up settings updated for ${activeScopeLabel.toLowerCase()}.`,
+          message: isLocationScope
+            ? `Follow-up settings updated for ${activeScopeLabel}.`
+            : 'Organization default follow-up schedule updated.',
         })
         await loadSettings(scope)
       } else {
@@ -373,7 +380,8 @@ export default function FollowupSettingsPage() {
                   ))}
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Choose the organization default or override settings for a specific location.
+                  Organization default sets the schedule template. Pick a location to turn follow-ups
+                  on or off for that location only.
                 </p>
               </div>
             ) : (
@@ -390,23 +398,33 @@ export default function FollowupSettingsPage() {
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 p-4">
-                  <div>
-                    <div className="text-sm font-medium">Enable agent follow-ups</div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Master switch for this scope. When off, no automated follow-ups are sent for any
-                      lead under {scope === ORG_SCOPE ? 'the organization' : 'this location'} — even if
-                      the lead still has follow-ups enabled.
-                    </p>
+                {isLocationScope ? (
+                  <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 p-4">
+                    <div>
+                      <div className="text-sm font-medium">
+                        Enable agent follow-ups for {activeScopeLabel}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Location-only switch. When off, follow-ups stop for leads at{' '}
+                        <span className="font-medium text-foreground">{activeScopeLabel}</span> —
+                        other locations are not affected. Individual leads can still opt out on their
+                        profile.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={form.agentFollowupEnabled !== false}
+                      onCheckedChange={(checked) =>
+                        setForm((prev) => ({ ...prev, agentFollowupEnabled: checked }))
+                      }
+                      disabled={saving}
+                    />
                   </div>
-                  <Switch
-                    checked={form.agentFollowupEnabled !== false}
-                    onCheckedChange={(checked) =>
-                      setForm((prev) => ({ ...prev, agentFollowupEnabled: checked }))
-                    }
-                    disabled={saving}
-                  />
-                </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border bg-muted/10 px-4 py-3 text-sm text-muted-foreground">
+                    Select a location above to enable or disable follow-ups for that location only.
+                    Saving here updates the organization default schedule.
+                  </div>
+                )}
 
                 <div
                   className={cn(
@@ -609,12 +627,12 @@ export default function FollowupSettingsPage() {
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="space-y-1">
             <p>
-              Follow-ups only send when both this setting and the lead&apos;s{' '}
-              <span className="font-medium text-foreground">Agent follow-up</span> toggle are on.
+              Follow-ups only send when the location switch is on and the lead&apos;s{' '}
+              <span className="font-medium text-foreground">Agent follow-up</span> toggle is on.
             </p>
             <p>
-              Turn off the lead toggle to opt out one person; turn off this setting to block follow-ups
-              for everyone under this scope.
+              Turn off a location here to pause follow-ups for that studio only. Turn off the lead
+              toggle to opt out one person.
             </p>
           </div>
         </div>
