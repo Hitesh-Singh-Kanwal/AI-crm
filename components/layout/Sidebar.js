@@ -47,6 +47,7 @@ const navItems = [
     children: [
       { name: 'Overview', href: '/reports' },
       { name: "Teacher's Commissions", href: '/reports/teacher-commissions' },
+      { name: 'Callback Report', href: '/reports/callbacks' },
     ],
   },
   {
@@ -59,6 +60,7 @@ const navItems = [
       { name: 'Make Calls', href: '/ai-automation/make-calls' },
       { name: 'AI Calling', href: '/ai-automation/ai-calling' },
       { name: 'AI Messaging', href: '/ai-automation/ai-messaging' },
+      { name: 'Follow-up Settings', href: '/ai-automation/followup-settings' },
       { name: 'Workflows', href: '/ai-automation/workflows' },
       { name: 'Dynamic Lists', href: '/ai-automation/dynamic-lists' },
       { name: 'Lead Statuses', href: '/ai-automation/lead-statuses' },

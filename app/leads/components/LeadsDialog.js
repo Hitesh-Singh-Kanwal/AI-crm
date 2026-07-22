@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { UserPlus, X } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { UserPlus, CalendarClock, Trash2, StickyNote } from 'lucide-react'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import LocationSelector from '@/components/shared/LocationSelector'
 import PhoneNumberInput from '@/components/shared/PhoneNumberInput'
 import { useLeadStages } from '@/lib/lead-stages'
@@ -29,6 +30,7 @@ const emptyLead = {
   assignedAiAgent: '',
   assignedHumanAgent: '',
   isEscalated: false,
+  agentFollowupEnabled: true,
   callbackDate: '',
   notes: '',
 }
@@ -58,7 +60,12 @@ export default function LeadsDialog({
     if (initialLeadId && leads && leads.length > 0) {
       const found = leads.find((l) => l._id === initialLeadId)
       if (found) {
-        setEditingLead({ ...found, callbackDate: toDateInputValue(found.callbackDate), notes: found.notes || '' })
+        setEditingLead({
+          ...found,
+          callbackDate: toDateInputValue(found.callbackDate),
+          notes: found.notes || '',
+          agentFollowupEnabled: found.agentFollowupEnabled !== false,
+        })
         setMode(viewOnly ? 'view' : 'edit')
       }
     } else {
@@ -115,7 +122,7 @@ export default function LeadsDialog({
     setLoading(true)
     try {
       if (editingLead._id) {
-        const result = await api.put(`/api/lead/${editingLead._id}`, {
+        const result = await api.patch(`/api/lead/${editingLead._id}`, {
           name: editingLead.name,
           email: editingLead.email,
           phoneNumber: editingLead.phoneNumber,
@@ -126,8 +133,8 @@ export default function LeadsDialog({
           assignedAiAgent: editingLead.assignedAiAgent || '',
           assignedHumanAgent: editingLead.assignedHumanAgent || '',
           isEscalated: editingLead.isEscalated || false,
+          agentFollowupEnabled: editingLead.agentFollowupEnabled !== false,
           callbackDate: editingLead.callbackDate || null,
-          notes: editingLead.notes || '',
         })
         if (result.success) {
           toast.success({ title: 'Saved', message: 'Lead updated successfully' })
@@ -142,6 +149,7 @@ export default function LeadsDialog({
           ...editingLead,
           locationID: selectedLocationIDs,
           organisationID: user?.organisationID,
+          agentFollowupEnabled: editingLead.agentFollowupEnabled !== false,
           callbackDate: editingLead.callbackDate || undefined,
         }
         const result = await api.post('/api/lead', payload)
@@ -278,27 +286,22 @@ export default function LeadsDialog({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Callback Date</label>
+              <label className="flex items-center gap-1.5 text-sm font-medium mb-1">
+                <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
+                Callback Date
+              </label>
               <Input
                 type="date"
                 value={toDateInputValue(editingLead.callbackDate)}
                 onChange={(e) => setEditingLead({ ...editingLead, callbackDate: e.target.value })}
                 disabled={viewOnly}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Next date to follow up or call this lead back
+              </p>
             </div>
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Notes</label>
-              <textarea
-                value={editingLead.notes || ''}
-                onChange={(e) => setEditingLead({ ...editingLead, notes: e.target.value })}
-                disabled={viewOnly}
-                rows={3}
-                placeholder="Notes carry over to the customer when this lead is converted"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-sm font-medium mb-1">
                 <input
                   type="checkbox"
                   checked={editingLead.isEscalated || false}
@@ -306,8 +309,23 @@ export default function LeadsDialog({
                   disabled={viewOnly}
                   className="w-4 h-4"
                 />
-                <span className="text-sm font-medium">Is Escalated</span>
+                <span>Is Escalated</span>
               </label>
+            </div>
+            <div className="md:col-span-2 flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 px-4 py-3">
+              <div>
+                <div className="text-sm font-medium">Agent follow-up</div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  When off, this lead is opted out of automated AI follow-ups (even if location settings allow them).
+                </p>
+              </div>
+              <Switch
+                checked={editingLead.agentFollowupEnabled !== false}
+                onCheckedChange={(checked) =>
+                  setEditingLead({ ...editingLead, agentFollowupEnabled: checked })
+                }
+                disabled={viewOnly}
+              />
             </div>
           </div>
         </div>
@@ -324,5 +342,88 @@ export default function LeadsDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function LeadNotesSection({ leadId, notes, onChanged }) {
+  const [text, setText] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const toast = useToast()
+
+  const sortedNotes = [...(notes || [])].sort(
+    (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+  )
+
+  async function handleAdd(e) {
+    e.preventDefault()
+    if (!text.trim()) return
+    setAdding(true)
+    const result = await api.post(`/api/lead/${leadId}/notes`, { text: text.trim() })
+    if (result.success) {
+      setText('')
+      onChanged && onChanged(result.data)
+    } else {
+      toast.error({ title: 'Error', message: result.error || 'Unable to add note' })
+    }
+    setAdding(false)
+  }
+
+  async function handleDelete(noteId) {
+    setDeletingId(noteId)
+    const result = await api.delete(`/api/lead/${leadId}/notes/${noteId}`)
+    if (result.success) {
+      onChanged && onChanged(result.data)
+    } else {
+      toast.error({ title: 'Error', message: result.error || 'Unable to delete note' })
+    }
+    setDeletingId(null)
+  }
+
+  return (
+    <div className="space-y-3">
+      <form onSubmit={handleAdd} className="flex gap-2">
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Add a note…"
+          className="flex-1 h-9 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <Button type="submit" size="sm" disabled={adding || !text.trim()}>
+          {adding ? 'Adding…' : 'Add'}
+        </Button>
+      </form>
+
+      {sortedNotes.length === 0 ? (
+        <div className="rounded-md border border-dashed border-gray-300 py-6 text-center text-sm text-muted-foreground">
+          No notes yet.
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          {sortedNotes.map((note) => (
+            <div key={note._id} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm text-foreground leading-relaxed flex-1 whitespace-pre-wrap">
+                  {note.text}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(note._id)}
+                  disabled={deletingId === note._id}
+                  className="shrink-0 text-muted-foreground hover:text-red-600 disabled:opacity-50"
+                  aria-label="Delete note"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {note.createdBy?.name || note.createdBy?.email || 'Unknown'} · {formatDateTime(note.createdAt)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
