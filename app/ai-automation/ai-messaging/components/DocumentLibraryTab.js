@@ -18,6 +18,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
+import {
+  initLocationID,
+  hasLocationSelection,
+  toLocationPayload,
+  appendLocationFields,
+  locationBadgeLabel,
+  workingLocationQueryParam,
+  normalizeWorkingLocation,
+} from '@/app/ai-automation/ai-calling/components/locationScope'
 
 const PAGE_LIMIT = 10
 
@@ -38,13 +48,14 @@ function isPdfFile(file) {
   return t === 'application/pdf' || n.endsWith('.pdf')
 }
 
-function DocumentDialog({ open, onClose, doc, endpoint, entityLabel, onRefresh }) {
+function DocumentDialog({ open, onClose, doc, endpoint, entityLabel, onRefresh, defaultLocationID }) {
   const toast = useToast()
   const fileInputRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [file, setFile] = useState(null)
+  const [locationID, setLocationID] = useState([])
 
   const isEdit = !!doc
 
@@ -53,13 +64,15 @@ function DocumentDialog({ open, onClose, doc, endpoint, entityLabel, onRefresh }
     if (doc) {
       setName(doc.name || '')
       setDescription(doc.description || '')
+      setLocationID(initLocationID(doc))
     } else {
       setName('')
       setDescription('')
+      setLocationID(defaultLocationID || [])
     }
     setFile(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
-  }, [open, doc])
+  }, [open, doc, defaultLocationID])
 
   const pickFile = (f) => {
     if (!f) {
@@ -79,6 +92,10 @@ function DocumentDialog({ open, onClose, doc, endpoint, entityLabel, onRefresh }
       toast.error({ title: 'Validation', message: 'Name is required' })
       return
     }
+    if (!hasLocationSelection(locationID)) {
+      toast.error({ title: 'Validation', message: 'Select a studio or All branches' })
+      return
+    }
     if (!isEdit && !file) {
       toast.error({ title: 'Validation', message: 'Please choose a PDF file' })
       return
@@ -90,12 +107,14 @@ function DocumentDialog({ open, onClose, doc, endpoint, entityLabel, onRefresh }
         result = await api.put(`${endpoint}/${doc._id}`, {
           name: name.trim(),
           description: description.trim(),
+          ...toLocationPayload(locationID),
         })
       } else {
         const fd = new FormData()
         fd.append('name', name.trim())
         fd.append('description', description.trim())
         fd.append('pdf', file)
+        appendLocationFields(fd, locationID)
         result = await api.request(endpoint, { method: 'POST', body: fd })
       }
 
@@ -118,84 +137,55 @@ function DocumentDialog({ open, onClose, doc, endpoint, entityLabel, onRefresh }
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="2xl">
-      <DialogContent onClose={onClose} className="max-h-[90vh] overflow-y-auto">
+      <DialogContent onClose={onClose}>
         <DialogHeader>
           <DialogTitle>{isEdit ? `Edit ${entityLabel}` : `Upload ${entityLabel}`}</DialogTitle>
           <DialogDescription>
-            {isEdit
-              ? 'Update the name or description for this document.'
-              : 'Upload a PDF and give it a name so you can manage multiple documents.'}
+            {isEdit ? `Update ${entityLabel.toLowerCase()} details.` : `Upload a PDF for this studio’s ${entityLabel.toLowerCase()}.`}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-2">
           <div>
-            <label className="mb-1 block text-sm font-medium">
-              Name <span className="text-red-500">*</span>
-            </label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Studio Info v2"
-              disabled={loading}
+            <label className="mb-1 block text-sm font-medium">Studio scope *</label>
+            <LocationSelector
+              value={locationID}
+              onChange={setLocationID}
+              multiple
+              allowAllBranches
+              placeholder="Select studio(s)…"
             />
           </div>
-
+          <div>
+            <label className="mb-1 block text-sm font-medium">Name *</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Document name" />
+          </div>
           <div>
             <label className="mb-1 block text-sm font-medium">Description</label>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              placeholder="Optional notes about this document"
-              className="resize-y text-sm"
-              disabled={loading}
+              placeholder="Optional description"
             />
           </div>
-
           {!isEdit && (
             <div>
-              <label className="mb-1 block text-sm font-medium">
-                PDF file <span className="text-red-500">*</span>
-              </label>
-              <input
+              <label className="mb-1 block text-sm font-medium">PDF *</label>
+              <Input
                 ref={fileInputRef}
                 type="file"
-                className="hidden"
                 accept="application/pdf,.pdf"
-                onChange={(e) => pickFile(e.target.files?.[0] || null)}
+                onChange={(e) => pickFile(e.target.files?.[0])}
               />
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="justify-start"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={loading}
-                >
-                  Choose file
-                </Button>
-                <div className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground">
-                  {file ? `${file.name} (${formatFileSize(file.size)})` : 'No file selected'}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isEdit && doc?.originalFileName && (
-            <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              Current file: <span className="font-medium text-foreground">{doc.originalFileName}</span>
-              <span className="ml-1">(file cannot be changed here — upload a new document instead)</span>
             </div>
           )}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={save} disabled={loading} variant="gradient">
-            {loading ? 'Saving…' : isEdit ? 'Save Changes' : 'Upload'}
+          <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button variant="gradient" onClick={save} disabled={loading}>
+            {loading ? 'Saving…' : isEdit ? 'Save' : 'Upload'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -225,6 +215,9 @@ export default function DocumentLibraryTab({
   const [editingDoc, setEditingDoc] = useState(null)
   const [togglingId, setTogglingId] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
+  const [workingLocationID, setWorkingLocationID] = useState([])
+
+  const locationQuery = workingLocationQueryParam(workingLocationID)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -234,6 +227,7 @@ export default function DocumentLibraryTab({
         limit: String(PAGE_LIMIT),
         search,
       })
+      if (locationQuery) params.set('locationID', locationQuery)
       const result = await api.get(`${endpoint}?${params.toString()}`)
       if (result.success) {
         const data = result.data || {}
@@ -248,7 +242,7 @@ export default function DocumentLibraryTab({
     } finally {
       setLoading(false)
     }
-  }, [endpoint, page, search])
+  }, [endpoint, page, search, locationQuery])
 
   const handleViewFile = async (doc) => {
     try {
@@ -336,6 +330,27 @@ export default function DocumentLibraryTab({
           <p className="text-sm text-muted-foreground">{subheading}</p>
         </div>
 
+        <div className="mb-4 max-w-md">
+          <label className="mb-1.5 block text-sm font-medium">Working studio</label>
+          <LocationSelector
+            value={
+              workingLocationID === ALL_BRANCHES_VALUE
+                ? ALL_BRANCHES_VALUE
+                : Array.isArray(workingLocationID) && workingLocationID.length
+                  ? workingLocationID[0]
+                  : null
+            }
+            onChange={(id) => {
+              setWorkingLocationID(normalizeWorkingLocation(id))
+              setPage(1)
+            }}
+            multiple={false}
+            allowAllBranches
+            showAllOption={false}
+            placeholder="Filter by studio…"
+          />
+        </div>
+
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:w-[240px]">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -386,6 +401,11 @@ export default function DocumentLibraryTab({
                       {d.isActive && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
                           <CheckCircle className="h-3 w-3" /> Active
+                        </span>
+                      )}
+                      {locationBadgeLabel(d) && (
+                        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                          {locationBadgeLabel(d)}
                         </span>
                       )}
                     </div>
@@ -516,6 +536,7 @@ export default function DocumentLibraryTab({
         endpoint={endpoint}
         entityLabel={entityLabel}
         onRefresh={load}
+        defaultLocationID={workingLocationID}
       />
     </TabsContent>
   )

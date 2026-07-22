@@ -168,10 +168,13 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                   <Input
                     value={editingLocation.email || ''}
                     onChange={(e) => setEditingLocation((p) => ({ ...p, email: e.target.value }))}
-                    placeholder="location@example.com"
+                    placeholder="studio@yourdomain.com"
                     type="email"
                     required
                   />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Used as the outbound From address for this studio (must be allowed on your SendGrid domain).
+                  </p>
                 </div>
               </div>
               <div>
