@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Info } from 'lucide-react'
+import { Loader2, Info, Plus, Trash2 } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,37 +15,73 @@ import { getEffectiveBranch, isSuperAdmin } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
 const ORG_SCOPE = '__org__'
+const MIN_FOLLOWUPS = 1
+const MAX_FOLLOWUPS = 10
 
-const DEFAULT_SETTINGS = {
-  followupCount: 3,
-  followupIntervalHours: 1,
-  followupIntervalMinutes: 0,
-  followupMessage: null,
-  agentFollowupEnabled: true,
-}
-
-function normalizeSettings(raw) {
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_SETTINGS }
+function emptyFollowup(overrides = {}) {
   return {
-    followupCount: raw.followupCount ?? DEFAULT_SETTINGS.followupCount,
-    followupIntervalHours: raw.followupIntervalHours ?? DEFAULT_SETTINGS.followupIntervalHours,
-    followupIntervalMinutes: raw.followupIntervalMinutes ?? DEFAULT_SETTINGS.followupIntervalMinutes,
-    followupMessage: raw.followupMessage ?? null,
-    agentFollowupEnabled: raw.agentFollowupEnabled !== false,
+    intervalHours: '1',
+    intervalMinutes: '0',
+    useAiMessage: true,
+    message: '',
+    ...overrides,
   }
 }
 
-function settingsToForm(settings) {
-  const normalized = normalizeSettings(settings)
-  const hasCustomMessage =
-    typeof normalized.followupMessage === 'string' && normalized.followupMessage.trim().length > 0
-  return {
-    followupCount: String(normalized.followupCount),
-    followupIntervalHours: String(normalized.followupIntervalHours),
-    followupIntervalMinutes: String(normalized.followupIntervalMinutes),
+const DEFAULT_FOLLOWUPS = [
+  emptyFollowup({ intervalHours: '1', intervalMinutes: '0' }),
+  emptyFollowup({ intervalHours: '2', intervalMinutes: '30' }),
+  emptyFollowup({ intervalHours: '5', intervalMinutes: '0' }),
+]
+
+function followupFromApi(item) {
+  const message = item?.message ?? null
+  const hasCustomMessage = typeof message === 'string' && message.trim().length > 0
+  return emptyFollowup({
+    intervalHours: String(item?.intervalHours ?? 1),
+    intervalMinutes: String(item?.intervalMinutes ?? 0),
     useAiMessage: !hasCustomMessage,
-    followupMessage: hasCustomMessage ? normalized.followupMessage : '',
-    agentFollowupEnabled: normalized.agentFollowupEnabled,
+    message: hasCustomMessage ? message : '',
+  })
+}
+
+/** Normalize API payload — supports new `followups[]` and legacy flat fields. */
+function settingsToForm(raw) {
+  const agentFollowupEnabled = raw?.agentFollowupEnabled !== false
+
+  if (Array.isArray(raw?.followups) && raw.followups.length > 0) {
+    return {
+      agentFollowupEnabled,
+      followups: raw.followups.map(followupFromApi),
+    }
+  }
+
+  // Legacy shape → single follow-up entry so the form still loads.
+  if (raw && (raw.followupCount != null || raw.followupIntervalHours != null)) {
+    const count = Math.min(
+      MAX_FOLLOWUPS,
+      Math.max(MIN_FOLLOWUPS, Number(raw.followupCount) || 1)
+    )
+    const hours = String(raw.followupIntervalHours ?? 1)
+    const minutes = String(raw.followupIntervalMinutes ?? 0)
+    const message = raw.followupMessage ?? null
+    const hasCustomMessage = typeof message === 'string' && message.trim().length > 0
+    return {
+      agentFollowupEnabled,
+      followups: Array.from({ length: count }, () =>
+        emptyFollowup({
+          intervalHours: hours,
+          intervalMinutes: minutes,
+          useAiMessage: !hasCustomMessage,
+          message: hasCustomMessage ? message : '',
+        })
+      ),
+    }
+  }
+
+  return {
+    agentFollowupEnabled: true,
+    followups: DEFAULT_FOLLOWUPS.map((f) => ({ ...f })),
   }
 }
 
@@ -54,6 +90,21 @@ function formatIntervalLabel(hours, minutes) {
   if (hours > 0) parts.push(`${hours}h`)
   if (minutes > 0) parts.push(`${minutes}m`)
   return parts.length ? parts.join(' ') : '0m'
+}
+
+function summarizeFollowups(item) {
+  if (item.agentFollowupEnabled === false) return 'Follow-ups disabled'
+  const list = Array.isArray(item.followups) ? item.followups : []
+  if (list.length === 0) {
+    if (item.followupCount != null) {
+      return `${item.followupCount} follow-ups every ${formatIntervalLabel(
+        item.followupIntervalHours ?? 0,
+        item.followupIntervalMinutes ?? 0
+      )}`
+    }
+    return 'No follow-ups configured'
+  }
+  return `${list.length} follow-up${list.length === 1 ? '' : 's'}`
 }
 
 export default function FollowupSettingsPage() {
@@ -66,7 +117,7 @@ export default function FollowupSettingsPage() {
     if (superAdmin) return ORG_SCOPE
     return effectiveBranch || ORG_SCOPE
   })
-  const [form, setForm] = useState(() => settingsToForm(DEFAULT_SETTINGS))
+  const [form, setForm] = useState(() => settingsToForm(null))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [locationOverrides, setLocationOverrides] = useState([])
@@ -83,6 +134,8 @@ export default function FollowupSettingsPage() {
     if (scope === ORG_SCOPE) return 'Organization default'
     return locations.find((loc) => String(loc._id) === String(scope))?.name || 'Selected location'
   }, [scope, locations])
+
+  const scheduleDisabled = form.agentFollowupEnabled === false
 
   const loadLocations = useCallback(async () => {
     const result = await api.get('/api/location?limit=200')
@@ -113,7 +166,7 @@ export default function FollowupSettingsPage() {
             title: 'Unable to load settings',
             message: result.error || result.message || 'Please try again.',
           })
-          applySettings(DEFAULT_SETTINGS)
+          applySettings(null)
           return
         }
 
@@ -122,14 +175,14 @@ export default function FollowupSettingsPage() {
           const orgConfig = data.find((item) => item.locationID == null)
           const overrides = data.filter((item) => item.locationID != null)
           setLocationOverrides(overrides)
-          applySettings(orgConfig || DEFAULT_SETTINGS)
+          applySettings(orgConfig)
         } else {
           setLocationOverrides([])
           applySettings(data)
         }
       } catch {
         toast.error({ title: 'Error', message: 'Failed to load follow-up settings.' })
-        applySettings(DEFAULT_SETTINGS)
+        applySettings(null)
       } finally {
         setLoading(false)
       }
@@ -172,40 +225,80 @@ export default function FollowupSettingsPage() {
     await loadSettings(nextScope)
   }
 
+  function updateFollowup(index, patch) {
+    setForm((prev) => ({
+      ...prev,
+      followups: prev.followups.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+    }))
+  }
+
+  function addFollowup() {
+    if (form.followups.length >= MAX_FOLLOWUPS) {
+      toast.error({ title: 'Limit reached', message: `You can add up to ${MAX_FOLLOWUPS} follow-ups.` })
+      return
+    }
+    setForm((prev) => ({
+      ...prev,
+      followups: [...prev.followups, emptyFollowup()],
+    }))
+  }
+
+  function removeFollowup(index) {
+    if (form.followups.length <= MIN_FOLLOWUPS) {
+      toast.error({ title: 'Required', message: 'Keep at least one follow-up step.' })
+      return
+    }
+    setForm((prev) => ({
+      ...prev,
+      followups: prev.followups.filter((_, i) => i !== index),
+    }))
+  }
+
   function validateForm() {
-    // Allow saving with only the master switch off (e.g. disable a whole location).
     if (form.agentFollowupEnabled === false) return true
 
-    const count = Number(form.followupCount)
-    const hours = Number(form.followupIntervalHours)
-    const minutes = Number(form.followupIntervalMinutes)
+    if (!Array.isArray(form.followups) || form.followups.length < MIN_FOLLOWUPS) {
+      toast.error({ title: 'Validation', message: 'Add at least one follow-up.' })
+      return false
+    }
+    if (form.followups.length > MAX_FOLLOWUPS) {
+      toast.error({
+        title: 'Validation',
+        message: `You can configure at most ${MAX_FOLLOWUPS} follow-ups.`,
+      })
+      return false
+    }
 
-    if (!Number.isInteger(count) || count < 1 || count > 10) {
-      toast.error({ title: 'Validation', message: 'Follow-up count must be between 1 and 10.' })
-      return false
+    for (let i = 0; i < form.followups.length; i++) {
+      const step = form.followups[i]
+      const hours = Number(step.intervalHours)
+      const minutes = Number(step.intervalMinutes)
+      const label = `Follow-up ${i + 1}`
+
+      if (!Number.isInteger(hours) || hours < 0 || hours > 72) {
+        toast.error({ title: 'Validation', message: `${label}: hours must be between 0 and 72.` })
+        return false
+      }
+      if (!Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+        toast.error({ title: 'Validation', message: `${label}: minutes must be between 0 and 59.` })
+        return false
+      }
+      if (hours === 0 && minutes === 0) {
+        toast.error({
+          title: 'Validation',
+          message: `${label}: interval must be greater than zero.`,
+        })
+        return false
+      }
+      if (!step.useAiMessage && !String(step.message || '').trim()) {
+        toast.error({
+          title: 'Validation',
+          message: `${label}: enter a message or enable AI-generated.`,
+        })
+        return false
+      }
     }
-    if (!Number.isInteger(hours) || hours < 0 || hours > 72) {
-      toast.error({ title: 'Validation', message: 'Hours must be between 0 and 72.' })
-      return false
-    }
-    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
-      toast.error({ title: 'Validation', message: 'Minutes must be between 0 and 59.' })
-      return false
-    }
-    if (hours === 0 && minutes === 0) {
-      toast.error({
-        title: 'Validation',
-        message: 'Interval must be greater than zero.',
-      })
-      return false
-    }
-    if (!form.useAiMessage && !form.followupMessage.trim()) {
-      toast.error({
-        title: 'Validation',
-        message: 'Enter a follow-up message or enable AI-generated messages.',
-      })
-      return false
-    }
+
     return true
   }
 
@@ -215,11 +308,12 @@ export default function FollowupSettingsPage() {
     setSaving(true)
     try {
       const body = {
-        followupCount: Number(form.followupCount),
-        followupIntervalHours: Number(form.followupIntervalHours),
-        followupIntervalMinutes: Number(form.followupIntervalMinutes),
-        followupMessage: form.useAiMessage ? null : form.followupMessage.trim(),
         agentFollowupEnabled: form.agentFollowupEnabled !== false,
+        followups: form.followups.map((step) => ({
+          intervalHours: Number(step.intervalHours),
+          intervalMinutes: Number(step.intervalMinutes),
+          message: step.useAiMessage ? null : String(step.message).trim(),
+        })),
       }
 
       if (scope !== ORG_SCOPE) {
@@ -256,8 +350,8 @@ export default function FollowupSettingsPage() {
           <CardHeader>
             <CardTitle className="text-lg">Follow-up schedule</CardTitle>
             <CardDescription>
-              Set how many automated follow-ups to send and how long to wait between each one.
-              Location-specific settings override the organization default.
+              Add each follow-up with its own wait interval and message. Location-specific settings
+              override the organization default.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -316,106 +410,139 @@ export default function FollowupSettingsPage() {
 
                 <div
                   className={cn(
-                    'grid gap-4 sm:grid-cols-3',
-                    form.agentFollowupEnabled === false && 'pointer-events-none opacity-50'
+                    'space-y-4',
+                    scheduleDisabled && 'pointer-events-none opacity-50'
                   )}
                 >
-                  <div className="space-y-2">
-                    <label htmlFor="followup-count" className="text-sm font-medium">
-                      Number of follow-ups
-                    </label>
-                    <Input
-                      id="followup-count"
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={form.followupCount}
-                      onChange={(e) => setForm((prev) => ({ ...prev, followupCount: e.target.value }))}
-                      disabled={saving || form.agentFollowupEnabled === false}
-                    />
-                    <p className="text-xs text-muted-foreground">Between 1 and 10</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="followup-hours" className="text-sm font-medium">
-                      Interval (hours)
-                    </label>
-                    <Input
-                      id="followup-hours"
-                      type="number"
-                      min={0}
-                      max={72}
-                      value={form.followupIntervalHours}
-                      onChange={(e) =>
-                        setForm((prev) => ({ ...prev, followupIntervalHours: e.target.value }))
-                      }
-                      disabled={saving || form.agentFollowupEnabled === false}
-                    />
-                    <p className="text-xs text-muted-foreground">0–72 hours</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="followup-minutes" className="text-sm font-medium">
-                      Interval (minutes)
-                    </label>
-                    <Input
-                      id="followup-minutes"
-                      type="number"
-                      min={0}
-                      max={59}
-                      value={form.followupIntervalMinutes}
-                      onChange={(e) =>
-                        setForm((prev) => ({ ...prev, followupIntervalMinutes: e.target.value }))
-                      }
-                      disabled={saving || form.agentFollowupEnabled === false}
-                    />
-                    <p className="text-xs text-muted-foreground">0–59 minutes</p>
-                  </div>
-                </div>
-
-                <div
-                  className={cn(
-                    'space-y-3 rounded-lg border border-border bg-muted/20 p-4',
-                    form.agentFollowupEnabled === false && 'pointer-events-none opacity-50'
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-sm font-medium">AI-generated message</div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        When enabled, the AI writes each follow-up based on the conversation.
+                      <div className="text-sm font-medium">Follow-up steps</div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Each step waits its interval after the previous message, then sends.
                       </p>
                     </div>
-                    <Switch
-                      checked={form.useAiMessage}
-                      onCheckedChange={(checked) =>
-                        setForm((prev) => ({
-                          ...prev,
-                          useAiMessage: checked,
-                          followupMessage: checked ? '' : prev.followupMessage,
-                        }))
-                      }
-                      disabled={saving || form.agentFollowupEnabled === false}
-                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addFollowup}
+                      disabled={saving || scheduleDisabled || form.followups.length >= MAX_FOLLOWUPS}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add follow-up
+                    </Button>
                   </div>
 
-                  {!form.useAiMessage ? (
-                    <div className="space-y-2">
-                      <label htmlFor="followup-message" className="text-sm font-medium">
-                        Fixed follow-up message
-                      </label>
-                      <Textarea
-                        id="followup-message"
-                        rows={4}
-                        value={form.followupMessage}
-                        onChange={(e) =>
-                          setForm((prev) => ({ ...prev, followupMessage: e.target.value }))
-                        }
-                        placeholder="Hey! Just checking in — are you still interested?"
-                        disabled={saving || form.agentFollowupEnabled === false}
-                      />
+                  {form.followups.map((step, index) => (
+                    <div
+                      key={index}
+                      className="space-y-4 rounded-lg border border-border bg-card p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-foreground">
+                          Follow-up {index + 1}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFollowup(index)}
+                          disabled={
+                            saving || scheduleDisabled || form.followups.length <= MIN_FOLLOWUPS
+                          }
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Remove
+                        </Button>
+                      </div>
+
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <label
+                            htmlFor={`followup-hours-${index}`}
+                            className="text-sm font-medium"
+                          >
+                            Wait (hours)
+                          </label>
+                          <Input
+                            id={`followup-hours-${index}`}
+                            type="number"
+                            min={0}
+                            max={72}
+                            value={step.intervalHours}
+                            onChange={(e) =>
+                              updateFollowup(index, { intervalHours: e.target.value })
+                            }
+                            disabled={saving || scheduleDisabled}
+                          />
+                          <p className="text-xs text-muted-foreground">0–72 hours</p>
+                        </div>
+                        <div className="space-y-2">
+                          <label
+                            htmlFor={`followup-minutes-${index}`}
+                            className="text-sm font-medium"
+                          >
+                            Wait (minutes)
+                          </label>
+                          <Input
+                            id={`followup-minutes-${index}`}
+                            type="number"
+                            min={0}
+                            max={59}
+                            value={step.intervalMinutes}
+                            onChange={(e) =>
+                              updateFollowup(index, { intervalMinutes: e.target.value })
+                            }
+                            disabled={saving || scheduleDisabled}
+                          />
+                          <p className="text-xs text-muted-foreground">0–59 minutes</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <div className="text-sm font-medium">AI-generated message</div>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              When on, the AI writes this follow-up. When off, use a fixed message.
+                            </p>
+                          </div>
+                          <Switch
+                            checked={step.useAiMessage}
+                            onCheckedChange={(checked) =>
+                              updateFollowup(index, {
+                                useAiMessage: checked,
+                                message: checked ? '' : step.message,
+                              })
+                            }
+                            disabled={saving || scheduleDisabled}
+                          />
+                        </div>
+
+                        {!step.useAiMessage ? (
+                          <div className="space-y-2">
+                            <label
+                              htmlFor={`followup-message-${index}`}
+                              className="text-sm font-medium"
+                            >
+                              Fixed message
+                            </label>
+                            <Textarea
+                              id={`followup-message-${index}`}
+                              rows={3}
+                              value={step.message}
+                              onChange={(e) =>
+                                updateFollowup(index, { message: e.target.value })
+                              }
+                              placeholder="Hey! Just checking in — are you still interested?"
+                              disabled={saving || scheduleDisabled}
+                            />
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                  ) : null}
+                  ))}
                 </div>
 
                 <div className="flex justify-end">
@@ -450,11 +577,6 @@ export default function FollowupSettingsPage() {
                   const locationName =
                     locations.find((loc) => String(loc._id) === String(item.locationID))?.name ||
                     'Unknown location'
-                  const messageMode =
-                    item.followupMessage && String(item.followupMessage).trim()
-                      ? 'Fixed message'
-                      : 'AI-generated'
-                  const followupsOn = item.agentFollowupEnabled !== false
                   return (
                     <li key={String(item.locationID)}>
                       <button
@@ -468,18 +590,7 @@ export default function FollowupSettingsPage() {
                         <div>
                           <div className="text-sm font-medium text-foreground">{locationName}</div>
                           <div className="mt-0.5 text-xs text-muted-foreground">
-                            {followupsOn ? (
-                              <>
-                                {item.followupCount} follow-ups every{' '}
-                                {formatIntervalLabel(
-                                  item.followupIntervalHours ?? 0,
-                                  item.followupIntervalMinutes ?? 0
-                                )}{' '}
-                                · {messageMode}
-                              </>
-                            ) : (
-                              'Follow-ups disabled'
-                            )}
+                            {summarizeFollowups(item)}
                           </div>
                         </div>
                         <span className="text-xs font-medium text-[color:var(--studio-primary)]">
