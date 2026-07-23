@@ -8,6 +8,16 @@ import { buildLeadQueryParams } from '@/lib/lead-filter-fields'
 import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import { RankedBarList } from './shared'
 import WidgetHeader from './WidgetHeader'
+import LeadsDetailsButton from './LeadsDetailsButton'
+
+const DETAIL_COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'uploadType', label: 'Source', format: (v) => formatFieldDisplayValue(v) },
+  { key: 'stage', label: 'Stage', format: (v) => formatFieldDisplayValue(v) },
+  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+]
 
 /** YYYY-MM-DD, matching the value shape the Leads page date filters send. */
 function dateOnly(d) {
@@ -74,7 +84,12 @@ export default function LeadsByUploadTypeWidget({ rangeDays = 30, onRangeChange 
 
   return (
     <Card>
-      <WidgetHeader title="Leads by Source" rangeDays={rangeDays} onRangeChange={onRangeChange} />
+      <WidgetHeader
+        title="Leads by Source"
+        rangeDays={rangeDays}
+        onRangeChange={onRangeChange}
+        detailsButton={<LeadsDetailsButton rangeDays={rangeDays} columns={DETAIL_COLUMNS} />}
+      />
       {loading ? (
         <div className="mt-4 h-32 animate-pulse rounded-xl bg-muted/40" />
       ) : data.length > 0 ? (

@@ -2108,12 +2108,16 @@ function TutorDayCalendar({
   const draggedColRef = useRef(null);
   const [dragOverCol, setDragOverCol] = useState(null);
 
+  // Columns always stretch to fill the available width (flex-1) and shrink
+  // no smaller than MIN_COL_WIDTH — with few tutors they fill the screen;
+  // once there isn't room for everyone at the minimum, they hold at
+  // MIN_COL_WIDTH and the row scrolls horizontally instead of squeezing
+  // thinner. A fixed-width mode used to kick in above 3 tutors, but a fixed
+  // total narrower than the screen just left blank space after the last
+  // column instead of filling it.
   const MIN_COL_WIDTH = 200;
-  const MAX_FILL_COLS = 3;
-  const COL_FIXED_WIDTH = 200;
-  const useFixedCols = effectiveTutors.length > MAX_FILL_COLS;
-  const colClass = useFixedCols ? "flex-none" : "flex-1";
-  const colWidth = useFixedCols ? COL_FIXED_WIDTH : undefined;
+  const colClass = "flex-1";
+  const colWidth = undefined;
 
   function syncHeaderScroll() {
     if (headerScrollRef.current && bodyScrollRef.current) {

@@ -38,6 +38,16 @@ export function SectionLabel({ children, as: Tag = 'h3' }) {
   )
 }
 
+/** SectionLabel + an optional "Show full details" button on the same row. */
+export function WidgetTitleRow({ title, detailsButton = null }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <SectionLabel>{title}</SectionLabel>
+      {detailsButton}
+    </div>
+  )
+}
+
 export function Card({ children, className = '' }) {
   return <div className={`${chartCardClass} ${className}`.trim()}>{children}</div>
 }

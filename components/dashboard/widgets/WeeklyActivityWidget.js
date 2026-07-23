@@ -2,14 +2,32 @@
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { Card, SectionLabel, EmptyChart } from './shared'
+import { Card, WidgetTitleRow, EmptyChart } from './shared'
+import DetailsButton from './DetailsButton'
 
-export default function WeeklyActivityWidget({ weeklyActivity = [] }) {
+const DETAIL_COLUMNS = [
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleString() : '—') },
+  { key: 'channel', label: 'Channel' },
+  { key: 'lead', label: 'Lead' },
+  { key: 'status', label: 'Status' },
+]
+
+export default function WeeklyActivityWidget({ weeklyActivity = [], defaultRange }) {
   const hasData = weeklyActivity.some((d) => d.calls > 0 || d.emails > 0 || d.sms > 0)
 
   return (
     <Card>
-      <SectionLabel>Weekly Activity</SectionLabel>
+      <WidgetTitleRow
+        title="Weekly Activity"
+        detailsButton={
+          <DetailsButton
+            title="Weekly Activity — full details"
+            metric="activity"
+            rangeDays={defaultRange}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       {hasData ? (
         <>
           <div className="mt-4 h-[240px]">

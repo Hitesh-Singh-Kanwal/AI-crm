@@ -4,13 +4,34 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
 import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import WidgetHeader from './WidgetHeader'
+import DetailsButton from './DetailsButton'
+
+const DETAIL_COLUMNS = [
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'studio', label: 'Studio' },
+  { key: 'teacher', label: 'Teacher' },
+  { key: 'title', label: 'Lesson' },
+  { key: 'status', label: 'Status' },
+]
 
 export default function LessonTrendWidget({ lessons, rangeDays, onRangeChange }) {
   const data = lessons?.trend || []
 
   return (
     <Card>
-      <WidgetHeader title="Lessons Trend" rangeDays={rangeDays} onRangeChange={onRangeChange} />
+      <WidgetHeader
+        title="Lessons Trend"
+        rangeDays={rangeDays}
+        onRangeChange={onRangeChange}
+        detailsButton={
+          <DetailsButton
+            title="Lessons Trend — full details"
+            metric="lessonTrend"
+            rangeDays={rangeDays}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       {data.length > 0 ? (
         <div className="mt-4 h-[220px]">
           <ResponsiveContainer width="100%" height="100%">

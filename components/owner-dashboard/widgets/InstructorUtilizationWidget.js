@@ -3,6 +3,15 @@
 import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import { RankedBarList } from './shared'
 import WidgetHeader from './WidgetHeader'
+import DetailsButton from './DetailsButton'
+
+const DETAIL_COLUMNS = [
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'teacher', label: 'Teacher' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'title', label: 'Lesson' },
+  { key: 'status', label: 'Status' },
+]
 
 export default function InstructorUtilizationWidget({ lessons, rangeDays, onRangeChange }) {
   const all = lessons?.instructorUtilization || []
@@ -19,6 +28,14 @@ export default function InstructorUtilizationWidget({ lessons, rangeDays, onRang
           unconfigured.length > 0 && (
             <span className="text-[11px] text-muted-foreground">{unconfigured.length} without capacity set</span>
           )
+        }
+        detailsButton={
+          <DetailsButton
+            title="Instructor Utilization — full details"
+            metric="instructorUtilization"
+            rangeDays={rangeDays}
+            columns={DETAIL_COLUMNS}
+          />
         }
       />
       {configured.length > 0 ? (

@@ -1,10 +1,19 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { Card, SectionLabel, CHART_COLORS, EmptyChart } from './shared'
+import { Card, WidgetTitleRow, CHART_COLORS, EmptyChart } from './shared'
 import DonutChart from './DonutChart'
+import DetailsButton from './DetailsButton'
 
-export default function ApiExpenseWidget({ apiExpenseByChannel = [] }) {
+const DETAIL_COLUMNS = [
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleString() : '—') },
+  { key: 'channel', label: 'Channel' },
+  { key: 'lead', label: 'Lead' },
+  { key: 'status', label: 'Status' },
+  { key: 'cost', label: 'Cost', format: (v) => (v === null || v === undefined ? '—' : `$${Number(v).toFixed(4)}`) },
+]
+
+export default function ApiExpenseWidget({ apiExpenseByChannel = [], defaultRange }) {
   const rows = apiExpenseByChannel.filter((r) => !r.isTotal)
   const totalRow = apiExpenseByChannel.find((r) => r.isTotal)
   const pieData = rows
@@ -17,7 +26,17 @@ export default function ApiExpenseWidget({ apiExpenseByChannel = [] }) {
 
   return (
     <Card>
-      <SectionLabel>API Expense by Channel</SectionLabel>
+      <WidgetTitleRow
+        title="API Expense by Channel"
+        detailsButton={
+          <DetailsButton
+            title="API Expense by Channel — full details"
+            metric="activity"
+            rangeDays={defaultRange}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       {pieData.length > 0 ? (
         <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.1fr] lg:items-start">
           <DonutChart

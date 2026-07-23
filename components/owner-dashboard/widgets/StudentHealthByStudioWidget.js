@@ -3,6 +3,15 @@
 import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import { StackedBarRow } from './shared'
 import WidgetHeader from './WidgetHeader'
+import DetailsButton from './DetailsButton'
+
+const DETAIL_COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'booked', label: 'Booked' },
+]
 
 export default function StudentHealthByStudioWidget({ studentHealth, rangeDays, onRangeChange }) {
   const data = [...(studentHealth?.perStudio || [])].sort((a, b) => b.active - a.active)
@@ -24,6 +33,14 @@ export default function StudentHealthByStudioWidget({ studentHealth, rangeDays, 
               Not booked
             </span>
           </div>
+        }
+        detailsButton={
+          <DetailsButton
+            title="Active Students — full details"
+            metric="studentHealth"
+            rangeDays={rangeDays}
+            columns={DETAIL_COLUMNS}
+          />
         }
       />
       {data.length > 0 ? (

@@ -2,9 +2,16 @@
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { Card, SectionLabel, EmptyChart } from './shared'
+import { Card, WidgetTitleRow, EmptyChart } from './shared'
+import DetailsButton from './DetailsButton'
 
-export default function ResponseRateByTimeWidget({ responseRateByTime = [] }) {
+const DETAIL_COLUMNS = [
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleString() : '—') },
+  { key: 'lead', label: 'Lead' },
+  { key: 'status', label: 'Status' },
+]
+
+export default function ResponseRateByTimeWidget({ responseRateByTime = [], defaultRange }) {
   const data = responseRateByTime
     .filter((r) => r.time !== 'All Day')
     .map((r) => ({
@@ -16,7 +23,18 @@ export default function ResponseRateByTimeWidget({ responseRateByTime = [] }) {
 
   return (
     <Card>
-      <SectionLabel>Response Rate by Time</SectionLabel>
+      <WidgetTitleRow
+        title="Response Rate by Time"
+        detailsButton={
+          <DetailsButton
+            title="Response Rate by Time — full details"
+            metric="activity"
+            rangeDays={defaultRange}
+            params={{ channel: 'sms' }}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       {hasData ? (
         <div className="mt-4 h-[240px]">
           <ResponsiveContainer width="100%" height="100%">

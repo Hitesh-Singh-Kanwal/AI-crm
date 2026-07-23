@@ -2,9 +2,16 @@
 
 import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Line, ComposedChart } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { Card, SectionLabel, EmptyChart } from './shared'
+import { Card, WidgetTitleRow, EmptyChart } from './shared'
+import DetailsButton from './DetailsButton'
 
-export default function ResponseRateByDayWidget({ responseRateByDay = [] }) {
+const DETAIL_COLUMNS = [
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleString() : '—') },
+  { key: 'lead', label: 'Lead' },
+  { key: 'status', label: 'Status' },
+]
+
+export default function ResponseRateByDayWidget({ responseRateByDay = [], defaultRange }) {
   const data = responseRateByDay.map((r) => ({
     label: r.dayShort || r.day?.slice(0, 3) || r.day,
     sent: r.sent,
@@ -15,7 +22,18 @@ export default function ResponseRateByDayWidget({ responseRateByDay = [] }) {
 
   return (
     <Card>
-      <SectionLabel>Response Rate by Day</SectionLabel>
+      <WidgetTitleRow
+        title="Response Rate by Day"
+        detailsButton={
+          <DetailsButton
+            title="Response Rate by Day — full details"
+            metric="activity"
+            rangeDays={defaultRange}
+            params={{ channel: 'sms' }}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       {hasData ? (
         <div className="mt-4 h-[240px]">
           <ResponsiveContainer width="100%" height="100%">

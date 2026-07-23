@@ -3,6 +3,7 @@
 import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import { RankedBarList } from './shared'
 import WidgetHeader from './WidgetHeader'
+import DetailsButton from './DetailsButton'
 
 function formatMoney(n) {
   const num = Number(n) || 0
@@ -10,6 +11,14 @@ function formatMoney(n) {
   if (Math.abs(num) >= 10000) return `$${(num / 1000).toFixed(1)}k`
   return `$${num.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
 }
+
+const DETAIL_COLUMNS = [
+  { key: 'customer', label: 'Customer' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'source', label: 'Source' },
+  { key: 'name', label: 'Package / Membership' },
+  { key: 'dueAmount', label: 'Due', format: (v) => formatMoney(v) },
+]
 
 export default function OutstandingBalancesWidget({ revenue, rangeDays, onRangeChange }) {
   const data = [...(revenue?.outstandingBalances || [])].sort((a, b) => b.outstanding - a.outstanding)
@@ -25,6 +34,14 @@ export default function OutstandingBalancesWidget({ revenue, rangeDays, onRangeC
           <span className="text-[18px] font-bold leading-none tabular-nums text-[var(--studio-primary)]">
             {formatMoney(total)}
           </span>
+        }
+        detailsButton={
+          <DetailsButton
+            title="Outstanding Balances — full details"
+            metric="outstandingBalances"
+            rangeDays={rangeDays}
+            columns={DETAIL_COLUMNS}
+          />
         }
       />
       {data.length > 0 ? (

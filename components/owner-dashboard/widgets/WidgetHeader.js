@@ -10,12 +10,13 @@ import RangeDropdown from './RangeDropdown'
  * wrapper in registry.js — omit onRangeChange to hide the dropdown (e.g. Goals,
  * which is calendar-month scoped rather than range scoped).
  */
-export default function WidgetHeader({ title, right = null, rangeDays, onRangeChange }) {
+export default function WidgetHeader({ title, right = null, detailsButton = null, rangeDays, onRangeChange }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <SectionLabel>{title}</SectionLabel>
       <div className="flex items-center gap-2">
         {right}
+        {detailsButton}
         {onRangeChange && <RangeDropdown value={rangeDays} onChange={onRangeChange} />}
       </div>
     </div>

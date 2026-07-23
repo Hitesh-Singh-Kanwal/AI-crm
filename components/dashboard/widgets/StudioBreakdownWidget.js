@@ -1,9 +1,19 @@
 'use client'
 
-import { Card, SectionLabel, EmptyChart } from './shared'
+import { Card, WidgetTitleRow, EmptyChart } from './shared'
 import DonutChart from './DonutChart'
+import DetailsButton from './DetailsButton'
 
-export default function StudioBreakdownWidget({ perStudioBreakdown = [] }) {
+const DETAIL_COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'stage', label: 'Stage' },
+  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+]
+
+export default function StudioBreakdownWidget({ perStudioBreakdown = [], defaultRange }) {
   const total = perStudioBreakdown.reduce((s, r) => s + r.totalLeads, 0)
   const data = perStudioBreakdown.map((r) => ({
     name: r.location,
@@ -13,7 +23,17 @@ export default function StudioBreakdownWidget({ perStudioBreakdown = [] }) {
 
   return (
     <Card>
-      <SectionLabel>Per Studio Breakdown</SectionLabel>
+      <WidgetTitleRow
+        title="Per Studio Breakdown"
+        detailsButton={
+          <DetailsButton
+            title="Per Studio Breakdown — full details"
+            metric="leads"
+            rangeDays={defaultRange}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       {data.length > 0 ? (
         <div className="mt-4">
           <DonutChart

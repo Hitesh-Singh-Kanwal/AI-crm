@@ -3,6 +3,15 @@
 import { Users, CalendarCheck2, UserPlus, TrendingUp } from 'lucide-react'
 import { Card, Trend } from '@/components/dashboard/widgets/shared'
 import RangeDropdown from './RangeDropdown'
+import DetailsButton from './DetailsButton'
+
+const DETAIL_COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'booked', label: 'Booked' },
+]
 
 export default function StudentHealthOverviewWidget({ studentHealth, rangeDays, onRangeChange }) {
   const totals = studentHealth?.totals || { active: 0, booked: 0, notBooked: 0, bookedPct: 0 }
@@ -30,11 +39,15 @@ export default function StudentHealthOverviewWidget({ studentHealth, rangeDays, 
 
   return (
     <section className="flex h-full flex-col gap-3">
-      {onRangeChange && (
-        <div className="flex justify-end">
-          <RangeDropdown value={rangeDays} onChange={onRangeChange} />
-        </div>
-      )}
+      <div className="flex items-center justify-end gap-2">
+        <DetailsButton
+          title="Active Students — full details"
+          metric="studentHealth"
+          rangeDays={rangeDays}
+          columns={DETAIL_COLUMNS}
+        />
+        {onRangeChange && <RangeDropdown value={rangeDays} onChange={onRangeChange} />}
+      </div>
       <div className="grid flex-1 grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => (
           <Card key={card.title}>

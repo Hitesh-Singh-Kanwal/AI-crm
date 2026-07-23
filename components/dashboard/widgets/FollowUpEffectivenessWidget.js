@@ -2,14 +2,32 @@
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { Card, SectionLabel, EmptyChart } from './shared'
+import { Card, WidgetTitleRow, EmptyChart } from './shared'
+import DetailsButton from './DetailsButton'
 
-export default function FollowUpEffectivenessWidget({ followUpEffectiveness = [] }) {
+const DETAIL_COLUMNS = [
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleString() : '—') },
+  { key: 'lead', label: 'Lead' },
+  { key: 'status', label: 'Status' },
+]
+
+export default function FollowUpEffectivenessWidget({ followUpEffectiveness = [], defaultRange }) {
   const hasData = followUpEffectiveness.some((r) => r.sent > 0)
 
   return (
     <Card>
-      <SectionLabel>Follow-up Effectiveness</SectionLabel>
+      <WidgetTitleRow
+        title="Follow-up Effectiveness"
+        detailsButton={
+          <DetailsButton
+            title="Follow-up Effectiveness — full details"
+            metric="activity"
+            rangeDays={defaultRange}
+            params={{ channel: 'sms' }}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       {hasData ? (
         <div className="mt-4 h-[240px]">
           <ResponsiveContainer width="100%" height="100%">
