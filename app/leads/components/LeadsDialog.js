@@ -123,7 +123,7 @@ export default function LeadsDialog({
     setLoading(true)
     try {
       if (editingLead._id) {
-        const result = await api.patch(`/api/lead/${editingLead._id}`, {
+        const result = await api.put(`/api/lead/${editingLead._id}`, {
           name: editingLead.name,
           email: editingLead.email,
           phoneNumber: editingLead.phoneNumber,
