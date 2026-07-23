@@ -1,3 +1,5 @@
+import { TrendingUp, TrendingDown, BarChart3 } from 'lucide-react'
+
 // Shared visual helpers — matched to reports widgets (chartCardClass / titles).
 export const PRIMARY = 'var(--studio-primary)'
 export const GRADIENT_COLOR = 'var(--studio-gradient)'
@@ -21,13 +23,16 @@ export const SIZE_OPTIONS = [
   { id: 'full', label: 'Full', title: 'Full width', cols: 12 },
 ]
 
-/** Same card chrome as reports `chartCardClass`. */
+/** Same card chrome as reports `chartCardClass`, with a soft hover lift. */
 export const chartCardClass =
-  'h-full rounded-[20px] border-2 p-5 bg-card border-border text-card-foreground shadow-sm'
+  'h-full rounded-[20px] border-2 p-5 bg-card border-border text-card-foreground shadow-sm ' +
+  'transition-[box-shadow,transform,border-color] duration-200 ease-out ' +
+  'hover:shadow-md hover:border-[color-mix(in_srgb,var(--studio-primary)_28%,hsl(var(--border)))]'
 
 export function SectionLabel({ children, as: Tag = 'h3' }) {
   return (
-    <Tag className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
+    <Tag className="flex items-center gap-2 text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--studio-primary)]" aria-hidden />
       {children}
     </Tag>
   )
@@ -39,13 +44,16 @@ export function Card({ children, className = '' }) {
 
 export function Trend({ type = 'up', text }) {
   const isUp = type === 'up'
+  const Icon = isUp ? TrendingUp : TrendingDown
   return (
     <div
-      className={`mt-1 flex items-center gap-1 text-[14px] font-medium ${
-        isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+      className={`mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12.5px] font-semibold ${
+        isUp
+          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+          : 'bg-red-500/10 text-red-600 dark:text-red-400'
       }`}
     >
-      <span aria-hidden>{isUp ? '↗' : '↘'}</span>
+      <Icon className="h-3.5 w-3.5" aria-hidden />
       <span>{text}</span>
     </div>
   )
@@ -53,7 +61,8 @@ export function Trend({ type = 'up', text }) {
 
 export function EmptyChart({ message = 'No data for this period.' }) {
   return (
-    <div className="flex h-[240px] flex-col items-center justify-center gap-1 px-4 text-center">
+    <div className="flex h-[240px] flex-col items-center justify-center gap-2 px-4 text-center">
+      <BarChart3 className="h-7 w-7 text-muted-foreground/35" aria-hidden />
       <p className="text-sm text-muted-foreground">{message}</p>
     </div>
   )

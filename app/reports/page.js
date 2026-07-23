@@ -18,8 +18,8 @@ const DEFAULT_KPIS = [
 const PIPELINE_PALETTE = ['#FDBBD9', '#FB9BC7', '#FA6DAD', '#F72585', '#E12279']
 
 export default function ReportsPage() {
-  const [rangeDays, setRangeDays] = useState(30)
-  const { data, error, isLoading, isValidating, mutate } = useReportsOverview(rangeDays)
+  const [range, setRange] = useState(30)
+  const { data, error, isLoading, isValidating, mutate } = useReportsOverview(range)
 
   const sharedProps = useMemo(() => {
     const d = data || {}
@@ -67,7 +67,7 @@ export default function ReportsPage() {
             {isValidating && data && (
               <span className="text-[11px] text-muted-foreground">Updating…</span>
             )}
-            <DateRangePresets value={rangeDays} onChange={setRangeDays} />
+            <DateRangePresets value={range} onChange={setRange} />
           </div>
         }
       />

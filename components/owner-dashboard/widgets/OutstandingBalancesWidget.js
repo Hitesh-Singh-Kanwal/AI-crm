@@ -1,7 +1,8 @@
 'use client'
 
-import { Card, SectionLabel, EmptyChart } from '@/components/dashboard/widgets/shared'
+import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import { RankedBarList } from './shared'
+import WidgetHeader from './WidgetHeader'
 
 function formatMoney(n) {
   const num = Number(n) || 0
@@ -10,18 +11,22 @@ function formatMoney(n) {
   return `$${num.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
 }
 
-export default function OutstandingBalancesWidget({ revenue }) {
+export default function OutstandingBalancesWidget({ revenue, rangeDays, onRangeChange }) {
   const data = [...(revenue?.outstandingBalances || [])].sort((a, b) => b.outstanding - a.outstanding)
   const total = revenue?.totalOutstanding || 0
 
   return (
     <Card>
-      <div className="flex items-baseline justify-between">
-        <SectionLabel>Outstanding Balances</SectionLabel>
-        <span className="text-[26px] font-bold leading-none tabular-nums text-[var(--studio-primary)]">
-          {formatMoney(total)}
-        </span>
-      </div>
+      <WidgetHeader
+        title="Outstanding Balances"
+        rangeDays={rangeDays}
+        onRangeChange={onRangeChange}
+        right={
+          <span className="text-[18px] font-bold leading-none tabular-nums text-[var(--studio-primary)]">
+            {formatMoney(total)}
+          </span>
+        }
+      />
       {data.length > 0 ? (
         <div className="mt-4">
           <RankedBarList rows={data.map((r) => ({ label: r.location, value: r.outstanding }))} valueFormatter={formatMoney} />

@@ -1,7 +1,8 @@
 'use client'
 
-import { Card, SectionLabel, EmptyChart } from '@/components/dashboard/widgets/shared'
+import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import { RankedBarList } from './shared'
+import WidgetHeader from './WidgetHeader'
 
 function formatMoney(n) {
   const num = Number(n) || 0
@@ -10,12 +11,12 @@ function formatMoney(n) {
   return `$${num.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
 }
 
-export default function RevenueByCurriculumWidget({ revenue }) {
+export default function RevenueByCurriculumWidget({ revenue, rangeDays, onRangeChange }) {
   const data = (revenue?.byCurriculum || []).filter((r) => r.revenue > 0)
 
   return (
     <Card>
-      <SectionLabel>Revenue by Curriculum Tier</SectionLabel>
+      <WidgetHeader title="Revenue by Curriculum Tier" rangeDays={rangeDays} onRangeChange={onRangeChange} />
       {data.length > 0 ? (
         <div className="mt-4">
           <RankedBarList

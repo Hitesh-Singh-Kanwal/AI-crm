@@ -70,7 +70,7 @@ export function StackedBarRow({ rows = [] }) {
 export function FunnelStage({ label, value, metrics = [], highlight = false }) {
   return (
     <div
-      className={`flex-1 min-w-[150px] rounded-2xl border p-4 transition-colors ${
+      className={`flex-none w-[190px] rounded-2xl border p-4 transition-colors ${
         highlight ? 'border-[var(--studio-primary)] bg-[color-mix(in_srgb,var(--studio-primary)_6%,transparent)]' : 'border-border bg-card'
       }`}
     >

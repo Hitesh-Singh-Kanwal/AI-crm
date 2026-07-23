@@ -2,14 +2,15 @@
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { Card, SectionLabel, EmptyChart } from '@/components/dashboard/widgets/shared'
+import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
+import WidgetHeader from './WidgetHeader'
 
-export default function LessonForecastWidget({ lessons }) {
+export default function LessonForecastWidget({ lessons, rangeDays, onRangeChange }) {
   const data = lessons?.forecastByStudio || []
 
   return (
     <Card>
-      <SectionLabel>Scheduled Lessons Forecast</SectionLabel>
+      <WidgetHeader title="Scheduled Lessons Forecast" rangeDays={rangeDays} onRangeChange={onRangeChange} />
       {data.length > 0 ? (
         <div className="mt-4 h-[220px]">
           <ResponsiveContainer width="100%" height="100%">
