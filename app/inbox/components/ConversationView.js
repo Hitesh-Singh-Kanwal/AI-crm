@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Mail, ArrowLeft } from 'lucide-react'
+import { Mail, ArrowLeft, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getInitials, formatDateTime, getContactDisplayName } from '@/lib/utils'
@@ -75,6 +75,17 @@ export default function ConversationView({
       onLoadMore?.()
     }
   }, [hasMore, loadingMore, onLoadMore])
+
+  const handleLoadOlder = useCallback(() => {
+    if (!hasMore || loadingMore) return
+    const el = scrollRef.current
+    if (el) {
+      isLoadingMoreRef.current = true
+      prevScrollHeightRef.current = el.scrollHeight
+    }
+    onLoadMore?.()
+  }, [hasMore, loadingMore, onLoadMore])
+
   if (!conversation) {
     return (
       <div className="flex-1 flex items-center justify-center bg-card rounded-none lg:rounded-2xl border-0 lg:border border-border shadow-none lg:shadow-md">
@@ -117,6 +128,29 @@ export default function ConversationView({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={handleLoadOlder}
+              disabled={!hasMore || loadingMore}
+              title={
+                loadingMore
+                  ? 'Loading older messages…'
+                  : hasMore
+                    ? 'Load older messages'
+                    : 'No older messages'
+              }
+              className="h-9 w-9"
+            >
+              <RefreshCw
+                className={cn(
+                  'h-4 w-4 text-muted-foreground',
+                  loadingMore && 'animate-spin'
+                )}
+              />
+              <span className="sr-only">Load older messages</span>
+            </Button>
             <button
               onClick={onToggleDetails}
               className="px-2.5 sm:px-3 py-1 rounded-md text-xs sm:text-sm whitespace-nowrap bg-[color:var(--studio-primary)] text-white"
@@ -132,8 +166,21 @@ export default function ConversationView({
 
       {/* Messages */}
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar-hide py-3 px-3 sm:px-4 bg-muted/40">
-        {loadingMore && (
-          <div className="text-center text-xs text-muted-foreground py-2">Loading older messages…</div>
+        {hasMore && (
+          <div className="flex justify-center py-2">
+            <button
+              type="button"
+              onClick={handleLoadOlder}
+              disabled={loadingMore}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors',
+                'hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-60'
+              )}
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', loadingMore && 'animate-spin')} />
+              {loadingMore ? 'Loading older messages…' : 'Load older messages'}
+            </button>
+          </div>
         )}
         {(() => {
           const filtered = messages.filter((m) => m.channel === TAB_CHANNEL_MAP[activeTab])
