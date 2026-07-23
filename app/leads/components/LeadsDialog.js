@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { UserPlus, X, CalendarClock, Trash2, StickyNote } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { UserPlus, CalendarClock, Trash2, StickyNote } from 'lucide-react'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
@@ -31,6 +32,7 @@ const emptyLead = {
   assignedAiAgent: '',
   assignedHumanAgent: '',
   isEscalated: false,
+  agentFollowupEnabled: true,
   callbackDate: '',
   notes: '',
 }
@@ -131,6 +133,7 @@ export default function LeadsDialog({
           assignedAiAgent: editingLead.assignedAiAgent || '',
           assignedHumanAgent: editingLead.assignedHumanAgent || '',
           isEscalated: editingLead.isEscalated || false,
+          agentFollowupEnabled: editingLead.agentFollowupEnabled !== false,
           callbackDate: editingLead.callbackDate || null,
         })
         if (result.success) {
@@ -146,6 +149,7 @@ export default function LeadsDialog({
           ...editingLead,
           locationID: selectedLocationIDs,
           organisationID: user?.organisationID,
+          agentFollowupEnabled: editingLead.agentFollowupEnabled !== false,
           callbackDate: editingLead.callbackDate || undefined,
         }
         const result = await api.post('/api/lead', payload)
@@ -343,6 +347,21 @@ export default function LeadsDialog({
                 />
                 <span>Is Escalated</span>
               </label>
+            </div>
+            <div className="md:col-span-2 flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 px-4 py-3">
+              <div>
+                <div className="text-sm font-medium">Agent follow-up</div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  When off, this lead is opted out of automated AI follow-ups (even if location settings allow them).
+                </p>
+              </div>
+              <Switch
+                checked={editingLead.agentFollowupEnabled !== false}
+                onCheckedChange={(checked) =>
+                  setEditingLead({ ...editingLead, agentFollowupEnabled: checked })
+                }
+                disabled={viewOnly}
+              />
             </div>
           </div>
 

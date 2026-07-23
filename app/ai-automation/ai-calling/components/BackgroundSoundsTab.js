@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Music2, Pause, Pencil, Play, Search, Trash2, Upload } from 'lucide-react'
+import { Music2, Pause, Pencil, Play, Search, Trash2, Upload, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
@@ -63,6 +63,7 @@ export default function BackgroundSoundsTab() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [uploadOpen, setUploadOpen] = useState(false)
   const [playingId, setPlayingId] = useState(null)
+  const [loadingPlayId, setLoadingPlayId] = useState(null)
   const audioRef = useRef(null)
   const playSessionRef = useRef(0)
 
@@ -89,6 +90,7 @@ export default function BackgroundSoundsTab() {
       audioRef.current = null
     }
     setPlayingId(null)
+    setLoadingPlayId(null)
   }, [])
 
   useEffect(() => () => stopPreview(), [stopPreview])
@@ -184,37 +186,65 @@ export default function BackgroundSoundsTab() {
     const playUrl = resolveBackgroundSoundPlayUrl(sound, getApiBaseUrl())
     if (!playUrl) return
 
-    if (playingId === sound._id) {
+    if (playingId === sound._id || loadingPlayId === sound._id) {
       stopPreview()
       return
     }
 
     stopPreview()
     const session = playSessionRef.current
-    const audio = new Audio(playUrl)
+    setLoadingPlayId(sound._id)
+
+    const audio = new Audio()
+    audio.preload = 'auto'
     audioRef.current = audio
 
     audio.onended = () => {
       if (playSessionRef.current !== session) return
       setPlayingId(null)
+      setLoadingPlayId(null)
       audioRef.current = null
     }
     audio.onerror = () => {
       if (playSessionRef.current !== session) return
       setPlayingId(null)
+      setLoadingPlayId(null)
       audioRef.current = null
       toast.error({ title: 'Preview failed', message: 'Could not play this audio file.' })
     }
 
     try {
+      audio.src = playUrl
+      // Wait until enough data is buffered so play doesn't feel "stuck".
+      await new Promise((resolve, reject) => {
+        const onReady = () => {
+          cleanup()
+          resolve()
+        }
+        const onFail = () => {
+          cleanup()
+          reject(new Error('Could not load audio'))
+        }
+        const cleanup = () => {
+          audio.removeEventListener('canplay', onReady)
+          audio.removeEventListener('error', onFail)
+        }
+        audio.addEventListener('canplay', onReady, { once: true })
+        audio.addEventListener('error', onFail, { once: true })
+        audio.load()
+      })
+
+      if (playSessionRef.current !== session) return
       await audio.play()
       if (playSessionRef.current !== session) return
+      setLoadingPlayId(null)
       setPlayingId(sound._id)
     } catch (e) {
       if (playSessionRef.current !== session) return
       if (e?.name === 'AbortError') return
       console.error(e)
       setPlayingId(null)
+      setLoadingPlayId(null)
       audioRef.current = null
       toast.error({ title: 'Preview failed', message: 'Could not play this audio file.' })
     }
@@ -303,6 +333,7 @@ export default function BackgroundSoundsTab() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {sounds.map((sound) => {
               const isPlaying = playingId === sound._id
+              const isLoadingPlay = loadingPlayId === sound._id
               const isEditing = editingId === sound._id
               const isSaving = savingId === sound._id
               const locLabel = locationBadgeLabel(sound)
@@ -396,12 +427,29 @@ export default function BackgroundSoundsTab() {
                           size="icon"
                           className="h-8 w-8 shrink-0"
                           onClick={() => togglePreview(sound)}
-                          title={isPlaying ? 'Stop preview' : 'Preview sound'}
+                          disabled={!!loadingPlayId && !isLoadingPlay}
+                          title={
+                            isLoadingPlay
+                              ? 'Loading preview…'
+                              : isPlaying
+                                ? 'Stop preview'
+                                : 'Preview sound'
+                          }
                         >
-                          {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                          {isLoadingPlay ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : isPlaying ? (
+                            <Pause className="h-3.5 w-3.5" />
+                          ) : (
+                            <Play className="h-3.5 w-3.5" />
+                          )}
                         </Button>
                       )}
                     </div>
+
+                    {!isEditing && isLoadingPlay ? (
+                      <p className="text-[11px] text-muted-foreground">Loading preview…</p>
+                    ) : null}
 
                     {!isEditing && (
                       sound.description ? (

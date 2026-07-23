@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,13 +14,25 @@ import {
   clampBackgroundSoundVolume,
   formatBackgroundSoundVolumeLabel,
 } from '@/lib/backgroundSound'
-import { appendLocationFields, hasLocationSelection } from './locationScope'
+import { hasLocationSelection, toLocationPayload } from './locationScope'
 
-const MAX_AUDIO_BYTES = 10 * 1024 * 1024
+const MAX_AUDIO_BYTES = 5 * 1024 * 1024
 const ALLOWED_AUDIO_EXT = /\.(mp3|wav|ogg|m4a|webm)$/i
 
 function normalize(v) {
   return (v || '').trim()
+}
+
+function guessContentType(file) {
+  const mime = String(file?.type || '').toLowerCase()
+  if (mime) return mime
+  const name = String(file?.name || '').toLowerCase()
+  if (name.endsWith('.mp3')) return 'audio/mpeg'
+  if (name.endsWith('.wav')) return 'audio/wav'
+  if (name.endsWith('.ogg')) return 'audio/ogg'
+  if (name.endsWith('.m4a')) return 'audio/mp4'
+  if (name.endsWith('.webm')) return 'audio/webm'
+  return 'application/octet-stream'
 }
 
 function isAllowedAudioFile(file) {
@@ -30,11 +43,39 @@ function isAllowedAudioFile(file) {
   return ALLOWED_AUDIO_EXT.test(file.name || '')
 }
 
+function putFileToS3(uploadUrl, file, contentType, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', uploadUrl)
+    xhr.setRequestHeader('Content-Type', contentType)
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable || typeof onProgress !== 'function') return
+      const pct = Math.min(100, Math.round((event.loaded / event.total) * 100))
+      onProgress(pct)
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve()
+        return
+      }
+      reject(new Error(`Storage upload failed (${xhr.status}). Check S3 CORS settings.`))
+    }
+
+    xhr.onerror = () => reject(new Error('Storage upload failed. Check S3 CORS settings.'))
+    xhr.onabort = () => reject(new Error('Upload cancelled.'))
+    xhr.send(file)
+  })
+}
+
 export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded }) {
   const toast = useToast()
   const fileInputRef = useRef(null)
 
   const [saving, setSaving] = useState(false)
+  const [statusText, setStatusText] = useState('')
+  const [uploadPercent, setUploadPercent] = useState(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [file, setFile] = useState(null)
@@ -49,6 +90,8 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
   useEffect(() => {
     if (!open) return
     setSaving(false)
+    setStatusText('')
+    setUploadPercent(null)
     setName('')
     setDescription('')
     setFile(null)
@@ -67,7 +110,10 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
       if (fileInputRef.current) fileInputRef.current.value = ''
       toast.error({
         title: 'Invalid file',
-        message: 'Use an audio file (MP3, WAV, M4A, OGG, WEBM) up to 10 MB.',
+        message:
+          nextFile.size > MAX_AUDIO_BYTES
+            ? 'File is too large. Max size is 5 MB (2–3 MB recommended for ambient loops).'
+            : 'Use an audio file (MP3, WAV, M4A, OGG, WEBM) up to 5 MB.',
       })
       return
     }
@@ -81,44 +127,69 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
     }
     if (!canUpload) return
     setSaving(true)
+    setUploadPercent(null)
     try {
-      const fd = new FormData()
-      fd.append('name', normalize(name))
-      fd.append('description', normalize(description))
-      fd.append('volume', String(clampBackgroundSoundVolume(volume)))
-      fd.append('file', file)
-      appendLocationFields(fd, locationID)
+      const contentType = guessContentType(file)
+      const locationPayload = toLocationPayload(locationID)
 
-      const result = await api.request('/api/ai-background-sound/upload', {
-        method: 'POST',
-        body: fd,
+      setStatusText('Preparing upload…')
+      const urlResult = await api.post('/api/ai-background-sound/upload-url', {
+        fileName: file.name,
+        contentType,
+        fileSize: file.size,
       })
 
-      if (result.success) {
+      if (!urlResult.success || !urlResult.data?.uploadUrl || !urlResult.data?.fileID) {
+        throw new Error(urlResult.error || 'Could not prepare upload.')
+      }
+
+      setStatusText('Uploading to storage…')
+      setUploadPercent(0)
+      await putFileToS3(
+        urlResult.data.uploadUrl,
+        file,
+        urlResult.data.contentType || contentType,
+        (pct) => setUploadPercent(pct),
+      )
+      setUploadPercent(100)
+
+      setStatusText('Saving sound…')
+      const confirmResult = await api.post('/api/ai-background-sound/confirm', {
+        fileID: urlResult.data.fileID,
+        name: normalize(name),
+        description: normalize(description),
+        volume: clampBackgroundSoundVolume(volume),
+        mimeType: urlResult.data.contentType || contentType,
+        ...locationPayload,
+      })
+
+      if (confirmResult.success) {
         toast.success({ title: 'Uploaded', message: 'Background sound saved successfully.' })
-        onUploaded?.(result.data)
+        onUploaded?.(confirmResult.data)
         onClose()
       } else {
-        toast.error({ title: 'Upload failed', message: result.error || 'Could not upload sound.' })
+        toast.error({ title: 'Upload failed', message: confirmResult.error || 'Could not upload sound.' })
       }
     } catch (e) {
       console.error(e)
-      toast.error({ title: 'Error', message: 'Could not upload sound.' })
+      toast.error({ title: 'Error', message: e.message || 'Could not upload sound.' })
     } finally {
       setSaving(false)
+      setStatusText('')
+      setUploadPercent(null)
     }
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="2xl">
-      <DialogContent onClose={onClose} className="max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="2xl">
+      <DialogContent onClose={saving ? undefined : onClose} className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Upload background sound</DialogTitle>
         </DialogHeader>
 
         <div className="mt-5 space-y-4">
           <p className="text-xs text-muted-foreground">
-            Upload a short ambient loop (MP3, WAV, M4A, OGG, WEBM). Max 10 MB. Vapi plays it softly in the background during calls.
+            Upload a short ambient loop (MP3, WAV, M4A, OGG, WEBM). Max 5 MB — we recommend 2–3 MB. Vapi plays it softly in the background during calls.
           </p>
 
           <div className="space-y-1.5">
@@ -205,12 +276,47 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
             </div>
           </div>
 
+          {saving ? (
+            <div className="rounded-lg border border-border/70 bg-muted/40 px-3 py-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                <span>{statusText || 'Working…'}</span>
+                {uploadPercent != null ? (
+                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">{uploadPercent}%</span>
+                ) : null}
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-brand transition-[width] duration-200 ease-out"
+                  style={{
+                    width:
+                      uploadPercent != null
+                        ? `${uploadPercent}%`
+                        : statusText?.startsWith('Saving')
+                          ? '100%'
+                          : '35%',
+                  }}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Please keep this window open until the upload finishes.
+              </p>
+            </div>
+          ) : null}
+
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Cancel
             </Button>
             <Button type="button" variant="gradient" onClick={handleUpload} disabled={!canUpload || saving}>
-              {saving ? 'Uploading…' : 'Upload sound'}
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  {uploadPercent != null ? `Uploading ${uploadPercent}%` : statusText || 'Uploading…'}
+                </>
+              ) : (
+                'Upload sound'
+              )}
             </Button>
           </div>
         </div>

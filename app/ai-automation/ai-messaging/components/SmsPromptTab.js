@@ -18,21 +18,31 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
+import {
+  initLocationID,
+  hasLocationSelection,
+  toLocationPayload,
+  locationBadgeLabel,
+  workingLocationQueryParam,
+  normalizeWorkingLocation,
+} from '@/app/ai-automation/ai-calling/components/locationScope'
 
 // ─── Create / Edit dialog ────────────────────────────────────────────────────
 
-function PromptDialog({ open, onClose, prompt, onRefresh }) {
+function PromptDialog({ open, onClose, prompt, onRefresh, defaultLocationID }) {
   const toast = useToast()
   const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({ name: '', systemPrompt: '' })
+  const [form, setForm] = useState({ name: '', systemPrompt: '', locationID: [] })
 
   useEffect(() => {
     if (!open) return
     setForm({
       name: prompt?.name || '',
       systemPrompt: prompt?.systemPrompt || '',
+      locationID: prompt ? initLocationID(prompt) : (defaultLocationID || []),
     })
-  }, [open, prompt])
+  }, [open, prompt, defaultLocationID])
 
   const isEdit = !!prompt
 
@@ -45,11 +55,16 @@ function PromptDialog({ open, onClose, prompt, onRefresh }) {
       toast.error({ title: 'Validation', message: 'System prompt is required' })
       return
     }
+    if (!hasLocationSelection(form.locationID)) {
+      toast.error({ title: 'Validation', message: 'Select a studio or All branches' })
+      return
+    }
     setLoading(true)
     try {
       const body = {
         name: form.name.trim(),
         systemPrompt: form.systemPrompt.trim(),
+        ...toLocationPayload(form.locationID),
       }
       const result = isEdit
         ? await api.put(`/api/sms-prompt/${prompt._id}`, body)
@@ -88,6 +103,17 @@ function PromptDialog({ open, onClose, prompt, onRefresh }) {
         </DialogHeader>
 
         <div className="space-y-5 py-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium">Studio scope *</label>
+            <LocationSelector
+              value={form.locationID}
+              onChange={(id) => setForm((p) => ({ ...p, locationID: id }))}
+              multiple
+              allowAllBranches
+              placeholder="Select studio(s)…"
+            />
+          </div>
+
           {/* Name */}
           <div>
             <label className="mb-1 block text-sm font-medium">Name *</label>
@@ -318,11 +344,17 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
   const [viewPrompt, setViewPrompt] = useState(null)
   const [viewOpen, setViewOpen] = useState(false)
   const [viewLoading, setViewLoading] = useState(false)
+  const [workingLocationID, setWorkingLocationID] = useState([])
+
+  const locationQuery = workingLocationQueryParam(workingLocationID)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await api.get('/api/sms-prompt')
+      const params = new URLSearchParams()
+      if (locationQuery) params.set('locationID', locationQuery)
+      const qs = params.toString()
+      const result = await api.get(`/api/sms-prompt${qs ? `?${qs}` : ''}`)
       if (result.success) setPrompts(result.data || [])
       else pushToast.error('Error', { description: result.error || 'Failed to load prompts' })
     } catch {
@@ -330,7 +362,7 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [locationQuery])
 
   useEffect(() => {
     if (activeView !== 'prompt') return
@@ -389,9 +421,27 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
-            One active prompt at a time. Studio facts come from the Knowledge Base PDF; conversation
-            tone from the Playbook PDF — both are auto-injected into every reply.
+            One active prompt per studio scope. Texts to a studio number use that studio&apos;s active
+            prompt (or All branches). Knowledge Base and Playbook PDFs are injected per studio too.
           </p>
+        </div>
+
+        <div className="mb-4 max-w-md">
+          <label className="mb-1.5 block text-sm font-medium">Working studio</label>
+          <LocationSelector
+            value={
+              workingLocationID === ALL_BRANCHES_VALUE
+                ? ALL_BRANCHES_VALUE
+                : Array.isArray(workingLocationID) && workingLocationID.length
+                  ? workingLocationID[0]
+                  : null
+            }
+            onChange={(id) => setWorkingLocationID(normalizeWorkingLocation(id))}
+            multiple={false}
+            allowAllBranches
+            showAllOption={false}
+            placeholder="Filter by studio…"
+          />
         </div>
 
         {/* Model selector */}
@@ -461,6 +511,11 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
                       {p.isActive && (
                         <span className="inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
                           Active
+                        </span>
+                      )}
+                      {locationBadgeLabel(p) && (
+                        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                          {locationBadgeLabel(p)}
                         </span>
                       )}
                     </div>
@@ -556,6 +611,7 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
         onClose={() => setDialogOpen(false)}
         prompt={editingPrompt}
         onRefresh={load}
+        defaultLocationID={workingLocationID}
       />
       <ViewDialog open={viewOpen} onClose={() => setViewOpen(false)} prompt={viewPrompt} />
     </TabsContent>
