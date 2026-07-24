@@ -6,8 +6,8 @@ import LeadStatusManagerClient from '@/components/lead-status/LeadStatusManagerC
 export default function LeadStatusesPage() {
   return (
     <MainLayout
-      title="Lead Statuses"
-      subtitle="Customize lead statuses and automations (simple rules + tier ladders)"
+      title="Stages & Lifecycle"
+      subtitle="Lead pipeline stages and customer Active/Inactive automations"
     >
       <LeadStatusManagerClient />
     </MainLayout>

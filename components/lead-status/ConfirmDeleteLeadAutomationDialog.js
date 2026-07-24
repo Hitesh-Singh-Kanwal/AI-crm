@@ -15,7 +15,9 @@ export default function ConfirmDeleteLeadAutomationDialog({
   onConfirm,
   ruleName,
   busy = false,
+  entity = 'lead',
 }) {
+  const isCustomer = entity === 'customer'
   return (
     <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="md">
       <DialogContent onClose={busy ? undefined : onClose}>
@@ -30,7 +32,11 @@ export default function ConfirmDeleteLeadAutomationDialog({
             ) : (
               <>This will permanently delete this automation rule.</>
             )}
-            <span className="mt-2 block">Leads will no longer change status via this rule.</span>
+            <span className="mt-2 block">
+              {isCustomer
+                ? 'Customers will no longer change Active/Inactive/Archived via this rule.'
+                : 'Leads will no longer change stage via this rule.'}
+            </span>
           </DialogDescription>
         </DialogHeader>
 

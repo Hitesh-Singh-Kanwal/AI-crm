@@ -20,7 +20,7 @@ export default function ConfirmDeleteLeadStatusDialog({
     <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="md">
       <DialogContent onClose={busy ? undefined : onClose}>
         <DialogHeader>
-          <DialogTitle>Delete lead status?</DialogTitle>
+          <DialogTitle>Delete lead stage?</DialogTitle>
           <DialogDescription>
             {statusName ? (
               <>
@@ -28,11 +28,11 @@ export default function ConfirmDeleteLeadStatusDialog({
                 <span className="font-medium text-foreground">{statusName}</span>.
               </>
             ) : (
-              <>This will permanently delete this lead status.</>
+              <>This will permanently delete this lead stage.</>
             )}
             <span className="mt-2 block">
-              This action cannot be undone. Any leads still assigned this status must first be
-              updated or the status deactivated instead.
+              This cannot be undone. Any leads still on this stage should be moved or the stage
+              deactivated instead.
             </span>
           </DialogDescription>
         </DialogHeader>

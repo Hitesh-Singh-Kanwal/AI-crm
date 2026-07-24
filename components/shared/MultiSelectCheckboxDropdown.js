@@ -59,7 +59,7 @@ export default function MultiSelectCheckboxDropdown({
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-border bg-card shadow-lg">
           {showSelectAll && options.length > 0 && (
             <button
               type="button"

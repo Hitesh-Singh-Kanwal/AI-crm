@@ -539,6 +539,7 @@ export default function CustomersPage() {
             <TableHeader>
               <TableRow className="bg-muted/40">
                 <TableHead className="text-[12px] font-semibold">Customer</TableHead>
+                <TableHead className="text-[12px] font-semibold">Status</TableHead>
                 <TableHead className="text-[12px] font-semibold">Contact</TableHead>
                 <TableHead className="text-[12px] font-semibold">Location</TableHead>
                 <TableHead className="text-[12px] font-semibold">Credits</TableHead>
@@ -549,13 +550,13 @@ export default function CustomersPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-12 text-center">
+                  <TableCell colSpan={7} className="py-12 text-center">
                     <LoadingSpinner />
                   </TableCell>
                 </TableRow>
               ) : customers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-14 text-center">
+                  <TableCell colSpan={7} className="py-14 text-center">
                     <div className="mx-auto flex max-w-xs flex-col items-center gap-3">
                       <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
                         <Users className="h-5 w-5 text-primary" />
@@ -595,6 +596,24 @@ export default function CustomersPage() {
                         </Avatar>
                         <p className="text-[13px] font-medium text-foreground">{customer.name}</p>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={cn(
+                          'inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                          customer.lifecycleStatus === 'inactive'
+                            ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+                            : customer.lifecycleStatus === 'archived'
+                              ? 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300'
+                              : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        )}
+                      >
+                        {customer.lifecycleStatus === 'inactive'
+                          ? 'Inactive'
+                          : customer.lifecycleStatus === 'archived'
+                            ? 'Archived'
+                            : 'Active'}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <p className="text-[12px] text-foreground">{customer.email}</p>

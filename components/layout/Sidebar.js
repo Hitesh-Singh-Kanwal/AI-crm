@@ -63,7 +63,7 @@ const navItems = [
       { name: 'Follow-up Settings', href: '/ai-automation/followup-settings' },
       { name: 'Workflows', href: '/ai-automation/workflows' },
       { name: 'Dynamic Lists', href: '/ai-automation/dynamic-lists' },
-      { name: 'Lead Statuses', href: '/ai-automation/lead-statuses' },
+      { name: 'Stages & Lifecycle', href: '/ai-automation/lead-statuses' },
       { name: 'AI Calls Data', href: '/ai-automation/ai-calling-data' },
       { name: 'Training', href: '/ai-automation/training' },
     ],

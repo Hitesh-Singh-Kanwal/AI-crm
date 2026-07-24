@@ -56,7 +56,7 @@ export default function LeadStatusFormDialog({ open, onClose, status, onSaved })
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.name.trim()) {
-      setError('Status name is required')
+      setError('Stage name is required')
       return
     }
     setSaving(true)
@@ -78,7 +78,7 @@ export default function LeadStatusFormDialog({ open, onClose, status, onSaved })
       onSaved?.({ isEdit })
       onClose()
     } else {
-      setError(res?.error || 'Failed to save lead status')
+      setError(res?.error || 'Failed to save lead stage')
     }
     setSaving(false)
   }
@@ -89,10 +89,10 @@ export default function LeadStatusFormDialog({ open, onClose, status, onSaved })
         <div className="sticky top-0 z-10 border-b border-border bg-card px-6 pb-4 pt-6">
           <DialogHeader>
             <DialogTitle className="text-[22px]">
-              {isEdit ? 'Edit status' : 'New lead status'}
+              {isEdit ? 'Edit stage' : 'New lead stage'}
             </DialogTitle>
             <DialogDescription className="text-[14px]">
-              Statuses are labels only. Use Automations to decide when leads move between them.
+              Stages are labels only. Use Automations to decide when leads move between them.
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -221,8 +221,8 @@ export default function LeadStatusFormDialog({ open, onClose, status, onSaved })
                   ? 'Saving…'
                   : 'Creating…'
                 : isEdit
-                  ? 'Save status'
-                  : 'Create status'}
+                  ? 'Save stage'
+                  : 'Create stage'}
             </button>
           </DialogFooter>
         </form>

@@ -1,20 +1,28 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, Zap } from 'lucide-react'
+import { Layers, Plus } from 'lucide-react'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-
-const inputClass =
-  'w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-[14px] text-foreground outline-none placeholder:text-muted-foreground focus:border-[var(--studio-primary)] focus:ring-2 focus:ring-[var(--studio-primary)]/15 disabled:opacity-60'
+  formatJoinedConditionEnglish,
+  hydrateConditionJoins,
+  normalizeConditionsForSave,
+} from '@/lib/condition-logic'
+import { Dialog } from '@/components/ui/dialog'
+import MultiSelectCheckboxDropdown from '@/components/shared/MultiSelectCheckboxDropdown'
+import {
+  ActiveToggle,
+  ConditionCard,
+  DialogShell,
+  FieldLabel,
+  FormActions,
+  JoinToggle,
+  RulePreview,
+  StepHeader,
+  fieldClass,
+  selectClass,
+} from '@/components/lead-status/AutomationDialogChrome'
 
 const CONDITION_TYPES = {
   CURRENT_STAGE_IS: 'current_stage_is',
@@ -24,11 +32,44 @@ const CONDITION_TYPES = {
   EVENT_OCCURRED: 'event_occurred',
   EVENT_NOT_OCCURRED: 'event_not_occurred',
   PACKAGE_COUNT_GTE: 'package_count_gte',
+  CALL_DURATION_GTE: 'call_duration_gte',
+  CALL_USER_TURNS_GTE: 'call_user_turns_gte',
+  INBOUND_SMS_COUNT_GTE: 'inbound_sms_count_gte',
+  INBOUND_EMAIL_COUNT_GTE: 'inbound_email_count_gte',
 }
 
-const ACTION = {
-  SET_STAGE: 'set_stage',
-  SET_STAGE_TIER: 'set_stage_tier',
+function resolveStageKeys(c = {}) {
+  if (Array.isArray(c.stageKeys) && c.stageKeys.length) {
+    return c.stageKeys.map(String).filter(Boolean)
+  }
+  if (c.stageKey) return [String(c.stageKey)]
+  return []
+}
+
+function blankCondition(type) {
+  switch (type) {
+    case CONDITION_TYPES.CURRENT_STAGE_IS:
+    case CONDITION_TYPES.CURRENT_STAGE_IS_NOT:
+      return { type, stageKeys: [] }
+    case CONDITION_TYPES.DAYS_SINCE_CREATED:
+    case CONDITION_TYPES.DAYS_SINCE_LAST_ACTIVITY:
+      return { type, days: 30 }
+    case CONDITION_TYPES.EVENT_OCCURRED:
+    case CONDITION_TYPES.EVENT_NOT_OCCURRED:
+      return { type, event: 'inbound_reply' }
+    case CONDITION_TYPES.PACKAGE_COUNT_GTE:
+      return { type, count: 1 }
+    case CONDITION_TYPES.CALL_DURATION_GTE:
+      return { type, seconds: 45 }
+    case CONDITION_TYPES.CALL_USER_TURNS_GTE:
+      return { type, count: 3 }
+    case CONDITION_TYPES.INBOUND_SMS_COUNT_GTE:
+      return { type, count: 2 }
+    case CONDITION_TYPES.INBOUND_EMAIL_COUNT_GTE:
+      return { type, count: 1 }
+    default:
+      return { type }
+  }
 }
 
 function emptyCondition(catalog) {
@@ -38,61 +79,39 @@ function emptyCondition(catalog) {
   return blankCondition(first)
 }
 
-function blankCondition(type) {
-  switch (type) {
-    case CONDITION_TYPES.CURRENT_STAGE_IS:
-    case CONDITION_TYPES.CURRENT_STAGE_IS_NOT:
-      return { type, stageKey: '' }
-    case CONDITION_TYPES.DAYS_SINCE_CREATED:
-    case CONDITION_TYPES.DAYS_SINCE_LAST_ACTIVITY:
-      return { type, days: 30 }
-    case CONDITION_TYPES.EVENT_OCCURRED:
-    case CONDITION_TYPES.EVENT_NOT_OCCURRED:
-      return { type, event: 'inbound_reply' }
-    case CONDITION_TYPES.PACKAGE_COUNT_GTE:
-      return { type, count: 1 }
-    default:
-      return { type }
-  }
-}
-
-function emptyTier(statuses) {
-  return {
-    gte: 1000,
-    stageKey: statuses.find((s) => s.isActive !== false)?.key || '',
-  }
-}
-
 function createEmptyForm(statuses = []) {
   return {
     name: '',
     description: '',
     isActive: true,
-    logic: 'AND',
-    ruleKind: 'simple',
     conditions: [],
     actionStageKey: statuses.find((s) => s.isActive !== false)?.key || '',
-    metric: 'total_spend',
-    tiers: [emptyTier(statuses), { gte: 5000, stageKey: '' }, { gte: 10000, stageKey: '' }],
   }
 }
 
 function formFromRule(rule, statuses) {
   if (!rule) return createEmptyForm(statuses)
-  const isTier = rule.action?.type === ACTION.SET_STAGE_TIER
+  const conditions = hydrateConditionJoins(
+    Array.isArray(rule.conditions)
+      ? rule.conditions.map((c) => {
+          const next = { ...c }
+          if (
+            next.type === CONDITION_TYPES.CURRENT_STAGE_IS ||
+            next.type === CONDITION_TYPES.CURRENT_STAGE_IS_NOT
+          ) {
+            next.stageKeys = resolveStageKeys(next)
+          }
+          return next
+        })
+      : [],
+    rule.logic === 'OR' ? 'OR' : 'AND'
+  )
   return {
     name: rule.name || '',
     description: rule.description || '',
     isActive: rule.isActive !== false,
-    logic: rule.logic === 'OR' ? 'OR' : 'AND',
-    ruleKind: isTier ? 'tier' : 'simple',
-    conditions: Array.isArray(rule.conditions) ? rule.conditions.map((c) => ({ ...c })) : [],
+    conditions,
     actionStageKey: rule.action?.stageKey || statuses?.[0]?.key || '',
-    metric: rule.action?.metric || 'total_spend',
-    tiers:
-      isTier && Array.isArray(rule.action?.tiers) && rule.action.tiers.length
-        ? rule.action.tiers.map((t) => ({ gte: t.gte, stageKey: t.stageKey }))
-        : [emptyTier(statuses)],
   }
 }
 
@@ -104,16 +123,24 @@ function eventLabel(events, key) {
   return events.find((e) => e.key === key)?.label || String(key || '').replace(/_/g, ' ')
 }
 
-function metricLabel(metrics, key) {
-  return metrics.find((m) => m.key === key)?.label || key
-}
-
 function describeCondition(c, statuses, events) {
   switch (c.type) {
-    case CONDITION_TYPES.CURRENT_STAGE_IS:
-      return `status is ${statusName(statuses, c.stageKey)}`
-    case CONDITION_TYPES.CURRENT_STAGE_IS_NOT:
-      return `status is not ${statusName(statuses, c.stageKey)}`
+    case CONDITION_TYPES.CURRENT_STAGE_IS: {
+      const keys = resolveStageKeys(c)
+      if (!keys.length) return 'stage is …'
+      const names = keys.map((k) => statusName(statuses, k))
+      return keys.length === 1
+        ? `stage is ${names[0]}`
+        : `stage is one of ${names.join(', ')}`
+    }
+    case CONDITION_TYPES.CURRENT_STAGE_IS_NOT: {
+      const keys = resolveStageKeys(c)
+      if (!keys.length) return 'stage is not …'
+      const names = keys.map((k) => statusName(statuses, k))
+      return keys.length === 1
+        ? `stage is not ${names[0]}`
+        : `stage is not any of ${names.join(', ')}`
+    }
     case CONDITION_TYPES.DAYS_SINCE_CREATED:
       return `created ≥ ${c.days ?? '?'} days ago`
     case CONDITION_TYPES.DAYS_SINCE_LAST_ACTIVITY:
@@ -124,9 +151,138 @@ function describeCondition(c, statuses, events) {
       return `${eventLabel(events, c.event)} has not happened`
     case CONDITION_TYPES.PACKAGE_COUNT_GTE:
       return `package purchases ≥ ${c.count ?? '?'}`
+    case CONDITION_TYPES.CALL_DURATION_GTE:
+      return `latest call ≥ ${c.seconds ?? '?'}s`
+    case CONDITION_TYPES.CALL_USER_TURNS_GTE:
+      return `lead speaking turns ≥ ${c.count ?? '?'}`
+    case CONDITION_TYPES.INBOUND_SMS_COUNT_GTE:
+      return `inbound SMS ≥ ${c.count ?? '?'}`
+    case CONDITION_TYPES.INBOUND_EMAIL_COUNT_GTE:
+      return `inbound email ≥ ${c.count ?? '?'}`
     default:
       return c.type
   }
+}
+
+function ConditionValue({ cond, index, saving, activeStatuses, catalog, updateCondition }) {
+  if (
+    cond.type === CONDITION_TYPES.CURRENT_STAGE_IS ||
+    cond.type === CONDITION_TYPES.CURRENT_STAGE_IS_NOT
+  ) {
+    return (
+      <div>
+        <FieldLabel required>
+          {cond.type === CONDITION_TYPES.CURRENT_STAGE_IS ? 'Stages' : 'Exclude stages'}
+        </FieldLabel>
+        <MultiSelectCheckboxDropdown
+          options={activeStatuses.map((s) => ({ value: s.key, label: s.name }))}
+          values={resolveStageKeys(cond)}
+          onChange={(stageKeys) => updateCondition(index, { stageKeys })}
+          placeholder="Select stages…"
+          disabled={saving}
+          showSelectAll
+        />
+      </div>
+    )
+  }
+
+  if (
+    cond.type === CONDITION_TYPES.DAYS_SINCE_CREATED ||
+    cond.type === CONDITION_TYPES.DAYS_SINCE_LAST_ACTIVITY
+  ) {
+    return (
+      <div>
+        <FieldLabel required>Days</FieldLabel>
+        <input
+          type="number"
+          min={0}
+          value={cond.days ?? ''}
+          onChange={(e) => updateCondition(index, { days: Number(e.target.value) })}
+          disabled={saving}
+          className={cn(fieldClass, 'max-w-[120px]')}
+        />
+      </div>
+    )
+  }
+
+  if (
+    cond.type === CONDITION_TYPES.EVENT_OCCURRED ||
+    cond.type === CONDITION_TYPES.EVENT_NOT_OCCURRED
+  ) {
+    return (
+      <div>
+        <FieldLabel required>Event</FieldLabel>
+        <select
+          value={cond.event || ''}
+          onChange={(e) => updateCondition(index, { event: e.target.value })}
+          disabled={saving}
+          className={selectClass}
+        >
+          {(catalog.events || []).map((ev) => (
+            <option key={ev.key} value={ev.key}>
+              {ev.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    )
+  }
+
+  if (cond.type === CONDITION_TYPES.PACKAGE_COUNT_GTE) {
+    return (
+      <div>
+        <FieldLabel required>Min packages</FieldLabel>
+        <input
+          type="number"
+          min={1}
+          value={cond.count ?? ''}
+          onChange={(e) => updateCondition(index, { count: Number(e.target.value) })}
+          disabled={saving}
+          className={cn(fieldClass, 'max-w-[120px]')}
+        />
+      </div>
+    )
+  }
+
+  if (cond.type === CONDITION_TYPES.CALL_DURATION_GTE) {
+    return (
+      <div>
+        <FieldLabel required>Min seconds</FieldLabel>
+        <input
+          type="number"
+          min={0}
+          value={cond.seconds ?? ''}
+          onChange={(e) => updateCondition(index, { seconds: Number(e.target.value) })}
+          disabled={saving}
+          className={cn(fieldClass, 'max-w-[120px]')}
+        />
+      </div>
+    )
+  }
+
+  if (
+    cond.type === CONDITION_TYPES.CALL_USER_TURNS_GTE ||
+    cond.type === CONDITION_TYPES.INBOUND_SMS_COUNT_GTE ||
+    cond.type === CONDITION_TYPES.INBOUND_EMAIL_COUNT_GTE
+  ) {
+    return (
+      <div>
+        <FieldLabel required>
+          {cond.type === CONDITION_TYPES.CALL_USER_TURNS_GTE ? 'Min turns' : 'Min count'}
+        </FieldLabel>
+        <input
+          type="number"
+          min={0}
+          value={cond.count ?? ''}
+          onChange={(e) => updateCondition(index, { count: Number(e.target.value) })}
+          disabled={saving}
+          className={cn(fieldClass, 'max-w-[120px]')}
+        />
+      </div>
+    )
+  }
+
+  return null
 }
 
 export default function LeadAutomationFormDialog({
@@ -138,11 +294,7 @@ export default function LeadAutomationFormDialog({
 }) {
   const isEdit = Boolean(rule?._id || rule?.id)
   const [form, setForm] = useState(() => createEmptyForm(statuses))
-  const [catalog, setCatalog] = useState({
-    conditions: [],
-    events: [],
-    tierMetrics: [],
-  })
+  const [catalog, setCatalog] = useState({ conditions: [], events: [] })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -156,25 +308,29 @@ export default function LeadAutomationFormDialog({
       const nextCatalog = {
         conditions: Array.isArray(res?.data?.conditions) ? res.data.conditions : [],
         events: Array.isArray(res?.data?.events) ? res.data.events : [],
-        tierMetrics: Array.isArray(res?.data?.tierMetrics) ? res.data.tierMetrics : [],
       }
       if (cancelled) return
       setCatalog(nextCatalog)
 
       const base = formFromRule(rule, statuses)
-      if (base.ruleKind === 'simple') {
-        if (!base.actionStageKey && statuses.length) {
-          base.actionStageKey = statuses.find((s) => s.isActive)?.key || statuses[0].key
-        }
-        if (!base.conditions.length) {
-          base.conditions = [emptyCondition(nextCatalog)]
-        }
-      } else {
-        base.tiers = base.tiers.map((t) => ({
-          ...t,
-          stageKey: t.stageKey || statuses.find((s) => s.isActive)?.key || '',
-        }))
+      if (!base.actionStageKey && statuses.length) {
+        base.actionStageKey = statuses.find((s) => s.isActive)?.key || statuses[0].key
       }
+      if (!base.conditions.length) {
+        base.conditions = [emptyCondition(nextCatalog)]
+      }
+      const wiredKeys = new Set(nextCatalog.events.map((e) => e.key))
+      base.conditions = base.conditions.map((c) => {
+        if (
+          (c.type === CONDITION_TYPES.EVENT_OCCURRED ||
+            c.type === CONDITION_TYPES.EVENT_NOT_OCCURRED) &&
+          c.event &&
+          !wiredKeys.has(c.event)
+        ) {
+          return { ...c, event: nextCatalog.events[0]?.key || 'inbound_reply' }
+        }
+        return c
+      })
       setForm(base)
     })()
 
@@ -184,16 +340,19 @@ export default function LeadAutomationFormDialog({
   }, [open, rule, statuses])
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }))
-
   const conditions = form.conditions || []
-  const tiers = form.tiers || []
-  const isTier = form.ruleKind === 'tier'
   const activeStatuses = statuses.filter((s) => s.isActive !== false)
+  const conditionTypeOptions = catalog.conditions.length
+    ? catalog.conditions
+    : [{ type: CONDITION_TYPES.EVENT_OCCURRED, label: 'Event has happened' }]
 
   const addCondition = () => {
     setForm((prev) => ({
       ...prev,
-      conditions: [...prev.conditions, emptyCondition(catalog)],
+      conditions: [
+        ...prev.conditions,
+        { ...emptyCondition(catalog), ...(prev.conditions.length ? { join: 'AND' } : {}) },
+      ],
     }))
   }
 
@@ -201,7 +360,11 @@ export default function LeadAutomationFormDialog({
     setForm((prev) => {
       const next = prev.conditions.map((c, i) => {
         if (i !== index) return c
-        if (patch.type && patch.type !== c.type) return blankCondition(patch.type)
+        if (patch.type && patch.type !== c.type) {
+          const blank = blankCondition(patch.type)
+          if (index > 0) blank.join = c.join === 'OR' ? 'OR' : 'AND'
+          return blank
+        }
         return { ...c, ...patch }
       })
       return { ...prev, conditions: next }
@@ -209,64 +372,26 @@ export default function LeadAutomationFormDialog({
   }
 
   const removeCondition = (index) => {
-    setForm((prev) => ({
-      ...prev,
-      conditions: prev.conditions.filter((_, i) => i !== index),
-    }))
-  }
-
-  const addTier = () => {
-    setForm((prev) => ({
-      ...prev,
-      tiers: [...prev.tiers, emptyTier(activeStatuses)],
-    }))
-  }
-
-  const updateTier = (index, patch) => {
-    setForm((prev) => ({
-      ...prev,
-      tiers: prev.tiers.map((t, i) => (i === index ? { ...t, ...patch } : t)),
-    }))
-  }
-
-  const removeTier = (index) => {
-    setForm((prev) => ({
-      ...prev,
-      tiers: prev.tiers.filter((_, i) => i !== index),
-    }))
+    setForm((prev) => {
+      const filtered = prev.conditions.filter((_, i) => i !== index)
+      return {
+        ...prev,
+        conditions: filtered.map((c, i) => {
+          if (i === 0) {
+            const { join: _drop, ...rest } = c
+            return rest
+          }
+          return { ...c, join: c.join === 'OR' ? 'OR' : 'AND' }
+        }),
+      }
+    })
   }
 
   const plainEnglish = useMemo(() => {
-    if (isTier) {
-      const valid = tiers.filter((t) => t.stageKey && Number.isFinite(Number(t.gte)))
-      if (!valid.length) return null
-      const sorted = [...valid].sort((a, b) => Number(b.gte) - Number(a.gte))
-      const metric = metricLabel(catalog.tierMetrics, form.metric)
-      const ladder = sorted
-        .map((t) => `≥ ${t.gte} → ${statusName(statuses, t.stageKey)}`)
-        .join(', then ')
-      const gates =
-        conditions.length > 0
-          ? `If ${conditions.map((c) => describeCondition(c, statuses, catalog.events)).join(form.logic === 'OR' ? ', or ' : ', and ')}, then by ${metric}: ${ladder}.`
-          : `By ${metric}: ${ladder}.`
-      return gates
-    }
-
     if (!conditions.length || !form.actionStageKey) return null
     const parts = conditions.map((c) => describeCondition(c, statuses, catalog.events))
-    const joiner = form.logic === 'OR' ? ', or ' : ', and '
-    return `If ${parts.join(joiner)} → set status to ${statusName(statuses, form.actionStageKey)}.`
-  }, [
-    isTier,
-    tiers,
-    conditions,
-    form.logic,
-    form.actionStageKey,
-    form.metric,
-    statuses,
-    catalog.events,
-    catalog.tierMetrics,
-  ])
+    return `If ${formatJoinedConditionEnglish(parts, conditions)} → set stage to ${statusName(statuses, form.actionStageKey)}.`
+  }, [conditions, form.actionStageKey, statuses, catalog.events])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -274,39 +399,59 @@ export default function LeadAutomationFormDialog({
       setError('Rule name is required')
       return
     }
+    if (!form.actionStageKey) {
+      setError('Pick a target stage')
+      return
+    }
+    if (!conditions.length) {
+      setError('Add at least one condition')
+      return
+    }
 
-    if (isTier) {
-      const validTiers = tiers.filter((t) => t.stageKey && Number(t.gte) >= 0)
-      if (validTiers.length < 1) {
-        setError('Add at least one tier with a threshold and status')
+    for (const c of conditions) {
+      if (
+        (c.type === CONDITION_TYPES.CURRENT_STAGE_IS ||
+          c.type === CONDITION_TYPES.CURRENT_STAGE_IS_NOT) &&
+        !resolveStageKeys(c).length
+      ) {
+        setError('Select at least one stage for each stage condition')
         return
       }
-    } else {
-      if (!form.actionStageKey) {
-        setError('Pick a target status')
+      if (
+        (c.type === CONDITION_TYPES.EVENT_OCCURRED ||
+          c.type === CONDITION_TYPES.EVENT_NOT_OCCURRED) &&
+        !c.event
+      ) {
+        setError('Select an event for each event condition')
         return
       }
-      if (!conditions.length) {
-        setError('Add at least one condition')
+      if (
+        (c.type === CONDITION_TYPES.DAYS_SINCE_CREATED ||
+          c.type === CONDITION_TYPES.DAYS_SINCE_LAST_ACTIVITY) &&
+        (c.days === '' || c.days == null || Number(c.days) < 0)
+      ) {
+        setError('Enter a valid number of days')
         return
       }
-      for (const c of conditions) {
-        if (
-          (c.type === CONDITION_TYPES.CURRENT_STAGE_IS ||
-            c.type === CONDITION_TYPES.CURRENT_STAGE_IS_NOT) &&
-          !c.stageKey
-        ) {
-          setError('Select a status for each status condition')
-          return
-        }
-        if (
-          (c.type === CONDITION_TYPES.EVENT_OCCURRED ||
-            c.type === CONDITION_TYPES.EVENT_NOT_OCCURRED) &&
-          !c.event
-        ) {
-          setError('Select an event for each event condition')
-          return
-        }
+      if (c.type === CONDITION_TYPES.PACKAGE_COUNT_GTE && (!c.count || Number(c.count) < 1)) {
+        setError('Package count must be at least 1')
+        return
+      }
+      if (
+        c.type === CONDITION_TYPES.CALL_DURATION_GTE &&
+        (c.seconds === '' || c.seconds == null || Number(c.seconds) < 0)
+      ) {
+        setError('Enter a valid call duration in seconds')
+        return
+      }
+      if (
+        (c.type === CONDITION_TYPES.CALL_USER_TURNS_GTE ||
+          c.type === CONDITION_TYPES.INBOUND_SMS_COUNT_GTE ||
+          c.type === CONDITION_TYPES.INBOUND_EMAIL_COUNT_GTE) &&
+        (c.count === '' || c.count == null || Number(c.count) < 0)
+      ) {
+        setError('Enter a valid count')
+        return
       }
     }
 
@@ -317,17 +462,20 @@ export default function LeadAutomationFormDialog({
       name: form.name.trim(),
       description: form.description.trim(),
       isActive: form.isActive,
-      logic: form.logic === 'OR' ? 'OR' : 'AND',
-      conditions: isTier ? conditions : conditions,
-      action: isTier
-        ? {
-            type: ACTION.SET_STAGE_TIER,
-            metric: form.metric,
-            tiers: tiers
-              .filter((t) => t.stageKey && Number.isFinite(Number(t.gte)))
-              .map((t) => ({ gte: Number(t.gte), stageKey: t.stageKey })),
+      logic: 'AND',
+      conditions: normalizeConditionsForSave(
+        conditions.map((c) => {
+          if (
+            c.type === CONDITION_TYPES.CURRENT_STAGE_IS ||
+            c.type === CONDITION_TYPES.CURRENT_STAGE_IS_NOT
+          ) {
+            const stageKeys = resolveStageKeys(c)
+            return { ...c, stageKeys, stageKey: stageKeys[0] }
           }
-        : { type: ACTION.SET_STAGE, stageKey: form.actionStageKey },
+          return c
+        })
+      ),
+      action: { type: 'set_stage', stageKey: form.actionStageKey },
     }
 
     const id = rule?._id || rule?.id
@@ -344,448 +492,141 @@ export default function LeadAutomationFormDialog({
     setSaving(false)
   }
 
+  const handleClose = saving ? undefined : onClose
+
   return (
-    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="xl">
-      <DialogContent onClose={saving ? undefined : onClose} className="max-h-[90vh] overflow-y-auto p-0">
-        <div className="sticky top-0 z-10 border-b border-border bg-card px-6 pb-4 pt-6">
-          <DialogHeader>
-            <DialogTitle className="text-[22px]">
-              {isEdit ? 'Edit automation' : 'New automation'}
-            </DialogTitle>
-            <DialogDescription className="text-[14px]">
-              Simple rules set one status. Tier ladders pick a status from a measurable count
-              (spend, packages, lessons booked/cancelled, etc.) — highest match wins.
-            </DialogDescription>
-          </DialogHeader>
-        </div>
+    <Dialog open={open} onClose={handleClose} maxWidth="lg">
+      <form onSubmit={handleSubmit}>
+        <DialogShell
+          icon={Layers}
+          title={isEdit ? 'Edit lead rule' : 'New lead rule'}
+          description="If conditions match, move the lead to a stage."
+          onClose={handleClose}
+          saving={saving}
+          footer={<FormActions onCancel={onClose} saving={saving} isEdit={isEdit} />}
+        >
+          <div className="space-y-5">
+            {error && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
+                {error}
+              </div>
+            )}
 
-        <form onSubmit={handleSubmit} className="space-y-6 px-6 py-5">
-          {error && (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
-              {error}
-            </div>
-          )}
-
-          <section className="space-y-4">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              1. Basics
-            </h3>
-
-            <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-              <div className="space-y-1.5">
-                <label className="block text-[13px] font-semibold text-foreground">
-                  Rule name <span className="text-destructive">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => set('name', e.target.value)}
-                  placeholder={
-                    isTier ? 'e.g. Customer spend tiers' : 'e.g. Mark dormant after 100 days'
-                  }
+            <section className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                <div>
+                  <FieldLabel required>Rule name</FieldLabel>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => set('name', e.target.value)}
+                    placeholder="e.g. Engaged on meaningful chat"
+                    disabled={saving}
+                    autoFocus={!isEdit}
+                    className={fieldClass}
+                  />
+                </div>
+                <ActiveToggle
+                  checked={form.isActive}
                   disabled={saving}
-                  autoFocus={!isEdit}
-                  className={inputClass}
+                  onChange={(v) => set('isActive', v)}
                 />
               </div>
-              <label className="flex items-center gap-2 pb-0.5 text-[13px] text-muted-foreground">
-                <span
-                  className={cn(
-                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
-                    form.isActive ? 'bg-emerald-500' : 'bg-muted'
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    className="sr-only"
-                    checked={form.isActive}
-                    disabled={saving}
-                    onChange={(e) => set('isActive', e.target.checked)}
-                  />
-                  <span
-                    className={cn(
-                      'inline-block h-5 w-5 transform rounded-full bg-white shadow transition',
-                      form.isActive ? 'translate-x-5' : 'translate-x-0'
-                    )}
-                  />
-                </span>
-                Active
-              </label>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-[13px] font-semibold text-foreground">Description</label>
-              <input
-                type="text"
-                value={form.description}
-                onChange={(e) => set('description', e.target.value)}
-                placeholder="Optional"
-                disabled={saving}
-                className={inputClass}
-              />
-            </div>
-
-            <div className="inline-flex rounded-xl border border-border bg-muted/40 p-1">
-              {[
-                { value: 'simple', label: 'Simple status change' },
-                { value: 'tier', label: 'Tier ladder' },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => set('ruleKind', opt.value)}
+              <div>
+                <FieldLabel>Description</FieldLabel>
+                <input
+                  type="text"
+                  value={form.description}
+                  onChange={(e) => set('description', e.target.value)}
+                  placeholder="Optional note for your team"
                   disabled={saving}
-                  className={cn(
-                    'rounded-lg px-3 py-1.5 text-[12px] font-semibold transition',
-                    form.ruleKind === opt.value
-                      ? 'bg-[var(--studio-primary)] text-white shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {!isTier && (
-            <section className="space-y-4">
-              <div className="flex flex-wrap items-end justify-between gap-2">
-                <div>
-                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                    2. When (conditions)
-                  </h3>
-                  <p className="mt-1 text-[13px] text-muted-foreground">
-                    Pick conditions the product can detect.
-                  </p>
-                </div>
-                {conditions.length > 1 && (
-                  <div className="inline-flex rounded-xl border border-border bg-muted/40 p-1">
-                    {[
-                      { value: 'AND', label: 'All must match' },
-                      { value: 'OR', label: 'Any one' },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => set('logic', opt.value)}
-                        disabled={saving}
-                        className={cn(
-                          'rounded-lg px-3 py-1.5 text-[12px] font-semibold transition',
-                          form.logic === opt.value
-                            ? 'bg-[var(--studio-primary)] text-white shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'
-                        )}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  className={fieldClass}
+                />
               </div>
+            </section>
 
-              <ConditionRows
-                conditions={conditions}
-                catalog={catalog}
-                activeStatuses={activeStatuses}
-                saving={saving}
-                logic={form.logic}
-                onUpdate={updateCondition}
-                onRemove={removeCondition}
-                canRemove={conditions.length > 1}
-              />
+            <section className="space-y-3">
+              <StepHeader step={1} title="When" description="Build the match criteria." />
+
+              <div className="space-y-0">
+                {conditions.map((cond, index) => (
+                  <div key={`cond-${index}`}>
+                    {index > 0 && (
+                      <div className="py-1.5">
+                        <JoinToggle
+                          value={cond.join || 'AND'}
+                          disabled={saving}
+                          onChange={(join) => updateCondition(index, { join })}
+                        />
+                      </div>
+                    )}
+                    <ConditionCard
+                      index={index}
+                      disabled={saving}
+                      canRemove={conditions.length > 1}
+                      onRemove={() => removeCondition(index)}
+                    >
+                      <div>
+                        <FieldLabel>Type</FieldLabel>
+                        <select
+                          value={cond.type}
+                          onChange={(e) => updateCondition(index, { type: e.target.value })}
+                          disabled={saving}
+                          className={selectClass}
+                        >
+                          {conditionTypeOptions.map((c) => (
+                            <option key={c.type} value={c.type}>
+                              {c.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <ConditionValue
+                        cond={cond}
+                        index={index}
+                        saving={saving}
+                        activeStatuses={activeStatuses}
+                        catalog={catalog}
+                        updateCondition={updateCondition}
+                      />
+                    </ConditionCard>
+                  </div>
+                ))}
+              </div>
 
               <button
                 type="button"
                 onClick={addCondition}
                 disabled={saving}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-[12px] font-semibold text-foreground hover:bg-muted/40 disabled:opacity-50"
+                className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-[12px] font-semibold text-muted-foreground transition hover:border-[var(--studio-primary)]/40 hover:text-foreground disabled:opacity-50"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Add condition
               </button>
-
-              <div className="space-y-1.5">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  3. Then set status to
-                </h3>
-                <select
-                  value={form.actionStageKey}
-                  onChange={(e) => set('actionStageKey', e.target.value)}
-                  disabled={saving}
-                  className={inputClass}
-                >
-                  <option value="">Select status…</option>
-                  {activeStatuses.map((s) => (
-                    <option key={s.key} value={s.key}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
             </section>
-          )}
 
-          {isTier && (
-            <section className="space-y-4">
-              <div>
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  2. Measure
-                </h3>
-                <p className="mt-1 text-[13px] text-muted-foreground">
-                  We check the highest threshold first (e.g. Diamond before Gold before Silver).
-                </p>
-              </div>
-
+            <section className="space-y-3">
+              <StepHeader step={2} title="Then" description="Move matching leads to this stage." />
               <select
-                value={form.metric}
-                onChange={(e) => set('metric', e.target.value)}
+                value={form.actionStageKey}
+                onChange={(e) => set('actionStageKey', e.target.value)}
                 disabled={saving}
-                className={inputClass}
+                className={selectClass}
               >
-                {(catalog.tierMetrics.length
-                  ? catalog.tierMetrics
-                  : [
-                      { key: 'total_spend', label: 'Total amount spent ($)' },
-                      { key: 'package_count', label: 'Package purchases' },
-                      { key: 'lessons_booked', label: 'Lessons booked' },
-                      { key: 'lessons_completed', label: 'Lessons completed' },
-                      { key: 'lessons_cancelled', label: 'Lessons cancelled' },
-                      { key: 'lessons_no_show', label: 'Lesson no-shows' },
-                    ]
-                ).map((m) => (
-                  <option key={m.key} value={m.key}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              {catalog.tierMetrics.find((m) => m.key === form.metric)?.description ? (
-                <p className="text-[12px] text-muted-foreground">
-                  {catalog.tierMetrics.find((m) => m.key === form.metric).description}
-                </p>
-              ) : null}
-
-              <div className="space-y-2">
-                {tiers.map((tier, index) => (
-                  <div
-                    key={`tier-${index}`}
-                    className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-3"
-                  >
-                    <span className="text-[12px] font-semibold text-muted-foreground">If ≥</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={tier.gte}
-                      onChange={(e) => updateTier(index, { gte: Number(e.target.value) })}
-                      disabled={saving}
-                      className="h-10 w-28 rounded-xl border border-border bg-background px-3 text-[13px] outline-none focus:border-[var(--studio-primary)]"
-                    />
-                    <span className="text-[12px] font-semibold text-muted-foreground">→</span>
-                    <select
-                      value={tier.stageKey}
-                      onChange={(e) => updateTier(index, { stageKey: e.target.value })}
-                      disabled={saving}
-                      className="h-10 min-w-[160px] flex-1 rounded-xl border border-border bg-background px-3 text-[13px] outline-none focus:border-[var(--studio-primary)]"
-                    >
-                      <option value="">Select status…</option>
-                      {activeStatuses.map((s) => (
-                        <option key={s.key} value={s.key}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => removeTier(index)}
-                      disabled={saving || tiers.length <= 1}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={addTier}
-                disabled={saving}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-[12px] font-semibold text-foreground hover:bg-muted/40"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add tier
-              </button>
-
-              <div className="space-y-2 border-t border-border pt-4">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Optional gates
-                </h3>
-                <p className="text-[13px] text-muted-foreground">
-                  Extra filters (e.g. current status is Converted). Leave empty to always apply the
-                  ladder when spend/packages change.
-                </p>
-                <ConditionRows
-                  conditions={conditions}
-                  catalog={catalog}
-                  activeStatuses={activeStatuses}
-                  saving={saving}
-                  logic={form.logic}
-                  onUpdate={updateCondition}
-                  onRemove={removeCondition}
-                  canRemove
-                />
-                <button
-                  type="button"
-                  onClick={addCondition}
-                  disabled={saving}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-[12px] font-semibold text-foreground hover:bg-muted/40"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add gate condition
-                </button>
-              </div>
-            </section>
-          )}
-
-          {plainEnglish && (
-            <div className="flex gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-[13px] text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
-              <Zap className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-300" />
-              <p>
-                <span className="font-semibold">In plain English: </span>
-                {plainEnglish}
-              </p>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2 border-t border-border pt-4 sm:gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="inline-flex h-11 items-center justify-center rounded-xl border border-border bg-background px-5 text-[14px] font-medium text-foreground hover:bg-muted/40 disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--studio-primary)] px-6 text-[14px] font-semibold text-white hover:brightness-95 disabled:opacity-60"
-            >
-              {saving ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? 'Save rule' : 'Create rule'}
-            </button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function ConditionRows({
-  conditions,
-  catalog,
-  activeStatuses,
-  saving,
-  logic,
-  onUpdate,
-  onRemove,
-  canRemove,
-}) {
-  if (!conditions.length) return null
-
-  return (
-    <div className="space-y-2">
-      {conditions.map((cond, index) => (
-        <div key={`cond-${index}`} className="rounded-2xl border border-border bg-card p-3 shadow-sm">
-          {index > 0 && (
-            <div className="mb-2 text-center text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-              {logic === 'OR' ? 'or' : 'and'}
-            </div>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={cond.type}
-              onChange={(e) => onUpdate(index, { type: e.target.value })}
-              disabled={saving}
-              className="h-10 min-w-[200px] rounded-xl border border-border bg-background px-3 text-[13px] font-medium text-foreground outline-none focus:border-[var(--studio-primary)]"
-            >
-              {(catalog.conditions.length
-                ? catalog.conditions
-                : [{ type: CONDITION_TYPES.EVENT_OCCURRED, label: 'Event has happened' }]
-              ).map((c) => (
-                <option key={c.type} value={c.type}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-
-            {(cond.type === CONDITION_TYPES.CURRENT_STAGE_IS ||
-              cond.type === CONDITION_TYPES.CURRENT_STAGE_IS_NOT) && (
-              <select
-                value={cond.stageKey || ''}
-                onChange={(e) => onUpdate(index, { stageKey: e.target.value })}
-                disabled={saving}
-                className="h-10 min-w-[160px] flex-1 rounded-xl border border-border bg-background px-3 text-[13px] outline-none focus:border-[var(--studio-primary)]"
-              >
-                <option value="">Select status…</option>
+                <option value="">Select stage…</option>
                 {activeStatuses.map((s) => (
                   <option key={s.key} value={s.key}>
                     {s.name}
                   </option>
                 ))}
               </select>
-            )}
+            </section>
 
-            {(cond.type === CONDITION_TYPES.DAYS_SINCE_CREATED ||
-              cond.type === CONDITION_TYPES.DAYS_SINCE_LAST_ACTIVITY) && (
-              <input
-                type="number"
-                min={0}
-                value={cond.days ?? ''}
-                onChange={(e) => onUpdate(index, { days: Number(e.target.value) })}
-                disabled={saving}
-                className="h-10 w-28 rounded-xl border border-border bg-background px-3 text-[13px] outline-none focus:border-[var(--studio-primary)]"
-              />
-            )}
-
-            {(cond.type === CONDITION_TYPES.EVENT_OCCURRED ||
-              cond.type === CONDITION_TYPES.EVENT_NOT_OCCURRED) && (
-              <select
-                value={cond.event || ''}
-                onChange={(e) => onUpdate(index, { event: e.target.value })}
-                disabled={saving}
-                className="h-10 min-w-[200px] flex-1 rounded-xl border border-border bg-background px-3 text-[13px] outline-none focus:border-[var(--studio-primary)]"
-              >
-                {(catalog.events || []).map((ev) => (
-                  <option key={ev.key} value={ev.key}>
-                    {ev.label}
-                    {ev.wired ? ' ✓' : ''}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {cond.type === CONDITION_TYPES.PACKAGE_COUNT_GTE && (
-              <input
-                type="number"
-                min={1}
-                value={cond.count ?? ''}
-                onChange={(e) => onUpdate(index, { count: Number(e.target.value) })}
-                disabled={saving}
-                className="h-10 w-28 rounded-xl border border-border bg-background px-3 text-[13px] outline-none focus:border-[var(--studio-primary)]"
-              />
-            )}
-
-            <button
-              type="button"
-              onClick={() => onRemove(index)}
-              disabled={saving || canRemove === false}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <RulePreview>{plainEnglish}</RulePreview>
           </div>
-        </div>
-      ))}
-    </div>
+        </DialogShell>
+      </form>
+    </Dialog>
   )
 }
