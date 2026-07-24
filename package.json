@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "node scripts/patch-phone-input.js"
   },
   "dependencies": {
@@ -46,7 +48,13 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.1.5",
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/user-event": "^14.5.1",
+    "@vitejs/plugin-react": "^4.2.1",
     "eslint": "^9.0.0",
-    "eslint-config-next": "^16.1.6"
+    "eslint-config-next": "^16.1.6",
+    "jsdom": "^23.0.1",
+    "vitest": "^1.0.4"
   }
 }
