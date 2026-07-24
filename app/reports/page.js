@@ -7,6 +7,7 @@ import DateRangePresets from '@/components/dashboard-builder/DateRangePresets'
 import { reportsWidgetRegistry } from '@/components/reports/widgets/registry'
 import { useReportsOverview } from '@/lib/hooks/useAnalyticsOverview'
 import { Button } from '@/components/ui/button'
+import { ReportPicker } from '@/components/reports/ReportPicker'
 
 const DEFAULT_KPIS = [
   { title: 'Total Revenue', value: '$0', trend: '—', trendType: 'up' },
@@ -56,6 +57,8 @@ export default function ReportsPage() {
           </Button>
         </div>
       )}
+
+      <ReportPicker activeSlug="overview" />
 
       <DashboardBuilder
         page="reports"
