@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bot,
   Check,
@@ -12,6 +12,7 @@ import {
   PhoneCall,
   Plus,
   RefreshCw,
+  Settings,
   Trash2,
   XCircle,
 } from 'lucide-react'
@@ -74,6 +75,28 @@ function routeColorClass(index) {
   return ROUTE_COLORS[index % ROUTE_COLORS.length]
 }
 
+function parsePersonaRef(personaDoc) {
+  if (!personaDoc) return { id: '', meta: null }
+  if (typeof personaDoc === 'object') {
+    const id = personaDoc._id || personaDoc.id || ''
+    return {
+      id: id ? String(id) : '',
+      meta: id
+        ? {
+            _id: String(id),
+            voice: personaDoc.voice,
+            voiceId: personaDoc.voiceId,
+            provider: personaDoc.provider,
+            gender: personaDoc.gender,
+            llmModel: personaDoc.llmModel,
+            stability: personaDoc.stability,
+          }
+        : null,
+    }
+  }
+  return { id: String(personaDoc), meta: null }
+}
+
 export default function InboundIvrTab() {
   const toast = useToast()
   const [routes, setRoutes] = useState([])
@@ -94,7 +117,13 @@ export default function InboundIvrTab() {
   // ── Inbound mode ──
   const [inboundMode, setInboundMode] = useState('ivr')
   const [directAssistantId, setDirectAssistantId] = useState('')
+  const [receptionistPersonaId, setReceptionistPersonaId] = useState('')
+  /** Cached label/meta when selected persona is missing from the list (location filter). */
+  const [receptionistPersonaMeta, setReceptionistPersonaMeta] = useState(null)
+  const [personas, setPersonas] = useState([])
   const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsLoadGen = useRef(0)
   const [activatingId, setActivatingId] = useState(null)
 
   // ── IVR editor ──
@@ -142,8 +171,12 @@ export default function InboundIvrTab() {
   const fetchAssistants = useCallback(async () => {
     setOptionsLoading(true)
     try {
-      const result = await api.get('/api/ai-assistant/')
-      if (result.success) setAssistants(extractList(result))
+      const [assistantsResult, personasResult] = await Promise.all([
+        api.get('/api/ai-assistant/'),
+        api.get('/api/ai-persona?page=1&limit=100'),
+      ])
+      if (assistantsResult.success) setAssistants(extractList(assistantsResult))
+      if (personasResult.success) setPersonas(extractList(personasResult))
     } catch (e) {
       console.error(e)
     } finally {
@@ -152,6 +185,7 @@ export default function InboundIvrTab() {
   }, [])
 
   const fetchRoutes = useCallback(async () => {
+    const gen = ++settingsLoadGen.current
     setLoading(true)
     setError(null)
     try {
@@ -161,6 +195,9 @@ export default function InboundIvrTab() {
         api.get('/api/human-queue/voice-setup'),
         api.get(withLocationQuery('/api/inbound-routes/settings')),
       ])
+
+      // Ignore stale responses (e.g. location change mid-flight / after persona save).
+      if (gen !== settingsLoadGen.current) return
 
       if (!routesResult.success) {
         setError(routesResult.error || 'Failed to load inbound settings.')
@@ -179,13 +216,27 @@ export default function InboundIvrTab() {
         const s = settingsResult.data || {}
         setInboundMode(s.mode || 'ivr')
         const doc = s.directAssistantId
-        setDirectAssistantId(doc && typeof doc === 'object' ? doc._id || '' : doc || '')
+        setDirectAssistantId(
+          doc && typeof doc === 'object'
+            ? String(doc._id || '')
+            : doc
+              ? String(doc)
+              : '',
+        )
+        const { id: personaId, meta } = parsePersonaRef(s.receptionistPersonaId)
+        setReceptionistPersonaId(personaId)
+        setReceptionistPersonaMeta(meta)
+        if (meta) {
+          setPersonas((prev) => (
+            prev.some((p) => String(p._id) === personaId) ? prev : [...prev, meta]
+          ))
+        }
       }
     } catch (e) {
       console.error(e)
       setError(e.message || 'Something went wrong while loading inbound settings.')
     } finally {
-      setLoading(false)
+      if (gen === settingsLoadGen.current) setLoading(false)
     }
   }, [withLocationQuery])
 
@@ -205,11 +256,13 @@ export default function InboundIvrTab() {
   const handleModeSelect = async (newMode) => {
     if (newMode === inboundMode || savingSettings) return
     if (!requireWorkingLocation()) return
+    settingsLoadGen.current += 1
     setSavingSettings(true)
     try {
       const result = await api.patch('/api/inbound-routes/settings', {
         mode: newMode,
         directAssistantId: directAssistantId || null,
+        receptionistPersonaId: receptionistPersonaId || null,
         ...toLocationPayload(workingLocationID),
       })
       if (!result.success) {
@@ -235,11 +288,13 @@ export default function InboundIvrTab() {
   const handleSelectDirectAssistant = async (assistant) => {
     if (activatingId || assistant._id === directAssistantId) return
     if (!requireWorkingLocation()) return
+    settingsLoadGen.current += 1
     setActivatingId(assistant._id)
     try {
       const result = await api.patch('/api/inbound-routes/settings', {
         mode: 'direct',
         directAssistantId: assistant._id,
+        receptionistPersonaId: receptionistPersonaId || null,
         ...toLocationPayload(workingLocationID),
       })
       if (!result.success) {
@@ -253,6 +308,63 @@ export default function InboundIvrTab() {
       toast.error({ title: 'Error', message: 'Could not set direct assistant.' })
     } finally {
       setActivatingId(null)
+    }
+  }
+
+  const handleSelectReceptionistPersona = async (personaId) => {
+    if (savingSettings) return
+    if (!requireWorkingLocation()) return
+
+    const nextId = personaId ? String(personaId) : ''
+    const prevId = receptionistPersonaId ? String(receptionistPersonaId) : ''
+    const prevMeta = receptionistPersonaMeta
+    const selectedFromList = personas.find((p) => String(p._id) === nextId) || null
+
+    // Optimistic UI — controlled <select> snaps back to Default if we wait for the API.
+    setReceptionistPersonaId(nextId)
+    setReceptionistPersonaMeta(selectedFromList || (nextId ? receptionistPersonaMeta : null))
+    // Bump load gen so an in-flight fetchRoutes can't overwrite this selection.
+    settingsLoadGen.current += 1
+    setSavingSettings(true)
+    try {
+      const result = await api.patch('/api/inbound-routes/settings', {
+        mode: 'ivr',
+        directAssistantId: directAssistantId || null,
+        receptionistPersonaId: nextId || null,
+        ...toLocationPayload(workingLocationID),
+      })
+      if (!result.success) {
+        setReceptionistPersonaId(prevId)
+        setReceptionistPersonaMeta(prevMeta)
+        toast.error({ title: 'Failed to save', message: result.error || 'Could not update receptionist persona.' })
+        return
+      }
+      const saved = result.data || {}
+      const { id: savedId, meta: savedMeta } = parsePersonaRef(saved.receptionistPersonaId)
+      // Keep optimistic id when the API omits the field (e.g. older backend).
+      const resolvedId = savedId || nextId
+      setReceptionistPersonaId(resolvedId)
+      setReceptionistPersonaMeta(savedMeta || selectedFromList || (resolvedId ? prevMeta : null))
+      if (saved.mode) setInboundMode(saved.mode)
+      const selected =
+        savedMeta
+        || selectedFromList
+        || personas.find((p) => String(p._id) === resolvedId)
+      toast.success({
+        title: 'Persona saved for this studio',
+        message: selected
+          ? `“${selected.voice || selected.voiceId}” will be used for AI menu on this location.`
+          : resolvedId
+            ? 'AI menu persona updated for this location.'
+            : 'AI menu will use the default studio voice for this location.',
+      })
+    } catch (e) {
+      console.error(e)
+      setReceptionistPersonaId(prevId)
+      setReceptionistPersonaMeta(prevMeta)
+      toast.error({ title: 'Error', message: 'Could not update receptionist persona.' })
+    } finally {
+      setSavingSettings(false)
     }
   }
 
@@ -373,6 +485,10 @@ export default function InboundIvrTab() {
   const enabledCount = routes.filter((r) => r.enabled !== false).length
   const allReady = enabledCount > 0 && readyCount === enabledCount
   const directAssistantDoc = assistants.find((a) => a._id === directAssistantId)
+  const receptionistPersonaDoc =
+    personas.find((p) => String(p._id) === String(receptionistPersonaId || ''))
+    || receptionistPersonaMeta
+    || null
 
   const webhookReady = Boolean(setupInfo?.ivrWebhookUrl)
   const twimlReady = Boolean(voiceSetup?.twimlAppVoiceUrl)
@@ -429,95 +545,55 @@ export default function InboundIvrTab() {
 
       {!loading && !error && (
         <>
-      {/* ── Mode selector ──────────────────────────────────────────────────────── */}
-      <div>
-        <div className="mb-3">
-          <h2 className="text-sm font-semibold text-foreground">Inbound call mode</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Choose how incoming calls are handled when someone dials your number.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {[
-            {
-              id: 'ivr',
-              icon: ListOrdered,
-              title: 'AI Menu',
-              desc: 'A natural-voice AI receptionist greets callers and routes them to the right specialist (Sales, Booking, etc.).',
-            },
-            {
-              id: 'direct',
-              icon: PhoneCall,
-              title: 'Direct AI',
-              desc: 'Every call is answered immediately by one AI assistant — no menu.',
-            },
-          ].map(({ id, icon: Icon, title, desc }) => {
-            const active = inboundMode === id
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => handleModeSelect(id)}
-                disabled={savingSettings}
-                className={cn(
-                  'group relative rounded-xl border-2 p-4 text-left transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60',
-                  active
-                    ? 'border-[var(--studio-primary)] bg-[var(--studio-primary-light)]/40 shadow-sm'
-                    : 'border-border bg-card hover:border-[var(--studio-primary)]/40 hover:bg-muted/40',
-                )}
-              >
-                {/* Active checkmark */}
-                <span
-                  className={cn(
-                    'absolute top-3 right-3 h-5 w-5 rounded-full flex items-center justify-center transition-all',
-                    active
-                      ? 'bg-[var(--studio-primary)] text-white scale-100'
-                      : 'bg-muted text-transparent scale-90',
-                  )}
-                >
-                  <Check className="h-3 w-3" />
-                </span>
-
-                <div className="flex items-center gap-3 mb-2 pr-6">
-                  <div
-                    className={cn(
-                      'rounded-lg p-2 transition-colors',
-                      active
-                        ? 'bg-[var(--studio-primary)] text-white'
-                        : 'bg-muted text-muted-foreground group-hover:bg-[var(--studio-primary-light)] group-hover:text-[var(--studio-primary)]',
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <span className="font-semibold text-sm text-foreground">{title}</span>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Direct mode — status line */}
-        {inboundMode === 'direct' && (
-          <div className="mt-3 flex items-center gap-2 px-1">
-            {directAssistantId && directAssistantDoc ? (
-              <>
-                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                <span className="text-sm text-emerald-600 dark:text-emerald-400">
-                  All inbound calls → <span className="font-semibold">{directAssistantDoc.name}</span>
-                </span>
-              </>
-            ) : (
-              <>
-                <XCircle className="h-4 w-4 text-amber-500 shrink-0" />
-                <span className="text-sm text-amber-600 dark:text-amber-400">
-                  No assistant selected — direct calls will fail until one is assigned.
-                </span>
-              </>
+      {/* Compact mode status + settings entry */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Inbound mode
+            </span>
+            <Badge variant="secondary" className="font-medium">
+              {inboundMode === 'direct' ? 'Direct AI' : 'AI Menu'}
+            </Badge>
+            {inboundMode === 'ivr' && (
+              <span className="text-xs text-muted-foreground truncate">
+                Voice:{' '}
+                {receptionistPersonaDoc?.voice
+                  || receptionistPersonaDoc?.voiceId
+                  || 'Default (Leanne / studio voice)'}
+              </span>
             )}
           </div>
-        )}
+          {inboundMode === 'direct' && (
+            <div className="flex items-center gap-2">
+              {directAssistantId && directAssistantDoc ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 truncate">
+                    All calls → <span className="font-semibold">{directAssistantDoc.name}</span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                    No assistant selected
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setSettingsOpen(true)}
+          className="shrink-0"
+        >
+          <Settings className="h-3.5 w-3.5 mr-1.5" />
+          Settings
+        </Button>
       </div>
 
       {/* ── IVR section ────────────────────────────────────────────────────────── */}
@@ -895,9 +971,128 @@ export default function InboundIvrTab() {
         </div>
       )}
 
+      {/* ── Inbound settings dialog ───────────────────────────────────────────── */}
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} maxWidth="2xl">
+        <DialogContent onClose={() => setSettingsOpen(false)} className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base">Inbound settings</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 pt-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Inbound call mode</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Choose how incoming calls are handled when someone dials your number.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                {[
+                  {
+                    id: 'ivr',
+                    icon: ListOrdered,
+                    title: 'AI Menu',
+                    desc: 'A natural-voice AI receptionist greets callers and routes them to the right specialist (Sales, Booking, etc.).',
+                  },
+                  {
+                    id: 'direct',
+                    icon: PhoneCall,
+                    title: 'Direct AI',
+                    desc: 'Every call is answered immediately by one AI assistant — no menu.',
+                  },
+                ].map(({ id, icon: Icon, title, desc }) => {
+                  const active = inboundMode === id
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => handleModeSelect(id)}
+                      disabled={savingSettings}
+                      className={cn(
+                        'group relative rounded-xl border-2 p-4 text-left transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60',
+                        active
+                          ? 'border-[var(--studio-primary)] bg-[var(--studio-primary-light)]/40 shadow-sm'
+                          : 'border-border bg-card hover:border-[var(--studio-primary)]/40 hover:bg-muted/40',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'absolute top-3 right-3 h-5 w-5 rounded-full flex items-center justify-center transition-all',
+                          active
+                            ? 'bg-[var(--studio-primary)] text-white scale-100'
+                            : 'bg-muted text-transparent scale-90',
+                        )}
+                      >
+                        <Check className="h-3 w-3" />
+                      </span>
+
+                      <div className="flex items-center gap-3 mb-2 pr-6">
+                        <div
+                          className={cn(
+                            'rounded-lg p-2 transition-colors',
+                            active
+                              ? 'bg-[var(--studio-primary)] text-white'
+                              : 'bg-muted text-muted-foreground group-hover:bg-[var(--studio-primary-light)] group-hover:text-[var(--studio-primary)]',
+                          )}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <span className="font-semibold text-sm text-foreground">{title}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {inboundMode === 'ivr' && (
+              <div className="space-y-2 border-t border-border pt-5">
+                <h3 className="text-sm font-semibold text-foreground">AI menu voice (persona)</h3>
+                <p className="text-xs text-muted-foreground">
+                  Saved for the studio selected above. The receptionist uses that persona’s full settings
+                  from the Personas tab (voice, stability, speed, LLM, etc.) until you change it.
+                </p>
+                <Select
+                  value={receptionistPersonaId || ''}
+                  onChange={(e) => handleSelectReceptionistPersona(e.target.value)}
+                  disabled={savingSettings || optionsLoading}
+                >
+                  <option value="">Default (Leanne / studio voice)</option>
+                  {receptionistPersonaId
+                    && !personas.some((p) => String(p._id) === String(receptionistPersonaId))
+                    && (
+                      <option value={String(receptionistPersonaId)}>
+                        {(receptionistPersonaMeta || receptionistPersonaDoc)?.voice
+                          || (receptionistPersonaMeta || receptionistPersonaDoc)?.voiceId
+                          || 'Selected persona'}
+                      </option>
+                    )}
+                  {personas.map((p) => (
+                    <option key={String(p._id)} value={String(p._id)}>
+                      {p.voice || p.voiceId || 'Persona'}
+                      {p.provider ? ` · ${p.provider}` : ''}
+                      {p.gender ? ` · ${p.gender}` : ''}
+                    </option>
+                  ))}
+                </Select>
+                {receptionistPersonaDoc && (
+                  <p className="text-xs text-muted-foreground">
+                    Active: {receptionistPersonaDoc.voice || receptionistPersonaDoc.voiceId}
+                    {receptionistPersonaDoc.llmModel ? ` · LLM ${receptionistPersonaDoc.llmModel}` : ''}
+                    {typeof receptionistPersonaDoc.stability === 'number'
+                      ? ` · stability ${receptionistPersonaDoc.stability}`
+                      : ''}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Create / Edit dialog ─────────────────────────────────────────────── */}
-      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="max-w-md">
+      <Dialog open={editorOpen} onClose={() => setEditorOpen(false)} maxWidth="md">
+        <DialogContent onClose={() => setEditorOpen(false)} className="max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base">
               {editingRoute ? `Edit — ${editingRoute.label}` : 'New IVR option'}
