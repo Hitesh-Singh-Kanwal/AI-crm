@@ -4,6 +4,16 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  esbuild: {
+    loader: 'jsx',
+    include: /.*\.jsx?$/,
+    exclude: [],
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      loader: { '.js': 'jsx' },
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.js'],
