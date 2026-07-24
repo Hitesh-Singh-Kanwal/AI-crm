@@ -222,7 +222,7 @@ export default function InboundIvrTab() {
         message:
           newMode === 'direct'
             ? 'Callers will be connected directly to the selected AI assistant.'
-            : 'IVR menu is now active.',
+            : 'AI menu is now active — callers hear a natural-voice receptionist.',
       })
     } catch (e) {
       console.error(e)
@@ -443,14 +443,14 @@ export default function InboundIvrTab() {
             {
               id: 'ivr',
               icon: ListOrdered,
-              title: 'IVR Menu',
-              desc: 'Caller hears a menu and presses a digit to reach the right AI assistant — Sales, Booking, etc.',
+              title: 'AI Menu',
+              desc: 'A natural-voice AI receptionist greets callers and routes them to the right specialist (Sales, Booking, etc.).',
             },
             {
               id: 'direct',
               icon: PhoneCall,
               title: 'Direct AI',
-              desc: 'Every call is answered immediately by one AI assistant — no menu, no digit press.',
+              desc: 'Every call is answered immediately by one AI assistant — no menu.',
             },
           ].map(({ id, icon: Icon, title, desc }) => {
             const active = inboundMode === id
@@ -526,9 +526,9 @@ export default function InboundIvrTab() {
           {/* Top bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">IVR menu options</h2>
+              <h2 className="text-sm font-semibold text-foreground">AI menu options</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Each option routes the caller to a specific AI assistant. Assign an assistant to activate an option.
+                The receptionist offers these options (by name or digit), then connects the matching AI assistant.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
