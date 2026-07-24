@@ -7,6 +7,7 @@ import { ReportPicker } from '@/components/reports/ReportPicker'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { SalesCashTable, SALES_CASH_COLUMNS } from '@/components/reports/sales-cash/SalesCashTable'
+import { SalesCashTrendChart } from '@/components/reports/sales-cash/SalesCashTrendChart'
 import { useReportData } from '@/lib/hooks/useReportData'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
@@ -55,6 +56,8 @@ export default function SalesCashReportPage() {
         <span>Total Cash Collected: {summary.totalCashCollected ?? 0}</span>
         {isValidating && !isLoading && <span>Updating…</span>}
       </div>
+
+      {!isLoading && !error && <div className="mt-4"><SalesCashTrendChart trend={summary.trend} /></div>}
 
       <div className="mt-2">
         {isLoading ? (

@@ -7,6 +7,7 @@ import DateRangePresets from '@/components/dashboard-builder/DateRangePresets'
 import { reportsWidgetRegistry } from '@/components/reports/widgets/registry'
 import { useReportsOverview } from '@/lib/hooks/useAnalyticsOverview'
 import { Button } from '@/components/ui/button'
+import { OverviewDrillSheet } from '@/components/reports/OverviewDrillSheet'
 import { ReportPicker } from '@/components/reports/ReportPicker'
 
 const DEFAULT_KPIS = [
@@ -21,6 +22,7 @@ const PIPELINE_PALETTE = ['#FDBBD9', '#FB9BC7', '#FA6DAD', '#F72585', '#E12279']
 export default function ReportsPage() {
   const [range, setRange] = useState(30)
   const { data, error, isLoading, isValidating, mutate } = useReportsOverview(range)
+  const [drill, setDrill] = useState(null)
 
   const sharedProps = useMemo(() => {
     const d = data || {}
@@ -39,6 +41,14 @@ export default function ReportsPage() {
       leadSourcesData: d.leadSources || [],
       weeklyActivityData: d.weeklyActivity || [],
       conversionFunnelData: d.conversionFunnel || [],
+      studentHealthData: d.studentHealth || [{ name: 'Active', value: 0 }, { name: 'Inactive', value: 0 }],
+      reasonForDancingData: d.reasonForDancing || [],
+      groupAttendanceData: d.groupAttendance || { attendanceRatePct: 0, byClass: [] },
+      onPointClick: (month) => setDrill({ reportSlug: 'sales-cash', filters: { dateFrom: '', dateTo: '' }, title: `Transactions — ${month}` }),
+      onLeadSourceClick: (source) => setDrill({ reportSlug: 'lead-conversion', filters: { leadSource: source }, title: `Leads — ${source}` }),
+      onSliceClick: (status) => setDrill({ reportSlug: 'active-inactive-students', filters: { status }, title: `${status} Students` }),
+      onReasonClick: (reason) => setDrill({ reportSlug: 'reason-for-dancing', filters: {}, title: `Reason for Dancing — ${reason}` }),
+      onClassClick: (className) => setDrill({ reportSlug: 'group-attendance', filters: {}, title: `Attendance — ${className}` }),
     }
   }, [data])
 
@@ -73,6 +83,14 @@ export default function ReportsPage() {
             <DateRangePresets value={range} onChange={setRange} />
           </div>
         }
+      />
+
+      <OverviewDrillSheet
+        open={Boolean(drill)}
+        onClose={() => setDrill(null)}
+        reportSlug={drill?.reportSlug}
+        filters={drill?.filters}
+        title={drill?.title || ''}
       />
     </MainLayout>
   )

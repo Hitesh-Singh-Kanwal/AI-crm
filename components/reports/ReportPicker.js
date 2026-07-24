@@ -11,6 +11,8 @@ const REPORTS = [
   { slug: 'revenue-by-teacher', label: 'Revenue by Teacher', href: '/reports/revenue-by-teacher' },
   { slug: 'lead-conversion', label: 'Lead Conversion', href: '/reports/lead-conversion' },
   { slug: 'active-inactive-students', label: 'Active and Inactive Students', href: '/reports/active-inactive-students' },
+  { slug: 'reason-for-dancing', label: 'Reason for Dancing', href: '/reports/reason-for-dancing' },
+  { slug: 'group-attendance', label: 'Group Attendance', href: '/reports/group-attendance' },
 ]
 
 export function ReportPicker({ activeSlug }) {

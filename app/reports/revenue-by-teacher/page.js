@@ -7,6 +7,7 @@ import { ReportPicker } from '@/components/reports/ReportPicker'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { RevenueByTeacherTable, REVENUE_BY_TEACHER_COLUMNS } from '@/components/reports/revenue-by-teacher/RevenueByTeacherTable'
+import { RevenueByEntityChart } from '@/components/reports/revenue-by-teacher/RevenueByEntityChart'
 import { useReportData } from '@/lib/hooks/useReportData'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
@@ -77,6 +78,8 @@ export default function RevenueByTeacherReportPage() {
         <span>Total Revenue: {summary.totalRevenue ?? 0}</span>
         {isValidating && !isLoading && <span>Updating…</span>}
       </div>
+
+      {!isLoading && !error && <div className="mt-4"><RevenueByEntityChart rows={rows} /></div>}
 
       <div className="mt-2">
         {isLoading ? (

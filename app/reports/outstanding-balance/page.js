@@ -7,6 +7,7 @@ import { ReportPicker } from '@/components/reports/ReportPicker'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { OutstandingBalanceTable, OUTSTANDING_BALANCE_COLUMNS } from '@/components/reports/outstanding-balance/OutstandingBalanceTable'
+import { OutstandingBalanceByStudioChart } from '@/components/reports/outstanding-balance/OutstandingBalanceByStudioChart'
 import { useReportData } from '@/lib/hooks/useReportData'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
@@ -54,6 +55,8 @@ export default function OutstandingBalanceReportPage() {
         <span>Total Outstanding: {summary.totalOutstandingBalance ?? 0}</span>
         {isValidating && !isLoading && <span>Updating…</span>}
       </div>
+
+      {!isLoading && !error && <div className="mt-4"><OutstandingBalanceByStudioChart byStudio={summary.byStudio} /></div>}
 
       <div className="mt-2">
         {isLoading ? (

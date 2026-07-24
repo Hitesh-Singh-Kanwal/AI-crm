@@ -4,15 +4,24 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
 import { chartCardClass } from './shared'
 
-export default function RevenueTrendWidget({ revenueTrendData = [] }) {
+export default function RevenueTrendWidget({ revenueTrendData = [], onPointClick }) {
   return (
     <section className={chartCardClass}>
       <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
         Revenue Trend
       </h3>
+      <p className="text-xs text-muted-foreground">Click a point to see the underlying transactions</p>
       <div className="mt-4 h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={revenueTrendData} margin={{ top: 8, right: 20, left: 0, bottom: 0 }}>
+          <AreaChart
+            data={revenueTrendData}
+            margin={{ top: 8, right: 20, left: 0, bottom: 0 }}
+            onClick={(state) => {
+              const label = state?.activeLabel
+              if (label && onPointClick) onPointClick(label)
+            }}
+            className={onPointClick ? 'cursor-pointer' : undefined}
+          >
             <defs>
               <linearGradient id="reportRevenueFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--side-gradient-end)" stopOpacity={0.45} />
@@ -23,7 +32,14 @@ export default function RevenueTrendWidget({ revenueTrendData = [] }) {
             <XAxis dataKey="month" tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
             <YAxis tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
             <Tooltip contentStyle={rechartsTooltipContentStyle} />
-            <Area type="monotone" dataKey="revenue" stroke="var(--side-gradient-end)" strokeWidth={2} fill="url(#reportRevenueFill)" />
+            <Area
+              type="monotone"
+              dataKey="revenue"
+              stroke="var(--side-gradient-end)"
+              strokeWidth={2}
+              fill="url(#reportRevenueFill)"
+              activeDot={{ r: 5, onClick: (_, payload) => onPointClick?.(payload?.payload?.month) }}
+            />
           </AreaChart>
         </ResponsiveContainer>
       </div>

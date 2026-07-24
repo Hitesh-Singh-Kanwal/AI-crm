@@ -12,7 +12,7 @@ const PIPELINE_LABEL_POS = [
   'absolute right-[70px] top-[20px] text-[14px] leading-[20px] text-muted-foreground',
 ]
 
-export default function SalesPipelineAndLeadSourcesWidget({ pipelineData = [], leadSourcesData = [] }) {
+export default function SalesPipelineAndLeadSourcesWidget({ pipelineData = [], leadSourcesData = [], onLeadSourceClick }) {
   return (
     <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
       <div className={chartCardClass}>
@@ -51,6 +51,7 @@ export default function SalesPipelineAndLeadSourcesWidget({ pipelineData = [], l
 
       <div className={chartCardClass}>
         <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">Lead Sources</h3>
+        <p className="text-xs text-muted-foreground">Click a bar to see leads from that source</p>
         <div className="mt-4 h-[240px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={leadSourcesData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -58,7 +59,13 @@ export default function SalesPipelineAndLeadSourcesWidget({ pipelineData = [], l
               <XAxis dataKey="name" tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={rechartsTooltipContentStyle} />
-              <Bar dataKey="value" radius={[8, 8, 0, 0]} fill="url(#leadBarGradient)" />
+              <Bar
+                dataKey="value"
+                radius={[8, 8, 0, 0]}
+                fill="url(#leadBarGradient)"
+                onClick={(entry) => onLeadSourceClick?.(entry?.name)}
+                className={onLeadSourceClick ? 'cursor-pointer' : undefined}
+              />
               <defs>
                 <linearGradient id="leadBarGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="var(--bar-gradient-start)" />

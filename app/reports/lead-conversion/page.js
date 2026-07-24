@@ -7,6 +7,7 @@ import { ReportPicker } from '@/components/reports/ReportPicker'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { LeadConversionTable, LEAD_CONVERSION_COLUMNS } from '@/components/reports/lead-conversion/LeadConversionTable'
+import { LeadSourceChart } from '@/components/reports/lead-conversion/LeadSourceChart'
 import { useReportData } from '@/lib/hooks/useReportData'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
@@ -54,6 +55,8 @@ export default function LeadConversionReportPage() {
         <span>Conversion Rate: {summary.conversionRatePct ?? 0}%</span>
         {isValidating && !isLoading && <span>Updating…</span>}
       </div>
+
+      {!isLoading && !error && <div className="mt-4"><LeadSourceChart bySource={summary.bySource} /></div>}
 
       <div className="mt-2">
         {isLoading ? (

@@ -13,6 +13,8 @@ describe('ReportPicker', () => {
     expect(screen.getByRole('link', { name: 'Revenue by Teacher' })).toHaveAttribute('href', '/reports/revenue-by-teacher')
     expect(screen.getByRole('link', { name: 'Lead Conversion' })).toHaveAttribute('href', '/reports/lead-conversion')
     expect(screen.getByRole('link', { name: 'Active and Inactive Students' })).toHaveAttribute('href', '/reports/active-inactive-students')
+    expect(screen.getByRole('link', { name: 'Reason for Dancing' })).toHaveAttribute('href', '/reports/reason-for-dancing')
+    expect(screen.getByRole('link', { name: 'Group Attendance' })).toHaveAttribute('href', '/reports/group-attendance')
   })
 
   it('marks the active report link with aria-current', () => {

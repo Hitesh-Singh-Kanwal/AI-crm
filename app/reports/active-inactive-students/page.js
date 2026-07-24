@@ -7,6 +7,7 @@ import { ReportPicker } from '@/components/reports/ReportPicker'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { ActiveInactiveStudentsTable, ACTIVE_INACTIVE_STUDENTS_COLUMNS } from '@/components/reports/active-inactive-students/ActiveInactiveStudentsTable'
+import { StudentStatusChart } from '@/components/reports/active-inactive-students/StudentStatusChart'
 import { useReportData } from '@/lib/hooks/useReportData'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
@@ -78,6 +79,12 @@ export default function ActiveInactiveStudentsReportPage() {
         <span>Active: {summary.activeCount ?? 0} · Inactive: {summary.inactiveCount ?? 0}</span>
         {isValidating && !isLoading && <span>Updating…</span>}
       </div>
+
+      {!isLoading && !error && (
+        <div className="mt-4">
+          <StudentStatusChart activeCount={summary.activeCount ?? 0} inactiveCount={summary.inactiveCount ?? 0} />
+        </div>
+      )}
 
       <div className="mt-2">
         {isLoading ? (
