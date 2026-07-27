@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Mail, ArrowLeft, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -5,6 +7,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getInitials, formatDateTime, getContactDisplayName } from '@/lib/utils'
 import MessageInput from './MessageInput'
 import EmailMessageInput from './EmailMessageInput'
+import CallMessageInput from './CallMessageInput'
+import CallLogList from './CallLogList'
 import ConversationChannelTabs from './ConversationChannelTabs'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
@@ -15,7 +19,9 @@ const TAB_CHANNEL_MAP = { 'E-mail': 'Email', SMS: 'SMS', Call: 'Call' }
 
 function defaultChannelTab(conversation) {
   if (!conversation) return 'SMS'
-  return conversation.channel === 'Email' ? 'E-mail' : 'SMS'
+  if (conversation.channel === 'Email') return 'E-mail'
+  if (conversation.channel === 'Call') return 'Call'
+  return 'SMS'
 }
 
 export default function ConversationView({
@@ -30,6 +36,10 @@ export default function ConversationView({
   leadData = null,
   emailSending = false,
   onEmailTabActive,
+  onCallTabActive,
+  onPlaceCall,
+  callPlacing = false,
+  callLogsLoading = false,
 }) {
   const [activeTab, setActiveTab] = useState(() => defaultChannelTab(conversation))
   const scrollRef = useRef(null)
@@ -38,8 +48,9 @@ export default function ConversationView({
 
   const leadPreview = leadData || conversation?.contact || null
   const contactEmail = leadPreview?.email || conversation?.contact?.email || ''
+  const contactPhone = leadPreview?.phoneNumber || conversation?.contact?.phoneNumber || ''
+  const contactName = getContactDisplayName(leadPreview || conversation?.contact || {})
 
-  // Reset on conversation change and scroll to bottom
   useEffect(() => {
     setActiveTab(defaultChannelTab(conversation))
     prevScrollHeightRef.current = 0
@@ -50,9 +61,11 @@ export default function ConversationView({
 
   useEffect(() => {
     if (activeTab === 'E-mail') onEmailTabActive?.()
-  }, [activeTab, onEmailTabActive])
+    if (activeTab === 'Call') onCallTabActive?.()
+    // Only re-run when the tab or conversation changes — not when parent re-creates callbacks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, conversation?.id])
 
-  // After messages update: scroll to bottom on initial load, restore position on load-more
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -64,9 +77,10 @@ export default function ConversationView({
       el.scrollTop = el.scrollHeight
     }
     prevScrollHeightRef.current = el.scrollHeight
-  }, [messages])
+  }, [messages, activeTab])
 
   const handleScroll = useCallback(() => {
+    if (activeTab === 'Call') return
     const el = scrollRef.current
     if (!el || !hasMore || loadingMore) return
     if (el.scrollTop < 50) {
@@ -74,9 +88,10 @@ export default function ConversationView({
       prevScrollHeightRef.current = el.scrollHeight
       onLoadMore?.()
     }
-  }, [hasMore, loadingMore, onLoadMore])
+  }, [hasMore, loadingMore, onLoadMore, activeTab])
 
   const handleLoadOlder = useCallback(() => {
+    if (activeTab === 'Call') return
     if (!hasMore || loadingMore) return
     const el = scrollRef.current
     if (el) {
@@ -84,7 +99,27 @@ export default function ConversationView({
       prevScrollHeightRef.current = el.scrollHeight
     }
     onLoadMore?.()
-  }, [hasMore, loadingMore, onLoadMore])
+  }, [hasMore, loadingMore, onLoadMore, activeTab])
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab)
+  }
+
+  const callMessages = (messages || [])
+    .filter((m) => m.channel === 'Call')
+    .slice()
+    // Oldest → newest so the latest call/recording is at the bottom (chat-style).
+    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+
+  useEffect(() => {
+    if (activeTab !== 'Call') return
+    const el = scrollRef.current
+    if (!el) return
+    // After call history loads / updates, keep the latest entry in view.
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+    })
+  }, [activeTab, callMessages.length, callLogsLoading])
 
   if (!conversation) {
     return (
@@ -121,36 +156,42 @@ export default function ConversationView({
               <h4 className="text-sm font-semibold text-foreground truncate">{getContactDisplayName(conversation.contact)}</h4>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">{conversation.contact.type}</span>
-                <span className="text-xs text-muted-foreground">•</span>
-                <span className="text-xs text-muted-foreground">Today</span>
+                {contactPhone && (
+                  <>
+                    <span className="text-xs text-muted-foreground">•</span>
+                    <span className="text-xs text-muted-foreground truncate">{contactPhone}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={handleLoadOlder}
-              disabled={!hasMore || loadingMore}
-              title={
-                loadingMore
-                  ? 'Loading older messages…'
-                  : hasMore
-                    ? 'Load older messages'
-                    : 'No older messages'
-              }
-              className="h-9 w-9"
-            >
-              <RefreshCw
-                className={cn(
-                  'h-4 w-4 text-muted-foreground',
-                  loadingMore && 'animate-spin'
-                )}
-              />
-              <span className="sr-only">Load older messages</span>
-            </Button>
+            {activeTab !== 'Call' && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={handleLoadOlder}
+                disabled={!hasMore || loadingMore}
+                title={
+                  loadingMore
+                    ? 'Loading older messages…'
+                    : hasMore
+                      ? 'Load older messages'
+                      : 'No older messages'
+                }
+                className="h-9 w-9"
+              >
+                <RefreshCw
+                  className={cn(
+                    'h-4 w-4 text-muted-foreground',
+                    loadingMore && 'animate-spin'
+                  )}
+                />
+                <span className="sr-only">Load older messages</span>
+              </Button>
+            )}
             <button
               onClick={onToggleDetails}
               className="px-2.5 sm:px-3 py-1 rounded-md text-xs sm:text-sm whitespace-nowrap bg-[color:var(--studio-primary)] text-white"
@@ -160,127 +201,137 @@ export default function ConversationView({
           </div>
         </div>
 
-        {/* Channel tabs */}
-        <ConversationChannelTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        <ConversationChannelTabs activeTab={activeTab} onTabChange={handleTabChange} />
       </div>
 
-      {/* Messages */}
+      {/* Messages / call logs */}
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar-hide py-3 px-3 sm:px-4 bg-muted/40">
-        {hasMore && (
-          <div className="flex justify-center py-2">
-            <button
-              type="button"
-              onClick={handleLoadOlder}
-              disabled={loadingMore}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors',
-                'hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-60'
-              )}
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', loadingMore && 'animate-spin')} />
-              {loadingMore ? 'Loading older messages…' : 'Load older messages'}
-            </button>
-          </div>
-        )}
-        {(() => {
-          const filtered = messages.filter((m) => m.channel === TAB_CHANNEL_MAP[activeTab])
-          if (filtered.length === 0) return (
-            <div className="text-center text-muted-foreground text-sm py-8">
-              {messages.length === 0 ? 'No messages yet. Start the conversation!' : `No ${activeTab} messages.`}
-            </div>
+        {activeTab === 'Call' ? (
+          callLogsLoading && callMessages.length === 0 ? (
+            <div className="text-center text-muted-foreground text-sm py-8">Loading call logs…</div>
+          ) : (
+            <CallLogList calls={callMessages} contactName={contactName} />
           )
-          return filtered.map((message, idx) => {
-            const isInbound = message.direction === 'inbound'
-            const prev = messages[idx - 1]
-            const showDateDivider = !prev || new Date(prev.timestamp).toDateString() !== new Date(message.timestamp).toDateString()
-            return (
-              <div key={message.id}>
-                {showDateDivider && (
-                  <div className="flex items-center my-2">
-                    <div className="flex-1 h-px bg-border" />
-                    <div className="px-3 text-xs text-muted-foreground">{new Date(message.timestamp).toLocaleDateString()}</div>
-                    <div className="flex-1 h-px bg-border" />
-                  </div>
-                )}
-
-                <div className={cn('flex items-start gap-3 mb-3', isInbound ? 'justify-start' : 'justify-end')}>
-                  {isInbound && (
-                    <div className="flex items-start gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-muted text-foreground text-xs font-semibold">
-                          {getInitials(message.sender)}
-                        </AvatarFallback>
-                      </Avatar>
-                    </div>
+        ) : (
+          <>
+            {hasMore && (
+              <div className="flex justify-center py-2">
+                <button
+                  type="button"
+                  onClick={handleLoadOlder}
+                  disabled={loadingMore}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors',
+                    'hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-60'
                   )}
-
-                  <div className={cn('max-w-[85%] sm:max-w-[75%] lg:max-w-[70%]')}>
-                    <div
-                      className={cn(
-                        'px-4 py-3 rounded-xl break-words shadow-sm',
-                        isInbound ? 'bg-card border border-border text-foreground' : 'bg-[color:var(--studio-primary)] text-white'
-                      )}
-                    >
-                      {message.channel === 'Email' && message.subject && (
-                        <p className={cn('text-xs font-semibold mb-1.5', isInbound ? 'text-foreground' : 'text-white/90')}>
-                          {message.subject}
-                        </p>
-                      )}
-                      <div
-                        className={cn(
-                          'text-sm leading-relaxed',
-                          // Give markdown elements consistent spacing + wrapping
-                          '[&_*]:break-words [&_p]:whitespace-pre-wrap [&_p]:m-0 [&_p+p]:mt-2 [&_ul]:mt-2 [&_ul]:pl-5 [&_ul]:list-disc [&_ol]:mt-2 [&_ol]:pl-5 [&_ol]:list-decimal [&_li]:mt-1',
-                          isInbound ? '[&_a]:text-[color:var(--studio-primary)]' : '[&_a]:text-white [&_a]:underline'
-                        )}
-                      >
-                        {message.channel === 'Email' && message.contentHtml ? (
-                          <div
-                            className={cn(
-                              'break-words [&_p]:m-0 [&_p+p]:mt-2',
-                              isInbound ? 'text-foreground' : 'text-white',
-                            )}
-                            dangerouslySetInnerHTML={{ __html: message.contentHtml }}
-                          />
-                        ) : (
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkBreaks]}
-                            skipHtml
-                            components={{
-                              a: ({ node, ...props }) => (
-                                <a {...props} target="_blank" rel="noreferrer noopener" />
-                              ),
-                            }}
-                          >
-                            {String(message.content || '')}
-                          </ReactMarkdown>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs text-muted-foreground">{formatDateTime(message.timestamp)}</div>
-                  </div>
-                  {!isInbound && (
-                    <div className="ml-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-[color:var(--studio-primary)] text-white text-xs font-semibold">
-                          {getInitials(message.sender)}
-                        </AvatarFallback>
-                      </Avatar>
-                    </div>
-                  )}
-                </div>
+                >
+                  <RefreshCw className={cn('h-3.5 w-3.5', loadingMore && 'animate-spin')} />
+                  {loadingMore ? 'Loading older messages…' : 'Load older messages'}
+                </button>
               </div>
-            )
-          })
-        })()}
+            )}
+            {(() => {
+              const filtered = messages.filter((m) => m.channel === TAB_CHANNEL_MAP[activeTab])
+              if (filtered.length === 0) return (
+                <div className="text-center text-muted-foreground text-sm py-8">
+                  {messages.length === 0 ? 'No messages yet. Start the conversation!' : `No ${activeTab} messages.`}
+                </div>
+              )
+              return filtered.map((message, idx) => {
+                const isInbound = message.direction === 'inbound'
+                const prev = filtered[idx - 1]
+                const showDateDivider = !prev || new Date(prev.timestamp).toDateString() !== new Date(message.timestamp).toDateString()
+                return (
+                  <div key={`${message.channel || 'msg'}-${message.id}-${idx}`}>
+                    {showDateDivider && (
+                      <div className="flex items-center my-2">
+                        <div className="flex-1 h-px bg-border" />
+                        <span className="mx-3 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {new Date(message.timestamp).toLocaleDateString(undefined, {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
+                        <div className="flex-1 h-px bg-border" />
+                      </div>
+                    )}
+                    <div className={cn('flex mb-3', isInbound ? 'justify-start' : 'justify-end')}>
+                      {isInbound && (
+                        <div className="mr-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback className="bg-muted text-foreground text-xs font-semibold">
+                              {getInitials(message.sender || contactName)}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
+                      )}
+                      <div className={cn('max-w-[85%] sm:max-w-[75%]', isInbound ? 'items-start' : 'items-end')}>
+                        <div
+                          className={cn(
+                            'rounded-2xl px-3.5 py-2.5 text-sm shadow-sm',
+                            isInbound
+                              ? 'bg-card border border-border text-foreground rounded-tl-md'
+                              : 'bg-[color:var(--studio-primary)] text-white rounded-tr-md',
+                          )}
+                        >
+                          {message.channel === 'Email' && message.subject && (
+                            <p className={cn('text-xs font-semibold mb-1', isInbound ? 'text-foreground' : 'text-white/90')}>
+                              {message.subject}
+                            </p>
+                          )}
+                          {message.channel === 'Email' ? (
+                            <div className={cn('prose prose-sm max-w-none', !isInbound && 'prose-invert')}>
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm, remarkBreaks]}
+                                components={{
+                                  a: ({ node, ...props }) => (
+                                    <a {...props} target="_blank" rel="noreferrer noopener" />
+                                  ),
+                                }}
+                              >
+                                {String(message.content || '')}
+                              </ReactMarkdown>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                          )}
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">{formatDateTime(message.timestamp)}</div>
+                      </div>
+                      {!isInbound && (
+                        <div className="ml-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback className="bg-[color:var(--studio-primary)] text-white text-xs font-semibold">
+                              {getInitials(message.sender)}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            })()}
+          </>
+        )}
       </div>
 
       {/* Composer */}
       <div className="flex-shrink-0">
         {activeTab === 'Call' ? (
-          <div className="px-4 py-6 text-center border-t border-border bg-card/80">
-            <p className="text-sm text-muted-foreground">Calls cannot be sent from the inbox.</p>
-          </div>
+          <CallMessageInput
+            phoneNumber={contactPhone}
+            contactName={contactName}
+            onPlaceCall={onPlaceCall}
+            calling={callPlacing}
+            disabled={!contactPhone}
+            disabledReason={
+              !contactPhone
+                ? 'Add a phone number on this contact to place a call.'
+                : ''
+            }
+          />
         ) : activeTab === 'E-mail' ? (
           contactEmail ? (
             <EmailMessageInput

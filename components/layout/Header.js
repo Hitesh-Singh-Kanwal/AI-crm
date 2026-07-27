@@ -201,9 +201,9 @@ import { isSuperAdmin, hasPermission } from "@/lib/permissions";
 import { useInboxHeader } from "@/contexts/InboxHeaderContext";
 
 const INBOX_FILTERS = [
-  { value: "all", label: "All Customers" },
-  { value: "leads", label: "Leads" },
-  { value: "teachers", label: "Teachers" },
+  { value: "all", label: "Customers", countKey: "customers" },
+  { value: "leads", label: "Leads", countKey: "leads" },
+  { value: "teachers", label: "Teachers", countKey: "teachers" },
 ];
 
 export default function Header({
@@ -231,7 +231,7 @@ export default function Header({
       return () => document.removeEventListener("click", handleClickOutside);
     }
   }, [showProfileMenu]);
-  const { inboxTeachersCount } = useInboxHeader();
+  const { inboxCounts } = useInboxHeader();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -263,7 +263,11 @@ export default function Header({
     const params = new URLSearchParams(searchParams?.toString() || "");
     params.set("filter", value);
     const base =
-      pathname === "/inbox/all-messages" ? "/inbox/all-messages" : "/inbox";
+      pathname === "/inbox/all-messages"
+        ? "/inbox/all-messages"
+        : pathname === "/inbox/talk-to-assistant"
+          ? "/inbox/talk-to-assistant"
+          : "/inbox";
     router.push(`${base}?${params.toString()}`);
   };
 
@@ -310,9 +314,9 @@ export default function Header({
           <div className="order-2 lg:order-1 w-full min-w-0 overflow-x-auto scrollbar-hide lg:flex-1 lg:pr-2">
             {isInbox ? (
               <div className="flex w-max items-center h-[44px] rounded-full bg-muted p-1">
-                {INBOX_FILTERS.map(({ value, label }) => {
+                {INBOX_FILTERS.map(({ value, label, countKey }) => {
                   const isActive = inboxFilter === value;
-                  const isTeachers = value === "teachers";
+                  const count = inboxCounts?.[countKey] ?? 0;
 
                   return (
                     <button
@@ -326,19 +330,16 @@ export default function Header({
                       )}
                     >
                       <span>{label}</span>
-
-                      {isTeachers && (
-                        <span
-                          className={cn(
-                            "ml-2 min-w-[22px] h-5 px-2 rounded-full text-xs flex items-center justify-center",
-                            isActive
-                              ? "bg-[var(--studio-primary-light)] text-[var(--studio-primary)]"
-                              : "bg-muted text-muted-foreground",
-                          )}
-                        >
-                          {inboxTeachersCount}
-                        </span>
-                      )}
+                      <span
+                        className={cn(
+                          "ml-2 min-w-[22px] h-5 px-2 rounded-full text-xs flex items-center justify-center",
+                          isActive
+                            ? "bg-[var(--studio-primary-light)] text-[var(--studio-primary)]"
+                            : "bg-background text-muted-foreground",
+                        )}
+                      >
+                        {count}
+                      </span>
                     </button>
                   );
                 })}

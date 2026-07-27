@@ -54,23 +54,29 @@ export default function ActiveCallPanel({
   resolving = false,
   callStatus = 'connecting',
   canManage = true,
+  mode = 'queue', // 'queue' | 'outbound'
 }) {
   const [minimized, setMinimized] = useState(false)
   const [muted, setMuted] = useState(false)
   const [callerOnHold, setCallerOnHold] = useState(false)
 
   const isConnected = callStatus === 'connected' || callStatus === 'on_hold'
-  const { formatted: callDuration } = useCallTimer(isConnected, call?.inProgressAt || call?.claimedAt)
+  const { formatted: callDuration } = useCallTimer(isConnected, call?.inProgressAt || call?.claimedAt || call?.initiatedAt)
   useEffect(() => {
     if (!connection) return undefined
 
     setMuted(isConnectionMuted(connection))
 
     return subscribeToConnectionEvents(connection, {
+      accept: () => {},
       mute: (isMuted) => setMuted(isMuted),
-      disconnect: () => onClose?.(),
+      // Outbound inbox owns teardown (local vs remote hangup messaging).
+      disconnect: () => {
+        if (mode === 'outbound') return
+        onClose?.()
+      },
     })
-  }, [connection, onClose])
+  }, [connection, onClose, mode])
 
   const handleToggleMute = () => {
     const next = !muted
@@ -89,12 +95,24 @@ export default function ActiveCallPanel({
   }
 
   const handleHangUp = () => {
+    // Outbound: parent sets the "ending" guard then disconnects, so we don't
+    // mis-label a CRM hangup as "other party disconnected".
+    if (mode === 'outbound') {
+      onEndCall?.()
+      return
+    }
     disconnectConnection(connection)
     onEndCall?.()
   }
 
-  const callerName = call?.leadName || call?.callerName || 'Unknown caller'
-  const callerPhone = call?.phone || call?.callerPhone || 'Unknown number'
+  const callerName = call?.leadName || call?.callerName || call?.name || 'Unknown caller'
+  const callerPhone = call?.phone || call?.callerPhone || call?.phoneNumber || 'Unknown number'
+  const metaLine =
+    mode === 'outbound'
+      ? call?.fromNumber
+        ? `From studio ${call.fromNumber}`
+        : 'Outbound studio call'
+      : `Escalated ${formatDateTime(call?.createdAt)}`
 
   if (minimized) {
     return (
@@ -178,15 +196,13 @@ export default function ActiveCallPanel({
             <div className="min-w-0">
               <p className="truncate text-lg font-semibold">{callerName}</p>
               <p className="text-sm text-white/70">{callerPhone}</p>
-              <p className="mt-0.5 text-xs text-white/50">
-                Escalated {formatDateTime(call?.createdAt)}
-              </p>
+              <p className="mt-0.5 text-xs text-white/50">{metaLine}</p>
             </div>
           </div>
         </div>
 
         <div className="space-y-4 p-5">
-          {(call?.escalationReason || call?.lastMessage || call?.aiSummary) && (
+          {mode === 'queue' && (call?.escalationReason || call?.lastMessage || call?.aiSummary) && (
             <div className="rounded-xl border border-border bg-muted/30 p-3">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reason for call</p>
               <p className="mt-1 text-sm text-foreground">
@@ -205,7 +221,7 @@ export default function ActiveCallPanel({
               icon={muted ? MicOff : Mic}
               label={muted ? 'Unmute' : 'Mute'}
               active={muted}
-              disabled={!isConnected}
+              disabled={!isConnected && callStatus !== 'connecting'}
               onClick={handleToggleMute}
             />
             {canManage && (

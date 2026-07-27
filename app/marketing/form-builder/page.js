@@ -74,16 +74,30 @@ const templateFields = {
   ],
 }
 
-function buildRequiredLeadFields(leadReasons = []) {
+function buildRequiredLeadFields(leadReasons = [], locations = []) {
   const reasonOptions = (leadReasons || []).map((r) => ({
     label: r.name,
-    value: r.reasonCode,
+    value: r.reasonCode || r._id || r.name,
+  }))
+  const studioOptions = (locations || []).map((loc) => ({
+    label: loc.name || 'Unnamed location',
+    value: String(loc._id),
   }))
   return [
     { id: 'req-name', type: 'text', name: 'name', label: 'Name', placeholder: 'Enter your name', required: true, locked: true, styles: {} },
     { id: 'req-email', type: 'email', name: 'email', label: 'Email', placeholder: 'you@email.com', required: true, locked: true, styles: {} },
     { id: 'req-phoneNumber', type: 'phone', name: 'phoneNumber', label: 'Phone Number', placeholder: '(555) 123-4567', required: true, locked: true, styles: {} },
-    { id: 'req-location', type: 'text', name: 'location', label: 'Location', placeholder: 'Enter location', required: true, locked: true, styles: {} },
+    {
+      id: 'req-studio',
+      type: 'select',
+      name: 'locationID',
+      label: 'Studio',
+      placeholder: 'Select studio',
+      required: true,
+      locked: true,
+      styles: {},
+      options: studioOptions,
+    },
     {
       id: 'req-reason',
       type: 'select',
@@ -220,7 +234,7 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
             disabled
             defaultValue=""
           >
-            <option value="">Select an option</option>
+            <option value="">{field.placeholder || 'Select an option'}</option>
             {(field.options || []).map((opt) => (
               <option key={opt.value || opt.label} value={opt.value || opt.label}>
                 {opt.label || opt.value}
@@ -632,6 +646,7 @@ function FormsPageInner() {
   // Clone
   const [cloningFormId, setCloningFormId] = useState(null)
   const [leadReasons, setLeadReasons] = useState([])
+  const [locations, setLocations] = useState([])
 
   // Backend-required hidden fields injected into exported HTML
   const organisationID = user?.organisationID || ''
@@ -639,7 +654,6 @@ function FormsPageInner() {
   const REQUIRED_SYSTEM_FIELDS = [
     { id: 'sys-organisationID', type: 'hidden', name: 'organisationID', label: 'organisationID', hidden: true, locked: true, styles: {} },
     { id: 'sys-formID', type: 'hidden', name: 'formID', label: 'formID', hidden: true, locked: true, styles: {} },
-    { id: 'sys-locationID', type: 'hidden', name: 'locationID', label: 'locationID', hidden: true, locked: true, styles: {} },
   ]
   const REQUIRED_FIELD_NAMES = new Set([
     'organisationID',
@@ -648,13 +662,12 @@ function FormsPageInner() {
     'name',
     'email',
     'phoneNumber',
-    'location',
     'reason',
   ])
 
   const [formFields, setFormFields] = useState([
     ...REQUIRED_SYSTEM_FIELDS,
-    ...buildRequiredLeadFields([]),
+    ...buildRequiredLeadFields([], []),
   ])
   const [selectedField, setSelectedField] = useState(null)
   const [activeId, setActiveId] = useState(null)
@@ -678,9 +691,20 @@ function FormsPageInner() {
     let cancelled = false
     ;(async () => {
       try {
-        const result = await api.get('/api/lead-reasons')
-        if (cancelled || !result.success) return
-        setLeadReasons(extractLeadReasonsList(result))
+        const [reasonsResult, locationsResult] = await Promise.all([
+          api.get('/api/lead-reasons'),
+          api.get('/api/location?limit=200'),
+        ])
+        if (cancelled) return
+        if (reasonsResult.success) {
+          setLeadReasons(extractLeadReasonsList(reasonsResult))
+        }
+        if (locationsResult.success) {
+          const locs = (locationsResult.data || []).filter(
+            (loc) => loc.status?.toLowerCase() === 'active' || !loc.status
+          )
+          setLocations(locs)
+        }
       } catch (e) {
         console.error(e)
       }
@@ -690,20 +714,79 @@ function FormsPageInner() {
     }
   }, [])
 
+  const refreshLeadReasons = useCallback(async () => {
+    try {
+      const result = await api.get('/api/lead-reasons')
+      if (!result.success) return
+      setLeadReasons(extractLeadReasonsList(result))
+    } catch (e) {
+      console.error(e)
+    }
+  }, [])
+
   useEffect(() => {
-    if (!leadReasons.length) return
     const reasonOptions = leadReasons.map((r) => ({
       label: r.name,
-      value: r.reasonCode,
+      value: r.reasonCode || r._id || r.name,
     }))
-    setFormFields((prev) =>
-      prev.map((f) =>
-        f.id === 'req-reason'
-          ? { ...f, type: 'select', options: reasonOptions }
-          : f
-      )
-    )
-  }, [leadReasons])
+    const studioOptions = locations.map((loc) => ({
+      label: loc.name || 'Unnamed location',
+      value: String(loc._id),
+    }))
+    const studioField = {
+      id: 'req-studio',
+      type: 'select',
+      name: 'locationID',
+      label: 'Studio',
+      placeholder: 'Select studio',
+      required: true,
+      locked: true,
+      styles: {},
+      options: studioOptions,
+    }
+
+    setFormFields((prev) => {
+      let next = prev
+        .filter(
+          (f) =>
+            !(
+              f.id === 'req-location' ||
+              (f.name === 'location' && f.locked && f.type !== 'select')
+            )
+        )
+        .map((f) => {
+          if (f.id === 'req-reason' || f.name === 'reason') {
+            return { ...f, type: 'select', options: reasonOptions }
+          }
+          if (f.id === 'req-studio' || f.name === 'locationID') {
+            return {
+              ...f,
+              id: 'req-studio',
+              type: 'select',
+              name: 'locationID',
+              label: f.label === 'locationID' ? 'Studio' : f.label || 'Studio',
+              placeholder: f.placeholder || 'Select studio',
+              required: true,
+              locked: true,
+              hidden: false,
+              options: studioOptions,
+            }
+          }
+          // Drop leftover hidden locationID system field from older forms
+          if (f.id === 'sys-locationID') return null
+          return f
+        })
+        .filter(Boolean)
+
+      const hasStudio = next.some((f) => f.id === 'req-studio' || f.name === 'locationID')
+      if (!hasStudio) {
+        const phoneIdx = next.findIndex((f) => f.name === 'phoneNumber')
+        next = [...next]
+        next.splice(phoneIdx >= 0 ? phoneIdx + 1 : next.length, 0, studioField)
+      }
+      return next
+    })
+  }, [leadReasons, locations])
 
   const saveForm = async () => {
     if (!formName.trim()) {
@@ -818,7 +901,7 @@ function FormsPageInner() {
     setFormDescription('')
     setFormLocationID([])
     setEditingFormId(null)
-    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons)])
+    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations)])
     setSelectedField(null)
     setActiveTab('builder')
   }
@@ -834,8 +917,8 @@ function FormsPageInner() {
     })
   )
 
-  const RESERVED_FIELD_NAMES = new Set(['organisationID', 'formID', 'name', 'email', 'phoneNumber', 'location', 'locationID', 'reason'])
-  const SYSTEM_HIDDEN_FIELD_NAMES = new Set(['organisationID', 'formID', 'locationID'])
+  const RESERVED_FIELD_NAMES = new Set(['organisationID', 'formID', 'name', 'email', 'phoneNumber', 'locationID', 'reason'])
+  const SYSTEM_HIDDEN_FIELD_NAMES = new Set(['organisationID', 'formID'])
 
   const getFieldNameForHtml = (field) => {
     if (field?.name) return field.name
@@ -1029,9 +1112,9 @@ function FormsPageInner() {
 
       // Ensure required lead fields always exist, and avoid duplicates
       const inferredFiltered = inferred.filter((f) => !REQUIRED_FIELD_NAMES.has(String(f?.name || '').trim()))
-      const nextFields = [...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons), ...inferredFiltered]
+      const nextFields = [...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations), ...inferredFiltered]
       setFormFields(nextFields)
-      const firstVisible = [...buildRequiredLeadFields(leadReasons), ...inferredFiltered].find((f) => f && !f.hidden && f.type !== 'hidden')
+      const firstVisible = [...buildRequiredLeadFields(leadReasons, locations), ...inferredFiltered].find((f) => f && !f.hidden && f.type !== 'hidden')
       setSelectedField(firstVisible?.id || null)
       setActiveTab('builder')
     } catch (e) {
@@ -1064,7 +1147,7 @@ function FormsPageInner() {
     }))
     // Prevent template fields from duplicating reserved backend field names (e.g. a second "email")
     const filtered = normalized.filter((f) => !REQUIRED_FIELD_NAMES.has(getFieldNameForHtml(f)))
-    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons), ...filtered])
+    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations), ...filtered])
     setSelectedField(normalized[0]?.id || null)
     setActiveTab('builder')
   }
@@ -1130,15 +1213,6 @@ function FormsPageInner() {
       }
       if (field.name === 'formID') {
         return `<input type="hidden" name="formID" value="${formID}" />`
-      }
-      if (field.name === 'locationID') {
-        const embedLoc =
-          formLocationID === ALL_BRANCHES_VALUE
-            ? ''
-            : Array.isArray(formLocationID)
-              ? (formLocationID[0] || '')
-              : (formLocationID || '')
-        return `<input type="hidden" name="locationID" value="${embedLoc}" />`
       }
       return `<input type="hidden" name="${field.name || field.id}" value="" />`
     }
@@ -1419,6 +1493,7 @@ ${gtagScript}
           payload.source = payload.source || 'website';
           payload.url = capturedUrl;
           payload.reason = pickFirst(payload.reason);
+          payload.locationID = pickFirst(payload.locationID);
           // Safety: ensure backend required ids are scalar even if duplicated somehow
           payload.organisationID = pickFirst(payload.organisationID);
           payload.formID = pickFirst(payload.formID);
@@ -1559,7 +1634,7 @@ ${gtagScript}
             className="w-full focus:outline-none focus:ring-2 focus:ring-brand"
             defaultValue=""
           >
-            <option value="">Select an option</option>
+            <option value="">{field.placeholder || 'Select an option'}</option>
             {(field.options || []).map((opt) => (
               <option key={opt.value || opt.label} value={opt.value || opt.label}>
                 {opt.label || opt.value}
@@ -1960,6 +2035,7 @@ ${gtagScript}
                         field={selectedFieldData}
                         onStyleChange={handleFieldUpdate}
                         onFieldUpdate={handleFieldUpdate}
+                        onLeadReasonsRefresh={refreshLeadReasons}
                       />
                     ) : (
                       <div className="text-center py-12 text-slate-400">
