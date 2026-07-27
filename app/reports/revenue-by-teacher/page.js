@@ -3,18 +3,18 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
-import { ReportPicker } from '@/components/reports/ReportPicker'
+import { BackToReportsLink } from '@/components/reports/BackToReportsLink'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { RevenueByTeacherTable, REVENUE_BY_TEACHER_COLUMNS } from '@/components/reports/revenue-by-teacher/RevenueByTeacherTable'
-import { RevenueByEntityChart } from '@/components/reports/revenue-by-teacher/RevenueByEntityChart'
 import { useReportData } from '@/lib/hooks/useReportData'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
+import ReportPageSuspense from '@/components/reports/ReportPageSuspense'
 
-export default function RevenueByTeacherReportPage() {
+function RevenueByTeacherReportPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const filters = parseReportFiltersFromSearchParams(searchParams)
@@ -42,7 +42,7 @@ export default function RevenueByTeacherReportPage() {
 
   return (
     <MainLayout title="Revenue by Teacher" subtitle="Revenue and performance grouped by teacher, studio, or program">
-      <ReportPicker activeSlug="revenue-by-teacher" />
+      <BackToReportsLink />
 
       <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
@@ -79,8 +79,6 @@ export default function RevenueByTeacherReportPage() {
         {isValidating && !isLoading && <span>Updating…</span>}
       </div>
 
-      {!isLoading && !error && <div className="mt-4"><RevenueByEntityChart rows={rows} /></div>}
-
       <div className="mt-2">
         {isLoading ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
@@ -110,5 +108,13 @@ export default function RevenueByTeacherReportPage() {
         )}
       />
     </MainLayout>
+  )
+}
+
+export default function RevenueByTeacherReportPage() {
+  return (
+    <ReportPageSuspense title="Revenue by Teacher" subtitle="Revenue and performance grouped by teacher, studio, or program">
+      <RevenueByTeacherReportPageContent />
+    </ReportPageSuspense>
   )
 }

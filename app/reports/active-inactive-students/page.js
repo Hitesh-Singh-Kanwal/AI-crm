@@ -3,18 +3,18 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
-import { ReportPicker } from '@/components/reports/ReportPicker'
+import { BackToReportsLink } from '@/components/reports/BackToReportsLink'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { ActiveInactiveStudentsTable, ACTIVE_INACTIVE_STUDENTS_COLUMNS } from '@/components/reports/active-inactive-students/ActiveInactiveStudentsTable'
-import { StudentStatusChart } from '@/components/reports/active-inactive-students/StudentStatusChart'
 import { useReportData } from '@/lib/hooks/useReportData'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import ReportPageSuspense from '@/components/reports/ReportPageSuspense'
 
-export default function ActiveInactiveStudentsReportPage() {
+function ActiveInactiveStudentsReportPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const filters = parseReportFiltersFromSearchParams(searchParams)
@@ -46,7 +46,7 @@ export default function ActiveInactiveStudentsReportPage() {
 
   return (
     <MainLayout title="Active and Inactive Student Report" subtitle="Student activity status based on recent and upcoming lessons">
-      <ReportPicker activeSlug="active-inactive-students" />
+      <BackToReportsLink />
 
       <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
@@ -80,12 +80,6 @@ export default function ActiveInactiveStudentsReportPage() {
         {isValidating && !isLoading && <span>Updating…</span>}
       </div>
 
-      {!isLoading && !error && (
-        <div className="mt-4">
-          <StudentStatusChart activeCount={summary.activeCount ?? 0} inactiveCount={summary.inactiveCount ?? 0} />
-        </div>
-      )}
-
       <div className="mt-2">
         {isLoading ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
@@ -115,5 +109,16 @@ export default function ActiveInactiveStudentsReportPage() {
         )}
       />
     </MainLayout>
+  )
+}
+
+export default function ActiveInactiveStudentsReportPage() {
+  return (
+    <ReportPageSuspense
+      title="Active and Inactive Student Report"
+      subtitle="Student activity status based on recent and upcoming lessons"
+    >
+      <ActiveInactiveStudentsReportPageContent />
+    </ReportPageSuspense>
   )
 }

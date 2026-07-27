@@ -3,6 +3,16 @@
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
 import { chartCardClass } from './shared'
+import ReportsDetailsButton, { LEAD_DETAIL_COLUMNS } from './ReportsDetailsButton'
+
+const PIPELINE_DETAIL_COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'stage', label: 'Stage' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+]
 
 const PIPELINE_LABEL_POS = [
   'absolute left-[48px] top-[20px] text-[14px] leading-[20px] text-muted-foreground',
@@ -12,11 +22,25 @@ const PIPELINE_LABEL_POS = [
   'absolute right-[70px] top-[20px] text-[14px] leading-[20px] text-muted-foreground',
 ]
 
-export default function SalesPipelineAndLeadSourcesWidget({ pipelineData = [], leadSourcesData = [], onLeadSourceClick }) {
+export default function SalesPipelineAndLeadSourcesWidget({
+  pipelineData = [],
+  leadSourcesData = [],
+  onLeadSourceClick,
+  defaultRange = 30,
+}) {
   return (
     <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
       <div className={chartCardClass}>
-        <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">Sales Pipeline</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">Sales Pipeline</h3>
+          <ReportsDetailsButton
+            title="Sales Pipeline — full details"
+            metric="leads"
+            rangeDays={defaultRange}
+            params={{ allTime: 'true' }}
+            columns={PIPELINE_DETAIL_COLUMNS}
+          />
+        </div>
         <div className="mt-5">
           <div className="relative mx-auto h-[200px] w-full max-w-[575px]">
             <div className="absolute left-1/2 top-1/2 h-[170px] w-[170px] -translate-x-1/2 -translate-y-1/2">
@@ -50,7 +74,15 @@ export default function SalesPipelineAndLeadSourcesWidget({ pipelineData = [], l
       </div>
 
       <div className={chartCardClass}>
-        <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">Lead Sources</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">Lead Sources</h3>
+          <ReportsDetailsButton
+            title="Lead Sources — full details"
+            metric="leads"
+            rangeDays={defaultRange}
+            columns={LEAD_DETAIL_COLUMNS}
+          />
+        </div>
         <p className="text-xs text-muted-foreground">Click a bar to see leads from that source</p>
         <div className="mt-4 h-[240px]">
           <ResponsiveContainer width="100%" height="100%">

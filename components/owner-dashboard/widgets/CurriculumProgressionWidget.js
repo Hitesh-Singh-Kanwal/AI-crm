@@ -3,6 +3,15 @@
 import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import { FunnelStage, FunnelConnector } from './shared'
 import WidgetHeader from './WidgetHeader'
+import DetailsButton from './DetailsButton'
+
+const DETAIL_COLUMNS = [
+  { key: 'name', label: 'Customer' },
+  { key: 'email', label: 'Email' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'highestTier', label: 'Highest Tier Reached' },
+]
 
 export default function CurriculumProgressionWidget({ funnel, rangeDays, onRangeChange }) {
   const stages = funnel?.report4?.curriculumProgression || []
@@ -10,7 +19,19 @@ export default function CurriculumProgressionWidget({ funnel, rangeDays, onRange
 
   return (
     <Card>
-      <WidgetHeader title="Curriculum Progression" rangeDays={rangeDays} onRangeChange={onRangeChange} />
+      <WidgetHeader
+        title="Curriculum Progression"
+        rangeDays={rangeDays}
+        onRangeChange={onRangeChange}
+        detailsButton={
+          <DetailsButton
+            title="Curriculum Progression — full details"
+            metric="curriculumProgression"
+            rangeDays={rangeDays}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       <p className="mt-1 text-[11px] text-muted-foreground">
         Report 4 — how many students have ever reached each curriculum tier.
       </p>

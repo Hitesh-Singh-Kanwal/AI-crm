@@ -233,8 +233,23 @@ function ServicesTab() {
     setServices((prev) => {
       const oldIndex = prev.findIndex((s) => s._id === active.id)
       const newIndex = prev.findIndex((s) => s._id === over.id)
-      return arrayMove(prev, oldIndex, newIndex)
+      const reordered = arrayMove(prev, oldIndex, newIndex)
+      persistOrder(reordered)
+      return reordered
     })
+  }
+
+  async function persistOrder(ordered) {
+    const startIndex = (currentPage - 1) * ROWS_PER_PAGE
+    const result = await api.patch('/api/calendar-service/reorder', {
+      order: ordered.map((s) => s._id),
+      startIndex,
+      type: serviceType,
+    })
+    if (!result.success) {
+      toast.error('Failed to save order', { description: result.error })
+      loadServices(currentPage, searchQuery, serviceType)
+    }
   }
 
   const toggleOne = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])

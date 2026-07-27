@@ -3,13 +3,29 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
 import { chartCardClass } from './shared'
+import ReportsDetailsButton, { paymentDetailColumns } from './ReportsDetailsButton'
 
-export default function RevenueTrendWidget({ revenueTrendData = [], onPointClick }) {
+function formatMoney(n) {
+  const num = Number(n) || 0
+  return `$${num.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+}
+
+const DETAIL_COLUMNS = paymentDetailColumns(formatMoney)
+
+export default function RevenueTrendWidget({ revenueTrendData = [], onPointClick, defaultRange = 30 }) {
   return (
     <section className={chartCardClass}>
-      <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
-        Revenue Trend
-      </h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
+          Revenue Trend
+        </h3>
+        <ReportsDetailsButton
+          title="Revenue Trend — full details"
+          metric="payments"
+          rangeDays={defaultRange}
+          columns={DETAIL_COLUMNS}
+        />
+      </div>
       <p className="text-xs text-muted-foreground">Click a point to see the underlying transactions</p>
       <div className="mt-4 h-[240px]">
         <ResponsiveContainer width="100%" height="100%">

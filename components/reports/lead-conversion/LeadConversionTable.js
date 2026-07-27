@@ -1,6 +1,7 @@
 'use client'
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
 
 export const LEAD_CONVERSION_COLUMNS = [
   { key: 'leadName', label: 'Lead Name' },
@@ -26,23 +27,25 @@ export function LeadConversionTable({ rows, onRowClick }) {
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {LEAD_CONVERSION_COLUMNS.map((col) => (
-            <TableHead key={col.key}>{col.label}</TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row.id} className="cursor-pointer" onClick={() => onRowClick(row)}>
+    <ReportTableShell>
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
             {LEAD_CONVERSION_COLUMNS.map((col) => (
-              <TableCell key={col.key}>{formatCell(col.key, row[col.key])}</TableCell>
+              <TableHead key={col.key} className={reportTableHeadClass}>{col.label}</TableHead>
             ))}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id} className={reportTableRowClass} onClick={() => onRowClick(row)}>
+              {LEAD_CONVERSION_COLUMNS.map((col) => (
+                <TableCell key={col.key} className={reportTableCellClass}>{formatCell(col.key, row[col.key])}</TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </ReportTableShell>
   )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
 
 export const REASON_FOR_DANCING_COLUMNS = [
   { key: 'studentName', label: 'Name' },
@@ -16,23 +17,25 @@ export function ReasonForDancingTable({ rows, onRowClick }) {
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {REASON_FOR_DANCING_COLUMNS.map((col) => (
-            <TableHead key={col.key}>{col.label}</TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row.id} className="cursor-pointer" onClick={() => onRowClick(row)}>
+    <ReportTableShell>
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
             {REASON_FOR_DANCING_COLUMNS.map((col) => (
-              <TableCell key={col.key}>{row[col.key]}</TableCell>
+              <TableHead key={col.key} className={reportTableHeadClass}>{col.label}</TableHead>
             ))}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id} className={reportTableRowClass} onClick={() => onRowClick(row)}>
+              {REASON_FOR_DANCING_COLUMNS.map((col) => (
+                <TableCell key={col.key} className={reportTableCellClass}>{row[col.key]}</TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </ReportTableShell>
   )
 }

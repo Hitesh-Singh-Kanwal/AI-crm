@@ -3,17 +3,17 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
-import { ReportPicker } from '@/components/reports/ReportPicker'
+import { BackToReportsLink } from '@/components/reports/BackToReportsLink'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { LeadConversionTable, LEAD_CONVERSION_COLUMNS } from '@/components/reports/lead-conversion/LeadConversionTable'
-import { LeadSourceChart } from '@/components/reports/lead-conversion/LeadSourceChart'
 import { useReportData } from '@/lib/hooks/useReportData'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
 import { Button } from '@/components/ui/button'
+import ReportPageSuspense from '@/components/reports/ReportPageSuspense'
 
-export default function LeadConversionReportPage() {
+function LeadConversionReportPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const filters = parseReportFiltersFromSearchParams(searchParams)
@@ -35,7 +35,7 @@ export default function LeadConversionReportPage() {
 
   return (
     <MainLayout title="Lead Conversion Report" subtitle="Lead-to-sale funnel by source and teacher">
-      <ReportPicker activeSlug="lead-conversion" />
+      <BackToReportsLink />
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <ReportFilterBar filters={filters} onChange={handleFiltersChange} studios={[]} teachers={[]} programs={[]} leadSources={[]} showLeadSource={true} />
@@ -55,8 +55,6 @@ export default function LeadConversionReportPage() {
         <span>Conversion Rate: {summary.conversionRatePct ?? 0}%</span>
         {isValidating && !isLoading && <span>Updating…</span>}
       </div>
-
-      {!isLoading && !error && <div className="mt-4"><LeadSourceChart bySource={summary.bySource} /></div>}
 
       <div className="mt-2">
         {isLoading ? (
@@ -87,5 +85,13 @@ export default function LeadConversionReportPage() {
         )}
       />
     </MainLayout>
+  )
+}
+
+export default function LeadConversionReportPage() {
+  return (
+    <ReportPageSuspense title="Lead Conversion Report" subtitle="Lead-to-sale funnel by source and teacher">
+      <LeadConversionReportPageContent />
+    </ReportPageSuspense>
   )
 }

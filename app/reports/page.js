@@ -8,7 +8,6 @@ import { reportsWidgetRegistry } from '@/components/reports/widgets/registry'
 import { useReportsOverview } from '@/lib/hooks/useAnalyticsOverview'
 import { Button } from '@/components/ui/button'
 import { OverviewDrillSheet } from '@/components/reports/OverviewDrillSheet'
-import { ReportPicker } from '@/components/reports/ReportPicker'
 
 const DEFAULT_KPIS = [
   { title: 'Total Revenue', value: '$0', trend: '—', trendType: 'up' },
@@ -49,6 +48,7 @@ export default function ReportsPage() {
       onSliceClick: (status) => setDrill({ reportSlug: 'active-inactive-students', filters: { status }, title: `${status} Students` }),
       onReasonClick: (reason) => setDrill({ reportSlug: 'reason-for-dancing', filters: {}, title: `Reason for Dancing — ${reason}` }),
       onClassClick: (className) => setDrill({ reportSlug: 'group-attendance', filters: {}, title: `Attendance — ${className}` }),
+      defaultRange: range,
     }
   }, [data])
 
@@ -67,8 +67,6 @@ export default function ReportsPage() {
           </Button>
         </div>
       )}
-
-      <ReportPicker activeSlug="overview" />
 
       <DashboardBuilder
         page="reports"

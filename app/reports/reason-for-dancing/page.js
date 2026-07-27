@@ -3,17 +3,17 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
-import { ReportPicker } from '@/components/reports/ReportPicker'
+import { BackToReportsLink } from '@/components/reports/BackToReportsLink'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { ReasonForDancingTable, REASON_FOR_DANCING_COLUMNS } from '@/components/reports/reason-for-dancing/ReasonForDancingTable'
-import { ReasonForDancingChart } from '@/components/reports/reason-for-dancing/ReasonForDancingChart'
 import { useReportData } from '@/lib/hooks/useReportData'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
 import { Button } from '@/components/ui/button'
+import ReportPageSuspense from '@/components/reports/ReportPageSuspense'
 
-export default function ReasonForDancingReportPage() {
+function ReasonForDancingReportPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const filters = parseReportFiltersFromSearchParams(searchParams)
@@ -35,7 +35,7 @@ export default function ReasonForDancingReportPage() {
 
   return (
     <MainLayout title="Reason for Dancing Report" subtitle="Why leads and students say they want to dance">
-      <ReportPicker activeSlug="reason-for-dancing" />
+      <BackToReportsLink />
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <ReportFilterBar filters={filters} onChange={handleFiltersChange} studios={[]} teachers={[]} programs={[]} leadSources={[]} showLeadSource={false} />
@@ -52,8 +52,6 @@ export default function ReasonForDancingReportPage() {
       )}
 
       {isValidating && !isLoading && <p className="mt-4 text-sm text-muted-foreground">Updating…</p>}
-
-      {!isLoading && !error && <div className="mt-4"><ReasonForDancingChart byReason={summary.byReason} /></div>}
 
       <div className="mt-2">
         {isLoading ? (
@@ -84,5 +82,16 @@ export default function ReasonForDancingReportPage() {
         )}
       />
     </MainLayout>
+  )
+}
+
+export default function ReasonForDancingReportPage() {
+  return (
+    <ReportPageSuspense
+      title="Reason for Dancing Report"
+      subtitle="Why leads and students say they want to dance"
+    >
+      <ReasonForDancingReportPageContent />
+    </ReportPageSuspense>
   )
 }

@@ -2,7 +2,7 @@
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { chartCardClass } from './shared'
+import { chartCardClass, DetailsLink } from './shared'
 
 const STATUS_COLORS = { Active: 'var(--side-gradient-end)', Inactive: 'hsl(var(--muted-foreground))' }
 
@@ -12,9 +12,12 @@ export default function StudentHealthWidget({ studentHealthData = [], onSliceCli
 
   return (
     <section className={chartCardClass}>
-      <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
-        Student Health
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
+          Student Health
+        </h3>
+        <DetailsLink href="/reports/active-inactive-students" />
+      </div>
       <div className="mt-4 h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>

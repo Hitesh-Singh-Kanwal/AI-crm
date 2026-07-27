@@ -527,6 +527,9 @@ function ProfileTab({ customer, locations, onUpdated }) {
         ? String(customer.dateOfBirth).slice(0, 10)
         : "",
       gender: customer.gender || "",
+      callbackDate: customer.callbackDate
+        ? String(customer.callbackDate).slice(0, 10)
+        : "",
       address: {
         street: customer.address?.street || "",
         city: customer.address?.city || "",
@@ -561,6 +564,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
       locationID: form.locationID || undefined,
       dateOfBirth: form.dateOfBirth || undefined,
       gender: form.gender || undefined,
+      callbackDate: form.callbackDate || null,
       address: hasAddress ? addr : undefined,
     });
     if (res.success) {
@@ -743,6 +747,16 @@ function ProfileTab({ customer, locations, onUpdated }) {
                     <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   </div>
                 </FormField>
+                <FormField label="Callback date">
+                  <input
+                    type="date"
+                    value={form.callbackDate}
+                    onChange={(e) =>
+                      setForm({ ...form, callbackDate: e.target.value })
+                    }
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </FormField>
               </div>
               <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
                 <p className="text-[12px] font-semibold text-muted-foreground">
@@ -888,6 +902,16 @@ function ProfileTab({ customer, locations, onUpdated }) {
                         ? customer.gender
                             .replace(/_/g, " ")
                             .replace(/\b\w/g, (c) => c.toUpperCase())
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground mb-0.5">
+                      Callback date
+                    </p>
+                    <p className="text-[13px] text-foreground">
+                      {customer.callbackDate
+                        ? formatDate(customer.callbackDate)
                         : "—"}
                     </p>
                   </div>

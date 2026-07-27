@@ -71,6 +71,7 @@ export default function DynamicListFormDialog({
   const [teachers, setTeachers] = useState([])
   const [tags, setTags] = useState([])
   const [memberships, setMemberships] = useState([])
+  const [packages, setPackages] = useState([])
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -91,7 +92,8 @@ export default function DynamicListFormDialog({
       requests.push(
         api.get('/api/teacher?limit=200&status=active'),
         api.get('/api/customer/tags'),
-        api.get('/api/membership?limit=200')
+        api.get('/api/membership?limit=200'),
+        api.get('/api/package?limit=200')
       )
     } else {
       requests.push(
@@ -107,10 +109,11 @@ export default function DynamicListFormDialog({
         setLocations(Array.isArray(locationsRes.data) ? locationsRes.data : [])
       }
       if (isCustomer) {
-        const [, teachersRes, tagsRes, membershipsRes] = results
+        const [, teachersRes, tagsRes, membershipsRes, packagesRes] = results
         if (teachersRes?.success) setTeachers(teachersRes.data || [])
         if (tagsRes?.success) setTags(tagsRes.data || [])
         if (membershipsRes?.success) setMemberships(membershipsRes.data || [])
+        if (packagesRes?.success) setPackages(packagesRes.data || [])
       } else {
         const [, reasonsRes, formsRes] = results
         if (reasonsRes?.success) setLeadReasons(extractLeadReasonsList(reasonsRes))
@@ -237,6 +240,7 @@ export default function DynamicListFormDialog({
               teachers={teachers}
               tags={tags}
               memberships={memberships}
+              packages={packages}
               loadingOptions={loadingOptions}
             />
           </div>

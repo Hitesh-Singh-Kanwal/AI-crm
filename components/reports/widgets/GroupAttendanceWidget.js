@@ -2,7 +2,7 @@
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { chartCardClass } from './shared'
+import { chartCardClass, DetailsLink } from './shared'
 
 export default function GroupAttendanceWidget({ groupAttendanceData = { attendanceRatePct: 0, byClass: [] }, onClassClick }) {
   const { attendanceRatePct, byClass } = groupAttendanceData
@@ -13,7 +13,10 @@ export default function GroupAttendanceWidget({ groupAttendanceData = { attendan
         <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
           Group Attendance
         </h3>
-        <span className="text-sm text-muted-foreground">Attendance Rate: {attendanceRatePct}%</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">Attendance Rate: {attendanceRatePct}%</span>
+          <DetailsLink href="/reports/group-attendance" />
+        </div>
       </div>
       <p className="text-xs text-muted-foreground">Click a class to see its attendance roster</p>
       <div className="mt-4 h-[220px]">

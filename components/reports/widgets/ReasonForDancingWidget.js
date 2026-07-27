@@ -2,7 +2,7 @@
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { chartCardClass } from './shared'
+import { chartCardClass, DetailsLink } from './shared'
 
 const PALETTE = ['#FDBBD9', '#FB9BC7', '#FA6DAD', '#F72585', '#E12279', '#B31B63', '#7A1246']
 
@@ -12,9 +12,12 @@ export default function ReasonForDancingWidget({ reasonForDancingData = [], onRe
 
   return (
     <section className={chartCardClass}>
-      <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
-        Reasons for Dancing
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
+          Reasons for Dancing
+        </h3>
+        <DetailsLink href="/reports/reason-for-dancing" />
+      </div>
       <p className="text-xs text-muted-foreground">Click a reason to see who said it</p>
       <div className="mt-4 h-[220px]">
         <ResponsiveContainer width="100%" height="100%">

@@ -3,17 +3,17 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
-import { ReportPicker } from '@/components/reports/ReportPicker'
+import { BackToReportsLink } from '@/components/reports/BackToReportsLink'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { SalesCashTable, SALES_CASH_COLUMNS } from '@/components/reports/sales-cash/SalesCashTable'
-import { SalesCashTrendChart } from '@/components/reports/sales-cash/SalesCashTrendChart'
 import { useReportData } from '@/lib/hooks/useReportData'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
 import { Button } from '@/components/ui/button'
+import ReportPageSuspense from '@/components/reports/ReportPageSuspense'
 
-export default function SalesCashReportPage() {
+function SalesCashReportPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const filters = parseReportFiltersFromSearchParams(searchParams)
@@ -35,7 +35,7 @@ export default function SalesCashReportPage() {
 
   return (
     <MainLayout title="Sales and Cash Report" subtitle="New sales, payments, tips, and refunds">
-      <ReportPicker activeSlug="sales-cash" />
+      <BackToReportsLink />
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <ReportFilterBar filters={filters} onChange={handleFiltersChange} studios={[]} teachers={[]} programs={[]} leadSources={[]} showLeadSource={false} />
@@ -56,8 +56,6 @@ export default function SalesCashReportPage() {
         <span>Total Cash Collected: {summary.totalCashCollected ?? 0}</span>
         {isValidating && !isLoading && <span>Updating…</span>}
       </div>
-
-      {!isLoading && !error && <div className="mt-4"><SalesCashTrendChart trend={summary.trend} /></div>}
 
       <div className="mt-2">
         {isLoading ? (
@@ -89,5 +87,13 @@ export default function SalesCashReportPage() {
         )}
       />
     </MainLayout>
+  )
+}
+
+export default function SalesCashReportPage() {
+  return (
+    <ReportPageSuspense title="Sales and Cash Report" subtitle="New sales, payments, tips, and refunds">
+      <SalesCashReportPageContent />
+    </ReportPageSuspense>
   )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
 
 export const REVENUE_BY_TEACHER_COLUMNS = [
   { key: 'entityName', label: 'Name' },
@@ -19,23 +20,25 @@ export function RevenueByTeacherTable({ rows, onRowClick }) {
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {REVENUE_BY_TEACHER_COLUMNS.map((col) => (
-            <TableHead key={col.key}>{col.label}</TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row.id} className="cursor-pointer" onClick={() => onRowClick(row)}>
+    <ReportTableShell>
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
             {REVENUE_BY_TEACHER_COLUMNS.map((col) => (
-              <TableCell key={col.key}>{row[col.key]}</TableCell>
+              <TableHead key={col.key} className={reportTableHeadClass}>{col.label}</TableHead>
             ))}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id} className={reportTableRowClass} onClick={() => onRowClick(row)}>
+              {REVENUE_BY_TEACHER_COLUMNS.map((col) => (
+                <TableCell key={col.key} className={reportTableCellClass}>{row[col.key]}</TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </ReportTableShell>
   )
 }
