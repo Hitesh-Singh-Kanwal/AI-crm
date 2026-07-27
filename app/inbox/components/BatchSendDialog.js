@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { Search, X, MessageSquare, Mail, Send, Clock } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Search, X, MessageSquare, Mail, Send, Clock, UserRound, GraduationCap, Users } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -11,47 +11,101 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
-import { getInitials } from '@/lib/utils'
+import { cn, getInitials } from '@/lib/utils'
 import api from '@/lib/api'
+import { fetchInboxContacts, INBOX_CONTACT_PAGE_SIZE } from '@/lib/inbox-contact-search'
+import InboxContactPagination from '@/app/inbox/components/InboxContactPagination'
 
-export default function BatchSendDialog({ open, onClose, onSent }) {
+const TYPE_META = {
+  Customers: {
+    singular: 'customer',
+    plural: 'customers',
+    Icon: Users,
+    searchPlaceholder: 'Search all customers…',
+    empty: 'No customers found for this studio.',
+  },
+  Leads: {
+    singular: 'lead',
+    plural: 'leads',
+    Icon: UserRound,
+    searchPlaceholder: 'Search all leads…',
+    empty: 'No leads found for this studio.',
+  },
+  Teachers: {
+    singular: 'teacher',
+    plural: 'teachers',
+    Icon: GraduationCap,
+    searchPlaceholder: 'Search all teachers…',
+    empty: 'No teachers found for this studio.',
+  },
+}
+
+export default function BatchSendDialog({
+  open,
+  onClose,
+  onSent,
+  contactType = 'Leads',
+}) {
   const toast = useToast()
+  const meta = TYPE_META[contactType] || TYPE_META.Leads
+  const TypeIcon = meta.Icon
 
   const [channel, setChannel] = useState('SMS')
   const [search, setSearch] = useState('')
-  const [leads, setLeads] = useState([])
-  const [loadingLeads, setLoadingLeads] = useState(false)
-  const [selectedLeads, setSelectedLeads] = useState([])
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [contacts, setContacts] = useState([])
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [loadingContacts, setLoadingContacts] = useState(false)
+  const [selected, setSelected] = useState([])
 
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
 
-  const [scheduleMode, setScheduleMode] = useState('now') // 'now' | 'later'
+  const [scheduleMode, setScheduleMode] = useState('now')
   const [scheduleDate, setScheduleDate] = useState('')
 
   const [sending, setSending] = useState(false)
+  const requestIdRef = useRef(0)
 
-  const searchLeads = useCallback(async (q) => {
-    setLoadingLeads(true)
+  const totalPages = Math.max(1, Math.ceil((total || 0) / INBOX_CONTACT_PAGE_SIZE))
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const loadPage = useCallback(async (nextPage, query = debouncedSearch) => {
+    const reqId = ++requestIdRef.current
+    setLoadingContacts(true)
     try {
-      const params = new URLSearchParams({ limit: '20' })
-      if (q.trim()) params.set('search', q.trim())
-      const result = await api.get(`/api/lead?${params.toString()}`)
-      const list = Array.isArray(result.data) ? result.data : result.data?.leads ?? []
-      setLeads(list)
+      const result = await fetchInboxContacts({
+        contactType,
+        search: query,
+        page: nextPage,
+      })
+      if (reqId !== requestIdRef.current) return
+      setContacts(result.contacts)
+      setPage(result.page)
+      setTotal(result.total)
     } catch (e) {
       console.error(e)
-      setLeads([])
+      if (reqId !== requestIdRef.current) return
+      setContacts([])
+      setTotal(0)
     } finally {
-      setLoadingLeads(false)
+      if (reqId === requestIdRef.current) setLoadingContacts(false)
     }
-  }, [])
+  }, [contactType, debouncedSearch])
 
   useEffect(() => {
     if (!open) {
       setSearch('')
-      setLeads([])
-      setSelectedLeads([])
+      setDebouncedSearch('')
+      setContacts([])
+      setPage(1)
+      setTotal(0)
+      setSelected([])
       setSubject('')
       setMessage('')
       setScheduleMode('now')
@@ -59,34 +113,38 @@ export default function BatchSendDialog({ open, onClose, onSent }) {
       setChannel('SMS')
       return
     }
-    searchLeads('')
-  }, [open, searchLeads])
+  }, [open, contactType])
 
   useEffect(() => {
-    const t = setTimeout(() => searchLeads(search), 300)
-    return () => clearTimeout(t)
-  }, [search, searchLeads])
+    if (!open) return
+    setPage(1)
+    loadPage(1, debouncedSearch)
+  }, [open, contactType, debouncedSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleLead = (lead) => {
-    setSelectedLeads((prev) => {
-      const exists = prev.find((l) => l._id === lead._id)
-      if (exists) return prev.filter((l) => l._id !== lead._id)
-      // Only add if they have the required contact field for the channel
-      if (channel === 'SMS' && !lead.phoneNumber) return prev
-      if (channel === 'Email' && !lead.email) return prev
-      return [...prev, lead]
+  const handlePageChange = (nextPage) => {
+    const clamped = Math.min(Math.max(1, nextPage), totalPages)
+    if (clamped === page && contacts.length > 0) return
+    loadPage(clamped, debouncedSearch)
+  }
+
+  const toggleContact = (contact) => {
+    setSelected((prev) => {
+      const exists = prev.find((l) => l._id === contact._id)
+      if (exists) return prev.filter((l) => l._id !== contact._id)
+      if (channel === 'SMS' && !contact.phoneNumber) return prev
+      if (channel === 'Email' && !contact.email) return prev
+      return [...prev, contact]
     })
   }
 
-  // Drop selected leads that don't have the required field when channel changes
   useEffect(() => {
-    setSelectedLeads((prev) =>
+    setSelected((prev) =>
       prev.filter((l) => (channel === 'SMS' ? !!l.phoneNumber : !!l.email))
     )
   }, [channel])
 
   const canSend =
-    selectedLeads.length > 0 &&
+    selected.length > 0 &&
     message.trim() &&
     (channel === 'SMS' || subject.trim()) &&
     (scheduleMode === 'now' || !!scheduleDate)
@@ -95,11 +153,17 @@ export default function BatchSendDialog({ open, onClose, onSent }) {
     if (!canSend) return
     setSending(true)
     try {
-      const leadsPayload = selectedLeads.map((l) => ({
+      const leadsPayload = selected.map((l) => ({
         _id: l._id,
         name: l.name,
         phoneNumber: l.phoneNumber,
         email: l.email,
+        type: l.type,
+        locationID: Array.isArray(l.locationID)
+          ? l.locationID.map((id) => String(id?._id ?? id)).filter(Boolean)
+          : l.locationID
+            ? [String(l.locationID?._id ?? l.locationID)]
+            : [],
       }))
 
       if (channel === 'SMS') {
@@ -129,7 +193,7 @@ export default function BatchSendDialog({ open, onClose, onSent }) {
 
       onSent?.({
         channel,
-        leads: selectedLeads,
+        leads: selected,
         subject: subject.trim(),
         content: message.trim(),
         scheduleNow: scheduleMode === 'now',
@@ -139,7 +203,9 @@ export default function BatchSendDialog({ open, onClose, onSent }) {
 
       toast.success({
         title: scheduleMode === 'now' ? 'Sent' : 'Scheduled',
-        message: `${channel} ${scheduleMode === 'now' ? 'sent' : 'scheduled'} to ${selectedLeads.length} lead${selectedLeads.length > 1 ? 's' : ''}.`,
+        message: `${channel} ${scheduleMode === 'now' ? 'sent' : 'scheduled'} to ${selected.length} ${
+          selected.length === 1 ? meta.singular : meta.plural
+        }.`,
       })
       onClose?.()
     } catch (e) {
@@ -150,32 +216,53 @@ export default function BatchSendDialog({ open, onClose, onSent }) {
     }
   }
 
-  // Min datetime = now (can't schedule in the past)
   const minDateTime = new Date(Date.now() + 60000).toISOString().slice(0, 16)
+
+  const selectableCount = useMemo(
+    () => contacts.filter((c) => (channel === 'SMS' ? !!c.phoneNumber : !!c.email)).length,
+    [contacts, channel],
+  )
+
+  const selectAllOnPage = () => {
+    const eligible = contacts.filter((c) => (channel === 'SMS' ? !!c.phoneNumber : !!c.email))
+    setSelected((prev) => {
+      const map = new Map(prev.map((p) => [p._id, p]))
+      for (const c of eligible) map.set(c._id, c)
+      return Array.from(map.values())
+    })
+  }
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="2xl">
       <DialogContent className="max-h-[90vh] overflow-y-auto" onClose={onClose}>
         <DialogHeader>
-          <DialogTitle>Batch send</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--studio-primary-light)] text-[color:var(--studio-primary)]">
+              <TypeIcon className="h-4 w-4" />
+            </span>
+            Bulk message {meta.plural}
+          </DialogTitle>
+          <DialogDescription>
+            Search the full {meta.singular} directory, then send one SMS or email to multiple people.
+            Selected recipients stay selected when you change pages.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="mt-4 space-y-5">
-
-          {/* Channel */}
           <div className="space-y-2">
             <Label>Channel</Label>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[{ id: 'SMS', Icon: MessageSquare }, { id: 'Email', Icon: Mail }].map(({ id, Icon }) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => setChannel(id)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                  className={cn(
+                    'flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-sm font-medium transition-colors',
                     channel === id
                       ? 'bg-[color:var(--studio-primary-light)] border-[color:var(--studio-primary)] text-[color:var(--studio-primary)]'
-                      : 'border-border text-muted-foreground hover:bg-slate-50'
-                  }`}
+                      : 'border-border text-muted-foreground hover:bg-muted/50',
+                  )}
                 >
                   <Icon className="h-4 w-4" />
                   {id}
@@ -184,20 +271,34 @@ export default function BatchSendDialog({ open, onClose, onSent }) {
             </div>
           </div>
 
-          {/* Lead search */}
           <div className="space-y-2">
-            <Label>Recipients</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label>Recipients</Label>
+              {selectableCount > 0 && (
+                <button
+                  type="button"
+                  onClick={selectAllOnPage}
+                  className="text-xs font-medium text-[color:var(--studio-primary)] hover:underline"
+                >
+                  Select all on page ({selectableCount})
+                </button>
+              )}
+            </div>
 
-            {/* Selected badges */}
-            {selectedLeads.length > 0 && (
-              <div className="flex flex-wrap gap-1 p-2 rounded-lg border border-border bg-muted/20">
-                {selectedLeads.map((l) => (
+            {selected.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 p-2.5 rounded-xl border border-border bg-muted/20">
+                {selected.map((l) => (
                   <span
                     key={l._id}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[color:var(--studio-primary-light)] text-[color:var(--studio-primary)] border border-[color:var(--studio-primary)]"
+                    className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs bg-[color:var(--studio-primary-light)] text-[color:var(--studio-primary)] border border-[color:var(--studio-primary)]/40"
                   >
-                    {l.name}
-                    <button type="button" onClick={() => toggleLead(l)}>
+                    {l.name || meta.singular}
+                    <button
+                      type="button"
+                      onClick={() => toggleContact(l)}
+                      className="h-4 w-4 rounded-full hover:bg-[color:var(--studio-primary)]/15 flex items-center justify-center"
+                      aria-label={`Remove ${l.name}`}
+                    >
                       <X className="h-3 w-3" />
                     </button>
                   </span>
@@ -208,92 +309,113 @@ export default function BatchSendDialog({ open, onClose, onSent }) {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search leads…"
+                placeholder={meta.searchPlaceholder}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
               />
             </div>
 
-            <div className="space-y-1 max-h-44 overflow-y-auto border border-border rounded-lg">
-              {loadingLeads ? (
-                <div className="flex justify-center py-4">
-                  <LoadingSpinner size="sm" text="Searching…" />
-                </div>
-              ) : leads.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No leads found.</p>
-              ) : (
-                leads.map((lead) => {
-                  const isSelected = !!selectedLeads.find((l) => l._id === lead._id)
-                  const disabled = channel === 'SMS' ? !lead.phoneNumber : !lead.email
-                  return (
-                    <button
-                      key={lead._id}
-                      type="button"
-                      onClick={() => toggleLead(lead)}
-                      disabled={disabled}
-                      className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors ${
-                        isSelected ? 'bg-[color:var(--studio-primary-light)]' : 'hover:bg-slate-50'
-                      } disabled:opacity-40 disabled:cursor-not-allowed`}
-                    >
-                      <input
-                        type="checkbox"
-                        readOnly
-                        checked={isSelected}
-                        className="h-4 w-4 accent-[color:var(--studio-primary)]"
-                      />
-                      <Avatar className="h-7 w-7 flex-shrink-0">
-                        <AvatarFallback className="bg-[color:var(--studio-primary)] text-white text-xs">
-                          {getInitials(lead.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{lead.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {channel === 'SMS' ? (lead.phoneNumber || 'No phone') : (lead.email || 'No email')}
-                        </p>
-                      </div>
-                    </button>
-                  )
-                })
-              )}
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="px-3 py-2 border-b border-border bg-muted/40 flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  {meta.plural}
+                </p>
+                <Badge variant="outline" className="text-xs font-normal">
+                  {selected.length} selected · {total} total
+                </Badge>
+              </div>
+              <div className="space-y-0.5 max-h-52 overflow-y-auto p-1">
+                {loadingContacts ? (
+                  <div className="flex justify-center py-6">
+                    <LoadingSpinner size="sm" text={`Loading ${meta.plural}…`} />
+                  </div>
+                ) : contacts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6 px-4">{meta.empty}</p>
+                ) : (
+                  contacts.map((contact) => {
+                    const isSelected = !!selected.find((l) => l._id === contact._id)
+                    const disabled = channel === 'SMS' ? !contact.phoneNumber : !contact.email
+                    return (
+                      <button
+                        key={contact._id}
+                        type="button"
+                        onClick={() => toggleContact(contact)}
+                        disabled={disabled}
+                        className={cn(
+                          'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors',
+                          isSelected ? 'bg-[color:var(--studio-primary-light)]' : 'hover:bg-muted/60',
+                          'disabled:opacity-40 disabled:cursor-not-allowed',
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          readOnly
+                          checked={isSelected}
+                          className="h-4 w-4 accent-[color:var(--studio-primary)]"
+                        />
+                        <Avatar className="h-8 w-8 flex-shrink-0">
+                          <AvatarFallback className="bg-[color:var(--studio-primary)] text-white text-xs">
+                            {getInitials(contact.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{contact.name || 'Unnamed'}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {channel === 'SMS'
+                              ? (contact.phoneNumber || 'No phone')
+                              : (contact.email || 'No email')}
+                          </p>
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+              <InboxContactPagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                pageSize={INBOX_CONTACT_PAGE_SIZE}
+                loading={loadingContacts}
+                onPageChange={handlePageChange}
+              />
             </div>
-            {selectedLeads.length > 0 && (
-              <p className="text-xs text-muted-foreground">{selectedLeads.length} recipient{selectedLeads.length > 1 ? 's' : ''} selected</p>
-            )}
           </div>
 
-          {/* Subject (email only) */}
           {channel === 'Email' && (
             <div className="space-y-2">
               <Label>Subject</Label>
-              <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Class reminder" />
+              <Input
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="e.g. Class reminder"
+              />
             </div>
           )}
 
-          {/* Message */}
           <div className="space-y-2">
             <Label>Message</Label>
             <Textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={5}
-              placeholder={channel === 'SMS' ? 'Type your SMS…' : 'Type your email body…'}
+              placeholder={channel === 'SMS' ? `Type your SMS to ${meta.plural}…` : `Type your email to ${meta.plural}…`}
             />
           </div>
 
-          {/* Schedule */}
           <div className="space-y-2">
             <Label>When to send</Label>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setScheduleMode('now')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                className={cn(
+                  'flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-sm font-medium transition-colors',
                   scheduleMode === 'now'
                     ? 'bg-[color:var(--studio-primary-light)] border-[color:var(--studio-primary)] text-[color:var(--studio-primary)]'
-                    : 'border-border text-muted-foreground hover:bg-slate-50'
-                }`}
+                    : 'border-border text-muted-foreground hover:bg-muted/50',
+                )}
               >
                 <Send className="h-4 w-4" />
                 Send now
@@ -301,11 +423,12 @@ export default function BatchSendDialog({ open, onClose, onSent }) {
               <button
                 type="button"
                 onClick={() => setScheduleMode('later')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                className={cn(
+                  'flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-sm font-medium transition-colors',
                   scheduleMode === 'later'
                     ? 'bg-[color:var(--studio-primary-light)] border-[color:var(--studio-primary)] text-[color:var(--studio-primary)]'
-                    : 'border-border text-muted-foreground hover:bg-slate-50'
-                }`}
+                    : 'border-border text-muted-foreground hover:bg-muted/50',
+                )}
               >
                 <Clock className="h-4 w-4" />
                 Schedule
@@ -325,9 +448,11 @@ export default function BatchSendDialog({ open, onClose, onSent }) {
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
             <Button variant="outline" onClick={onClose} disabled={sending}>Cancel</Button>
             <Button variant="gradient" onClick={handleSend} disabled={!canSend || sending}>
-              {sending ? 'Sending…' : scheduleMode === 'now'
-                ? `Send to ${selectedLeads.length || '—'} lead${selectedLeads.length !== 1 ? 's' : ''}`
-                : 'Schedule'}
+              {sending
+                ? 'Sending…'
+                : scheduleMode === 'now'
+                  ? `Send to ${selected.length || '—'} ${selected.length === 1 ? meta.singular : meta.plural}`
+                  : `Schedule for ${selected.length || '—'} ${selected.length === 1 ? meta.singular : meta.plural}`}
             </Button>
           </div>
         </div>
