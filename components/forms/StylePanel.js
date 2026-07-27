@@ -4,8 +4,12 @@ import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import api from '@/lib/api'
+import { useToast } from '@/components/ui/toast'
+import { extractLeadReasonsList } from '@/app/marketing/email-builder/emailBuilderApi'
 
 const fontFamilies = [
   'Arial',
@@ -30,7 +34,8 @@ const fontFamilies = [
 
 const fontWeights = ['100', '200', '300', '400', '500', '600', '700', '800', '900']
 
-export default function StylePanel({ field, onStyleChange, onFieldUpdate }) {
+export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLeadReasonsRefresh }) {
+  const toast = useToast()
   const [expandedSections, setExpandedSections] = useState({
     typography: true,
     spacing: true,
@@ -38,6 +43,8 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate }) {
     border: true,
     layout: true,
   })
+  const [newReasonName, setNewReasonName] = useState('')
+  const [addingReason, setAddingReason] = useState(false)
 
   if (!field) {
     return (
@@ -69,6 +76,43 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate }) {
 
   const handleFieldUpdate = (updates) => {
     onFieldUpdate(updates)
+  }
+
+  const handleAddReason = async () => {
+    const name = newReasonName.trim()
+    if (!name || addingReason) return
+    setAddingReason(true)
+    try {
+      const result = await api.post('/api/lead-reasons', { name })
+      if (!result.success) {
+        toast.error({
+          title: 'Could not add reason',
+          message: result.error || result.message || 'Please try again.',
+        })
+        return
+      }
+      toast.success({ title: 'Reason added', message: `"${name}" is now available in the dropdown.` })
+      setNewReasonName('')
+      if (onLeadReasonsRefresh) {
+        await onLeadReasonsRefresh()
+      } else {
+        // Fallback: refresh options on this field from GET if parent didn't pass a refresh handler.
+        const listResult = await api.get('/api/lead-reasons')
+        if (listResult.success) {
+          const reasons = extractLeadReasonsList(listResult)
+          const options = reasons.map((r) => ({
+            label: r.name,
+            value: r.reasonCode || r._id || r.name,
+          }))
+          handleFieldUpdate({ ...field, options })
+        }
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error({ title: 'Error', message: 'Could not add reason.' })
+    } finally {
+      setAddingReason(false)
+    }
   }
 
   const SectionHeader = ({ title, section }) => (
@@ -116,10 +160,17 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate }) {
               <div className="space-y-2.5">
                 <Label className="text-xs text-muted-foreground font-medium">Options</Label>
                 {field.locked ? (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2.5">
                     {field.name === 'reason' && (
                       <p className="text-xs text-muted-foreground">
-                        Options are loaded from your existing lead reasons.
+                        Options come from your lead reasons. Add a new one below to use it in this
+                        form.
+                      </p>
+                    )}
+                    {field.name === 'locationID' && (
+                      <p className="text-xs text-muted-foreground">
+                        Options are loaded from your active studios/locations. The selected value is
+                        saved as locationID when the form is submitted.
                       </p>
                     )}
                     <ul className="text-xs text-muted-foreground space-y-1 rounded-md border border-border p-2 max-h-36 overflow-y-auto">
@@ -128,9 +179,48 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate }) {
                           <li key={opt.value || opt.label || idx}>{opt.label || opt.value}</li>
                         ))
                       ) : (
-                        <li>No options available</li>
+                        <li>
+                          {field.name === 'locationID'
+                            ? 'No studios available'
+                            : field.name === 'reason'
+                              ? 'No reasons yet — add one below.'
+                              : 'No options available'}
+                        </li>
                       )}
                     </ul>
+                    {field.name === 'reason' && (
+                      <div className="space-y-2 rounded-md border border-dashed border-border p-2.5">
+                        <Label className="text-xs text-muted-foreground font-medium">
+                          Add new reason
+                        </Label>
+                        <div className="flex gap-2">
+                          <Input
+                            value={newReasonName}
+                            onChange={(e) => setNewReasonName(e.target.value)}
+                            placeholder="e.g. Wedding, Birthday…"
+                            disabled={addingReason}
+                            className="flex-1 border-border bg-background text-sm h-9"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleAddReason()
+                              }
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-9 shrink-0"
+                            onClick={handleAddReason}
+                            disabled={addingReason || !newReasonName.trim()}
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            {addingReason ? 'Adding…' : 'Add'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>

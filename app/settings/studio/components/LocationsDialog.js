@@ -9,12 +9,32 @@ import { Building2 } from 'lucide-react'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import StatusSelector from '@/components/shared/StatusSelector'
+import { Select } from '@/components/ui/select'
+import {
+  DEFAULT_LOCATION_TIMEZONE,
+  getTimezoneSelectOptions,
+  formatTimezoneLabel,
+} from '@/lib/timezones'
+
+const TIMEZONE_OPTIONS = getTimezoneSelectOptions()
 
 function phoneStatusBadge(status) {
   if (status === 'connected') return <Badge variant="success">Calling connected</Badge>
   if (status === 'error') return <Badge variant="error">Calling error</Badge>
   return <Badge variant="secondary">Calling not connected</Badge>
 }
+
+const emptyLocation = () => ({
+  name: '',
+  address: '',
+  city: '',
+  state: '',
+  country: '',
+  phoneNumber: '',
+  email: '',
+  status: 'active',
+  timezone: DEFAULT_LOCATION_TIMEZONE,
+})
 
 export default function LocationsDialog({ open, onClose, locations = [], onRefresh, initialLocationId = null }) {
   const [editingLocation, setEditingLocation] = useState(null)
@@ -31,35 +51,20 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
     if (initialLocationId && locations && locations.length > 0) {
       const found = locations.find((l) => l._id === initialLocationId)
       if (found) {
-        setEditingLocation({ ...found })
+        setEditingLocation({
+          ...found,
+          timezone: found.timezone || DEFAULT_LOCATION_TIMEZONE,
+        })
         setMode('edit')
       }
     } else {
-      setEditingLocation({
-        name: '',
-        address: '',
-        city: '',
-        state: '',
-        country: '',
-        phoneNumber: '',
-        email: '',
-        status: 'active',
-      })
+      setEditingLocation(emptyLocation())
       setMode('create')
     }
   }, [open, initialLocationId, locations])
 
   function openCreate() {
-    setEditingLocation({
-      name: '',
-      address: '',
-      city: '',
-      state: '',
-      country: '',
-      phoneNumber: '',
-      email: '',
-      status: 'active',
-    })
+    setEditingLocation(emptyLocation())
     setMode('create')
   }
 
@@ -76,6 +81,11 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
       return
     }
 
+    if (!editingLocation.timezone) {
+      toast.error({ title: 'Validation Error', message: 'Please select a timezone' })
+      return
+    }
+
     setLoading(true)
     try {
       const payload = {
@@ -87,6 +97,7 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
         phoneNumber: editingLocation.phoneNumber,
         email: editingLocation.email,
         status: editingLocation.status || 'active',
+        timezone: editingLocation.timezone || DEFAULT_LOCATION_TIMEZONE,
       }
 
       const result = editingLocation._id
@@ -215,6 +226,27 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                     placeholder="Country"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Timezone *</label>
+                <Select
+                  value={editingLocation.timezone || DEFAULT_LOCATION_TIMEZONE}
+                  onChange={(e) =>
+                    setEditingLocation((p) => ({ ...p, timezone: e.target.value }))
+                  }
+                >
+                  {TIMEZONE_OPTIONS.map((tz) => (
+                    <option key={tz.value} value={tz.value}>
+                      {tz.label} ({tz.description})
+                    </option>
+                  ))}
+                </Select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Used for scheduling, follow-ups, and local business hours for this studio.
+                  {editingLocation.timezone
+                    ? ` Selected: ${formatTimezoneLabel(editingLocation.timezone)}`
+                    : ''}
+                </p>
               </div>
             </div>
 

@@ -15,6 +15,7 @@ import { useToast } from '@/components/ui/toast'
 import { getEffectiveBranch } from '@/lib/auth'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { formatTimezoneLabel } from '@/lib/timezones'
 
 export default function LocationsPage() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -492,6 +493,12 @@ export default function LocationsPage() {
                       <span className="font-medium">{selectedLocation.country}</span>
                     </div>
                   )}
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Timezone:</span>
+                    <span className="font-medium text-right">
+                      {formatTimezoneLabel(selectedLocation.timezone)}
+                    </span>
+                  </div>
                   {selectedLocation.email && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Email:</span>
