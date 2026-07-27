@@ -3,6 +3,16 @@
 import { CheckCircle2, Clock3, Headphones, UserX } from 'lucide-react'
 import { Card, SectionLabel, EmptyChart } from './shared'
 import DonutChart from './DonutChart'
+import DetailsButton from './DetailsButton'
+
+const DETAIL_COLUMNS = [
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleString() : '—') },
+  { key: 'lead', label: 'Lead' },
+  { key: 'reason', label: 'Reason' },
+  { key: 'status', label: 'Status' },
+  { key: 'pickupMinutes', label: 'Pickup (min)' },
+  { key: 'handleMinutes', label: 'Handle (min)' },
+]
 
 function parseCount(row) {
   if (typeof row?.count === 'number') return row.count
@@ -54,6 +64,7 @@ export default function HumanInterventionWidget({
   humanInterventionBookingRate = [],
   humanInterventionStatus = [],
   humanInterventionRequired = 0,
+  defaultRange,
 }) {
   const totalHandled = humanInterventionBookingRate.find((r) => r.label === 'Total Handled')
   const resolved = humanInterventionBookingRate.find((r) => r.label === 'Resolved')
@@ -101,12 +112,20 @@ export default function HumanInterventionWidget({
     <Card>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <SectionLabel>Human Intervention</SectionLabel>
-        {totalCount > 0 && (
-          <p className="text-[12px] text-muted-foreground">
-            Resolve rate{' '}
-            <span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{resolveRate}%</span>
-          </p>
-        )}
+        <div className="flex items-center gap-3">
+          {totalCount > 0 && (
+            <p className="text-[12px] text-muted-foreground">
+              Resolve rate{' '}
+              <span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{resolveRate}%</span>
+            </p>
+          )}
+          <DetailsButton
+            title="Human Intervention — full details"
+            metric="humanIntervention"
+            rangeDays={defaultRange}
+            columns={DETAIL_COLUMNS}
+          />
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">

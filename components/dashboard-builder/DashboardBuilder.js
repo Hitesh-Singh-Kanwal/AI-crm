@@ -413,7 +413,12 @@ export default function DashboardBuilder({
     persist(next)
   }
 
-  if (layoutLoading || !layout) {
+  // One skeleton shape for the whole loading period (saved layout + widget
+  // data), not two different ones in sequence — swapping a 4-box generic
+  // skeleton for a differently-sized N-box one mid-load (plus the toolbar
+  // popping in between them) read as a flash/blink even though each phase
+  // was "just loading" on its own.
+  if (layoutLoading || !layout || dataLoading) {
     return (
       <div className="grid grid-cols-1 gap-5 md:grid-cols-12">
         {[1, 2, 3, 4].map((i) => (
@@ -486,62 +491,48 @@ export default function DashboardBuilder({
         </div>
       </div>
 
-      {dataLoading ? (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
-          {visibleWidgets.map((w) => (
-            <div
-              key={w.id}
-              className={cn(
-                'h-52 animate-pulse rounded-[20px] border-2 border-border bg-muted/40',
-                SPAN_CLASS[w.size] || SPAN_CLASS.full
-              )}
-            />
-          ))}
-        </div>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={() => setActiveId(null)}
-        >
-          <SortableContext items={visibleWidgets.map((w) => w.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-12 [grid-auto-flow:dense]">
-              {visibleWidgets.map((w) => {
-                const entry = registryById.get(w.id)
-                if (!entry) return null
-                const WidgetComponent = entry.component
-                return (
-                  <SortableWidget
-                    key={w.id}
-                    id={w.id}
-                    title={entry.title}
-                    size={w.size || entry.defaultSize || 'full'}
-                    allowedSizes={entry.allowedSizes}
-                    editing={editing}
-                    onRemove={removeWidget}
-                    onResize={resizeWidget}
-                  >
-                    <WidgetComponent {...sharedProps} {...(entry.props || {})} />
-                  </SortableWidget>
-                )
-              })}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveId(null)}
+      >
+        <SortableContext items={visibleWidgets.map((w) => w.id)} strategy={rectSortingStrategy}>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-12 [grid-auto-flow:dense]">
+            {visibleWidgets.map((w) => {
+              const entry = registryById.get(w.id)
+              if (!entry) return null
+              const WidgetComponent = entry.component
+              return (
+                <SortableWidget
+                  key={w.id}
+                  id={w.id}
+                  title={entry.title}
+                  size={w.size || entry.defaultSize || 'full'}
+                  allowedSizes={entry.allowedSizes}
+                  editing={editing}
+                  onRemove={removeWidget}
+                  onResize={resizeWidget}
+                >
+                  <WidgetComponent {...sharedProps} {...(entry.props || {})} />
+                </SortableWidget>
+              )
+            })}
+          </div>
+        </SortableContext>
+
+        <DragOverlay dropAnimation={null}>
+          {activeEntry ? (
+            <div className="rounded-2xl border-2 border-[var(--studio-primary)] bg-card/95 px-4 py-3 shadow-xl backdrop-blur-sm">
+              <p className="text-sm font-semibold text-foreground">{activeEntry.title}</p>
+              <p className="text-xs text-muted-foreground">Drop to reposition</p>
             </div>
-          </SortableContext>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
-          <DragOverlay dropAnimation={null}>
-            {activeEntry ? (
-              <div className="rounded-2xl border-2 border-[var(--studio-primary)] bg-card/95 px-4 py-3 shadow-xl backdrop-blur-sm">
-                <p className="text-sm font-semibold text-foreground">{activeEntry.title}</p>
-                <p className="text-xs text-muted-foreground">Drop to reposition</p>
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      )}
-
-      {!dataLoading && visibleWidgets.length === 0 && (
+      {visibleWidgets.length === 0 && (
         <div className="rounded-2xl border border-dashed border-border py-16 text-center">
           <p className="text-sm font-medium text-foreground">Your dashboard is empty</p>
           <p className="mt-1 text-sm text-muted-foreground">Add widgets to build your view.</p>

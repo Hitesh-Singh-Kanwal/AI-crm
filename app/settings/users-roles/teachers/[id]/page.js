@@ -388,6 +388,21 @@ export default function TeacherProfilePage() {
               {groupEvents.length} session{groupEvents.length !== 1 ? "s" : ""}
             </p>
           </div>
+          <div className="rounded-xl border border-border bg-card px-4 py-3">
+            <p className="text-[11px] font-medium text-muted-foreground">
+              Weekly Capacity
+            </p>
+            <p className="text-[22px] font-bold text-foreground mt-0.5">
+              {teacher.weeklyCapacity === null || teacher.weeklyCapacity === undefined
+                ? "—"
+                : teacher.weeklyCapacity}
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {teacher.weeklyCapacity === null || teacher.weeklyCapacity === undefined
+                ? "Not set"
+                : "sessions/week"}
+            </p>
+          </div>
         </div>
 
         {teacher.bio && (

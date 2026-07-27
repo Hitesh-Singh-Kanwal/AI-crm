@@ -3,16 +3,30 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
 import { Card, SectionLabel, Trend } from './shared'
+import DetailsButton from './DetailsButton'
 
 function yearValue(row, which) {
   if (which === 'this') return row.thisYear ?? row.y2026 ?? 0
   return row.lastYear ?? row.y2025 ?? 0
 }
 
+const DETAIL_COLUMNS = [
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'customer', label: 'Customer' },
+  { key: 'type', label: 'Type' },
+  { key: 'method', label: 'Method' },
+  {
+    key: 'amount',
+    label: 'Amount',
+    format: (v) => `$${(Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+  },
+]
+
 export default function RevenueAndAiAgentWidget({
   revenueFromIntros,
   humanInterventionRequired = 0,
   aiAgentRevenue = [],
+  defaultRange,
 }) {
   const revenue = revenueFromIntros || { value: 0, trendPct: 0, trendType: 'up' }
   const chartData = aiAgentRevenue.map((m) => ({
@@ -24,7 +38,15 @@ export default function RevenueAndAiAgentWidget({
 
   return (
     <Card>
-      <div className="flex flex-wrap items-start justify-between gap-6">
+      <div className="flex justify-end">
+        <DetailsButton
+          title="Revenue Collected from Intros — full details"
+          metric="payments"
+          rangeDays={defaultRange}
+          columns={DETAIL_COLUMNS}
+        />
+      </div>
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-6">
         <div>
           <SectionLabel>Revenue Collected from Intros</SectionLabel>
           <h3 className="mt-1 text-[28px] font-bold leading-[1.21] tracking-tight tabular-nums text-foreground sm:text-[32px]">

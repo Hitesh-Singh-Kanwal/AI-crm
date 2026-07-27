@@ -2,7 +2,8 @@
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { Card, SectionLabel, EmptyChart } from './shared'
+import { Card, WidgetTitleRow, EmptyChart } from './shared'
+import DetailsButton from './DetailsButton'
 
 function formatMoney(n) {
   const num = Number(n) || 0
@@ -11,7 +12,15 @@ function formatMoney(n) {
   return `$${num.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
 }
 
-export default function GrossNetRevenueWidget({ grossRevenue = 0, netRevenue = 0, apiExpenseTotal = 0 }) {
+const DETAIL_COLUMNS = [
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'customer', label: 'Customer' },
+  { key: 'type', label: 'Type' },
+  { key: 'method', label: 'Method' },
+  { key: 'amount', label: 'Amount', format: (v) => formatMoney(v) },
+]
+
+export default function GrossNetRevenueWidget({ grossRevenue = 0, netRevenue = 0, apiExpenseTotal = 0, defaultRange }) {
   const expense = apiExpenseTotal || Math.max(0, Number(grossRevenue) - Number(netRevenue))
   const chartData = [
     { name: 'Gross', value: Math.max(0, Number(grossRevenue) || 0), fill: '#F72585' },
@@ -22,7 +31,17 @@ export default function GrossNetRevenueWidget({ grossRevenue = 0, netRevenue = 0
 
   return (
     <Card>
-      <SectionLabel>Gross & Net Revenue</SectionLabel>
+      <WidgetTitleRow
+        title="Gross & Net Revenue"
+        detailsButton={
+          <DetailsButton
+            title="Gross & Net Revenue — full details"
+            metric="payments"
+            rangeDays={defaultRange}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       <div className="mt-3 grid grid-cols-2 gap-4">
         <div>
           <p className="text-[12px] font-medium text-muted-foreground">Gross</p>

@@ -2,9 +2,19 @@
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { Card, SectionLabel, EmptyChart } from './shared'
+import { Card, WidgetTitleRow, EmptyChart } from './shared'
+import DetailsButton from './DetailsButton'
 
-export default function LeadsBySourceWidget({ leadsBySourceConversion = [] }) {
+const DETAIL_COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'uploadType', label: 'Source' },
+  { key: 'stage', label: 'Stage' },
+  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+]
+
+export default function LeadsBySourceWidget({ leadsBySourceConversion = [], defaultRange }) {
   const data = leadsBySourceConversion.map((r) => ({
     name: r.leadSource,
     value: r.totalLeads,
@@ -12,7 +22,17 @@ export default function LeadsBySourceWidget({ leadsBySourceConversion = [] }) {
 
   return (
     <Card>
-      <SectionLabel>Lead Sources</SectionLabel>
+      <WidgetTitleRow
+        title="Lead Sources"
+        detailsButton={
+          <DetailsButton
+            title="Lead Sources — full details"
+            metric="leads"
+            rangeDays={defaultRange}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       {data.length > 0 ? (
         <div className="mt-4 h-[240px]">
           <ResponsiveContainer width="100%" height="100%">

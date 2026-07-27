@@ -48,6 +48,8 @@ export default function LeadsDialog({
   const [editingLead, setEditingLead] = useState(null)
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState('create')
+  const [savingCallbackDate, setSavingCallbackDate] = useState(false)
+  const [savedCallbackDate, setSavedCallbackDate] = useState('')
   const toast = useToast()
   const { stages: stageOptions } = useLeadStages()
 
@@ -60,12 +62,9 @@ export default function LeadsDialog({
     if (initialLeadId && leads && leads.length > 0) {
       const found = leads.find((l) => l._id === initialLeadId)
       if (found) {
-        setEditingLead({
-          ...found,
-          callbackDate: toDateInputValue(found.callbackDate),
-          notes: found.notes || '',
-          agentFollowupEnabled: found.agentFollowupEnabled !== false,
-        })
+        const initialCallbackDate = toDateInputValue(found.callbackDate)
+        setEditingLead({ ...found, callbackDate: initialCallbackDate, notes: Array.isArray(found.notes) ? found.notes : [] })
+        setSavedCallbackDate(initialCallbackDate)
         setMode(viewOnly ? 'view' : 'edit')
       }
     } else {
@@ -167,6 +166,28 @@ export default function LeadsDialog({
       toast.error({ title: 'Error', message: 'Unexpected error occurred' })
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function saveCallbackDate() {
+    if (!editingLead?._id) return
+    setSavingCallbackDate(true)
+    try {
+      const result = await api.put(`/api/lead/${editingLead._id}`, {
+        callbackDate: editingLead.callbackDate || null,
+      })
+      if (result.success) {
+        toast.success({ title: 'Saved', message: 'Callback date updated' })
+        setSavedCallbackDate(editingLead.callbackDate || '')
+        onRefresh && onRefresh()
+      } else {
+        toast.error({ title: 'Save failed', message: result.error || 'Unable to update callback date' })
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error({ title: 'Error', message: 'Unexpected error occurred' })
+    } finally {
+      setSavingCallbackDate(false)
     }
   }
 
@@ -290,12 +311,26 @@ export default function LeadsDialog({
                 <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
                 Callback Date
               </label>
-              <Input
-                type="date"
-                value={toDateInputValue(editingLead.callbackDate)}
-                onChange={(e) => setEditingLead({ ...editingLead, callbackDate: e.target.value })}
-                disabled={viewOnly}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={toDateInputValue(editingLead.callbackDate)}
+                  onChange={(e) => setEditingLead({ ...editingLead, callbackDate: e.target.value })}
+                  disabled={!editingLead._id && viewOnly}
+                  className="w-44"
+                />
+                {viewOnly && editingLead._id && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={saveCallbackDate}
+                    disabled={savingCallbackDate || (editingLead.callbackDate || '') === savedCallbackDate}
+                    className="shrink-0 whitespace-nowrap"
+                  >
+                    {savingCallbackDate ? 'Saving...' : 'Save'}
+                  </Button>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Next date to follow up or call this lead back
               </p>
@@ -327,6 +362,37 @@ export default function LeadsDialog({
                 disabled={viewOnly}
               />
             </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <label className="flex items-center gap-1.5 text-sm font-medium mb-2">
+              <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
+              Notes
+            </label>
+            {editingLead._id ? (
+              <LeadNotesSection
+                leadId={editingLead._id}
+                notes={editingLead.notes}
+                onChanged={(notes) => {
+                  setEditingLead((prev) => ({ ...prev, notes }))
+                  onRefresh && onRefresh()
+                }}
+              />
+            ) : (
+              <>
+                <textarea
+                  value={editingLead.notes || ''}
+                  onChange={(e) => setEditingLead({ ...editingLead, notes: e.target.value })}
+                  disabled={viewOnly}
+                  rows={3}
+                  placeholder="Add an initial note (optional). You'll be able to add more once the lead is created."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Notes carry over to the customer when this lead is converted
+                </p>
+              </>
+            )}
           </div>
         </div>
 

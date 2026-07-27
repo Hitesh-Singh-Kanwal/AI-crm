@@ -2,12 +2,31 @@
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
-import { Card, SectionLabel, EmptyChart } from './shared'
+import { Card, WidgetTitleRow, EmptyChart } from './shared'
+import DetailsButton from './DetailsButton'
 
-export default function BookingTrendWidget({ bookingRateTrend = [] }) {
+const DETAIL_COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'stage', label: 'Stage' },
+  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+]
+
+export default function BookingTrendWidget({ bookingRateTrend = [], defaultRange }) {
   return (
     <Card>
-      <SectionLabel>Booking Rate Trend</SectionLabel>
+      <WidgetTitleRow
+        title="Booking Rate Trend"
+        detailsButton={
+          <DetailsButton
+            title="Booking Rate Trend — full details"
+            metric="leads"
+            rangeDays={defaultRange}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       {bookingRateTrend.length > 0 ? (
         <div className="mt-4 h-[240px]">
           <ResponsiveContainer width="100%" height="100%">

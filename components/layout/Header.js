@@ -477,6 +477,17 @@ export default function Header({
                   })}
                 </div>
               </div>
+            ) : title ? (
+              <div className="flex min-w-0 flex-col justify-center py-0.5">
+                <h1 className="truncate text-[19px] font-bold leading-tight text-foreground">
+                  {title}
+                </h1>
+                {subtitle && (
+                  <p className="mt-0.5 truncate text-[13px] leading-tight text-muted-foreground">
+                    {subtitle}
+                  </p>
+                )}
+              </div>
             ) : null}
           </div>
 
