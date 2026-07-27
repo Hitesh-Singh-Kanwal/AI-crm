@@ -46,6 +46,7 @@ const EMPTY_FORM = {
   locationID: [],
   dateOfBirth: '',
   gender: '',
+  callbackDate: '',
   address: {
     street: '',
     city: '',
@@ -110,6 +111,7 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
                 : [],
             dateOfBirth: initial.dateOfBirth ? String(initial.dateOfBirth).slice(0, 10) : '',
             gender: initial.gender || '',
+            callbackDate: initial.callbackDate ? String(initial.callbackDate).slice(0, 10) : '',
             address: {
               street: initial.address?.street || '',
               city: initial.address?.city || '',
@@ -157,6 +159,7 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
       locationID: form.locationID,
       dateOfBirth: form.dateOfBirth || undefined,
       gender: form.gender || undefined,
+      callbackDate: form.callbackDate || (isEdit ? null : undefined),
       address: hasAddress ? address : undefined,
     }
     const result = isEdit
@@ -233,6 +236,14 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   </div>
+                </FormField>
+                <FormField label="Callback date">
+                  <input
+                    type="date"
+                    value={form.callbackDate}
+                    onChange={(e) => setField('callbackDate', e.target.value)}
+                    className={inputClass}
+                  />
                 </FormField>
               </div>
             </FormSection>
@@ -334,6 +345,7 @@ export default function CustomersPage() {
   const [locations, setLocations] = useState([])
   const [teachers, setTeachers] = useState([])
   const [memberships, setMemberships] = useState([])
+  const [packages, setPackages] = useState([])
   const [tagOptions, setTagOptions] = useState([])
   const [teacherFilter, setTeacherFilter] = useState('')
   const [loading, setLoading] = useState(false)
@@ -367,6 +379,9 @@ export default function CustomersPage() {
     })
     api.get('/api/membership?limit=200').then((res) => {
       if (res.success) setMemberships(res.data || [])
+    })
+    api.get('/api/package?limit=200').then((res) => {
+      if (res.success) setPackages(res.data || [])
     })
     api.get('/api/customer/tags').then((res) => {
       if (res.success) setTagOptions(res.data || [])
@@ -520,6 +535,7 @@ export default function CustomersPage() {
           teachers={teachers}
           tags={tagOptions}
           memberships={memberships}
+          packages={packages}
         />
 
         <DynamicListFormDialog

@@ -37,6 +37,7 @@ export default function CatalogConditionValueInput({
   teachers = [],
   tags = [],
   memberships = [],
+  packages = [],
   loadingOptions = false,
 }) {
   const getFilterFieldDef = entityType === 'customer' ? getCustomerFilterFieldDef : getLeadFilterFieldDef
@@ -105,7 +106,7 @@ export default function CatalogConditionValueInput({
     )
   }
 
-  const context = { leadReasons, locations, forms, teachers, tags, memberships }
+  const context = { leadReasons, locations, forms, teachers, tags, memberships, packages }
   let labeledOptions = null
   if (def.optionsKey) {
     labeledOptions = getFieldValueOptions(def.optionsKey === 'source' ? 'source' : def.value, context)
@@ -129,6 +130,9 @@ export default function CatalogConditionValueInput({
     }
     if (def.optionsKey === 'bookingStatus' || def.value === 'bookingStatus') {
       labeledOptions = getFieldValueOptions('bookingStatus', context)
+    }
+    if (def.optionsKey === 'packages' || def.value === 'package.packageID') {
+      labeledOptions = getFieldValueOptions('package.packageID', context)
     }
   } else if (def.staticOptions) {
     labeledOptions = toOptions(def.staticOptions)

@@ -92,6 +92,7 @@ export default function CallbackReportPage() {
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [stage, setStage] = useState('')
+  const [studentStatus, setStudentStatus] = useState('')
 
   const [locations, setLocations] = useState([])
   const [rows, setRows] = useState([])
@@ -117,7 +118,7 @@ export default function CallbackReportPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [tab, debouncedSearch, fromDate, toDate, stage])
+  }, [tab, debouncedSearch, fromDate, toDate, stage, studentStatus])
 
   const buildParams = useCallback(
     (conditions, { page = 1, limit = ROWS_PER_PAGE } = {}) => {
@@ -130,9 +131,10 @@ export default function CallbackReportPage() {
       params.set('conditions', JSON.stringify(conditions))
       if (debouncedSearch) params.set('search', debouncedSearch)
       if (tab === 'leads' && stage) params.set('stage', stage)
+      if (tab === 'customers' && studentStatus) params.set('studentStatus', studentStatus)
       return params
     },
-    [tab, stage, debouncedSearch],
+    [tab, stage, studentStatus, debouncedSearch],
   )
 
   const fetchRows = useCallback(async () => {
@@ -176,7 +178,7 @@ export default function CallbackReportPage() {
         api.get(`${path}?${buildParams([...base, { field: 'callbackDate', operator: 'lt', value: today }], { limit: 1 })}`),
         api.get(
           `${path}?${buildParams(
-            [...base, { field: 'callbackDate', operator: 'gte', value: today }, { field: 'callbackDate', operator: 'lte', value: today }],
+            [...base, { field: 'callbackDate', operator: 'between', value: [today, today] }],
             { limit: 1 },
           )}`,
         ),
@@ -218,9 +220,10 @@ export default function CallbackReportPage() {
     setFromDate('')
     setToDate('')
     setStage('')
+    setStudentStatus('')
   }
 
-  const hasActiveFilters = Boolean(search || fromDate || toDate || stage)
+  const hasActiveFilters = Boolean(search || fromDate || toDate || stage || studentStatus)
   const colCount = tab === 'leads' ? 5 : 4
 
   return (
@@ -229,7 +232,10 @@ export default function CallbackReportPage() {
         <div className="inline-flex items-center rounded-lg border border-border bg-card p-1">
           <button
             type="button"
-            onClick={() => setTab('leads')}
+            onClick={() => {
+              setTab('leads')
+              setStudentStatus('')
+            }}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
               tab === 'leads' ? 'bg-brand text-white' : 'text-muted-foreground hover:text-foreground'
@@ -240,7 +246,10 @@ export default function CallbackReportPage() {
           </button>
           <button
             type="button"
-            onClick={() => setTab('customers')}
+            onClick={() => {
+              setTab('customers')
+              setStage('')
+            }}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
               tab === 'customers' ? 'bg-brand text-white' : 'text-muted-foreground hover:text-foreground'
@@ -324,6 +333,20 @@ export default function CallbackReportPage() {
                       {opt.label}
                     </option>
                   ))}
+                </select>
+              </div>
+            )}
+            {tab === 'customers' && (
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Student status</label>
+                <select
+                  value={studentStatus}
+                  onChange={(e) => setStudentStatus(e.target.value)}
+                  className="h-9 px-3 text-[13px] border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All students</option>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
                 </select>
               </div>
             )}

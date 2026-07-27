@@ -3,6 +3,17 @@
 import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import { FunnelStage, FunnelConnector } from './shared'
 import WidgetHeader from './WidgetHeader'
+import DetailsButton from './DetailsButton'
+
+const DETAIL_COLUMNS = [
+  { key: 'name', label: 'Customer' },
+  { key: 'email', label: 'Email' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'purchaseCount', label: 'Purchases' },
+  { key: 'totalLtv', label: 'Total LTV', format: (v) => `$${Number(v || 0).toLocaleString()}` },
+  { key: 'lastPurchase', label: 'Last Purchase', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+]
 
 function formatMoney(n) {
   const num = Number(n) || 0
@@ -16,7 +27,19 @@ export default function PurchaseJourneyWidget({ funnel, rangeDays, onRangeChange
 
   return (
     <Card>
-      <WidgetHeader title="Purchase Journey" rangeDays={rangeDays} onRangeChange={onRangeChange} />
+      <WidgetHeader
+        title="Purchase Journey"
+        rangeDays={rangeDays}
+        onRangeChange={onRangeChange}
+        detailsButton={
+          <DetailsButton
+            title="Purchase Journey — full details"
+            metric="purchaseJourney"
+            rangeDays={rangeDays}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       <p className="mt-1 text-[11px] text-muted-foreground">
         Report 3 — how far customers get through repeat purchases, and what each one is worth.
       </p>

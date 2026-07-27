@@ -321,12 +321,13 @@ export default function GroupedLeadFilterFields({
   teachers = [],
   tags = [],
   memberships = [],
+  packages = [],
   loadingOptions = false,
 }) {
   const catalog = useMemo(() => getCatalogApi(entityType), [entityType])
   const context = useMemo(
-    () => ({ leadReasons, locations, forms, teachers, tags, memberships }),
-    [leadReasons, locations, forms, teachers, tags, memberships]
+    () => ({ leadReasons, locations, forms, teachers, tags, memberships, packages }),
+    [leadReasons, locations, forms, teachers, tags, memberships, packages]
   )
   const entityLabel = entityType === 'customer' ? 'customer' : 'lead'
 

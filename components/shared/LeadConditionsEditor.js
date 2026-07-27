@@ -304,6 +304,7 @@ export default function LeadConditionsEditor({
   teachers = [],
   tags = [],
   memberships = [],
+  packages = [],
   loadingOptions = false,
   hiddenFields = new Set(),
   mutedFields = new Set(),
@@ -314,8 +315,8 @@ export default function LeadConditionsEditor({
 }) {
   const catalog = useMemo(() => getCatalog(entityType), [entityType])
   const context = useMemo(
-    () => ({ leadReasons, locations, forms, teachers, tags, memberships }),
-    [leadReasons, locations, forms, teachers, tags, memberships]
+    () => ({ leadReasons, locations, forms, teachers, tags, memberships, packages }),
+    [leadReasons, locations, forms, teachers, tags, memberships, packages]
   )
   const entityLabel = entityType === 'customer' ? 'customer' : 'lead'
   const [picker, setPicker] = useState(null)
