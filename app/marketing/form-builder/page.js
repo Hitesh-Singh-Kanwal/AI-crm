@@ -45,6 +45,14 @@ import {
   getCaptchaExportMarkup,
   getCaptchaExportRuntimeScript,
 } from '@/components/forms/DynamicCaptcha'
+import {
+  DEFAULT_PHONE_COUNTRY_CODE,
+  DEFAULT_PHONE_COUNTRY_ISO,
+} from '@/lib/phone-country-codes'
+import FormPhoneInput, {
+  getFormPhoneExportMarkup,
+  getFormPhoneExportRuntimeScript,
+} from '@/components/forms/FormPhoneInput'
 
 const UTM_SOURCE_FIELD_OPTIONS = SOURCE_OPTIONS.map((value) => ({
   value,
@@ -76,9 +84,11 @@ const LEAD_PROPERTIES = [
     name: 'phoneNumber',
     label: 'Phone Number',
     type: 'phone',
-    placeholder: '(555) 123-4567',
+    placeholder: 'Phone number',
     icon: Phone,
     frequentlyUsed: true,
+    defaultCountryCode: DEFAULT_PHONE_COUNTRY_CODE,
+    defaultCountryIso: DEFAULT_PHONE_COUNTRY_ISO,
   },
   {
     id: 'locationID',
@@ -244,6 +254,8 @@ function createLeadPropertyField(prop, { leadReasons = [], locations = [], locke
     styles: {},
     options: prop.type === 'select' || prop.type === 'checkbox' ? options : undefined,
     optionsLocked: Boolean(prop.options || prop.optionsFrom),
+    ...(prop.defaultCountryCode ? { defaultCountryCode: prop.defaultCountryCode } : {}),
+    ...(prop.defaultCountryIso ? { defaultCountryIso: prop.defaultCountryIso } : {}),
   }
 }
 
@@ -546,6 +558,18 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
             </span>
           ))}
         </div>
+      )
+    }
+    if (field.type === 'phone' || field.name === 'phoneNumber') {
+      return (
+        <FormPhoneInput
+          label={field.label || 'Phone number'}
+          required={Boolean(field.required)}
+          placeholder={field.placeholder || ''}
+          countryCode={field.defaultCountryCode || DEFAULT_PHONE_COUNTRY_CODE}
+          countryIso={field.defaultCountryIso || DEFAULT_PHONE_COUNTRY_ISO}
+          value={field.defaultValue || ''}
+        />
       )
     }
     return (
@@ -2022,6 +2046,13 @@ function FormsPageInner() {
           >★</label>
         `).join('')}
       </div>`
+    } else if (field.type === 'phone' || field.name === 'phoneNumber') {
+      fieldHTML = getFormPhoneExportMarkup(field, {
+        fieldName,
+        styleString,
+        escapeHtmlAttr,
+        required: Boolean(field.required),
+      })
     } else {
       fieldHTML = `<input 
         type="${field.type}" 
@@ -2031,6 +2062,10 @@ function FormsPageInner() {
         ${field.required ? 'required' : ''}
         style="${styleString}"
       />`
+    }
+
+    if (field.type === 'phone' || field.name === 'phoneNumber') {
+      return `<div style="margin-bottom: 1rem;">${fieldHTML}</div>`
     }
 
     return `
@@ -2171,6 +2206,7 @@ ${gtagScript}
   </div>
   <script>
 ${getCaptchaExportRuntimeScript()}
+${getFormPhoneExportRuntimeScript()}
     (function() {
       const form = document.getElementById('exportedForm');
       if (form) {
@@ -2179,6 +2215,10 @@ ${getCaptchaExportRuntimeScript()}
 
           if (typeof window.__crmValidateCaptchas === 'function' && !window.__crmValidateCaptchas()) {
             return;
+          }
+
+          if (typeof window.__crmSyncPhones === 'function') {
+            window.__crmSyncPhones(form);
           }
 
           // Capture page URL (prefer top-level URL; fallback to referrer / iframe URL)
@@ -2220,6 +2260,9 @@ ${getCaptchaExportRuntimeScript()}
           payload.name = payload.name || pickFirst(payload.full_name) || pickFirst(payload.student_name) || pickFirst(payload.parent_name);
           payload.email = payload.email || pickFirst(payload.email_address) || pickFirst(payload.parent_email);
           payload.phoneNumber = pickFirst(payload.phoneNumber) || pickFirst(payload.phone) || pickFirst(payload.phone_number);
+          delete payload.phoneCountryCode;
+          delete payload.phoneLocal;
+          delete payload.phone;
           payload.reason = pickFirst(payload.reason);
           payload.locationID = pickFirst(payload.locationID);
           payload.location = pickFirst(payload.location);
@@ -2425,6 +2468,15 @@ ${getCaptchaExportRuntimeScript()}
               <span key={star} className="text-2xl text-yellow-400 cursor-pointer">★</span>
             ))}
           </div>
+        ) : field.type === 'phone' || field.name === 'phoneNumber' ? (
+          <FormPhoneInput
+            label={field.label || 'Phone number'}
+            required={Boolean(field.required)}
+            placeholder={field.placeholder || ''}
+            countryCode={field.defaultCountryCode || DEFAULT_PHONE_COUNTRY_CODE}
+            countryIso={field.defaultCountryIso || DEFAULT_PHONE_COUNTRY_ISO}
+            value={field.defaultValue || ''}
+          />
         ) : (
           <Input
             type={field.type}

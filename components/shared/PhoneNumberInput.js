@@ -43,7 +43,7 @@ export default function PhoneNumberInput({
         prefix
         includeDialingCode
         searchOption
-        defaultCountry="IND"
+        defaultCountry="USA"
         placeholder={placeholder}
         disabled={disabled}
       />

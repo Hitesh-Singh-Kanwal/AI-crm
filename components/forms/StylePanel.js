@@ -10,6 +10,11 @@ import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { extractLeadReasonsList } from '@/app/marketing/email-builder/emailBuilderApi'
+import {
+  DEFAULT_PHONE_COUNTRY_CODE,
+  DEFAULT_PHONE_COUNTRY_ISO,
+  getPhoneCountryCodeOptions,
+} from '@/lib/phone-country-codes'
 
 const fontFamilies = [
   'Arial',
@@ -301,6 +306,34 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                 className="border-border bg-background text-sm h-9"
               />
             </div>
+            {(field.type === 'phone' || field.name === 'phoneNumber') && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground font-medium">
+                  Default country
+                </Label>
+                <Select
+                  value={`${field.defaultCountryIso || DEFAULT_PHONE_COUNTRY_ISO}|${field.defaultCountryCode || DEFAULT_PHONE_COUNTRY_CODE}`}
+                  onChange={(e) => {
+                    const [iso, code] = String(e.target.value).split('|')
+                    handleFieldUpdate({
+                      ...field,
+                      defaultCountryCode: code || DEFAULT_PHONE_COUNTRY_CODE,
+                      defaultCountryIso: iso || DEFAULT_PHONE_COUNTRY_ISO,
+                    })
+                  }}
+                  className="border-border bg-background text-sm h-9"
+                >
+                  {getPhoneCountryCodeOptions().map((opt) => (
+                    <option key={`${opt.iso}-${opt.code}`} value={`${opt.iso}|${opt.code}`}>
+                      {opt.flag} {opt.label}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Visitors pick a country; number is saved as +code… (e.g. +11234567890)
+                </p>
+              </div>
+            )}
             {(field.type === 'select' || field.type === 'checkbox') && (
               <div className="space-y-2.5">
                 <Label className="text-xs text-muted-foreground font-medium">Options</Label>
