@@ -78,6 +78,88 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
     onFieldUpdate(updates)
   }
 
+  const supportsDefaultValue =
+    field.type !== 'submit' &&
+    field.type !== 'hidden' &&
+    field.type !== 'checkbox' &&
+    field.type !== 'rating' &&
+    field.type !== 'file' &&
+    field.type !== 'heading' &&
+    field.type !== 'captcha'
+
+  const defaultValueControls = supportsDefaultValue ? (
+    <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+      {field.type === 'select' ? (
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground font-medium">Default / submitted value</Label>
+          <Select
+            value={field.defaultValue || ''}
+            onChange={(e) => {
+              const nextValue = e.target.value
+              handleFieldUpdate({
+                ...field,
+                defaultValue: nextValue || undefined,
+                submitHidden: nextValue ? field.submitHidden : false,
+              })
+            }}
+          >
+            <option value="">Visitor chooses (visible dropdown)</option>
+            {(field.options || []).map((opt, idx) => (
+              <option key={opt.value || opt.label || idx} value={opt.value || opt.label}>
+                {opt.label || opt.value}
+              </option>
+            ))}
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Pick a value to pre-select or submit when the field is hidden.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground font-medium">Default value</Label>
+          <Input
+            value={field.defaultValue || ''}
+            onChange={(e) => {
+              const nextValue = e.target.value
+              handleFieldUpdate({
+                ...field,
+                defaultValue: nextValue || undefined,
+                submitHidden: nextValue ? field.submitHidden : false,
+              })
+            }}
+            placeholder="Pre-filled value for this field"
+            className="border-border bg-background text-sm h-9"
+          />
+        </div>
+      )}
+
+      {(field.type === 'select' ? Boolean(field.defaultValue) : Boolean(field.defaultValue)) ? (
+        <div className="flex items-start gap-2 pt-1">
+          <input
+            type="checkbox"
+            id={`submit-hidden-${field.id}`}
+            checked={Boolean(field.submitHidden)}
+            onChange={(e) =>
+              handleFieldUpdate({
+                ...field,
+                submitHidden: e.target.checked,
+              })
+            }
+            className="mt-0.5"
+          />
+          <div>
+            <Label htmlFor={`submit-hidden-${field.id}`} className="text-xs text-foreground">
+              Hide field (submit this value)
+            </Label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Field stays in the form HTML but is not shown to visitors. The value above is still submitted.
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  ) : null
+
   const handleAddReason = async () => {
     const name = newReasonName.trim()
     if (!name || addingReason) return
@@ -129,6 +211,22 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
     </button>
   )
 
+  const optionsLocked =
+    Boolean(field.locked) ||
+    Boolean(field.optionsLocked) ||
+    ['locationID', 'reason', 'utm_source'].includes(field.name)
+
+  const isLeadProperty =
+    field.propertyKind === 'lead' ||
+    ['name', 'email', 'phoneNumber', 'locationID', 'reason', 'location', 'utm_source'].includes(
+      field.name
+    )
+  const isMetadataProperty = field.propertyKind === 'metadata' || Boolean(field.metadataKey)
+
+  const internalNameDisplay = isMetadataProperty
+    ? `metadata.${field.metadataKey || 'custom'}`
+    : field.name || '—'
+
   return (
     <Tabs defaultValue="content" className="w-full">
       <TabsList className="grid w-full grid-cols-3 mb-3 h-9">
@@ -139,14 +237,61 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
 
       <TabsContent value="content" className="space-y-3 mt-0">
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground font-medium">Label</Label>
+          <Label className="text-xs text-muted-foreground font-medium">
+            {field.type === 'heading' ? 'Heading text' : field.type === 'captcha' ? 'Captcha text' : 'Label'}
+          </Label>
           <Input
             value={field.label}
             onChange={(e) => handleFieldUpdate({ ...field, label: e.target.value })}
             className="border-border bg-background text-sm h-9"
           />
         </div>
-        {field.type !== 'submit' && (
+        {field.type !== 'submit' &&
+        field.type !== 'heading' &&
+        field.type !== 'captcha' &&
+        (isLeadProperty || isMetadataProperty || field.name) ? (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground font-medium">Internal name</Label>
+            {isMetadataProperty ? (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <span className="shrink-0 text-xs text-muted-foreground font-mono">metadata.</span>
+                  <Input
+                    value={field.metadataKey || ''}
+                    onChange={(e) => {
+                      const metadataKey = e.target.value
+                        .replace(/[^\w.-]/g, '_')
+                        .replace(/^_+|_+$/g, '')
+                      handleFieldUpdate({
+                        ...field,
+                        metadataKey,
+                        name: `metadata.${metadataKey || 'custom'}`,
+                      })
+                    }}
+                    placeholder="custom_key"
+                    className="border-border bg-background text-sm h-9 font-mono"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Saved on the lead under metadata.
+                </p>
+              </>
+            ) : (
+              <>
+                <Input
+                  value={internalNameDisplay}
+                  readOnly
+                  disabled
+                  className="border-border bg-muted/40 text-sm h-9 font-mono italic"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Fixed submit key — renaming the label does not change this.
+                </p>
+              </>
+            )}
+          </div>
+        ) : null}
+        {field.type !== 'submit' && field.type !== 'heading' && field.type !== 'captcha' && (
           <>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground font-medium">Placeholder</Label>
@@ -159,7 +304,7 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
             {(field.type === 'select' || field.type === 'checkbox') && (
               <div className="space-y-2.5">
                 <Label className="text-xs text-muted-foreground font-medium">Options</Label>
-                {field.locked ? (
+                {optionsLocked ? (
                   <div className="space-y-2.5">
                     {field.name === 'reason' && (
                       <p className="text-xs text-muted-foreground">
@@ -171,6 +316,11 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                       <p className="text-xs text-muted-foreground">
                         Options are loaded from your active studios/locations. The selected value is
                         saved as locationID when the form is submitted.
+                      </p>
+                    )}
+                    {field.name === 'utm_source' && (
+                      <p className="text-xs text-muted-foreground">
+                        Source options are fixed: Google Ads and Website. Saved as utm_source.
                       </p>
                     )}
                     <ul className="text-xs text-muted-foreground space-y-1 rounded-md border border-border p-2 max-h-36 overflow-y-auto">
@@ -269,13 +419,15 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                 )}
               </div>
             )}
+            {defaultValueControls}
             <div className="flex items-center gap-2 pt-2 border-t border-border">
               <input
                 type="checkbox"
                 id="required"
                 checked={field.required}
                 onChange={(e) => handleFieldUpdate({ ...field, required: e.target.checked })}
-                className="text-muted-foreground"
+                disabled={field.locked}
+                className="text-muted-foreground disabled:opacity-50"
               />
               <Label htmlFor="required" className="text-xs text-foreground">
                 Required Field
@@ -283,6 +435,20 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
             </div>
           </>
         )}
+        {field.type === 'captcha' ? (
+          <div className="flex items-center gap-2 pt-2 border-t border-border">
+            <input
+              type="checkbox"
+              id="required-captcha"
+              checked={field.required}
+              onChange={(e) => handleFieldUpdate({ ...field, required: e.target.checked })}
+              className="text-muted-foreground"
+            />
+            <Label htmlFor="required-captcha" className="text-xs text-foreground">
+              Required
+            </Label>
+          </div>
+        ) : null}
       </TabsContent>
 
       <TabsContent value="style" className="space-y-3 mt-0">

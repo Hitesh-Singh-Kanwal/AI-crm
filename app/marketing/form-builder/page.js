@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X } from 'lucide-react'
+import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import Switch from '@/components/ui/switch'
-import { formatDate } from '@/lib/utils'
+import { formatDate, cn } from '@/lib/utils'
 import StylePanel from '@/components/forms/StylePanel'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { getCurrentUser } from '@/lib/auth'
@@ -39,6 +39,85 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { extractLeadReasonsList } from '../email-builder/emailBuilderApi'
+import { SOURCE_OPTIONS } from '@/lib/dynamic-list-constants'
+
+const UTM_SOURCE_FIELD_OPTIONS = SOURCE_OPTIONS.map((value) => ({
+  value,
+  label: value === 'google-add' ? 'Google Ads' : value === 'website' ? 'Website' : value,
+}))
+
+/** Lead schema properties available in the builder. `name` is the fixed submit key. */
+const LEAD_PROPERTIES = [
+  {
+    id: 'name',
+    name: 'name',
+    label: 'Name',
+    type: 'text',
+    placeholder: 'Enter your name',
+    icon: Type,
+    frequentlyUsed: true,
+  },
+  {
+    id: 'email',
+    name: 'email',
+    label: 'Email',
+    type: 'email',
+    placeholder: 'you@email.com',
+    icon: Mail,
+    frequentlyUsed: true,
+  },
+  {
+    id: 'phoneNumber',
+    name: 'phoneNumber',
+    label: 'Phone Number',
+    type: 'phone',
+    placeholder: '(555) 123-4567',
+    icon: Phone,
+    frequentlyUsed: true,
+  },
+  {
+    id: 'locationID',
+    name: 'locationID',
+    label: 'Studio',
+    type: 'select',
+    placeholder: 'Select studio',
+    icon: MapPin,
+    optionsFrom: 'locations',
+    frequentlyUsed: true,
+  },
+  {
+    id: 'reason',
+    name: 'reason',
+    label: 'Reason',
+    type: 'select',
+    placeholder: 'Select reason',
+    icon: Hash,
+    optionsFrom: 'reasons',
+    frequentlyUsed: true,
+  },
+  {
+    id: 'location',
+    name: 'location',
+    label: 'Location',
+    type: 'text',
+    placeholder: 'City or location text',
+    icon: MapPin,
+    frequentlyUsed: false,
+  },
+  {
+    id: 'utm_source',
+    name: 'utm_source',
+    label: 'Source',
+    type: 'select',
+    placeholder: 'Select source',
+    icon: Megaphone,
+    options: UTM_SOURCE_FIELD_OPTIONS,
+    frequentlyUsed: false,
+  },
+]
+
+const LEAD_PROPERTY_NAMES = new Set(LEAD_PROPERTIES.map((p) => p.name))
+const CORE_LEAD_PROPERTY_NAMES = ['name', 'email', 'phoneNumber', 'locationID', 'reason']
 
 const fieldTypes = [
   { id: 'text', name: 'Text Input', icon: Type },
@@ -50,6 +129,35 @@ const fieldTypes = [
   { id: 'select', name: 'Dropdown', icon: ChevronDown },
   { id: 'file', name: 'File Upload', icon: Paperclip },
   { id: 'rating', name: 'Rating', icon: Star },
+]
+
+/** Field types offered when adding a custom (metadata) property */
+const CUSTOM_FIELD_TYPES = [
+  { id: 'text', name: 'Text Input', icon: Type },
+  { id: 'textarea', name: 'Text Area', icon: FileText },
+  { id: 'checkbox', name: 'Checkbox', icon: CheckSquare },
+  { id: 'date', name: 'Date Picker', icon: Calendar },
+  { id: 'select', name: 'Dropdown', icon: ChevronDown },
+  { id: 'file', name: 'File Upload', icon: Paperclip },
+  { id: 'rating', name: 'Rating', icon: Star },
+]
+
+/** Always-available layout / form elements (not lead properties) */
+const FORM_ELEMENTS = [
+  {
+    id: 'heading',
+    type: 'heading',
+    name: 'Heading',
+    label: 'Heading',
+    icon: Heading,
+  },
+  {
+    id: 'captcha',
+    type: 'captcha',
+    name: 'Captcha',
+    label: 'Captcha',
+    icon: ShieldCheck,
+  },
 ]
 
 const templateFields = {
@@ -74,42 +182,227 @@ const templateFields = {
   ],
 }
 
-function buildRequiredLeadFields(leadReasons = [], locations = []) {
-  const reasonOptions = (leadReasons || []).map((r) => ({
+function buildReasonOptions(leadReasons = []) {
+  return (leadReasons || []).map((r) => ({
     label: r.name,
     value: r.reasonCode || r._id || r.name,
   }))
-  const studioOptions = (locations || []).map((loc) => ({
+}
+
+function buildStudioOptions(locations = []) {
+  return (locations || []).map((loc) => ({
     label: loc.name || 'Unnamed location',
     value: String(loc._id),
   }))
-  return [
-    { id: 'req-name', type: 'text', name: 'name', label: 'Name', placeholder: 'Enter your name', required: true, locked: true, styles: {} },
-    { id: 'req-email', type: 'email', name: 'email', label: 'Email', placeholder: 'you@email.com', required: true, locked: true, styles: {} },
-    { id: 'req-phoneNumber', type: 'phone', name: 'phoneNumber', label: 'Phone Number', placeholder: '(555) 123-4567', required: true, locked: true, styles: {} },
-    {
-      id: 'req-studio',
-      type: 'select',
-      name: 'locationID',
-      label: 'Studio',
-      placeholder: 'Select studio',
-      required: true,
+}
+
+function resolvePropertyOptions(prop, leadReasons = [], locations = []) {
+  if (prop.options) return prop.options
+  if (prop.optionsFrom === 'locations') return buildStudioOptions(locations)
+  if (prop.optionsFrom === 'reasons') return buildReasonOptions(leadReasons)
+  return []
+}
+
+function createLeadPropertyField(prop, { leadReasons = [], locations = [], locked = false, required = false } = {}) {
+  const options = resolvePropertyOptions(prop, leadReasons, locations)
+  return {
+    id: `lead-${prop.name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: prop.type,
+    name: prop.name,
+    label: prop.label,
+    placeholder: prop.placeholder || '',
+    required,
+    locked,
+    propertyKind: 'lead',
+    styles: {},
+    options: prop.type === 'select' || prop.type === 'checkbox' ? options : undefined,
+    optionsLocked: Boolean(prop.options || prop.optionsFrom),
+  }
+}
+
+function createMetadataField(type = 'text', label = 'Custom field') {
+  const typeMeta = CUSTOM_FIELD_TYPES.find((t) => t.id === type) || CUSTOM_FIELD_TYPES[0]
+  const keyBase = String(label || typeMeta.name || 'custom_field')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '') || 'custom_field'
+  const metadataKey = `${keyBase}_${Date.now().toString(36).slice(-4)}`
+  return {
+    id: `meta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: typeMeta.id,
+    name: `metadata.${metadataKey}`,
+    metadataKey,
+    label,
+    placeholder: typeMeta.id === 'select' || typeMeta.id === 'checkbox' ? '' : 'Enter value…',
+    required: false,
+    locked: false,
+    propertyKind: 'metadata',
+    styles: {},
+    options:
+      typeMeta.id === 'select' || typeMeta.id === 'checkbox'
+        ? [{ label: 'Option 1', value: 'option_1' }]
+        : undefined,
+  }
+}
+
+function buildRequiredLeadFields(leadReasons = [], locations = []) {
+  return CORE_LEAD_PROPERTY_NAMES.map((name) => {
+    const prop = LEAD_PROPERTIES.find((p) => p.name === name)
+    const field = createLeadPropertyField(prop, {
+      leadReasons,
+      locations,
       locked: true,
-      styles: {},
-      options: studioOptions,
-    },
-    {
-      id: 'req-reason',
-      type: 'select',
-      name: 'reason',
-      label: 'Reason',
-      placeholder: 'Select reason',
       required: true,
-      locked: true,
-      styles: {},
-      options: reasonOptions,
-    },
-  ]
+    })
+    // Stable ids for core required fields (easier option sync / import)
+    field.id = `req-${name === 'locationID' ? 'studio' : name}`
+    return field
+  })
+}
+
+const REQUIRED_SYSTEM_FIELDS = [
+  { id: 'sys-organisationID', type: 'hidden', name: 'organisationID', label: 'organisationID', hidden: true, locked: true, styles: {} },
+  { id: 'sys-formID', type: 'hidden', name: 'formID', label: 'formID', hidden: true, locked: true, styles: {} },
+]
+
+const FORM_TYPE_OPTIONS = [
+  {
+    id: 'blank',
+    title: 'Blank',
+    description: 'Start with an empty form and add your own fields from scratch.',
+    icon: Plus,
+  },
+  {
+    id: 'lead',
+    title: 'Lead form',
+    description: 'Includes required lead fields (name, email, phone, studio, reason). Add Source, Location, or metadata from the sidebar.',
+    icon: UserRound,
+  },
+]
+
+function buildInitialFormFields(formType, leadReasons = [], locations = []) {
+  if (formType === 'lead') {
+    return [...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations)]
+  }
+  return [...REQUIRED_SYSTEM_FIELDS]
+}
+
+function detectFormTypeFromInferred(inferred = []) {
+  const names = new Set(inferred.map((f) => f?.name).filter(Boolean))
+  const hasLeadCore = ['name', 'email', 'phoneNumber'].every((n) => names.has(n))
+  const hasLeadExtras = names.has('reason') || names.has('locationID')
+  return hasLeadCore && hasLeadExtras ? 'lead' : 'blank'
+}
+
+function escapeHtmlAttr(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function isSystemHiddenField(field) {
+  return field?.type === 'hidden' || (field?.hidden && !field?.submitHidden)
+}
+
+function isCanvasField(field) {
+  return field && !isSystemHiddenField(field)
+}
+
+function FormTypePreview({ formType }) {
+  if (formType === 'lead') {
+    const previewFields = [
+      { label: 'Name', required: true },
+      { label: 'Email', required: true },
+      { label: 'Phone Number', required: true },
+      { label: 'Studio', required: true },
+      { label: 'Reason', required: true },
+    ]
+    return (
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        {previewFields.map((field, index) => (
+          <div
+            key={field.label}
+            className={cn(
+              'border-b border-slate-200 px-5 py-4 last:border-b-0',
+              index === 0 && 'bg-sky-50'
+            )}
+          >
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-sm font-semibold text-slate-900">
+                {field.label}
+                {field.required ? <span>*</span> : null}
+              </span>
+              <span className="text-xs italic text-slate-400">
+                {field.label.toLowerCase().replace(/\s+/g, '')}
+              </span>
+              <FormFieldTag tone="teal">Lead property</FormFieldTag>
+            </div>
+            <div className="mt-2.5 h-10 rounded-md border border-slate-300 bg-white" />
+          </div>
+        ))}
+        <div className="border-t border-slate-200 px-5 py-5">
+          <div className="inline-flex rounded-full bg-[color:var(--studio-primary)] px-6 py-2.5 text-sm font-semibold text-white">
+            Submit
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-muted/20 p-10 text-center">
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+        <LayoutTemplate className="h-7 w-7 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium text-foreground">Blank form</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Drag components from the sidebar to build your form.
+      </p>
+    </div>
+  )
+}
+
+function getFieldPropertyName(field) {
+  if (field?.type === 'heading') return 'heading'
+  if (field?.type === 'captcha') return 'captcha'
+  if (field?.propertyKind === 'metadata' || field?.metadataKey) {
+    return `metadata.${field.metadataKey || 'custom'}`
+  }
+  if (field?.name) return field.name
+  return (field?.label || field?.id || 'field')
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+}
+
+function getFieldDefaultDisplayLabel(field) {
+  const value = field?.defaultValue
+  if (value == null || value === '') return ''
+  const str = String(value)
+  const options = field?.options || []
+  const match = options.find(
+    (opt) => String(opt.value ?? '') === str || String(opt.label ?? '') === str
+  )
+  return match?.label || match?.value || str
+}
+
+function FormFieldTag({ children, tone = 'teal' }) {
+  const tones = {
+    teal: 'border-teal-500/50 bg-teal-50 text-teal-700',
+    violet: 'border-violet-500/50 bg-violet-50 text-violet-700',
+    slate: 'border-slate-300 bg-slate-50 text-slate-600',
+  }
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-[11px] font-medium leading-none',
+        tones[tone] || tones.slate
+      )}
+    >
+      {children}
+    </span>
+  )
 }
 
 // Sortable Field Item Component
@@ -126,165 +419,215 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.55 : 1,
   }
 
   const fieldStyles = field.styles || {}
+  const propertyName = getFieldPropertyName(field)
+  const isLeadProperty =
+    field.propertyKind === 'lead' || (field.name && LEAD_PROPERTY_NAMES.has(field.name))
+  const isMetadataProperty = field.propertyKind === 'metadata' || Boolean(field.metadataKey)
+  const defaultDisplayLabel = getFieldDefaultDisplayLabel(field)
 
-  const getInputStyle = () => {
-    return {
-      backgroundColor: fieldStyles.backgroundColor,
-      padding: `${fieldStyles.paddingTop || '0.5rem'} ${fieldStyles.paddingRight || '0.75rem'} ${fieldStyles.paddingBottom || '0.5rem'} ${fieldStyles.paddingLeft || '0.75rem'}`,
-      borderWidth: fieldStyles.borderWidth || '1px',
-      borderStyle: fieldStyles.borderStyle || 'solid',
-      borderColor: fieldStyles.borderColor || '#e2e8f0',
-      borderRadius: fieldStyles.borderRadius || '0.375rem',
-      width: fieldStyles.width || '100%',
+  const inputClassName =
+    'w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-400 shadow-none pointer-events-none'
+
+  const getInputStyle = () => ({
+    backgroundColor: fieldStyles.backgroundColor || '#ffffff',
+    padding: `${fieldStyles.paddingTop || '0.5rem'} ${fieldStyles.paddingRight || '0.75rem'} ${fieldStyles.paddingBottom || '0.5rem'} ${fieldStyles.paddingLeft || '0.75rem'}`,
+    borderWidth: fieldStyles.borderWidth || '1px',
+    borderStyle: fieldStyles.borderStyle || 'solid',
+    borderColor: fieldStyles.borderColor || '#cbd5e1',
+    borderRadius: fieldStyles.borderRadius || '0.375rem',
+    width: fieldStyles.width || '100%',
+  })
+
+  const renderFieldControl = () => {
+    if (field.type === 'heading') {
+      return (
+        <div
+          className="pointer-events-none py-1 text-xl font-semibold text-slate-900"
+          style={{
+            fontFamily: fieldStyles.fontFamily,
+            fontSize: fieldStyles.fontSize || '1.25rem',
+            fontWeight: fieldStyles.fontWeight || 600,
+            color: fieldStyles.color || '#0f172a',
+            textAlign: fieldStyles.textAlign,
+          }}
+        >
+          {field.label || 'Heading'}
+        </div>
+      )
     }
+    if (field.type === 'captcha') {
+      return (
+        <div className="pointer-events-none flex items-center gap-3 rounded-md border border-slate-300 bg-slate-50 px-3 py-3">
+          <div className="flex h-5 w-5 items-center justify-center rounded border border-slate-400 bg-white" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-slate-700">
+              {field.label || "I'm not a robot"}
+            </p>
+            <p className="text-[11px] text-slate-400">Captcha verification</p>
+          </div>
+          <ShieldCheck className="h-6 w-6 shrink-0 text-slate-400" />
+        </div>
+      )
+    }
+    if (field.type === 'textarea') {
+      return (
+        <textarea
+          placeholder={field.placeholder}
+          className={cn(inputClassName, 'min-h-[88px] resize-none')}
+          style={getInputStyle()}
+          rows={3}
+          disabled
+          readOnly
+        />
+      )
+    }
+    if (field.type === 'select') {
+      return (
+        <select
+          className={inputClassName}
+          style={getInputStyle()}
+          disabled
+          defaultValue={field.defaultValue || ''}
+        >
+          <option value="">{field.placeholder || 'Select an option'}</option>
+          {(field.options || []).map((opt) => (
+            <option key={opt.value || opt.label} value={opt.value || opt.label}>
+              {opt.label || opt.value}
+            </option>
+          ))}
+        </select>
+      )
+    }
+    if (field.type === 'checkbox') {
+      return (
+        <div className="flex flex-col gap-2 py-1">
+          {(field.options && field.options.length > 0) ? (
+            field.options.map((opt) => (
+              <div key={opt.value || opt.label} className="flex items-center gap-2">
+                <input type="checkbox" disabled className="h-4 w-4" />
+                <span className="text-sm text-slate-600">{opt.label || opt.value}</span>
+              </div>
+            ))
+          ) : (
+            <div className="flex items-center gap-2">
+              <input type="checkbox" disabled className="h-4 w-4" />
+              <span className="text-sm text-slate-600">{field.placeholder || 'Checkbox option'}</span>
+            </div>
+          )}
+        </div>
+      )
+    }
+    if (field.type === 'rating') {
+      return (
+        <div className="flex gap-1 py-1">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <span key={star} className="text-2xl text-slate-300">
+              ★
+            </span>
+          ))}
+        </div>
+      )
+    }
+    return (
+      <Input
+        type={field.type}
+        placeholder={field.placeholder}
+        defaultValue={field.defaultValue || ''}
+        disabled
+        readOnly
+        className={inputClassName}
+        style={getInputStyle()}
+      />
+    )
   }
 
-  const getLabelStyle = () => {
-    const style = {
-      fontWeight: fieldStyles.fontWeight || '500',
-      color: fieldStyles.color || '#334155',
-    }
-    if (fieldStyles.fontSize) {
-      style.fontSize = fieldStyles.fontSize
-    } else {
-      style.fontSize = '0.875rem'
-    }
-    if (fieldStyles.fontFamily) {
-      style.fontFamily = fieldStyles.fontFamily
-    }
-    if (fieldStyles.letterSpacing) {
-      style.letterSpacing = fieldStyles.letterSpacing
-    }
-    if (fieldStyles.textAlign) {
-      style.textAlign = fieldStyles.textAlign
-    }
-    if (fieldStyles.textTransform) {
-      style.textTransform = fieldStyles.textTransform
-    }
-    return style
-  }
-
-  const containerStyle = {
-    margin: `${fieldStyles.marginTop || '0'} ${fieldStyles.marginRight || '0'} ${fieldStyles.marginBottom || '0'} ${fieldStyles.marginLeft || '0'}`,
-  }
+  const isLayoutElement = field.type === 'heading' || field.type === 'captcha'
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative group ${
-        isSelected
-          ? 'ring-2 ring-brand ring-offset-2'
-          : 'hover:bg-slate-50'
-      } rounded-lg transition-all`}
+      onClick={() => onSelect(field.id)}
+      className={cn(
+        'group relative cursor-pointer border-b border-slate-200 px-5 py-4 transition-colors last:border-b-0',
+        isSelected ? 'bg-sky-50' : 'bg-white hover:bg-slate-50/80'
+      )}
     >
-      {/* Control buttons - only show on hover */}
-      <div className="absolute -left-10 top-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          {...attributes}
-          {...listeners}
-          className="p-1.5 hover:bg-slate-200 rounded cursor-grab active:cursor-grabbing bg-white border border-slate-200 shadow-sm"
-          onClick={(e) => e.stopPropagation()}
-          title="Drag to reorder"
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          {!isLayoutElement ? (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <span className="text-sm font-semibold text-slate-900">
+                {field.label}
+                {field.required ? <span className="text-slate-900">*</span> : null}
+              </span>
+              <span className="text-xs italic text-slate-400">{propertyName}</span>
+              {isLeadProperty ? <FormFieldTag tone="teal">Lead property</FormFieldTag> : null}
+              {isMetadataProperty ? <FormFieldTag tone="slate">Metadata</FormFieldTag> : null}
+              {field.submitHidden ? <FormFieldTag tone="violet">Hidden field</FormFieldTag> : null}
+              {field.defaultValue && !field.submitHidden ? (
+                <FormFieldTag tone="slate">Default: {defaultDisplayLabel}</FormFieldTag>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className={cn(!isLayoutElement && 'mt-2.5')}>{renderFieldControl()}</div>
+
+          {field.submitHidden && field.defaultValue ? (
+            <p className="mt-1.5 text-[11px] text-violet-700">
+              Submits <span className="font-medium">{defaultDisplayLabel}</span> when the form is posted.
+            </p>
+          ) : null}
+        </div>
+
+        <div
+          className={cn(
+            'flex shrink-0 flex-col items-center gap-1 pt-0.5 transition-opacity',
+            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          )}
         >
-          <GripVertical className="h-4 w-4 text-slate-500" />
-        </button>
-        <button
-          className={`p-1.5 rounded bg-white border border-slate-200 shadow-sm ${
-            field.locked ? 'opacity-40 cursor-not-allowed' : 'hover:bg-red-50'
-          }`}
-          onClick={(e) => {
-            e.stopPropagation()
-            if (field.locked) return
-            onRemove(field.id)
-          }}
-          title={field.locked ? 'This field is required' : 'Remove field'}
-          disabled={field.locked}
-        >
-          <Trash2 className="h-4 w-4 text-slate-500 hover:text-red-500" />
-        </button>
-      </div>
-      
-      <div 
-        onClick={() => onSelect(field.id)}
-        className="p-4 cursor-pointer"
-        style={containerStyle}
-      >
-        <Label className="block mb-2" style={getLabelStyle()}>
-          {field.label}
-          {field.required && <span className="text-red-500 ml-1">*</span>}
-        </Label>
-        
-        {field.type === 'textarea' ? (
-          <textarea
-            placeholder={field.placeholder}
-            className="w-full resize-none focus:outline-none focus:ring-2 focus:ring-brand"
-            style={getInputStyle()}
-            rows={3}
-            disabled
-          />
-        ) : field.type === 'select' ? (
-          <select
-            className="w-full focus:outline-none focus:ring-2 focus:ring-brand"
-            style={getInputStyle()}
-            disabled
-            defaultValue=""
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-600"
+            onClick={(e) => e.stopPropagation()}
+            title="Drag to reorder"
           >
-            <option value="">{field.placeholder || 'Select an option'}</option>
-            {(field.options || []).map((opt) => (
-              <option key={opt.value || opt.label} value={opt.value || opt.label}>
-                {opt.label || opt.value}
-              </option>
-            ))}
-          </select>
-        ) : field.type === 'checkbox' ? (
-          <div className="flex flex-col gap-2">
-            {(field.options && field.options.length > 0) ? (
-              field.options.map((opt) => (
-                <div key={opt.value || opt.label} className="flex items-center gap-2">
-                  <input type="checkbox" disabled className="h-4 w-4 text-brand" />
-                  <span className="text-sm text-slate-600">{opt.label || opt.value}</span>
-                </div>
-              ))
-            ) : (
-              <div className="flex items-center gap-2">
-                <input type="checkbox" disabled className="h-4 w-4 text-brand" />
-                <span className="text-sm text-slate-600">{field.placeholder || 'Checkbox option'}</span>
-              </div>
-            )}
-          </div>
-        ) : field.type === 'rating' ? (
-          <div className="flex gap-1">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <span key={star} className="text-2xl" style={{ color: '#cbd5e1' }}>★</span>
-            ))}
-          </div>
-        ) : (
-          <Input
-            type={field.type}
-            placeholder={field.placeholder}
-            disabled
-            className="focus:outline-none focus:ring-2 focus:ring-brand"
-            style={getInputStyle()}
-          />
-        )}
+            <GripVertical className="h-4 w-4" />
+          </button>
+          {!field.locked ? (
+            <button
+              type="button"
+              className="rounded p-1 text-slate-400 hover:bg-white hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRemove(field.id)
+              }}
+              title="Remove field"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   )
 }
 
 // Draggable Field Type Component
-function DraggableFieldType({ fieldType, onClick }) {
+function DraggableFieldType({ fieldType, onClick, disabled = false }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `field-type-${fieldType.id}`,
     data: {
       type: 'fieldType',
       fieldType,
     },
+    disabled,
   })
 
   const style = transform
@@ -299,20 +642,118 @@ function DraggableFieldType({ fieldType, onClick }) {
     <button
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
-      onClick={() => onClick?.(fieldType)}
-      className={`w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors text-sm font-medium text-slate-700 cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-200 ${
-        isDragging ? 'opacity-50' : ''
-      }`}
+      {...(disabled ? {} : { ...listeners, ...attributes })}
+      onClick={() => {
+        if (disabled) return
+        onClick?.(fieldType)
+      }}
+      disabled={disabled}
+      className={cn(
+        'w-full flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors',
+        disabled
+          ? 'cursor-not-allowed border-transparent bg-slate-50 text-slate-400'
+          : 'cursor-grab border-transparent bg-sky-50/70 text-slate-700 hover:border-sky-200 hover:bg-sky-50 active:cursor-grabbing',
+        isDragging && 'opacity-50'
+      )}
     >
-      <IconComponent className="h-5 w-5 text-slate-600" />
-      <span className="text-left flex-1">{fieldType.name}</span>
+      <GripVertical className={cn('h-3.5 w-3.5 shrink-0', disabled ? 'text-slate-300' : 'text-slate-400')} />
+      <IconComponent className={cn('h-4 w-4 shrink-0', disabled ? 'text-slate-300' : 'text-slate-500')} />
+      <span className="flex-1 text-left font-medium">{fieldType.name}</span>
     </button>
   )
 }
 
-// Droppable Canvas Area
+function DraggableLeadProperty({ property, used = false, onAdd }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `lead-prop-${property.id}`,
+    data: {
+      type: 'leadProperty',
+      property,
+    },
+    disabled: used,
+  })
+
+  const style = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+      }
+    : undefined
+
+  const IconComponent = property.icon || Type
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      {...(used ? {} : { ...listeners, ...attributes })}
+      onClick={() => {
+        if (used) return
+        onAdd?.(property)
+      }}
+      disabled={used}
+      title={used ? 'Already on this form' : `Add ${property.label}`}
+      className={cn(
+        'w-full flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors',
+        used
+          ? 'cursor-not-allowed border-transparent bg-slate-50 text-slate-400'
+          : 'cursor-grab border-transparent bg-sky-50/70 text-slate-700 hover:border-sky-200 hover:bg-sky-50 active:cursor-grabbing',
+        isDragging && 'opacity-50'
+      )}
+    >
+      <GripVertical className={cn('h-3.5 w-3.5 shrink-0', used ? 'text-slate-300' : 'text-slate-400')} />
+      <IconComponent className={cn('h-4 w-4 shrink-0', used ? 'text-slate-300' : 'text-slate-500')} />
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate font-medium">{property.label}</span>
+        <span className="block truncate text-[11px] italic text-slate-400">{property.name}</span>
+      </span>
+    </button>
+  )
+}
+
+function DraggableFormElement({ element, used = false, onAdd }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `form-el-${element.id}`,
+    data: {
+      type: 'formElement',
+      element,
+    },
+    disabled: used,
+  })
+
+  const style = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+      }
+    : undefined
+
+  const IconComponent = element.icon || Type
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      {...(used ? {} : { ...listeners, ...attributes })}
+      onClick={() => {
+        if (used) return
+        onAdd?.(element)
+      }}
+      disabled={used}
+      title={used ? 'Already on this form' : `Add ${element.name}`}
+      className={cn(
+        'flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors',
+        used
+          ? 'cursor-not-allowed border-transparent bg-slate-50 text-slate-400'
+          : 'cursor-grab border-transparent bg-sky-50/70 text-slate-700 hover:border-sky-200 hover:bg-sky-50 active:cursor-grabbing',
+        isDragging && 'opacity-50'
+      )}
+    >
+      <GripVertical className={cn('h-3.5 w-3.5 shrink-0', used ? 'text-slate-300' : 'text-slate-400')} />
+      <IconComponent className={cn('h-4 w-4 shrink-0', used ? 'text-slate-300' : 'text-slate-500')} />
+      <span className="flex-1 text-left font-medium">{element.name}</span>
+    </button>
+  )
+}
+
 function DroppableCanvas({ children, isEmpty }) {
   const { setNodeRef, isOver } = useDroppable({
     id: 'form-canvas',
@@ -324,11 +765,10 @@ function DroppableCanvas({ children, isEmpty }) {
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-[500px] transition-colors ${
-        isOver ? 'bg-brand/10 border-2 border-brand-light border-dashed' : ''
-      } ${
-        isEmpty ? 'border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center' : ''
-      }`}
+      className={cn(
+        'min-h-[500px] transition-colors',
+        isOver && 'bg-sky-50/50 ring-2 ring-inset ring-sky-300'
+      )}
     >
       {children}
     </div>
@@ -651,10 +1091,6 @@ function FormsPageInner() {
   // Backend-required hidden fields injected into exported HTML
   const organisationID = user?.organisationID || ''
   const formID = editingFormId || ''
-  const REQUIRED_SYSTEM_FIELDS = [
-    { id: 'sys-organisationID', type: 'hidden', name: 'organisationID', label: 'organisationID', hidden: true, locked: true, styles: {} },
-    { id: 'sys-formID', type: 'hidden', name: 'formID', label: 'formID', hidden: true, locked: true, styles: {} },
-  ]
   const REQUIRED_FIELD_NAMES = new Set([
     'organisationID',
     'formID',
@@ -665,10 +1101,12 @@ function FormsPageInner() {
     'reason',
   ])
 
-  const [formFields, setFormFields] = useState([
-    ...REQUIRED_SYSTEM_FIELDS,
-    ...buildRequiredLeadFields([], []),
-  ])
+  const [builderFormType, setBuilderFormType] = useState('lead')
+  const [pendingFormType, setPendingFormType] = useState('lead')
+  const [propertySearch, setPropertySearch] = useState('')
+  const [showCustomFieldTypes, setShowCustomFieldTypes] = useState(false)
+
+  const [formFields, setFormFields] = useState(() => buildInitialFormFields('lead', [], []))
   const [selectedField, setSelectedField] = useState(null)
   const [activeId, setActiveId] = useState(null)
   const [showPreview, setShowPreview] = useState(false)
@@ -725,68 +1163,96 @@ function FormsPageInner() {
   }, [])
 
   useEffect(() => {
-    const reasonOptions = leadReasons.map((r) => ({
-      label: r.name,
-      value: r.reasonCode || r._id || r.name,
-    }))
-    const studioOptions = locations.map((loc) => ({
-      label: loc.name || 'Unnamed location',
-      value: String(loc._id),
-    }))
-    const studioField = {
-      id: 'req-studio',
-      type: 'select',
-      name: 'locationID',
-      label: 'Studio',
-      placeholder: 'Select studio',
-      required: true,
-      locked: true,
-      styles: {},
-      options: studioOptions,
-    }
+    const reasonOptions = buildReasonOptions(leadReasons)
+    const studioOptions = buildStudioOptions(locations)
+    const optsKey = (opts) =>
+      JSON.stringify((opts || []).map((o) => [o.value, o.label]))
 
     setFormFields((prev) => {
-      let next = prev
-        .filter(
-          (f) =>
-            !(
-              f.id === 'req-location' ||
-              (f.name === 'location' && f.locked && f.type !== 'select')
-            )
-        )
-        .map((f) => {
-          if (f.id === 'req-reason' || f.name === 'reason') {
-            return { ...f, type: 'select', options: reasonOptions }
+      let changed = false
+      let next = prev.map((f) => {
+        if (f.name === 'reason') {
+          if (
+            f.type === 'select' &&
+            f.optionsLocked &&
+            optsKey(f.options) === optsKey(reasonOptions)
+          ) {
+            return f
           }
-          if (f.id === 'req-studio' || f.name === 'locationID') {
-            return {
-              ...f,
-              id: 'req-studio',
-              type: 'select',
-              name: 'locationID',
-              label: f.label === 'locationID' ? 'Studio' : f.label || 'Studio',
-              placeholder: f.placeholder || 'Select studio',
-              required: true,
-              locked: true,
-              hidden: false,
-              options: studioOptions,
-            }
+          changed = true
+          return {
+            ...f,
+            type: 'select',
+            propertyKind: f.propertyKind || 'lead',
+            optionsLocked: true,
+            options: reasonOptions,
           }
-          // Drop leftover hidden locationID system field from older forms
-          if (f.id === 'sys-locationID') return null
-          return f
-        })
-        .filter(Boolean)
+        }
+        if (f.name === 'locationID') {
+          const nextLabel = f.label === 'locationID' ? 'Studio' : f.label || 'Studio'
+          if (
+            f.type === 'select' &&
+            f.optionsLocked &&
+            f.label === nextLabel &&
+            optsKey(f.options) === optsKey(studioOptions)
+          ) {
+            return f
+          }
+          changed = true
+          return {
+            ...f,
+            type: 'select',
+            name: 'locationID',
+            label: nextLabel,
+            propertyKind: f.propertyKind || 'lead',
+            optionsLocked: true,
+            hidden: false,
+            options: studioOptions,
+          }
+        }
+        if (f.name === 'utm_source') {
+          const nextLabel = f.label === 'utm_source' ? 'Source' : f.label || 'Source'
+          if (
+            f.type === 'select' &&
+            f.optionsLocked &&
+            f.label === nextLabel &&
+            optsKey(f.options) === optsKey(UTM_SOURCE_FIELD_OPTIONS)
+          ) {
+            return f
+          }
+          changed = true
+          return {
+            ...f,
+            type: 'select',
+            label: nextLabel,
+            propertyKind: f.propertyKind || 'lead',
+            optionsLocked: true,
+            options: UTM_SOURCE_FIELD_OPTIONS,
+          }
+        }
+        return f
+      })
 
-      const hasStudio = next.some((f) => f.id === 'req-studio' || f.name === 'locationID')
-      if (!hasStudio) {
-        const phoneIdx = next.findIndex((f) => f.name === 'phoneNumber')
-        next = [...next]
-        next.splice(phoneIdx >= 0 ? phoneIdx + 1 : next.length, 0, studioField)
+      if (builderFormType === 'lead') {
+        const hasStudio = next.some((f) => f.name === 'locationID')
+        if (!hasStudio) {
+          const studioProp = LEAD_PROPERTIES.find((p) => p.name === 'locationID')
+          const studioField = createLeadPropertyField(studioProp, {
+            locations,
+            locked: true,
+            required: true,
+          })
+          studioField.id = 'req-studio'
+          const phoneIdx = next.findIndex((f) => f.name === 'phoneNumber')
+          next = [...next]
+          next.splice(phoneIdx >= 0 ? phoneIdx + 1 : next.length, 0, studioField)
+          changed = true
+        }
       }
-      return next
+
+      return changed ? next : prev
     })
-  }, [leadReasons, locations])
+  }, [leadReasons, locations, builderFormType])
 
   const saveForm = async () => {
     if (!formName.trim()) {
@@ -896,14 +1362,31 @@ function FormsPageInner() {
     }
   }
 
-  const openBuilderForNew = () => {
+  const openFormTypePicker = () => {
+    setPendingFormType('lead')
+    setActiveTab('select-type')
+  }
+
+  const startBuilderWithType = (formType) => {
+    const type = formType === 'blank' ? 'blank' : 'lead'
+    setBuilderFormType(type)
     setFormName('')
     setFormDescription('')
     setFormLocationID([])
     setEditingFormId(null)
-    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations)])
+    setFormFields(buildInitialFormFields(type, leadReasons, locations))
     setSelectedField(null)
+    setSubmitButton({
+      id: 'submit-button',
+      type: 'submit',
+      label: 'Submit Form',
+      styles: {},
+    })
     setActiveTab('builder')
+  }
+
+  const openBuilderForNew = () => {
+    openFormTypePicker()
   }
 
   const sensors = useSensors(
@@ -917,11 +1400,34 @@ function FormsPageInner() {
     })
   )
 
-  const RESERVED_FIELD_NAMES = new Set(['organisationID', 'formID', 'name', 'email', 'phoneNumber', 'locationID', 'reason'])
+  const RESERVED_FIELD_NAMES = new Set([
+    'organisationID',
+    'formID',
+    'name',
+    'email',
+    'phoneNumber',
+    'locationID',
+    'reason',
+    'location',
+    'utm_source',
+    'metadata',
+  ])
   const SYSTEM_HIDDEN_FIELD_NAMES = new Set(['organisationID', 'formID'])
 
   const getFieldNameForHtml = (field) => {
-    if (field?.name) return field.name
+    if (field?.type === 'heading') return `heading_${field.id}`
+    if (field?.type === 'captcha') return 'captcha'
+    if (field?.propertyKind === 'metadata' || field?.metadataKey) {
+      const key = String(field.metadataKey || 'custom')
+        .replace(/[^\w.-]/g, '_')
+        .replace(/^_+|_+$/g, '') || 'custom'
+      return `metadata[${key}]`
+    }
+    if (field?.name && !String(field.name).startsWith('metadata.')) return field.name
+    if (field?.name?.startsWith('metadata.')) {
+      const key = field.name.slice('metadata.'.length)
+      return `metadata[${key}]`
+    }
     return (field?.label || field?.id || 'field').toLowerCase().replace(/\s+/g, '_')
   }
 
@@ -1025,6 +1531,14 @@ function FormsPageInner() {
       })
     }
 
+    const defaultValue =
+      control.getAttribute('value') ||
+      (type === 'select'
+        ? control.querySelector('option[selected]')?.getAttribute('value') ||
+          control.querySelector('option[selected]')?.textContent?.trim()
+        : '') ||
+      ''
+
     return {
       id: `import-${idSeed}-${Date.now()}`,
       type,
@@ -1032,6 +1546,7 @@ function FormsPageInner() {
       name: nameAttr ? nameAttr.replace(/\[\]$/, '') : undefined,
       placeholder,
       required,
+      defaultValue: defaultValue || undefined,
       styles,
       options,
     }
@@ -1085,7 +1600,20 @@ function FormsPageInner() {
           const nameAttr = (control.getAttribute('name') || '').trim().replace(/\[\]$/, '')
 
           if (typeAttr === 'submit') return
-          if (typeAttr === 'hidden') return
+          if (typeAttr === 'hidden') {
+            if (SYSTEM_HIDDEN_FIELD_NAMES.has(nameAttr)) return
+            inferred.push({
+              id: `import-hidden-${idx}-${Date.now()}`,
+              type: 'text',
+              label: nameAttr.replace(/[_-]+/g, ' '),
+              name: nameAttr,
+              defaultValue: control.getAttribute('value') || '',
+              submitHidden: true,
+              required: false,
+              styles: {},
+            })
+            return
+          }
           if (SYSTEM_HIDDEN_FIELD_NAMES.has(nameAttr)) return
 
           // Group checkbox options with the same name into a single field
@@ -1110,11 +1638,18 @@ function FormsPageInner() {
         })
       }
 
-      // Ensure required lead fields always exist, and avoid duplicates
+      // Merge inferred fields based on detected form type
       const inferredFiltered = inferred.filter((f) => !REQUIRED_FIELD_NAMES.has(String(f?.name || '').trim()))
-      const nextFields = [...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations), ...inferredFiltered]
+      const detectedType = detectFormTypeFromInferred(inferred)
+      setBuilderFormType(detectedType)
+
+      const nextFields =
+        detectedType === 'lead'
+          ? [...buildInitialFormFields('lead', leadReasons, locations), ...inferredFiltered]
+          : [...REQUIRED_SYSTEM_FIELDS, ...inferredFiltered]
+
       setFormFields(nextFields)
-      const firstVisible = [...buildRequiredLeadFields(leadReasons, locations), ...inferredFiltered].find((f) => f && !f.hidden && f.type !== 'hidden')
+      const firstVisible = nextFields.find((f) => f && !f.hidden && f.type !== 'hidden')
       setSelectedField(firstVisible?.id || null)
       setActiveTab('builder')
     } catch (e) {
@@ -1123,16 +1658,99 @@ function FormsPageInner() {
     }
   }
 
+  const usedLeadPropertyNames = new Set(
+    formFields
+      .filter((f) => f?.name && LEAD_PROPERTY_NAMES.has(f.name))
+      .map((f) => f.name)
+  )
+
+  const addLeadProperty = (property) => {
+    if (!property?.name) return
+    if (usedLeadPropertyNames.has(property.name)) {
+      toast.error({ title: 'Already added', message: `${property.label} is already on this form.` })
+      return
+    }
+    const newField = createLeadPropertyField(property, {
+      leadReasons,
+      locations,
+      locked: false,
+      required: false,
+    })
+    setFormFields((prev) => [...prev, newField])
+    setSelectedField(newField.id)
+  }
+
+  const addMetadataField = (type = 'text') => {
+    const typeMeta = CUSTOM_FIELD_TYPES.find((t) => t.id === type)
+    const newField = createMetadataField(type, typeMeta?.name || 'Custom field')
+    setFormFields((prev) => [...prev, newField])
+    setSelectedField(newField.id)
+    setShowCustomFieldTypes(false)
+  }
+
+  const addFormElement = (element) => {
+    if (!element?.type) return
+    if (element.type === 'heading') {
+      const newField = {
+        id: `heading-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'heading',
+        label: 'Heading',
+        placeholder: '',
+        required: false,
+        propertyKind: 'layout',
+        styles: {},
+      }
+      setFormFields((prev) => [...prev, newField])
+      setSelectedField(newField.id)
+      return
+    }
+    if (element.type === 'captcha') {
+      const already = formFields.some((f) => f.type === 'captcha')
+      if (already) {
+        toast.error({ title: 'Already added', message: 'Captcha is already on this form.' })
+        return
+      }
+      const newField = {
+        id: `captcha-${Date.now()}`,
+        type: 'captcha',
+        name: 'captcha',
+        label: "I'm not a robot",
+        placeholder: '',
+        required: true,
+        propertyKind: 'layout',
+        styles: {},
+      }
+      setFormFields((prev) => [...prev, newField])
+      setSelectedField(newField.id)
+    }
+  }
+
   const addField = (type) => {
-    const fieldType = fieldTypes.find(ft => ft.id === type)
+    const fieldType = fieldTypes.find((ft) => ft.id === type)
+    const baseLabel = fieldType?.name || `New ${type} field`
+    const slug = baseLabel.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+    let uniqueName = slug || `field_${Date.now()}`
+    const existing = new Set(formFields.map((f) => getFieldNameForHtml(f)))
+    let i = 2
+    while (existing.has(uniqueName) || RESERVED_FIELD_NAMES.has(uniqueName)) {
+      uniqueName = `${slug}_${i}`
+      i += 1
+    }
     const newField = {
       id: Date.now().toString(),
       type,
-      label: fieldType?.name || `New ${type} field`,
+      name: uniqueName,
+      label: baseLabel,
       placeholder: `Enter ${type}...`,
       required: false,
+      propertyKind: 'custom',
       styles: {},
-      options: type === 'select' ? [{ label: 'Option 1', value: 'option_1' }] : type === 'checkbox' ? [{ label: 'Option 1', value: 'option_1' }] : [],
+      options:
+        type === 'select'
+          ? [{ label: 'Option 1', value: 'option_1' }]
+          : type === 'checkbox'
+            ? [{ label: 'Option 1', value: 'option_1' }]
+            : [],
     }
     setFormFields([...formFields, newField])
     setSelectedField(newField.id)
@@ -1145,9 +1763,9 @@ function FormsPageInner() {
       id: `${templateId}-${index}-${Date.now()}`,
       styles: {},
     }))
-    // Prevent template fields from duplicating reserved backend field names (e.g. a second "email")
     const filtered = normalized.filter((f) => !REQUIRED_FIELD_NAMES.has(getFieldNameForHtml(f)))
-    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations), ...filtered])
+    setBuilderFormType('blank')
+    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...filtered])
     setSelectedField(normalized[0]?.id || null)
     setActiveTab('builder')
   }
@@ -1171,14 +1789,28 @@ function FormsPageInner() {
       return
     }
 
-    // Handle dropping field types from left panel to canvas
-    if (active.id.toString().startsWith('field-type-')) {
-      const fieldTypeId = active.id.toString().replace('field-type-', '')
+    const activeIdStr = active.id.toString()
+
+    if (activeIdStr.startsWith('lead-prop-')) {
+      const propId = activeIdStr.replace('lead-prop-', '')
+      const property = LEAD_PROPERTIES.find((p) => p.id === propId)
+      if (property) addLeadProperty(property)
+      setActiveId(null)
+      return
+    }
+
+    if (activeIdStr.startsWith('form-el-')) {
+      const elId = activeIdStr.replace('form-el-', '')
+      const element = FORM_ELEMENTS.find((e) => e.id === elId)
+      if (element) addFormElement(element)
+      setActiveId(null)
+      return
+    }
+
+    if (activeIdStr.startsWith('field-type-')) {
+      const fieldTypeId = activeIdStr.replace('field-type-', '')
       const fieldType = fieldTypes.find((ft) => ft.id === fieldTypeId)
-      
-      if (fieldType) {
-        addField(fieldType.id)
-      }
+      if (fieldType) addField(fieldType.id)
       setActiveId(null)
       return
     }
@@ -1187,7 +1819,7 @@ function FormsPageInner() {
     if (active.id !== over.id) {
       const activeIndex = formFields.findIndex((item) => item.id === active.id)
       const overIndex = formFields.findIndex((item) => item.id === over.id)
-      
+
       if (activeIndex !== -1 && overIndex !== -1) {
         setFormFields((items) => arrayMove(items, activeIndex, overIndex))
       }
@@ -1200,24 +1832,71 @@ function FormsPageInner() {
     if (updatedField.id === 'submit-button' || updatedField.type === 'submit') {
       setSubmitButton(updatedField)
     } else {
-      setFormFields(
-        formFields.map((f) => (f.id === updatedField.id ? updatedField : f))
-      )
+      // Never let label edits overwrite fixed lead property names
+      let next = { ...updatedField }
+      if (next.propertyKind === 'lead' || LEAD_PROPERTY_NAMES.has(next.name)) {
+        const catalog = LEAD_PROPERTIES.find((p) => p.name === next.name)
+        if (catalog) next.name = catalog.name
+      }
+      if (next.propertyKind === 'metadata' || next.metadataKey) {
+        const key = String(next.metadataKey || '')
+          .trim()
+          .replace(/[^\w.-]/g, '_')
+          .replace(/^_+|_+$/g, '')
+        next.metadataKey = key || next.metadataKey
+        next.name = `metadata.${next.metadataKey}`
+      }
+      setFormFields(formFields.map((f) => (f.id === next.id ? next : f)))
     }
   }
 
   const generateFieldHTML = (field) => {
-    if (field.type === 'hidden' || field.hidden) {
+    const fieldName = escapeHtmlAttr(getFieldNameForHtml(field))
+    const defaultVal = field.defaultValue != null ? String(field.defaultValue) : ''
+    const escapedDefault = escapeHtmlAttr(defaultVal)
+
+    if (isSystemHiddenField(field)) {
       if (field.name === 'organisationID') {
         return `<input type="hidden" name="organisationID" value="${organisationID}" />`
       }
       if (field.name === 'formID') {
         return `<input type="hidden" name="formID" value="${formID}" />`
       }
-      return `<input type="hidden" name="${field.name || field.id}" value="" />`
+      return `<input type="hidden" name="${fieldName}" value="${escapedDefault}" />`
+    }
+
+    if (field.submitHidden) {
+      return `<input type="hidden" name="${fieldName}" value="${escapedDefault}" />`
     }
 
     const fieldStyles = field.styles || {}
+
+    if (field.type === 'heading') {
+      const headingParts = [
+        `margin: 0 0 1rem 0`,
+        `font-size: ${fieldStyles.fontSize || '1.5rem'}`,
+        `font-weight: ${fieldStyles.fontWeight || '600'}`,
+        `color: ${fieldStyles.color || '#0f172a'}`,
+        `line-height: 1.3`,
+      ]
+      if (fieldStyles.fontFamily) headingParts.push(`font-family: ${fieldStyles.fontFamily}`)
+      if (fieldStyles.textAlign) headingParts.push(`text-align: ${fieldStyles.textAlign}`)
+      if (fieldStyles.letterSpacing) headingParts.push(`letter-spacing: ${fieldStyles.letterSpacing}`)
+      if (fieldStyles.textTransform) headingParts.push(`text-transform: ${fieldStyles.textTransform}`)
+      return `<h2 style="${headingParts.join('; ')}">${escapeHtmlAttr(field.label || 'Heading')}</h2>`
+    }
+
+    if (field.type === 'captcha') {
+      const captchaId = escapeHtmlAttr(field.id || 'captcha')
+      return `
+      <div style="margin-bottom: 1rem;">
+        <label for="${captchaId}" style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; border:1px solid #cbd5e1; border-radius:0.5rem; background:#f8fafc; cursor:pointer;">
+          <input type="checkbox" name="captcha" id="${captchaId}" value="1" ${field.required ? 'required' : ''} style="width:1.125rem; height:1.125rem;" />
+          <span style="font-size:0.875rem; font-weight:500; color:#334155;">${escapeHtmlAttr(field.label || "I'm not a robot")}</span>
+        </label>
+      </div>`
+    }
+
     const styleString = `
       background-color: ${fieldStyles.backgroundColor || '#ffffff'};
       padding: ${fieldStyles.paddingTop || '0.5rem'} ${fieldStyles.paddingRight || '0.75rem'} ${fieldStyles.paddingBottom || '0.5rem'} ${fieldStyles.paddingLeft || '0.75rem'};
@@ -1253,28 +1932,28 @@ function FormsPageInner() {
     const labelStyleString = labelStyleParts.join('; ')
 
     let fieldHTML = ''
-    const fieldName = getFieldNameForHtml(field)
     
     if (field.type === 'textarea') {
       fieldHTML = `<textarea 
         name="${fieldName}" 
-        placeholder="${field.placeholder || ''}" 
+        placeholder="${escapeHtmlAttr(field.placeholder || '')}" 
         ${field.required ? 'required' : ''}
         style="${styleString}"
         rows="3"
-      ></textarea>`
+      >${escapedDefault}</textarea>`
     } else if (field.type === 'select') {
       const optsHtml = (field.options || []).map(opt => {
-        const v = (opt.value || opt.label || '').toString().replace(/"/g, '&quot;')
-        const l = (opt.label || opt.value || '').toString().replace(/"/g, '&quot;')
-        return `<option value="${v}">${l}</option>`
+        const v = escapeHtmlAttr((opt.value || opt.label || '').toString())
+        const l = escapeHtmlAttr((opt.label || opt.value || '').toString())
+        const selected = defaultVal && v === defaultVal ? ' selected' : ''
+        return `<option value="${v}"${selected}>${l}</option>`
       }).join('')
       fieldHTML = `<select 
         name="${fieldName}" 
         ${field.required ? 'required' : ''}
         style="${styleString}"
       >
-        <option value="">${field.placeholder || 'Select an option'}</option>
+        <option value="">${escapeHtmlAttr(field.placeholder || 'Select an option')}</option>
         ${optsHtml}
       </select>`
     } else if (field.type === 'checkbox') {
@@ -1314,7 +1993,8 @@ function FormsPageInner() {
       fieldHTML = `<input 
         type="${field.type}" 
         name="${fieldName}" 
-        placeholder="${field.placeholder || ''}" 
+        placeholder="${escapeHtmlAttr(field.placeholder || '')}" 
+        ${defaultVal ? `value="${escapedDefault}"` : ''}
         ${field.required ? 'required' : ''}
         style="${styleString}"
       />`
@@ -1487,16 +2167,30 @@ ${gtagScript}
           });
 
           const pickFirst = (v) => Array.isArray(v) ? v[0] : v;
+
+          // Nest metadata[key] entries into payload.metadata
+          const metadata = {};
+          Object.keys(payload).forEach((key) => {
+            const match = key.match(/^metadata\\[(.+)\\]$/);
+            if (match) {
+              metadata[match[1]] = pickFirst(payload[key]);
+              delete payload[key];
+            }
+          });
+          if (Object.keys(metadata).length > 0) payload.metadata = metadata;
+
           payload.name = payload.name || pickFirst(payload.full_name) || pickFirst(payload.student_name) || pickFirst(payload.parent_name);
           payload.email = payload.email || pickFirst(payload.email_address) || pickFirst(payload.parent_email);
-          payload.phone = payload.phone || pickFirst(payload.phone_number) || pickFirst(payload.phone);
-          payload.source = payload.source || 'website';
-          payload.url = capturedUrl;
+          payload.phoneNumber = pickFirst(payload.phoneNumber) || pickFirst(payload.phone) || pickFirst(payload.phone_number);
           payload.reason = pickFirst(payload.reason);
           payload.locationID = pickFirst(payload.locationID);
+          payload.location = pickFirst(payload.location);
+          payload.utm_source = pickFirst(payload.utm_source) || null;
+          payload.url = capturedUrl;
           // Safety: ensure backend required ids are scalar even if duplicated somehow
           payload.organisationID = pickFirst(payload.organisationID);
           payload.formID = pickFirst(payload.formID);
+          delete payload.captcha;
 
           try {
             const res = await fetch('https://98.88.253.231.sslip.io/api/lead/form', {
@@ -1580,6 +2274,8 @@ ${gtagScript}
   }
 
   const renderPreviewField = (field) => {
+    if (field.submitHidden || isSystemHiddenField(field)) return null
+
     const fieldStyles = field.styles || {}
     const inputStyle = {
       backgroundColor: fieldStyles.backgroundColor || '#ffffff',
@@ -1615,6 +2311,38 @@ ${gtagScript}
       labelStyle.textTransform = fieldStyles.textTransform
     }
 
+    if (field.type === 'heading') {
+      return (
+        <div key={field.id} style={{ marginBottom: '1rem' }}>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: fieldStyles.fontSize || '1.5rem',
+              fontWeight: fieldStyles.fontWeight || 600,
+              color: fieldStyles.color || '#0f172a',
+              fontFamily: fieldStyles.fontFamily,
+              textAlign: fieldStyles.textAlign,
+            }}
+          >
+            {field.label || 'Heading'}
+          </h2>
+        </div>
+      )
+    }
+
+    if (field.type === 'captcha') {
+      return (
+        <div key={field.id} style={{ marginBottom: '1rem' }}>
+          <label className="flex cursor-pointer items-center gap-3 rounded-md border border-slate-300 bg-slate-50 px-3 py-3">
+            <input type="checkbox" className="h-4 w-4" required={field.required} />
+            <span className="text-sm font-medium text-slate-700">
+              {field.label || "I'm not a robot"}
+            </span>
+          </label>
+        </div>
+      )
+    }
+
     return (
       <div key={field.id} style={{ marginBottom: '1rem' }}>
         <Label className="block mb-2" style={labelStyle}>
@@ -1632,7 +2360,7 @@ ${gtagScript}
           <select
             style={inputStyle}
             className="w-full focus:outline-none focus:ring-2 focus:ring-brand"
-            defaultValue=""
+            defaultValue={field.defaultValue || ''}
           >
             <option value="">{field.placeholder || 'Select an option'}</option>
             {(field.options || []).map((opt) => (
@@ -1667,6 +2395,7 @@ ${gtagScript}
           <Input
             type={field.type}
             placeholder={field.placeholder}
+            defaultValue={field.defaultValue || ''}
             style={inputStyle}
             className="focus:outline-none focus:ring-2 focus:ring-brand"
           />
@@ -1728,7 +2457,7 @@ ${gtagScript}
                     <FileText className="h-7 w-7 text-muted-foreground" />
                   </div>
                   <p className="font-medium text-muted-foreground">No forms yet</p>
-                  <p className="text-sm text-muted-foreground mt-1">Create your first form to get started.</p>
+                  <p className="text-sm text-muted-foreground mt-1">Create a blank form or a lead capture form to get started.</p>
                 </CardContent>
               </Card>
             )}
@@ -1856,9 +2585,97 @@ ${gtagScript}
           </div>
         )}
 
+        {/* Form type picker (HubSpot-style) */}
+        {activeTab === 'select-type' && (
+          <div className="flex min-h-[calc(100vh-220px)] flex-col">
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <button
+                type="button"
+                onClick={() => setActiveTab('templates')}
+                className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to forms
+              </button>
+              <Button variant="gradient" onClick={() => startBuilderWithType(pendingFormType)}>
+                Start
+              </Button>
+            </div>
+
+            <div className="mb-8">
+              <h2 className="text-2xl font-semibold text-foreground">Select a form type</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Choose how you want to start building your form.
+              </p>
+            </div>
+
+            <div className="grid flex-1 gap-6 lg:grid-cols-12">
+              <div className="space-y-3 lg:col-span-5">
+                {FORM_TYPE_OPTIONS.map((option) => {
+                  const Icon = option.icon
+                  const selected = pendingFormType === option.id
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setPendingFormType(option.id)}
+                      className={`w-full rounded-xl border p-4 text-left transition-all ${
+                        selected
+                          ? 'border-[color:var(--studio-primary)] bg-[color:var(--studio-primary)]/5 ring-1 ring-[color:var(--studio-primary)]/30'
+                          : 'border-border bg-card hover:border-muted-foreground/30 hover:bg-muted/30'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                            selected ? 'bg-[color:var(--studio-primary)] text-white' : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-foreground">{option.title}</div>
+                          <p className="mt-1 text-sm text-muted-foreground">{option.description}</p>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="lg:col-span-7">
+                <div className="rounded-2xl border border-border bg-muted/20 p-4 sm:p-6">
+                  <p className="mb-4 text-sm font-medium text-muted-foreground">Preview</p>
+                  <div className="mx-auto max-w-lg rounded-xl border border-border bg-background p-3 shadow-sm">
+                    <div className="mb-3 flex items-center gap-1.5 border-b border-border px-2 pb-3">
+                      <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                    </div>
+                    <FormTypePreview formType={pendingFormType} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Builder View */}
         {activeTab === 'builder' && (
           <div className="h-[calc(100vh-200px)] flex flex-col gap-3">
+          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setActiveTab(editingFormId ? 'templates' : 'select-type')}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+            <Badge variant="secondary" className="capitalize">
+              {builderFormType === 'lead' ? 'Lead form' : 'Blank form'}
+            </Badge>
+          </div>
           {/* Form name + description row */}
           <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
             <Input
@@ -1894,60 +2711,154 @@ ${gtagScript}
             onDragEnd={handleDragEnd}
           >
             <div className="grid grid-cols-12 gap-4 flex-1 min-h-0">
-              {/* Field Types Panel */}
+              {/* Properties palette */}
               <div className="col-span-3 flex flex-col min-h-0 self-stretch">
                 <Card className="flex flex-col flex-1 min-h-0" style={{ height: 'calc(100% + 30px)' }}>
-                  <CardHeader className="flex-shrink-0">
-                    <CardTitle className="text-base">Components</CardTitle>
-                    <p className="text-sm text-slate-500">Drag to add or click to insert</p>
+                  <CardHeader className="flex-shrink-0 space-y-3 pb-3">
+                    <div>
+                      <CardTitle className="text-base">Properties</CardTitle>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Drag onto the form. Labels can change; internal names stay fixed.
+                      </p>
+                    </div>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        value={propertySearch}
+                        onChange={(e) => setPropertySearch(e.target.value)}
+                        placeholder="Search for properties and fields"
+                        className="h-9 border-slate-200 bg-white pl-8 text-sm"
+                      />
+                    </div>
                   </CardHeader>
-                  <CardContent 
-                    className="space-y-1 overflow-y-auto flex-1 pb-2 min-h-0"
+                  <CardContent
+                    className="overflow-y-auto flex-1 space-y-1 pb-3 min-h-0"
                     style={{ overscrollBehavior: 'contain' }}
                   >
-                    {fieldTypes.map((fieldType) => (
-                      <DraggableFieldType
-                        key={fieldType.id}
-                        fieldType={fieldType}
-                        onClick={(fieldType) => addField(fieldType.id)}
-                      />
+                    {(() => {
+                      const q = propertySearch.trim().toLowerCase()
+                      const matches = (prop) =>
+                        !q ||
+                        prop.label.toLowerCase().includes(q) ||
+                        prop.name.toLowerCase().includes(q)
+                      const leadProps = LEAD_PROPERTIES.filter(matches)
+                      const formEls = FORM_ELEMENTS.filter(
+                        (el) =>
+                          !q ||
+                          el.name.toLowerCase().includes(q) ||
+                          el.type.toLowerCase().includes(q)
+                      )
+                      const showCustom =
+                        !q ||
+                        'custom'.includes(q) ||
+                        'metadata'.includes(q) ||
+                        'add custom'.includes(q)
+                      const captchaUsed = formFields.some((f) => f.type === 'captcha')
+                      return (
+                        <div className="space-y-1">
+                          {leadProps.length === 0 && formEls.length === 0 && !showCustom ? (
+                            <p className="px-1 py-2 text-xs text-slate-400">No matches</p>
+                          ) : null}
 
-                    ))}
+                          {leadProps.map((prop) => (
+                            <DraggableLeadProperty
+                              key={prop.id}
+                              property={prop}
+                              used={usedLeadPropertyNames.has(prop.name)}
+                              onAdd={addLeadProperty}
+                            />
+                          ))}
+
+                          {formEls.map((element) => (
+                            <DraggableFormElement
+                              key={element.id}
+                              element={element}
+                              used={element.type === 'captcha' && captchaUsed}
+                              onAdd={addFormElement}
+                            />
+                          ))}
+
+                          {showCustom ? (
+                            <div className="space-y-1 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => setShowCustomFieldTypes((v) => !v)}
+                                className={cn(
+                                  'flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm font-medium transition-colors',
+                                  showCustomFieldTypes
+                                    ? 'border-sky-300 bg-sky-50 text-slate-800'
+                                    : 'border-dashed border-slate-300 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50/50'
+                                )}
+                              >
+                                <Plus className="h-4 w-4 text-slate-500" />
+                                <span className="flex-1 text-left">Add custom property</span>
+                                <ChevronDown
+                                  className={cn(
+                                    'h-3.5 w-3.5 text-slate-400 transition-transform',
+                                    showCustomFieldTypes && 'rotate-180'
+                                  )}
+                                />
+                              </button>
+
+                              {showCustomFieldTypes ? (
+                                <div className="ml-1 space-y-1 border-l-2 border-sky-100 pl-2">
+                                  {CUSTOM_FIELD_TYPES.map((fieldType) => {
+                                    const IconComponent = fieldType.icon
+                                    return (
+                                      <button
+                                        key={fieldType.id}
+                                        type="button"
+                                        onClick={() => addMetadataField(fieldType.id)}
+                                        className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-slate-700 hover:bg-sky-50"
+                                      >
+                                        <IconComponent className="h-4 w-4 shrink-0 text-slate-500" />
+                                        <span className="text-left font-medium">{fieldType.name}</span>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })()}
                   </CardContent>
                 </Card>
               </div>
 
               {/* Form Canvas */}
               <div className="col-span-6 flex flex-col min-h-0">
-                <Card className="flex flex-col flex-1 min-h-0">
-                  <CardHeader className="flex-shrink-0">
+                <Card className="flex flex-col flex-1 min-h-0 overflow-hidden border-slate-200">
+                  <CardHeader className="flex-shrink-0 border-b border-slate-200 bg-white pb-3">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">Form Preview</CardTitle>
-                      <div className="flex items-center gap-2">
-                       
-                        <Button variant="gradient" size="sm" onClick={saveForm} disabled={savingForm}>
-                          {savingForm ? 'Saving…' : (editingFormId ? 'Update Form' : 'Save Form')}
-                        </Button>
+                      <div>
+                        <CardTitle className="text-base">Form editor</CardTitle>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Click a field to edit. Tags show lead mapping and hidden values.
+                        </p>
                       </div>
-
+                      <Button variant="gradient" size="sm" onClick={saveForm} disabled={savingForm}>
+                        {savingForm ? 'Saving…' : (editingFormId ? 'Update Form' : 'Save Form')}
+                      </Button>
                     </div>
                   </CardHeader>
-                  <CardContent 
-                    className="overflow-y-auto flex-1 pb-2 min-h-0"
-                    style={{ overscrollBehavior: 'contain', padding: '8px' }}
+                  <CardContent
+                    className="overflow-y-auto flex-1 p-0 min-h-0 bg-slate-100/60"
+                    style={{ overscrollBehavior: 'contain' }}
                   >
-                    <DroppableCanvas isEmpty={formFields.length === 0}>
-                      {formFields.length === 0 ? (
-                        <div className="text-center py-12">
-                          <FileText className="h-16 w-16 mx-auto mb-4 text-slate-300" />
-                          <p className="text-slate-500 text-sm">
+                    <DroppableCanvas isEmpty={formFields.filter(isCanvasField).length === 0}>
+                      {formFields.filter(isCanvasField).length === 0 ? (
+                        <div className="m-4 rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center">
+                          <FileText className="mx-auto mb-4 h-12 w-12 text-slate-300" />
+                          <p className="text-sm text-slate-500">
                             Drag components here or click to add
                           </p>
                         </div>
                       ) : (
-                        <div className="space-y-4 pl-10 pr-2">
-                          <SortableContext items={formFields.filter((f) => !f.hidden && f.type !== 'hidden').map((f) => f.id)} strategy={verticalListSortingStrategy}>
-                            {formFields.filter((f) => !f.hidden && f.type !== 'hidden').map((field) => (
+                        <div className="m-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                          <SortableContext items={formFields.filter(isCanvasField).map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                            {formFields.filter(isCanvasField).map((field) => (
                               <SortableFieldItem
                                 key={field.id}
                                 field={field}
@@ -1957,55 +2868,37 @@ ${gtagScript}
                               />
                             ))}
                           </SortableContext>
-                          
-                          <div className="pt-6 border-t">
+
+                          <div
+                            className={cn(
+                              'border-t border-slate-200 px-5 py-5',
+                              selectedField === 'submit-button' ? 'bg-sky-50' : 'bg-white'
+                            )}
+                          >
                             <div
                               onClick={() => setSelectedField('submit-button')}
-                              className={`relative group cursor-pointer rounded-lg transition-all ${
-                                selectedField === 'submit-button'
-                                  ? 'ring-2 ring-brand ring-offset-2'
-                                  : ''
-                              }`}
+                              className="inline-block cursor-pointer"
                             >
-                              <Button 
-                                variant="gradient" 
-                                className="w-full"
+                              <button
+                                type="button"
+                                className="rounded-full px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
                                 style={{
                                   fontFamily: submitButton.styles?.fontFamily,
                                   fontSize: submitButton.styles?.fontSize,
-                                  fontWeight: submitButton.styles?.fontWeight,
-                                  color: submitButton.styles?.color,
-                                  backgroundColor: submitButton.styles?.backgroundColor,
-                                  padding: submitButton.styles?.paddingTop ? `${submitButton.styles.paddingTop} ${submitButton.styles.paddingRight || submitButton.styles.paddingTop} ${submitButton.styles.paddingBottom || submitButton.styles.paddingTop} ${submitButton.styles.paddingLeft || submitButton.styles.paddingTop}` : undefined,
-                                  ...(submitButton.styles?.borderWidth ? { 
-                                    borderWidth: submitButton.styles.borderWidth,
-                                    borderStyle: submitButton.styles.borderStyle || 'solid',
-                                    borderColor: submitButton.styles.borderColor || '#e2e8f0'
-                                  } : { border: 'none' }),
-                                  borderRadius: submitButton.styles?.borderRadius,
-                                  width: submitButton.styles?.width || '100%',
-                                  margin: submitButton.styles?.marginTop ? `${submitButton.styles.marginTop} ${submitButton.styles.marginRight || '0'} ${submitButton.styles.marginBottom || '0'} ${submitButton.styles.marginLeft || '0'}` : undefined,
-                                  /* typography support */
+                                  fontWeight: submitButton.styles?.fontWeight || 600,
+                                  color: submitButton.styles?.color || '#ffffff',
+                                  backgroundColor:
+                                    submitButton.styles?.backgroundColor || 'var(--studio-primary)',
+                                  padding: submitButton.styles?.paddingTop
+                                    ? `${submitButton.styles.paddingTop} ${submitButton.styles.paddingRight || submitButton.styles.paddingTop} ${submitButton.styles.paddingBottom || submitButton.styles.paddingTop} ${submitButton.styles.paddingLeft || submitButton.styles.paddingTop}`
+                                    : undefined,
+                                  borderRadius: submitButton.styles?.borderRadius || '9999px',
                                   letterSpacing: submitButton.styles?.letterSpacing,
                                   textTransform: submitButton.styles?.textTransform,
-                                  textAlign: submitButton.styles?.textAlign,
-                                  /* ensure alignment inside the UI Button (which uses flex) */
-                                  display: submitButton.styles?.textAlign ? 'flex' : undefined,
-                                  justifyContent: submitButton.styles?.textAlign
-                                    ? submitButton.styles.textAlign === 'left'
-                                      ? 'flex-start'
-                                      : submitButton.styles.textAlign === 'center'
-                                      ? 'center'
-                                      : submitButton.styles.textAlign === 'right'
-                                      ? 'flex-end'
-                                      : submitButton.styles.textAlign === 'justify'
-                                      ? 'space-between'
-                                      : undefined
-                                    : undefined,
                                 }}
                               >
                                 {submitButton.label}
-                              </Button>
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -2062,21 +2955,49 @@ ${gtagScript}
 
             <DragOverlay>
               {activeId ? (
-                <div className="p-4 rounded-lg border-2 border-brand bg-white shadow-xl">
-                  {activeId.toString().startsWith('field-type-') ? (
+                <div className="rounded-md border border-sky-200 bg-white px-3 py-2 shadow-xl">
+                  {activeId.toString().startsWith('lead-prop-') ? (
                     (() => {
-                      const fieldType = fieldTypes.find((ft) => `field-type-${ft.id}` === activeId.toString())
+                      const prop = LEAD_PROPERTIES.find(
+                        (p) => `lead-prop-${p.id}` === activeId.toString()
+                      )
+                      const IconComponent = prop?.icon
+                      return (
+                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                          {IconComponent ? <IconComponent className="h-4 w-4 text-slate-500" /> : null}
+                          <span>{prop?.label}</span>
+                        </div>
+                      )
+                    })()
+                  ) : activeId.toString().startsWith('form-el-') ? (
+                    (() => {
+                      const element = FORM_ELEMENTS.find(
+                        (e) => `form-el-${e.id}` === activeId.toString()
+                      )
+                      const IconComponent = element?.icon
+                      return (
+                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                          {IconComponent ? <IconComponent className="h-4 w-4 text-slate-500" /> : null}
+                          <span>{element?.name}</span>
+                        </div>
+                      )
+                    })()
+                  ) : activeId.toString().startsWith('field-type-') ? (
+                    (() => {
+                      const fieldType = fieldTypes.find(
+                        (ft) => `field-type-${ft.id}` === activeId.toString()
+                      )
                       const IconComponent = fieldType?.icon
                       return (
-                        <div className="flex items-center gap-3 text-sm font-medium text-slate-700">
-                          {IconComponent && <IconComponent className="h-5 w-5 text-slate-600" />}
+                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                          {IconComponent ? <IconComponent className="h-4 w-4 text-slate-500" /> : null}
                           <span>{fieldType?.name}</span>
                         </div>
                       )
                     })()
                   ) : (
                     <div className="text-sm font-medium text-slate-700">
-                      {formFields.find(f => f.id === activeId)?.label || 'Moving field...'}
+                      {formFields.find((f) => f.id === activeId)?.label || 'Moving field...'}
                     </div>
                   )}
                 </div>
