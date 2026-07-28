@@ -272,9 +272,9 @@ export default function StylePanel({
               }
             />
             <span className="min-w-0">
-              <span className="block text-xs font-medium text-foreground">Exclude from global CSS</span>
+              <span className="block text-xs font-medium text-foreground">Exclude from form CSS</span>
               <span className="block text-[11px] text-muted-foreground">
-                This field will ignore form-wide styles
+                This field will ignore this form&apos;s shared styles
               </span>
             </span>
           </label>

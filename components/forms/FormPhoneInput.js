@@ -226,22 +226,22 @@ export function getFormPhoneExportMarkup(field, { fieldName, styleString, escape
             <span style="font-size:10px; color:#64748b;">▾</span>
           </button>
           <div style="flex:1; min-width:0; padding:0.35rem 0.75rem; display:flex; flex-direction:column; justify-content:center;">
-            <span style="font-size:11px; font-weight:500; color:#94a3b8; line-height:1;">${label}${reqMark}</span>
+            <span class="crm-phone-label" style="font-size:11px; font-weight:500; color:#94a3b8; line-height:1;">${label}${reqMark}</span>
             <div style="display:flex; align-items:center; gap:0.35rem; margin-top:0.2rem;">
               <span class="crm-phone-dial" style="font-size:0.875rem; font-weight:500; color:#0f172a;">${defaultCode}</span>
-              <input type="tel" class="crm-phone-local" name="phoneLocal" placeholder="${placeholder}" ${required ? 'required' : ''} inputmode="tel" autocomplete="tel-national" style="flex:1; min-width:0; border:none; outline:none; background:transparent; font-size:0.875rem; color:#0f172a; padding:0;" />
+              <input type="tel" class="crm-phone-local" data-crm-phone-local="1" placeholder="${placeholder}" ${required ? 'required' : ''} inputmode="tel" autocomplete="tel-national" style="flex:1; min-width:0; border:none; outline:none; background:transparent; font-size:0.875rem; color:#0f172a; padding:0;" />
             </div>
           </div>
         </div>
         <div class="crm-phone-dropdown" hidden style="position:absolute; left:0; right:0; top:calc(100% + 6px); z-index:40; background:#fff; border:1px solid #e2e8f0; border-radius:0.5rem; box-shadow:0 10px 15px -3px rgba(0,0,0,.1); overflow:hidden;">
           <div style="display:flex; align-items:center; gap:0.5rem; padding:0.65rem 0.75rem; border-bottom:1px solid #f1f5f9;">
             <span style="color:#94a3b8; font-size:0.85rem;">⌕</span>
-            <input type="text" class="crm-phone-search" placeholder="Search for countries." style="flex:1; border:none; outline:none; font-size:0.875rem;" />
+            <input type="text" class="crm-phone-search" data-crm-phone-search="1" placeholder="Search for countries." style="flex:1; border:none; outline:none; font-size:0.875rem;" />
           </div>
           <ul class="crm-phone-list" style="list-style:none; margin:0; padding:0.25rem 0; max-height:14rem; overflow:auto;"></ul>
         </div>
         <input type="hidden" class="crm-phone-e164" name="${escapeHtmlAttr(fieldName)}" value="" data-crm-phone-e164="1" />
-        <input type="hidden" name="phoneCountryCode" class="crm-phone-cc" value="${defaultCode}" />
+        <input type="hidden" class="crm-phone-cc" data-crm-phone-cc="1" value="${defaultCode}" />
       </div>`
 }
 

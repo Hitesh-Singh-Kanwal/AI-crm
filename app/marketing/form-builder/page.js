@@ -360,8 +360,81 @@ function isSystemHiddenField(field) {
   return field?.type === 'hidden' || (field?.hidden && !field?.submitHidden)
 }
 
+/** Phone widget helper inputs that must never appear as real builder fields */
+const PHONE_WIDGET_JUNK_NAMES = new Set([
+  'phonelocal',
+  'phonecountrycode',
+  'phone_local',
+  'phone_country_code',
+  'phone-local',
+  'phone-country-code',
+])
+
+function normalizeFieldKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\[\]$/, '')
+}
+
+function isPhoneWidgetJunkField(field) {
+  if (!field) return true
+  // Layout elements are never phone helpers
+  if (field.type === 'heading' || field.type === 'captcha') return false
+
+  const name = normalizeFieldKey(field.name)
+  const label = normalizeFieldKey(field.label)
+  const placeholder = String(field.placeholder || '')
+  const prop = normalizeFieldKey(field.name || field.label || field.id || '')
+
+  if (PHONE_WIDGET_JUNK_NAMES.has(name) || PHONE_WIDGET_JUNK_NAMES.has(label) || PHONE_WIDGET_JUNK_NAMES.has(prop)) {
+    return true
+  }
+  if (/search\s+for\s+countries/i.test(placeholder)) return true
+  if (/search\s+for\s+countries/i.test(String(field.label || ''))) return true
+  // Nameless / generic leftovers from the country search box
+  if (!name && (/^field$/i.test(label) || !label)) return true
+  // Phone UI wrongly saved under a helper name
+  if (
+    (field.type === 'phone' || field.type === 'tel') &&
+    name &&
+    name !== 'phonenumber' &&
+    !name.startsWith('metadata.') &&
+    (name.includes('phonelocal') || name.includes('countrycode') || name.includes('phone_local'))
+  ) {
+    return true
+  }
+  return false
+}
+
+function sanitizeFormFields(fields = []) {
+  const cleaned = []
+  const seen = new Set()
+  for (const field of fields || []) {
+    if (!field || isPhoneWidgetJunkField(field)) continue
+    const key =
+      field.type === 'heading'
+        ? `heading:${field.id}`
+        : field.type === 'captcha'
+          ? 'captcha'
+          : normalizeFieldKey(field.name || field.id || '')
+    if (key && field.type !== 'heading' && field.type !== 'captcha' && seen.has(key)) continue
+    if (key) seen.add(key)
+    if (field.name === 'phoneNumber' && field.type !== 'phone') {
+      cleaned.push({
+        ...field,
+        type: 'phone',
+        propertyKind: field.propertyKind || 'lead',
+      })
+      continue
+    }
+    cleaned.push(field)
+  }
+  return cleaned
+}
+
 function isCanvasField(field) {
-  return field && !isSystemHiddenField(field)
+  return field && !isSystemHiddenField(field) && !isPhoneWidgetJunkField(field)
 }
 
 function FormTypePreview({ formType }) {
@@ -493,10 +566,16 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove, globalStyles
   const renderFieldControl = () => {
     if (field.type === 'heading') {
       const Tag = resolveHeadingTag(field.headingLevel)
+      const text = (field.label || '').trim()
       return (
-        <div className="pointer-events-none" style={buildHeadingBoxStyle(fieldStyles)}>
-          <Tag style={buildHeadingTextStyle(fieldStyles)}>
-            {field.label || 'Heading'}
+        <div className="pointer-events-none min-h-[2rem]" style={buildHeadingBoxStyle(fieldStyles)}>
+          <Tag
+            style={{
+              ...buildHeadingTextStyle(fieldStyles),
+              ...(text ? null : { opacity: 0.45, fontStyle: 'italic' }),
+            }}
+          >
+            {text || 'Heading'}
           </Tag>
         </div>
       )
@@ -620,11 +699,16 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove, globalStyles
                 {isLeadProperty ? <FormFieldTag tone="teal">Lead property</FormFieldTag> : null}
                 {isMetadataProperty ? <FormFieldTag tone="slate">Metadata</FormFieldTag> : null}
                 {field.submitHidden ? <FormFieldTag tone="violet">Hidden field</FormFieldTag> : null}
-                {excluded ? <FormFieldTag tone="slate">No global CSS</FormFieldTag> : null}
+                {excluded ? <FormFieldTag tone="slate">No form CSS</FormFieldTag> : null}
                 {field.defaultValue && !field.submitHidden ? (
                   <FormFieldTag tone="slate">Default: {defaultDisplayLabel}</FormFieldTag>
                 ) : null}
               </div>
+            </div>
+          ) : field.type === 'heading' ? (
+            <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <span className="text-sm font-semibold text-slate-900">Heading</span>
+              <FormFieldTag tone="slate">{field.headingLevel || 'h2'}</FormFieldTag>
             </div>
           ) : field.type === 'captcha' ? (
             <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
@@ -660,7 +744,7 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove, globalStyles
           >
             <GripVertical className="h-4 w-4" />
           </button>
-          {!field.locked ? (
+          {!field.locked || isPhoneWidgetJunkField(field) ? (
             <button
               type="button"
               className="rounded p-1 text-slate-400 hover:bg-white hover:text-destructive"
@@ -1318,43 +1402,114 @@ function FormsPageInner() {
     })
   }, [leadReasons, locations, builderFormType])
 
+  // Always strip phone-widget helper fields from builder state
+  useEffect(() => {
+    setFormFields((prev) => {
+      if (!prev.some(isPhoneWidgetJunkField)) return prev
+      return sanitizeFormFields(prev)
+    })
+  }, [formFields])
+
   const saveForm = async () => {
     if (!formName.trim()) {
       toast.error({ title: 'Name required', message: 'Please enter a form name before saving.' })
       return
     }
-    if (!formLocationID || (formLocationID !== ALL_BRANCHES_VALUE && (!Array.isArray(formLocationID) || formLocationID.length === 0))) {
-      toast.error({ title: 'Location required', message: 'Select one or more studios, or All branches.' })
+
+    let locationValue = formLocationID
+    const locationMissing =
+      !locationValue ||
+      (locationValue !== ALL_BRANCHES_VALUE &&
+        (!Array.isArray(locationValue) || locationValue.length === 0))
+
+    if (locationMissing) {
+      const studioField = formFields.find((f) => f?.name === 'locationID')
+      const studioDefault = studioField?.defaultValue
+      if (studioDefault != null && String(studioDefault).trim() !== '') {
+        locationValue = [String(studioDefault)]
+        setFormLocationID(locationValue)
+      }
+    }
+
+    const stillMissing =
+      !locationValue ||
+      (locationValue !== ALL_BRANCHES_VALUE &&
+        (!Array.isArray(locationValue) || locationValue.length === 0))
+
+    if (stillMissing) {
+      toast.error({
+        title: 'Location required',
+        message:
+          'Select one or more studios in the top bar (or All branches) before saving.',
+      })
+      document.getElementById('form-builder-location')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
       return
     }
-    if (formFields.length === 0) {
+
+    if (formFields.filter((f) => !isPhoneWidgetJunkField(f)).length === 0) {
       toast.error({ title: 'Empty form', message: 'Please add at least one field before saving.' })
       return
     }
+
+    // Drop any leaked phone helper fields before save
+    const fieldsToSave = sanitizeFormFields(formFields)
+    if (fieldsToSave.length !== formFields.length) {
+      setFormFields(fieldsToSave)
+    }
+
     setSavingForm(true)
     try {
       const htmlCode = generateExportedHTML()
-      const allLocations = formLocationID === ALL_BRANCHES_VALUE
+      if (!htmlCode || !String(htmlCode).trim()) {
+        toast.error({ title: 'Export failed', message: 'Could not generate form HTML to save.' })
+        return
+      }
+
+      const allLocations = locationValue === ALL_BRANCHES_VALUE
       const payload = {
         name: formName.trim(),
         description: formDescription.trim(),
         htmlCode,
         allLocations,
-        locationID: allLocations ? [] : formLocationID,
+        locationID: allLocations ? [] : locationValue.map(String),
       }
+
       const result = editingFormId
         ? await api.put(`/api/formBuilder/${editingFormId}`, payload)
         : await api.post('/api/formBuilder', payload)
+
       if (result.success) {
-        toast.success({ title: 'Saved', message: editingFormId ? 'Form updated successfully.' : 'Form created successfully.' })
-        setEditingFormId(result.data?._id || editingFormId)
+        const savedId = result.data?._id || editingFormId
+        if (savedId) setEditingFormId(savedId)
+        // Keep header location in sync with what the API accepted
+        if (result.data?.allLocations) {
+          setFormLocationID(ALL_BRANCHES_VALUE)
+        } else if (Array.isArray(result.data?.locationID) && result.data.locationID.length) {
+          setFormLocationID(
+            result.data.locationID.map((l) => String(l?._id || l)).filter(Boolean)
+          )
+        }
+        toast.success({
+          title: editingFormId ? 'Updated' : 'Saved',
+          message: editingFormId ? 'Form updated successfully.' : 'Form created successfully.',
+        })
         fetchForms()
-        setActiveTab('templates')
+        // Stay in the builder after update so edits are not lost from a bad re-import
+        if (!editingFormId && savedId) {
+          setEditingFormId(savedId)
+        }
       } else {
-        toast.error({ title: 'Save failed', message: result.error || 'Could not save form.' })
+        toast.error({
+          title: editingFormId ? 'Update failed' : 'Save failed',
+          message: result.error || result.message || 'Could not save form.',
+        })
       }
     } catch (e) {
-      toast.error({ title: 'Error', message: 'Could not save form.' })
+      console.error(e)
+      toast.error({ title: 'Error', message: e?.message || 'Could not save form.' })
     } finally {
       setSavingForm(false)
     }
@@ -1623,26 +1778,37 @@ function FormsPageInner() {
     try {
       setSavingForm(false)
       setSelectedField(null)
+      setSettingsPanelMode('field')
 
-      let htmlCode = form?.htmlCode || ''
-      if (!htmlCode && form?._id) {
+      // Always load the full form so location + htmlCode are complete for updates
+      let full = form
+      if (form?._id) {
         const result = await api.get(`/api/formBuilder/${form._id}`)
-        if (result.success) htmlCode = result.data?.htmlCode || ''
+        if (result.success && result.data) {
+          full = result.data
+        } else if (!form?.htmlCode) {
+          toast.error({
+            title: 'Load failed',
+            message: result.error || 'Could not load this form for editing.',
+          })
+          return
+        }
       }
 
-      // Set metadata first (so required hidden fields pick up formID)
-      setEditingFormId(form?._id || null)
-      setFormName(form?.name || '')
-      setFormDescription(form?.description || '')
-      setFormLocationID(
-        form?.allLocations
-          ? ALL_BRANCHES_VALUE
-          : Array.isArray(form?.locationID)
-            ? form.locationID.map((l) => l?._id || l).filter(Boolean)
-            : form?.locationID?._id || form?.locationID
-              ? [form.locationID?._id || form.locationID]
-              : []
-      )
+      const htmlCode = full?.htmlCode || ''
+
+      setEditingFormId(full?._id || form?._id || null)
+      setFormName(full?.name || form?.name || '')
+      setFormDescription(full?.description || form?.description || '')
+
+      const locIds = full?.allLocations
+        ? ALL_BRANCHES_VALUE
+        : Array.isArray(full?.locationID)
+          ? full.locationID.map((l) => String(l?._id || l)).filter(Boolean)
+          : full?.locationID?._id || full?.locationID
+            ? [String(full.locationID?._id || full.locationID)]
+            : []
+      setFormLocationID(locIds)
 
       const inferred = []
       const byName = new Map()
@@ -1651,14 +1817,93 @@ function FormsPageInner() {
         const doc = new DOMParser().parseFromString(htmlCode, 'text/html')
         const formEl = doc.querySelector('form')
 
-        // Capture submit button label if present
         const submitEl = formEl?.querySelector('button[type="submit"], input[type="submit"]')
         const submitLabel = submitEl
-          ? (submitEl.tagName.toLowerCase() === 'input' ? submitEl.getAttribute('value') : submitEl.textContent)
+          ? submitEl.tagName.toLowerCase() === 'input'
+            ? submitEl.getAttribute('value')
+            : submitEl.textContent
           : ''
         if (submitLabel && submitLabel.trim()) {
-          setSubmitButton((prev) => ({ ...prev, label: submitLabel.trim() }))
+          setSubmitButton((prev) => ({
+            ...prev,
+            label: submitLabel.trim(),
+            styles: prev.styles || {},
+          }))
         }
+
+        // Restore headings (not present as inputs)
+        const headingEls = formEl
+          ? Array.from(formEl.querySelectorAll('h1, h2, h3, h4'))
+          : []
+        headingEls.forEach((el, idx) => {
+          const tag = el.tagName.toLowerCase()
+          const box = el.parentElement?.style || {}
+          const text = el.style || {}
+          const styles = {}
+          const bg = box.background || box.backgroundColor || text.backgroundColor
+          if (bg) styles.backgroundColor = bg
+          if (text.fontSize || box.fontSize) styles.fontSize = parseCssSize(text.fontSize || box.fontSize)
+          if (text.fontWeight || box.fontWeight) styles.fontWeight = text.fontWeight || box.fontWeight
+          if (text.color || box.color) styles.color = text.color || box.color
+          if (text.fontFamily || box.fontFamily) styles.fontFamily = text.fontFamily || box.fontFamily
+          if (text.textAlign || box.textAlign) {
+            styles.textAlign = text.textAlign || box.textAlign
+            styles.blockAlign = text.textAlign || box.textAlign
+          }
+          if (box.paddingTop) styles.paddingTop = box.paddingTop
+          if (box.paddingRight) styles.paddingRight = box.paddingRight
+          if (box.paddingBottom) styles.paddingBottom = box.paddingBottom
+          if (box.paddingLeft) styles.paddingLeft = box.paddingLeft
+          if (box.borderRadius) styles.borderRadius = box.borderRadius
+          if (box.width) styles.width = box.width
+          inferred.push({
+            id: `import-heading-${idx}-${Date.now()}`,
+            type: 'heading',
+            headingLevel: tag,
+            label: (el.textContent || 'Heading').trim(),
+            propertyKind: 'layout',
+            required: false,
+            styles,
+          })
+        })
+
+        // Restore captcha block if present
+        const captchaEl = formEl?.querySelector('[data-crm-captcha], .crm-captcha, [data-captcha-type]')
+        if (captchaEl) {
+          const captchaType =
+            captchaEl.getAttribute('data-captcha-type') ||
+            captchaEl.getAttribute('data-crm-captcha') ||
+            'robot'
+          inferred.push(createCaptchaField(captchaType))
+        }
+
+        // Restore phone widgets as a single phone field (ignore helper inputs)
+        const PHONE_HELPER_NAMES = new Set(['phoneLocal', 'phoneCountryCode'])
+        const phoneWidgets = formEl
+          ? Array.from(formEl.querySelectorAll('[data-phone-field="1"], .crm-phone-field'))
+          : []
+        phoneWidgets.forEach((wrap, idx) => {
+          const e164 = wrap.querySelector('.crm-phone-e164, [data-crm-phone-e164]')
+          const nameAttr = (e164?.getAttribute('name') || 'phoneNumber').trim()
+          const labelEl = wrap.querySelector('.crm-phone-label')
+          const labelText = (labelEl?.textContent || 'Phone number').replace(/\*/g, '').trim()
+          const defaultCode = wrap.getAttribute('data-default-code') || '+1'
+          const defaultIso = wrap.getAttribute('data-default-iso') || 'US'
+          const local = wrap.querySelector('.crm-phone-local')
+          const required = local?.hasAttribute('required') || e164?.hasAttribute('required')
+          inferred.push({
+            id: `import-phone-${idx}-${Date.now()}`,
+            type: 'phone',
+            name: nameAttr,
+            label: labelText || 'Phone number',
+            placeholder: local?.getAttribute('placeholder') || '',
+            required: Boolean(required),
+            defaultCountryCode: defaultCode,
+            defaultCountryIso: defaultIso,
+            propertyKind: LEAD_PROPERTY_NAMES.has(nameAttr) ? 'lead' : 'custom',
+            styles: {},
+          })
+        })
 
         const controls = formEl ? Array.from(formEl.querySelectorAll('input, textarea, select')) : []
         controls.forEach((control, idx) => {
@@ -1667,28 +1912,51 @@ function FormsPageInner() {
           const nameAttr = (control.getAttribute('name') || '').trim().replace(/\[\]$/, '')
 
           if (typeAttr === 'submit') return
+          // Skip phone widget internals (local/cc/search/e164 — e164 handled above)
+          if (
+            control.closest('[data-phone-field="1"], .crm-phone-field') ||
+            control.classList?.contains('crm-phone-local') ||
+            control.classList?.contains('crm-phone-cc') ||
+            control.classList?.contains('crm-phone-search') ||
+            control.classList?.contains('crm-phone-e164') ||
+            control.hasAttribute('data-crm-phone-local') ||
+            control.hasAttribute('data-crm-phone-cc') ||
+            control.hasAttribute('data-crm-phone-search') ||
+            control.hasAttribute('data-crm-phone-e164')
+          ) {
+            return
+          }
+          if (PHONE_HELPER_NAMES.has(nameAttr)) return
+          // Skip nameless helper inputs (e.g. old country search)
+          if (!nameAttr) return
+
           if (typeAttr === 'hidden') {
             if (SYSTEM_HIDDEN_FIELD_NAMES.has(nameAttr)) return
+            if (PHONE_HELPER_NAMES.has(nameAttr)) return
             inferred.push({
               id: `import-hidden-${idx}-${Date.now()}`,
-              type: 'text',
+              type: nameAttr === 'locationID' || nameAttr === 'reason' || nameAttr === 'utm_source' ? 'select' : 'text',
               label: nameAttr.replace(/[_-]+/g, ' '),
               name: nameAttr,
               defaultValue: control.getAttribute('value') || '',
               submitHidden: true,
               required: false,
               styles: {},
+              propertyKind: LEAD_PROPERTY_NAMES.has(nameAttr) ? 'lead' : undefined,
             })
             return
           }
           if (SYSTEM_HIDDEN_FIELD_NAMES.has(nameAttr)) return
 
-          // Group checkbox options with the same name into a single field
           if (tag === 'input' && typeAttr === 'checkbox' && nameAttr) {
             const existing = byName.get(nameAttr)
             if (existing) {
               const labelEl = control.closest('div')?.querySelector('label')
-              const optLabel = (labelEl?.textContent || control.getAttribute('value') || `Option ${existing.options.length + 1}`).trim()
+              const optLabel = (
+                labelEl?.textContent ||
+                control.getAttribute('value') ||
+                `Option ${existing.options.length + 1}`
+              ).trim()
               const optValue = (control.getAttribute('value') || optLabel).trim()
               existing.options.push({ label: optLabel, value: optValue })
               return
@@ -1696,29 +1964,91 @@ function FormsPageInner() {
           }
 
           const field = buildFieldFromControl(control, idx)
-          // De-dupe by name if possible
           if (field?.name) {
             if (byName.has(field.name)) return
             byName.set(field.name, field)
+            if (LEAD_PROPERTY_NAMES.has(field.name)) field.propertyKind = 'lead'
+            if (String(field.name).startsWith('metadata.') || String(nameAttr).startsWith('metadata[')) {
+              field.propertyKind = 'metadata'
+              const metaMatch = String(nameAttr).match(/^metadata\[([^\]]+)\]$/)
+              if (metaMatch) {
+                field.metadataKey = metaMatch[1]
+                field.name = `metadata.${metaMatch[1]}`
+              }
+            }
+            // Ensure phoneNumber comes back as phone type
+            if (field.name === 'phoneNumber' || field.type === 'phone') {
+              field.type = 'phone'
+            }
           }
           inferred.push(field)
         })
       }
 
-      // Merge inferred fields based on detected form type
-      const inferredFiltered = inferred.filter((f) => !REQUIRED_FIELD_NAMES.has(String(f?.name || '').trim()))
       const detectedType = detectFormTypeFromInferred(inferred)
       setBuilderFormType(detectedType)
 
-      const nextFields =
+      const baseFields =
         detectedType === 'lead'
-          ? [...buildInitialFormFields('lead', leadReasons, locations), ...inferredFiltered]
-          : [...REQUIRED_SYSTEM_FIELDS, ...inferredFiltered]
+          ? buildInitialFormFields('lead', leadReasons, locations)
+          : [...REQUIRED_SYSTEM_FIELDS]
+
+      // Merge imported core fields into base (preserve defaults, hidden, styles, labels)
+      const inferredByName = new Map()
+      inferred.forEach((f) => {
+        if (f?.name) inferredByName.set(f.name, f)
+      })
+
+      const mergedBase = baseFields.map((base) => {
+        if (!base?.name || !inferredByName.has(base.name)) return base
+        const imp = inferredByName.get(base.name)
+        inferredByName.delete(base.name)
+        return {
+          ...base,
+          type: imp.type === 'phone' || base.name === 'phoneNumber' ? 'phone' : base.type,
+          label: imp.label && imp.label.trim() ? imp.label : base.label,
+          placeholder: imp.placeholder != null ? imp.placeholder : base.placeholder,
+          required: typeof imp.required === 'boolean' ? imp.required : base.required,
+          defaultValue: imp.defaultValue != null && imp.defaultValue !== '' ? imp.defaultValue : base.defaultValue,
+          submitHidden: Boolean(imp.submitHidden),
+          styles: { ...(base.styles || {}), ...(imp.styles || {}) },
+          ...(imp.defaultCountryCode || base.defaultCountryCode
+            ? { defaultCountryCode: imp.defaultCountryCode || base.defaultCountryCode }
+            : {}),
+          ...(imp.defaultCountryIso || base.defaultCountryIso
+            ? { defaultCountryIso: imp.defaultCountryIso || base.defaultCountryIso }
+            : {}),
+          options:
+            base.optionsLocked || base.name === 'locationID' || base.name === 'reason'
+              ? base.options
+              : imp.options?.length
+                ? imp.options
+                : base.options,
+        }
+      })
+
+      const PHONE_JUNK = new Set(['phoneLocal', 'phoneCountryCode'])
+      const leftover = [...inferredByName.values()].filter(
+        (f) =>
+          f &&
+          f.name &&
+          !SYSTEM_HIDDEN_FIELD_NAMES.has(f.name) &&
+          !PHONE_JUNK.has(f.name)
+      )
+      const layoutExtras = inferred.filter((f) => f?.type === 'heading' || f?.type === 'captcha')
+
+      const nextFields = sanitizeFormFields([
+        ...mergedBase,
+        ...leftover.filter((f) => f.type !== 'heading' && f.type !== 'captcha'),
+        ...layoutExtras,
+      ])
 
       setFormFields(nextFields)
       const meta = parseGlobalStylesMeta(htmlCode)
-      setGlobalStyles(meta.styles || {})
-      setGlobalStyleExcludeKeys(meta.excludeKeys || [])
+      // Always replace — form CSS is per-form and must not carry over from the previous form
+      setGlobalStyles(meta.styles && typeof meta.styles === 'object' ? { ...meta.styles } : {})
+      setGlobalStyleExcludeKeys(Array.isArray(meta.excludeKeys) ? [...meta.excludeKeys] : [])
+      setSettingsPanelMode('field')
       const firstVisible = nextFields.find((f) => f && !f.hidden && f.type !== 'hidden')
       setSelectedField(firstVisible?.id || null)
       setActiveTab('builder')
@@ -1856,9 +2186,26 @@ function FormsPageInner() {
 
   const removeField = (id) => {
     const field = formFields.find((f) => f.id === id)
-    if (field?.locked) return
-    setFormFields(formFields.filter((f) => f.id !== id))
+    // Always allow removing phone-widget junk, even if somehow marked locked
+    if (field?.locked && !isPhoneWidgetJunkField(field)) return
+    setFormFields((prev) => sanitizeFormFields(prev.filter((f) => f.id !== id)))
     if (selectedField === id) setSelectedField(null)
+  }
+
+  const purgePhoneJunkFields = () => {
+    setFormFields((prev) => {
+      const next = sanitizeFormFields(prev)
+      const removed = prev.length - next.length
+      if (removed > 0) {
+        toast.success({
+          title: 'Cleaned up',
+          message: `Removed ${removed} invalid phone helper field${removed === 1 ? '' : 's'}.`,
+        })
+      } else {
+        toast.success({ title: 'Already clean', message: 'No phone helper fields found.' })
+      }
+      return next
+    })
   }
 
   const handleDragStart = (event) => {
@@ -1950,6 +2297,8 @@ function FormsPageInner() {
   }
 
   const generateFieldHTML = (field) => {
+    if (isPhoneWidgetJunkField(field)) return ''
+
     const fieldName = escapeHtmlAttr(getFieldNameForHtml(field))
     const defaultVal = field.defaultValue != null ? String(field.defaultValue) : ''
     const escapedDefault = escapeHtmlAttr(defaultVal)
@@ -2090,15 +2439,16 @@ function FormsPageInner() {
 
     // De-dupe by HTML field name to avoid FormData arrays + duplicated UI fields
     const seenNames = new Set()
-    const fieldsHTML = formFields
+    const fieldsHTML = sanitizeFormFields(formFields)
       .filter((field) => {
         const key = getFieldNameForHtml(field)
-        if (!key) return true
+        if (!key) return field?.type === 'heading' || field?.type === 'captcha'
         if (seenNames.has(key)) return false
         seenNames.add(key)
         return true
       })
       .map((field) => generateFieldHTML(field))
+      .filter(Boolean)
       .join('\n')
     // Analytics snippet injected into exported HTML <head>
     const gtagScript = `  <!-- Google tag (gtag.js) -->
@@ -2722,7 +3072,15 @@ ${getFormPhoneExportRuntimeScript()}
           <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
             <button
               type="button"
-              onClick={() => setActiveTab(editingFormId ? 'templates' : 'select-type')}
+              onClick={() => {
+                // Reset form-scoped styles when leaving the builder so they never leak to the next form
+                if (editingFormId) {
+                  setGlobalStyles({})
+                  setGlobalStyleExcludeKeys([])
+                  setSettingsPanelMode('field')
+                }
+                setActiveTab(editingFormId ? 'templates' : 'select-type')
+              }}
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -2746,14 +3104,23 @@ ${getFormPhoneExportRuntimeScript()}
               onChange={(e) => setFormDescription(e.target.value)}
               className="max-w-sm"
             />
-            <div className="w-64">
+            <div
+              id="form-builder-location"
+              className={cn(
+                'w-64 rounded-md',
+                (!formLocationID ||
+                  (formLocationID !== ALL_BRANCHES_VALUE &&
+                    (!Array.isArray(formLocationID) || formLocationID.length === 0))) &&
+                  'ring-2 ring-amber-400 ring-offset-1'
+              )}
+            >
               <LocationSelector
                 value={formLocationID}
                 onChange={setFormLocationID}
                 multiple
                 allowAllBranches
                 showAllOption={false}
-                placeholder="Select studio(s)…"
+                placeholder="Studio(s) required…"
               />
             </div>
             {editingFormId && (
@@ -2948,24 +3315,37 @@ ${getFormPhoneExportRuntimeScript()}
               <div className="col-span-6 flex flex-col min-h-0">
                 <Card className="flex flex-col flex-1 min-h-0 overflow-hidden border-slate-200">
                   <CardHeader className="flex-shrink-0 border-b border-slate-200 bg-white pb-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <CardTitle className="text-base">Form editor</CardTitle>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           Click a field to edit. Tags show lead mapping and hidden values.
                         </p>
                       </div>
-                      <Button variant="gradient" size="sm" onClick={saveForm} disabled={savingForm}>
-                        {savingForm ? 'Saving…' : (editingFormId ? 'Update Form' : 'Save Form')}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {formFields.some(isPhoneWidgetJunkField) ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={purgePhoneJunkFields}
+                            className="border-amber-400 text-amber-800 hover:bg-amber-50"
+                          >
+                            Remove invalid phone fields
+                          </Button>
+                        ) : null}
+                        <Button variant="gradient" size="sm" onClick={saveForm} disabled={savingForm}>
+                          {savingForm ? 'Saving…' : (editingFormId ? 'Update Form' : 'Save Form')}
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent
                     className="overflow-y-auto flex-1 p-0 min-h-0 bg-slate-100/60"
                     style={{ overscrollBehavior: 'contain' }}
                   >
-                    <DroppableCanvas isEmpty={formFields.filter(isCanvasField).length === 0}>
-                      {formFields.filter(isCanvasField).length === 0 ? (
+                    <DroppableCanvas isEmpty={sanitizeFormFields(formFields).filter(isCanvasField).length === 0}>
+                      {sanitizeFormFields(formFields).filter(isCanvasField).length === 0 ? (
                         <div className="m-4 rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center">
                           <FileText className="mx-auto mb-4 h-12 w-12 text-slate-300" />
                           <p className="text-sm text-slate-500">
@@ -2979,8 +3359,8 @@ ${getFormPhoneExportRuntimeScript()}
                             background: resolveFormBackground(globalStyles).background,
                           }}
                         >
-                          <SortableContext items={formFields.filter(isCanvasField).map((f) => f.id)} strategy={verticalListSortingStrategy}>
-                            {formFields.filter(isCanvasField).map((field) => (
+                          <SortableContext items={sanitizeFormFields(formFields).filter(isCanvasField).map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                            {sanitizeFormFields(formFields).filter(isCanvasField).map((field) => (
                               <SortableFieldItem
                                 key={field.id}
                                 field={field}
@@ -3074,13 +3454,13 @@ ${getFormPhoneExportRuntimeScript()}
                             : 'text-slate-500 hover:text-slate-700'
                         )}
                       >
-                        Global CSS
+                        Form CSS
                       </button>
                     </div>
                     <div>
                       <CardTitle className="text-base">
                         {settingsPanelMode === 'global'
-                          ? 'Global CSS'
+                          ? 'Form CSS'
                           : selectedFieldData
                             ? 'Field Settings'
                             : 'Properties'}
@@ -3090,7 +3470,9 @@ ${getFormPhoneExportRuntimeScript()}
                           {selectedFieldData.type} field
                         </p>
                       ) : settingsPanelMode === 'global' ? (
-                        <p className="text-sm text-slate-500 mt-0.5">Applies to all fields unless excluded</p>
+                        <p className="text-sm text-slate-500 mt-0.5">
+                          Styles for this form only — not shared with other forms
+                        </p>
                       ) : null}
                     </div>
                   </CardHeader>
@@ -3134,7 +3516,7 @@ ${getFormPhoneExportRuntimeScript()}
                           className="mt-3 text-xs text-sky-700 hover:underline"
                           onClick={() => setSettingsPanelMode('global')}
                         >
-                          Or edit Global CSS
+                          Or edit this form&apos;s CSS
                         </button>
                       </div>
                     )}

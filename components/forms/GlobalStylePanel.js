@@ -103,8 +103,9 @@ export default function GlobalStylePanel({
   return (
     <div className="space-y-3">
       <p className="text-[11px] text-muted-foreground leading-relaxed">
-        These styles apply to all fields by default. Field-level styles still override. Use Exclude to skip
-        specific fields.
+        These styles apply to fields on <span className="font-medium text-foreground">this form only</span>.
+        They are not shared with other forms. Field-level styles still override. Use Exclude to skip specific
+        fields.
       </p>
 
       <Tabs defaultValue="style" className="w-full">
@@ -589,7 +590,7 @@ export default function GlobalStylePanel({
 
         <TabsContent value="exclude" className="space-y-3 mt-0">
           <p className="text-[11px] text-muted-foreground">
-            Checked fields will not receive global CSS. Their own field styles still apply.
+            Checked fields will not receive this form&apos;s CSS. Their own field styles still apply.
           </p>
           {excludableFields.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">Add fields to the form first.</p>
