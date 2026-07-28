@@ -49,6 +49,7 @@ import {
   DEFAULT_PHONE_COUNTRY_CODE,
   DEFAULT_PHONE_COUNTRY_ISO,
 } from '@/lib/phone-country-codes'
+import { buildHeadingBoxStyle, buildHeadingTextStyle, resolveHeadingTag } from '@/lib/form-heading-styles'
 import FormPhoneInput, {
   getFormPhoneExportMarkup,
   getFormPhoneExportRuntimeScript,
@@ -483,18 +484,12 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
 
   const renderFieldControl = () => {
     if (field.type === 'heading') {
+      const Tag = resolveHeadingTag(field.headingLevel)
       return (
-        <div
-          className="pointer-events-none py-1 text-xl font-semibold text-slate-900"
-          style={{
-            fontFamily: fieldStyles.fontFamily,
-            fontSize: fieldStyles.fontSize || '1.25rem',
-            fontWeight: fieldStyles.fontWeight || 600,
-            color: fieldStyles.color || '#0f172a',
-            textAlign: fieldStyles.textAlign,
-          }}
-        >
-          {field.label || 'Heading'}
+        <div className="pointer-events-none" style={buildHeadingBoxStyle(fieldStyles)}>
+          <Tag style={buildHeadingTextStyle(fieldStyles)}>
+            {field.label || 'Heading'}
+          </Tag>
         </div>
       )
     }
@@ -1743,10 +1738,18 @@ function FormsPageInner() {
         id: `heading-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         type: 'heading',
         label: 'Heading',
+        headingLevel: 'h2',
         placeholder: '',
         required: false,
         propertyKind: 'layout',
-        styles: {},
+        styles: {
+          textAlign: 'left',
+          blockAlign: 'left',
+          fontSize: '24px',
+          fontWeight: '600',
+          color: '#0f172a',
+          width: '100%',
+        },
       }
       setFormFields((prev) => [...prev, newField])
       setSelectedField(newField.id)
@@ -1910,7 +1913,7 @@ function FormsPageInner() {
       if (next.type === 'captcha') {
         next.required = true
       }
-      setFormFields(formFields.map((f) => (f.id === next.id ? next : f)))
+      setFormFields((prev) => prev.map((f) => (f.id === next.id ? next : f)))
     }
   }
 
@@ -1936,18 +1939,18 @@ function FormsPageInner() {
     const fieldStyles = field.styles || {}
 
     if (field.type === 'heading') {
-      const headingParts = [
-        `margin: 0 0 1rem 0`,
-        `font-size: ${fieldStyles.fontSize || '1.5rem'}`,
-        `font-weight: ${fieldStyles.fontWeight || '600'}`,
-        `color: ${fieldStyles.color || '#0f172a'}`,
-        `line-height: 1.3`,
-      ]
-      if (fieldStyles.fontFamily) headingParts.push(`font-family: ${fieldStyles.fontFamily}`)
-      if (fieldStyles.textAlign) headingParts.push(`text-align: ${fieldStyles.textAlign}`)
-      if (fieldStyles.letterSpacing) headingParts.push(`letter-spacing: ${fieldStyles.letterSpacing}`)
-      if (fieldStyles.textTransform) headingParts.push(`text-transform: ${fieldStyles.textTransform}`)
-      return `<h2 style="${headingParts.join('; ')}">${escapeHtmlAttr(field.label || 'Heading')}</h2>`
+      const tag = resolveHeadingTag(field.headingLevel)
+      const box = buildHeadingBoxStyle(fieldStyles)
+      const text = buildHeadingTextStyle(fieldStyles)
+      const boxCss = Object.entries(box)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}: ${v}`)
+        .join('; ')
+      const textCss = Object.entries(text)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}: ${v}`)
+        .join('; ')
+      return `<div style="${boxCss}; margin-bottom: 1rem"><${tag} style="${textCss}">${escapeHtmlAttr(field.label || 'Heading')}</${tag}></div>`
     }
 
     if (field.type === 'captcha') {
@@ -2394,20 +2397,14 @@ ${getFormPhoneExportRuntimeScript()}
     }
 
     if (field.type === 'heading') {
+      const Tag = resolveHeadingTag(field.headingLevel)
       return (
         <div key={field.id} style={{ marginBottom: '1rem' }}>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: fieldStyles.fontSize || '1.5rem',
-              fontWeight: fieldStyles.fontWeight || 600,
-              color: fieldStyles.color || '#0f172a',
-              fontFamily: fieldStyles.fontFamily,
-              textAlign: fieldStyles.textAlign,
-            }}
-          >
-            {field.label || 'Heading'}
-          </h2>
+          <div style={buildHeadingBoxStyle(fieldStyles)}>
+            <Tag style={buildHeadingTextStyle(fieldStyles)}>
+              {field.label || 'Heading'}
+            </Tag>
+          </div>
         </div>
       )
     }

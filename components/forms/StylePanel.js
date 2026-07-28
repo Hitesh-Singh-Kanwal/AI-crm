@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { extractLeadReasonsList } from '@/app/marketing/email-builder/emailBuilderApi'
@@ -15,6 +16,7 @@ import {
   DEFAULT_PHONE_COUNTRY_ISO,
   getPhoneCountryCodeOptions,
 } from '@/lib/phone-country-codes'
+import { HEADING_LEVELS } from '@/lib/form-heading-styles'
 
 const fontFamilies = [
   'Arial',
@@ -251,6 +253,72 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
             className="border-border bg-background text-sm h-9"
           />
         </div>
+        {field.type === 'heading' ? (
+          <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground font-medium">Heading level</Label>
+              <Select
+                value={field.headingLevel || 'h2'}
+                onChange={(e) => {
+                  const level = e.target.value
+                  const meta = HEADING_LEVELS.find((h) => h.value === level)
+                  handleFieldUpdate({
+                    ...field,
+                    headingLevel: level,
+                    styles: {
+                      ...styles,
+                      fontSize: meta?.defaultSize || styles.fontSize || '24px',
+                    },
+                  })
+                }}
+                className="border-border bg-background text-sm h-9"
+              >
+                {HEADING_LEVELS.map((h) => (
+                  <option key={h.value} value={h.value}>
+                    {h.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground font-medium">Position</Label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  { value: 'left', label: 'Left', Icon: AlignLeft },
+                  { value: 'center', label: 'Middle', Icon: AlignCenter },
+                  { value: 'right', label: 'Right', Icon: AlignRight },
+                ].map(({ value, label, Icon }) => {
+                  const active = (styles.blockAlign || styles.textAlign || 'left') === value
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        onStyleChange({
+                          ...field,
+                          styles: {
+                            ...styles,
+                            textAlign: value,
+                            blockAlign: value,
+                          },
+                        })
+                      }}
+                      className={cn(
+                        'flex items-center justify-center gap-1.5 rounded-md border px-2 py-2 text-xs font-medium transition-colors',
+                        active
+                          ? 'border-sky-500 bg-sky-50 text-sky-800'
+                          : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        ) : null}
         {field.type !== 'submit' &&
         field.type !== 'heading' &&
         field.type !== 'captcha' &&
@@ -566,11 +634,34 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                   className="border-border bg-muted/50 focus:bg-background text-sm"
                 />
               </div>
+              {field.type === 'heading' ? (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Line Height</Label>
+                  <Input
+                    type="number"
+                    step="0.05"
+                    value={styles.lineHeight ? parseFloat(String(styles.lineHeight).replace(/px$/, '')) : ''}
+                    onChange={(e) => updateStyle('lineHeight', e.target.value || '')}
+                    placeholder="1.3"
+                    className="border-border bg-muted/50 focus:bg-background text-sm"
+                  />
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Text Align</Label>
                 <Select
                   value={styles.textAlign || 'left'}
-                  onChange={(e) => updateStyle('textAlign', e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (field.type === 'heading') {
+                      onStyleChange({
+                        ...field,
+                        styles: { ...styles, textAlign: value, blockAlign: value },
+                      })
+                    } else {
+                      updateStyle('textAlign', value)
+                    }
+                  }}
                   className="border-border bg-muted/50 focus:bg-background text-sm"
                 >
                   <option value="left">Left</option>
@@ -624,18 +715,41 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                 <div className="flex gap-2">
                   <Input
                     type="color"
-                    value={styles.backgroundColor || '#ffffff'}
+                    value={
+                      styles.backgroundColor &&
+                      styles.backgroundColor !== 'transparent' &&
+                      /^#([0-9A-Fa-f]{6})$/.test(styles.backgroundColor)
+                        ? styles.backgroundColor
+                        : field.type === 'heading'
+                          ? '#fef08a'
+                          : '#ffffff'
+                    }
                     onChange={(e) => updateStyle('backgroundColor', e.target.value)}
                     className="h-10 w-16 border-border cursor-pointer"
+                    title="Pick background color"
                   />
                   <Input
                     type="text"
-                    value={styles.backgroundColor || '#ffffff'}
+                    value={styles.backgroundColor || (field.type === 'heading' ? '' : '#ffffff')}
                     onChange={(e) => updateStyle('backgroundColor', e.target.value)}
-                    placeholder="#ffffff"
+                    placeholder={field.type === 'heading' ? '#fef08a' : '#ffffff'}
                     className="flex-1 border-border bg-muted/50 focus:bg-background text-sm"
                   />
                 </div>
+                {field.type === 'heading' ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="text-[11px] text-sky-700 hover:underline"
+                      onClick={() => updateStyle('backgroundColor', '')}
+                    >
+                      Clear background
+                    </button>
+                    {!styles.backgroundColor || styles.backgroundColor === 'transparent' ? (
+                      <span className="text-[11px] text-muted-foreground">No background set</span>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
           )}
@@ -760,11 +874,44 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                   <Label className="text-xs text-muted-foreground">Border Radius (px)</Label>
                   <Input
                     type="number"
-                    value={styles.borderRadius ? parseFloat(styles.borderRadius.replace('px', '')) : ''}
+                    value={
+                      styles.borderRadius && styles.borderRadius !== '9999px'
+                        ? parseFloat(String(styles.borderRadius).replace('px', '')) || ''
+                        : ''
+                    }
                     onChange={(e) => updateStyle('borderRadius', e.target.value ? `${e.target.value}px` : '')}
-                    placeholder="4"
+                    placeholder={styles.borderRadius === '9999px' ? 'Full' : '4'}
                     className="border-border bg-muted/50 focus:bg-background text-sm"
                   />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Corner round</Label>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[
+                    { label: 'None', value: '' },
+                    { label: 'Soft', value: '4px' },
+                    { label: 'Med', value: '8px' },
+                    { label: 'Large', value: '16px' },
+                    { label: 'Round', value: '9999px' },
+                  ].map(({ label, value }) => {
+                    const active = (styles.borderRadius || '') === value
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => updateStyle('borderRadius', value)}
+                        className={cn(
+                          'rounded-md border px-1 py-1.5 text-[11px] font-medium transition-colors',
+                          active
+                            ? 'border-sky-500 bg-sky-50 text-sky-800'
+                            : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
               <div className="space-y-2">
@@ -812,8 +959,20 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Width</Label>
                 <Select
-                  value={styles.width || '100%'}
-                  onChange={(e) => updateStyle('width', e.target.value)}
+                  value={
+                    ['auto', '100%', '75%', '50%', '25%'].includes(styles.width)
+                      ? styles.width
+                      : styles.width
+                        ? 'custom'
+                        : '100%'
+                  }
+                  onChange={(e) => {
+                    if (e.target.value === 'custom') {
+                      updateStyle('width', styles.width && !['auto', '100%', '75%', '50%', '25%'].includes(styles.width) ? styles.width : '300px')
+                    } else {
+                      updateStyle('width', e.target.value)
+                    }
+                  }}
                   className="border-border bg-muted/50 focus:bg-background text-sm"
                 >
                   <option value="auto">Auto</option>
@@ -821,8 +980,65 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                   <option value="75%">75%</option>
                   <option value="50%">50%</option>
                   <option value="25%">25%</option>
+                  <option value="custom">Custom</option>
                 </Select>
+                {styles.width && !['auto', '100%', '75%', '50%', '25%'].includes(styles.width) ? (
+                  <Input
+                    type="text"
+                    value={styles.width}
+                    onChange={(e) => updateStyle('width', e.target.value)}
+                    placeholder="300px or 40%"
+                    className="border-border bg-muted/50 focus:bg-background text-sm"
+                  />
+                ) : null}
               </div>
+              {field.type === 'heading' ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Height (px)</Label>
+                      <Input
+                        type="number"
+                        value={styles.height ? parseFloat(String(styles.height).replace('px', '')) : ''}
+                        onChange={(e) => updateStyle('height', e.target.value ? `${e.target.value}px` : '')}
+                        placeholder="Auto"
+                        className="border-border bg-muted/50 focus:bg-background text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Min height (px)</Label>
+                      <Input
+                        type="number"
+                        value={styles.minHeight ? parseFloat(String(styles.minHeight).replace('px', '')) : ''}
+                        onChange={(e) => updateStyle('minHeight', e.target.value ? `${e.target.value}px` : '')}
+                        placeholder="0"
+                        className="border-border bg-muted/50 focus:bg-background text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Block position</Label>
+                    <Select
+                      value={styles.blockAlign || styles.textAlign || 'left'}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        onStyleChange({
+                          ...field,
+                          styles: { ...styles, blockAlign: value, textAlign: value },
+                        })
+                      }}
+                      className="border-border bg-muted/50 focus:bg-background text-sm"
+                    >
+                      <option value="left">Left</option>
+                      <option value="center">Middle</option>
+                      <option value="right">Right</option>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      Positions the heading block when width is less than 100%.
+                    </p>
+                  </div>
+                </>
+              ) : null}
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Display</Label>
                 <Select
@@ -836,19 +1052,21 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                   <option value="flex">Flex</option>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Position</Label>
-                <Select
-                  value={styles.position || 'static'}
-                  onChange={(e) => updateStyle('position', e.target.value)}
-                  className="border-border bg-muted/50 focus:bg-background text-sm"
-                >
-                  <option value="static">Static</option>
-                  <option value="relative">Relative</option>
-                  <option value="absolute">Absolute</option>
-                  <option value="fixed">Fixed</option>
-                </Select>
-              </div>
+              {field.type !== 'heading' ? (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Position</Label>
+                  <Select
+                    value={styles.position || 'static'}
+                    onChange={(e) => updateStyle('position', e.target.value)}
+                    className="border-border bg-muted/50 focus:bg-background text-sm"
+                  >
+                    <option value="static">Static</option>
+                    <option value="relative">Relative</option>
+                    <option value="absolute">Absolute</option>
+                    <option value="fixed">Fixed</option>
+                  </Select>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
