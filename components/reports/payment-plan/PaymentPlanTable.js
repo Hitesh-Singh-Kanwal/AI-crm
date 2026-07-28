@@ -2,6 +2,7 @@
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
+import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 
 export const PAYMENT_PLAN_COLUMNS = [
   { key: 'studentName', label: 'Student Name' },
@@ -34,7 +35,7 @@ export function PaymentPlanTable({ rows, onRowClick }) {
           {rows.map((row) => (
             <TableRow key={row.id} className={reportTableRowClass} onClick={() => onRowClick(row)}>
               {PAYMENT_PLAN_COLUMNS.map((col) => (
-                <TableCell key={col.key} className={reportTableCellClass}>{row[col.key]}</TableCell>
+                <TableCell key={col.key} className={reportTableCellClass}>{formatReportCellValue(row[col.key], col)}</TableCell>
               ))}
             </TableRow>
           ))}

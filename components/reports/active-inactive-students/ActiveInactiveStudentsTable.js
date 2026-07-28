@@ -2,6 +2,7 @@
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
+import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 
 export const ACTIVE_INACTIVE_STUDENTS_COLUMNS = [
   { key: 'studentName', label: 'Student Name' },
@@ -35,7 +36,7 @@ export function ActiveInactiveStudentsTable({ rows, onRowClick }) {
           {rows.map((row) => (
             <TableRow key={row.id} className={reportTableRowClass} onClick={() => onRowClick(row)}>
               {ACTIVE_INACTIVE_STUDENTS_COLUMNS.map((col) => (
-                <TableCell key={col.key} className={reportTableCellClass}>{row[col.key]}</TableCell>
+                <TableCell key={col.key} className={reportTableCellClass}>{formatReportCellValue(row[col.key], col)}</TableCell>
               ))}
             </TableRow>
           ))}

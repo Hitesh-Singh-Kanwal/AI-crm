@@ -2,6 +2,7 @@
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
+import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 
 export const REVENUE_BY_TEACHER_COLUMNS = [
   { key: 'entityName', label: 'Name' },
@@ -33,7 +34,7 @@ export function RevenueByTeacherTable({ rows, onRowClick }) {
           {rows.map((row) => (
             <TableRow key={row.id} className={reportTableRowClass} onClick={() => onRowClick(row)}>
               {REVENUE_BY_TEACHER_COLUMNS.map((col) => (
-                <TableCell key={col.key} className={reportTableCellClass}>{row[col.key]}</TableCell>
+                <TableCell key={col.key} className={reportTableCellClass}>{formatReportCellValue(row[col.key], col)}</TableCell>
               ))}
             </TableRow>
           ))}
