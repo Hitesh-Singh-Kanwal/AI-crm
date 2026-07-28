@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck } from 'lucide-react'
+import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck, Image, Volume2, Calculator, EyeOff } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -40,6 +40,11 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { extractLeadReasonsList } from '../email-builder/emailBuilderApi'
 import { SOURCE_OPTIONS } from '@/lib/dynamic-list-constants'
+import {
+  DynamicCaptcha,
+  getCaptchaExportMarkup,
+  getCaptchaExportRuntimeScript,
+} from '@/components/forms/DynamicCaptcha'
 
 const UTM_SOURCE_FIELD_OPTIONS = SOURCE_OPTIONS.map((value) => ({
   value,
@@ -151,14 +156,36 @@ const FORM_ELEMENTS = [
     label: 'Heading',
     icon: Heading,
   },
-  {
-    id: 'captcha',
-    type: 'captcha',
-    name: 'Captcha',
-    label: 'Captcha',
-    icon: ShieldCheck,
-  },
 ]
+
+/** Captcha variants — pick one when adding Captcha */
+const CAPTCHA_TYPES = [
+  { id: 'images', name: 'Images', label: 'Select the matching images', icon: Image },
+  { id: 'robot', name: "I'm not a robot", label: "I'm not a robot", icon: ShieldCheck },
+  { id: 'audio', name: 'Audio', label: 'Listen and type the code', icon: Volume2 },
+  { id: 'math', name: 'Math-based', label: 'Solve the math problem', icon: Calculator },
+  { id: 'invisible', name: 'Invisible / Score-based', label: 'Protected by invisible captcha', icon: EyeOff },
+  { id: 'text', name: 'Text-based', label: 'Enter the characters you see', icon: Type },
+]
+
+function getCaptchaTypeMeta(captchaType) {
+  return CAPTCHA_TYPES.find((t) => t.id === captchaType) || CAPTCHA_TYPES.find((t) => t.id === 'robot')
+}
+
+function createCaptchaField(captchaType = 'robot') {
+  const meta = getCaptchaTypeMeta(captchaType)
+  return {
+    id: `captcha-${Date.now()}`,
+    type: 'captcha',
+    name: 'captcha',
+    captchaType: meta.id,
+    label: meta.label,
+    placeholder: '',
+    required: true,
+    propertyKind: 'layout',
+    styles: {},
+  }
+}
 
 const templateFields = {
   f1: [
@@ -460,18 +487,7 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
       )
     }
     if (field.type === 'captcha') {
-      return (
-        <div className="pointer-events-none flex items-center gap-3 rounded-md border border-slate-300 bg-slate-50 px-3 py-3">
-          <div className="flex h-5 w-5 items-center justify-center rounded border border-slate-400 bg-white" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-slate-700">
-              {field.label || "I'm not a robot"}
-            </p>
-            <p className="text-[11px] text-slate-400">Captcha verification</p>
-          </div>
-          <ShieldCheck className="h-6 w-6 shrink-0 text-slate-400" />
-        </div>
-      )
+      return <DynamicCaptcha field={field} interactive />
     }
     if (field.type === 'textarea') {
       return (
@@ -572,6 +588,13 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
               {field.defaultValue && !field.submitHidden ? (
                 <FormFieldTag tone="slate">Default: {defaultDisplayLabel}</FormFieldTag>
               ) : null}
+            </div>
+          ) : field.type === 'captcha' ? (
+            <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <span className="text-sm font-semibold text-slate-900">Captcha</span>
+              <FormFieldTag tone="violet">
+                {getCaptchaTypeMeta(field.captchaType).name}
+              </FormFieldTag>
             </div>
           ) : null}
 
@@ -1105,6 +1128,7 @@ function FormsPageInner() {
   const [pendingFormType, setPendingFormType] = useState('lead')
   const [propertySearch, setPropertySearch] = useState('')
   const [showCustomFieldTypes, setShowCustomFieldTypes] = useState(false)
+  const [showCaptchaTypes, setShowCaptchaTypes] = useState(false)
 
   const [formFields, setFormFields] = useState(() => buildInitialFormFields('lead', [], []))
   const [selectedField, setSelectedField] = useState(null)
@@ -1702,27 +1726,33 @@ function FormsPageInner() {
       }
       setFormFields((prev) => [...prev, newField])
       setSelectedField(newField.id)
-      return
     }
-    if (element.type === 'captcha') {
-      const already = formFields.some((f) => f.type === 'captcha')
-      if (already) {
-        toast.error({ title: 'Already added', message: 'Captcha is already on this form.' })
+  }
+
+  const addCaptchaField = (captchaType = 'robot') => {
+    const already = formFields.find((f) => f.type === 'captcha')
+    if (already) {
+      const meta = getCaptchaTypeMeta(captchaType)
+      if (already.captchaType === meta.id) {
+        setSelectedField(already.id)
+        setShowCaptchaTypes(false)
         return
       }
-      const newField = {
-        id: `captcha-${Date.now()}`,
-        type: 'captcha',
-        name: 'captcha',
-        label: "I'm not a robot",
-        placeholder: '',
+      const updated = {
+        ...already,
+        captchaType: meta.id,
+        label: meta.label,
         required: true,
-        propertyKind: 'layout',
-        styles: {},
       }
-      setFormFields((prev) => [...prev, newField])
-      setSelectedField(newField.id)
+      setFormFields((prev) => prev.map((f) => (f.id === already.id ? updated : f)))
+      setSelectedField(already.id)
+      setShowCaptchaTypes(false)
+      return
     }
+    const newField = createCaptchaField(captchaType)
+    setFormFields((prev) => [...prev, newField])
+    setSelectedField(newField.id)
+    setShowCaptchaTypes(false)
   }
 
   const addField = (type) => {
@@ -1801,6 +1831,12 @@ function FormsPageInner() {
 
     if (activeIdStr.startsWith('form-el-')) {
       const elId = activeIdStr.replace('form-el-', '')
+      if (elId.startsWith('captcha-')) {
+        const captchaType = elId.replace('captcha-', '')
+        addCaptchaField(captchaType)
+        setActiveId(null)
+        return
+      }
       const element = FORM_ELEMENTS.find((e) => e.id === elId)
       if (element) addFormElement(element)
       setActiveId(null)
@@ -1846,6 +1882,10 @@ function FormsPageInner() {
         next.metadataKey = key || next.metadataKey
         next.name = `metadata.${next.metadataKey}`
       }
+      // Captcha is always required when present on the form
+      if (next.type === 'captcha') {
+        next.required = true
+      }
       setFormFields(formFields.map((f) => (f.id === next.id ? next : f)))
     }
   }
@@ -1887,14 +1927,7 @@ function FormsPageInner() {
     }
 
     if (field.type === 'captcha') {
-      const captchaId = escapeHtmlAttr(field.id || 'captcha')
-      return `
-      <div style="margin-bottom: 1rem;">
-        <label for="${captchaId}" style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; border:1px solid #cbd5e1; border-radius:0.5rem; background:#f8fafc; cursor:pointer;">
-          <input type="checkbox" name="captcha" id="${captchaId}" value="1" ${field.required ? 'required' : ''} style="width:1.125rem; height:1.125rem;" />
-          <span style="font-size:0.875rem; font-weight:500; color:#334155;">${escapeHtmlAttr(field.label || "I'm not a robot")}</span>
-        </label>
-      </div>`
+      return getCaptchaExportMarkup(field)
     }
 
     const styleString = `
@@ -2137,11 +2170,16 @@ ${gtagScript}
     </form>
   </div>
   <script>
+${getCaptchaExportRuntimeScript()}
     (function() {
       const form = document.getElementById('exportedForm');
       if (form) {
         form.addEventListener('submit', async function(event) {
           event.preventDefault();
+
+          if (typeof window.__crmValidateCaptchas === 'function' && !window.__crmValidateCaptchas()) {
+            return;
+          }
 
           // Capture page URL (prefer top-level URL; fallback to referrer / iframe URL)
           let capturedUrl = '';
@@ -2191,6 +2229,7 @@ ${gtagScript}
           payload.organisationID = pickFirst(payload.organisationID);
           payload.formID = pickFirst(payload.formID);
           delete payload.captcha;
+          delete payload.captcha_images;
 
           try {
             const res = await fetch('https://98.88.253.231.sslip.io/api/lead/form', {
@@ -2333,12 +2372,7 @@ ${gtagScript}
     if (field.type === 'captcha') {
       return (
         <div key={field.id} style={{ marginBottom: '1rem' }}>
-          <label className="flex cursor-pointer items-center gap-3 rounded-md border border-slate-300 bg-slate-50 px-3 py-3">
-            <input type="checkbox" className="h-4 w-4" required={field.required} />
-            <span className="text-sm font-medium text-slate-700">
-              {field.label || "I'm not a robot"}
-            </span>
-          </label>
+          <DynamicCaptcha field={field} interactive />
         </div>
       )
     }
@@ -2748,15 +2782,22 @@ ${gtagScript}
                           el.name.toLowerCase().includes(q) ||
                           el.type.toLowerCase().includes(q)
                       )
+                      const showCaptcha =
+                        !q ||
+                        'captcha'.includes(q) ||
+                        CAPTCHA_TYPES.some(
+                          (t) =>
+                            t.name.toLowerCase().includes(q) || t.id.toLowerCase().includes(q)
+                        )
                       const showCustom =
                         !q ||
                         'custom'.includes(q) ||
                         'metadata'.includes(q) ||
                         'add custom'.includes(q)
-                      const captchaUsed = formFields.some((f) => f.type === 'captcha')
+                      const currentCaptchaType = formFields.find((f) => f.type === 'captcha')?.captchaType
                       return (
                         <div className="space-y-1">
-                          {leadProps.length === 0 && formEls.length === 0 && !showCustom ? (
+                          {leadProps.length === 0 && formEls.length === 0 && !showCaptcha && !showCustom ? (
                             <p className="px-1 py-2 text-xs text-slate-400">No matches</p>
                           ) : null}
 
@@ -2773,16 +2814,70 @@ ${gtagScript}
                             <DraggableFormElement
                               key={element.id}
                               element={element}
-                              used={element.type === 'captcha' && captchaUsed}
                               onAdd={addFormElement}
                             />
                           ))}
+
+                          {showCaptcha ? (
+                            <div className="space-y-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowCaptchaTypes((v) => !v)
+                                  setShowCustomFieldTypes(false)
+                                }}
+                                className={cn(
+                                  'flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm font-medium transition-colors',
+                                  showCaptchaTypes
+                                    ? 'border-sky-300 bg-sky-50 text-slate-800'
+                                    : 'cursor-pointer border-transparent bg-sky-50/70 text-slate-700 hover:border-sky-200 hover:bg-sky-50'
+                                )}
+                              >
+                                <ShieldCheck className="h-4 w-4 shrink-0 text-slate-500" />
+                                <span className="flex-1 text-left">Captcha</span>
+                                <ChevronDown
+                                  className={cn(
+                                    'h-3.5 w-3.5 text-slate-400 transition-transform',
+                                    showCaptchaTypes && 'rotate-180'
+                                  )}
+                                />
+                              </button>
+
+                              {showCaptchaTypes ? (
+                                <div className="ml-1 space-y-1 border-l-2 border-sky-100 pl-2">
+                                  {CAPTCHA_TYPES.map((captchaType) => {
+                                    const IconComponent = captchaType.icon
+                                    const selected = currentCaptchaType === captchaType.id
+                                    return (
+                                      <button
+                                        key={captchaType.id}
+                                        type="button"
+                                        onClick={() => addCaptchaField(captchaType.id)}
+                                        className={cn(
+                                          'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
+                                          selected
+                                            ? 'bg-sky-100 text-slate-800'
+                                            : 'text-slate-700 hover:bg-sky-50'
+                                        )}
+                                      >
+                                        <IconComponent className="h-4 w-4 shrink-0 text-slate-500" />
+                                        <span className="text-left font-medium">{captchaType.name}</span>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
 
                           {showCustom ? (
                             <div className="space-y-1 pt-1">
                               <button
                                 type="button"
-                                onClick={() => setShowCustomFieldTypes((v) => !v)}
+                                onClick={() => {
+                                  setShowCustomFieldTypes((v) => !v)
+                                  setShowCaptchaTypes(false)
+                                }}
                                 className={cn(
                                   'flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm font-medium transition-colors',
                                   showCustomFieldTypes
@@ -3508,7 +3603,8 @@ ${gtagScript}
               <div className="bg-white rounded-lg shadow-sm border border-slate-200" style={{ maxWidth: '600px', margin: '0 auto', overflow: 'hidden' }}>
                 <iframe
                   title="Form Preview"
-                  sandbox="allow-scripts allow-forms allow-same-origin"
+                  sandbox="allow-scripts allow-forms allow-same-origin allow-modals"
+                  allow="autoplay; speaker-selection"
                   srcDoc={generateExportedHTML()}
                   style={{ width: '100%', height: '620px', border: 0, display: 'block' }}
                 />

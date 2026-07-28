@@ -436,17 +436,42 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
           </>
         )}
         {field.type === 'captcha' ? (
-          <div className="flex items-center gap-2 pt-2 border-t border-border">
-            <input
-              type="checkbox"
-              id="required-captcha"
-              checked={field.required}
-              onChange={(e) => handleFieldUpdate({ ...field, required: e.target.checked })}
-              className="text-muted-foreground"
-            />
-            <Label htmlFor="required-captcha" className="text-xs text-foreground">
-              Required
-            </Label>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground font-medium">Captcha type</Label>
+              <Select
+                value={field.captchaType || 'robot'}
+                onChange={(e) => {
+                  const captchaType = e.target.value
+                  const meta =
+                    [
+                      { id: 'images', name: 'Images', label: 'Select the matching images' },
+                      { id: 'robot', name: "I'm not a robot", label: "I'm not a robot" },
+                      { id: 'audio', name: 'Audio', label: 'Listen and type the code' },
+                      { id: 'math', name: 'Math-based', label: 'Solve the math problem' },
+                      { id: 'invisible', name: 'Invisible / Score-based', label: 'Protected by invisible captcha' },
+                      { id: 'text', name: 'Text-based', label: 'Enter the characters you see' },
+                    ].find((t) => t.id === captchaType) || { id: 'robot', label: "I'm not a robot" }
+                  handleFieldUpdate({
+                    ...field,
+                    captchaType: meta.id,
+                    label: meta.label,
+                    required: true,
+                  })
+                }}
+                className="border-border bg-background text-sm h-9"
+              >
+                <option value="images">Images</option>
+                <option value="robot">I&apos;m not a robot</option>
+                <option value="audio">Audio</option>
+                <option value="math">Math-based</option>
+                <option value="invisible">Invisible / Score-based</option>
+                <option value="text">Text-based</option>
+              </Select>
+            </div>
+            <p className="text-[11px] text-muted-foreground border-t border-border pt-2">
+              Captcha is always required. Visitors must complete it before the form can be submitted.
+            </p>
           </div>
         ) : null}
       </TabsContent>
