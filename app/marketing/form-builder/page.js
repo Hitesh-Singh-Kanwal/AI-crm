@@ -437,6 +437,24 @@ function isCanvasField(field) {
   return field && !isSystemHiddenField(field) && !isPhoneWidgetJunkField(field)
 }
 
+/** Keep headings above all other visible fields (system hiddens stay first). */
+function pinHeadingsToTop(fields = []) {
+  const system = []
+  const headings = []
+  const rest = []
+  for (const field of fields || []) {
+    if (!field) continue
+    if (isSystemHiddenField(field) || field.name === 'organisationID' || field.name === 'formID') {
+      system.push(field)
+    } else if (field.type === 'heading') {
+      headings.push(field)
+    } else {
+      rest.push(field)
+    }
+  }
+  return [...system, ...headings, ...rest]
+}
+
 function FormTypePreview({ formType }) {
   if (formType === 'lead') {
     const previewFields = [
@@ -2043,7 +2061,7 @@ function FormsPageInner() {
         ...layoutExtras,
       ])
 
-      setFormFields(nextFields)
+      setFormFields(pinHeadingsToTop(nextFields))
       const meta = parseGlobalStylesMeta(htmlCode)
       // Always replace — form CSS is per-form and must not carry over from the previous form
       setGlobalStyles(meta.styles && typeof meta.styles === 'object' ? { ...meta.styles } : {})
@@ -2076,14 +2094,14 @@ function FormsPageInner() {
       locked: false,
       required: false,
     })
-    setFormFields((prev) => [...prev, newField])
+    setFormFields((prev) => pinHeadingsToTop([...prev, newField]))
     setSelectedField(newField.id)
   }
 
   const addMetadataField = (type = 'text') => {
     const typeMeta = CUSTOM_FIELD_TYPES.find((t) => t.id === type)
     const newField = createMetadataField(type, typeMeta?.name || 'Custom field')
-    setFormFields((prev) => [...prev, newField])
+    setFormFields((prev) => pinHeadingsToTop([...prev, newField]))
     setSelectedField(newField.id)
     setShowCustomFieldTypes(false)
   }
@@ -2105,7 +2123,8 @@ function FormsPageInner() {
           width: '100%',
         },
       }
-      setFormFields((prev) => [...prev, newField])
+      // Always insert heading at the top of the form (after system fields)
+      setFormFields((prev) => pinHeadingsToTop([newField, ...prev]))
       setSelectedField(newField.id)
     }
   }
@@ -2131,7 +2150,7 @@ function FormsPageInner() {
       return
     }
     const newField = createCaptchaField(captchaType)
-    setFormFields((prev) => [...prev, newField])
+    setFormFields((prev) => pinHeadingsToTop([...prev, newField]))
     setSelectedField(newField.id)
     setShowCaptchaTypes(false)
   }
@@ -2163,7 +2182,7 @@ function FormsPageInner() {
             ? [{ label: 'Option 1', value: 'option_1' }]
             : [],
     }
-    setFormFields([...formFields, newField])
+    setFormFields((prev) => pinHeadingsToTop([...prev, newField]))
     setSelectedField(newField.id)
   }
 
@@ -2258,7 +2277,7 @@ function FormsPageInner() {
       const overIndex = formFields.findIndex((item) => item.id === over.id)
 
       if (activeIndex !== -1 && overIndex !== -1) {
-        setFormFields((items) => arrayMove(items, activeIndex, overIndex))
+        setFormFields((items) => pinHeadingsToTop(arrayMove(items, activeIndex, overIndex)))
       }
     }
 
