@@ -45,7 +45,7 @@ const navItems = [
     iconSize: 20,
     labelStyle: 'regular',
     children: [
-      { name: 'Overview', href: '/reports' },
+      { name: 'All Reports', href: '/reports' },
       { name: "Teacher's Commissions", href: '/reports/teacher-commissions' },
       { name: 'Callback Report', href: '/reports/callbacks' },
     ],

@@ -25,7 +25,7 @@ function EmailsPageInner() {
   const tabValue = useMemo(() => activeTab, [activeTab])
 
   return (
-    <MainLayout title="Email Builder" subtitle="Create and send beautiful email campaigns">
+    <MainLayout title="Email Builder" subtitle="Design templates, paste HTML, and track opens & clicks">
       {/* Tabs provider only (no duplicate visible tab list here). */}
       <div className="h-full min-h-full flex flex-col">
       <Tabs value={tabValue} onValueChange={setActiveTab} className="w-full h-full min-h-full flex flex-col">
@@ -51,7 +51,7 @@ export default function EmailsPage() {
   return (
     <Suspense
       fallback={
-        <MainLayout title="Email Builder" subtitle="Create and send beautiful email campaigns">
+        <MainLayout title="Email Builder" subtitle="Design templates, paste HTML, and track opens & clicks">
           <div className="flex items-center justify-center py-20">
             <GlobalLoader variant="inline" size="md" />
           </div>

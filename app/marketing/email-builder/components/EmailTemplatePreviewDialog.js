@@ -1,18 +1,24 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Code2, Eye } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ArrowLeft, Code2, Eye, Pencil } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import api from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { formatLeadStageLabel } from '@/lib/lead-stages'
 import EmailHtmlPanel from './EmailHtmlPanel'
 import EmailPreviewFrame from './EmailPreviewFrame'
 
-export default function EmailTemplatePreviewDialog({ open, onClose, templateId }) {
+export default function EmailTemplatePreviewDialog({
+  open = true,
+  onClose,
+  templateId,
+  onEdit,
+}) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [email, setEmail] = useState(null)
@@ -39,8 +45,8 @@ export default function EmailTemplatePreviewDialog({ open, onClose, templateId }
   }, [templateId])
 
   useEffect(() => {
-    if (open) fetchTemplate()
-  }, [open, fetchTemplate])
+    if (open && templateId) fetchTemplate()
+  }, [open, templateId, fetchTemplate])
 
   useEffect(() => {
     if (!open) {
@@ -50,79 +56,113 @@ export default function EmailTemplatePreviewDialog({ open, onClose, templateId }
     }
   }, [open])
 
+  if (!open || !templateId) return null
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="4xl">
-      <DialogContent className="max-h-[92vh] overflow-hidden flex flex-col p-0" onClose={onClose}>
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/60 shrink-0">
-          <DialogTitle>Email preview</DialogTitle>
-          {!loading && !error && email ? (
-            <div className="flex flex-wrap items-center gap-2 mt-2">
-              <Badge variant="outline" className="font-normal">
-                {email.subject || 'No name'}
-              </Badge>
-              {email.code ? (
-                <Badge variant="outline" className="font-normal font-mono">
-                  {String(email.code)}
-                </Badge>
-              ) : null}
-              {email.leadStage ? (
-                <Badge variant="secondary" className="font-normal">
-                  Stage: {formatLeadStageLabel(email.leadStage)}
-                </Badge>
-              ) : null}
-              {email.reason ? (
-                <Badge variant="secondary" className="font-normal">
-                  Reason: {email.reason}
-                </Badge>
-              ) : null}
-              {email.body ? (
-                <Badge variant="secondary" className="font-normal max-w-[280px] truncate">
-                  {email.body}
-                </Badge>
+    <div className="h-[calc(100vh-148px)] flex flex-col min-h-0">
+      <Card className="flex flex-col flex-1 min-h-0 border-slate-200/80 shadow-sm overflow-hidden">
+        <CardHeader className="flex-shrink-0 border-b py-2 px-3 bg-white">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              className="h-8 shrink-0"
+            >
+              <ArrowLeft className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Back</span>
+            </Button>
+
+            <Tabs value={viewTab} onValueChange={setViewTab} className="min-w-0">
+              <TabsList className="h-9 p-0.5 grid grid-cols-2 gap-0.5 bg-slate-100/90 rounded-lg">
+                <TabsTrigger
+                  value="preview"
+                  className={cn(
+                    'h-8 px-3 rounded-md text-slate-600 gap-1.5',
+                    'data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm',
+                  )}
+                >
+                  <Eye className="h-3.5 w-3.5 shrink-0" />
+                  <span className="text-xs font-semibold">Preview</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="html"
+                  className={cn(
+                    'h-8 px-3 rounded-md text-slate-600 gap-1.5',
+                    'data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm',
+                  )}
+                >
+                  <Code2 className="h-3.5 w-3.5 shrink-0" />
+                  <span className="text-xs font-semibold">HTML</span>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            <div className="min-w-0 flex-1 hidden md:flex items-center gap-2">
+              {!loading && !error && email ? (
+                <>
+                  <p className="text-sm font-medium text-slate-800 truncate">
+                    {email.subject || 'Untitled template'}
+                  </p>
+                  {email.code ? (
+                    <Badge variant="outline" className="font-mono text-[10px] shrink-0">
+                      {String(email.code)}
+                    </Badge>
+                  ) : null}
+                  {email.leadStage ? (
+                    <Badge variant="secondary" className="text-[10px] shrink-0 hidden lg:inline-flex">
+                      {formatLeadStageLabel(email.leadStage)}
+                    </Badge>
+                  ) : null}
+                </>
               ) : null}
             </div>
-          ) : null}
-        </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
+            {onEdit ? (
+              <Button
+                type="button"
+                variant="gradient"
+                size="sm"
+                className="h-8 shrink-0 ml-auto"
+                disabled={loading || !!error || !email}
+                onClick={() => onEdit(templateId)}
+              >
+                <Pencil className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Edit</span>
+              </Button>
+            ) : null}
+          </div>
+        </CardHeader>
+
+        <CardContent
+          className="flex-1 min-h-0 flex flex-col px-3 pt-2 pb-3 overflow-hidden bg-slate-50/40"
+          style={{ overscrollBehavior: 'contain' }}
+        >
           {loading && (
-            <div className="flex justify-center py-14">
+            <div className="flex-1 flex items-center justify-center">
               <LoadingSpinner size="lg" text="Loading email…" />
             </div>
           )}
 
           {error && !loading && (
-            <div className="py-6 text-center">
+            <div className="flex-1 flex flex-col items-center justify-center gap-3">
               <p className="text-sm font-medium text-destructive">{error}</p>
-              <div className="mt-4 flex justify-center">
-                <Button variant="outline" onClick={fetchTemplate}>
-                  Retry
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" onClick={fetchTemplate}>
+                Retry
+              </Button>
             </div>
           )}
 
           {!loading && !error && email && (
-            <div className="space-y-4">
-              <Tabs value={viewTab} onValueChange={setViewTab} className="w-full">
-                <TabsList className="w-full max-w-sm h-auto p-1 grid grid-cols-2 gap-1 bg-slate-100/80">
-                  <TabsTrigger value="preview" className="gap-2 py-2 text-xs font-semibold">
-                    <Eye className="h-3.5 w-3.5" />
-                    Rendered
-                  </TabsTrigger>
-                  <TabsTrigger value="html" className="gap-2 py-2 text-xs font-semibold">
-                    <Code2 className="h-3.5 w-3.5" />
-                    HTML source
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-
+            <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden">
               {viewTab === 'preview' && (
                 <EmailPreviewFrame
                   html={email.htmlBody}
+                  subject={email.subject}
                   emptyMessage="This template has no HTML body."
                   fullWidth
-                  className="min-h-[400px]"
+                  className="h-full min-h-[calc(100vh-220px)]"
                 />
               )}
 
@@ -131,21 +171,13 @@ export default function EmailTemplatePreviewDialog({ open, onClose, templateId }
                   htmlBody={email.htmlBody || ''}
                   readOnly
                   layout="editor-only"
-                  className="min-h-[400px]"
+                  className="h-full min-h-[calc(100vh-220px)]"
                 />
               )}
             </div>
           )}
-        </div>
-
-        {!loading && !error && email && (
-          <div className="shrink-0 flex justify-end px-6 py-4 border-t border-border/60 bg-muted/20">
-            <Button variant="outline" onClick={onClose}>
-              Close
-            </Button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
