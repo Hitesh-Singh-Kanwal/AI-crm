@@ -15,7 +15,6 @@ import api from '@/lib/api'
 import EmailTemplateEditorDialog from './EmailTemplateEditorDialog'
 import EmailTemplatePreviewDialog from './EmailTemplatePreviewDialog'
 import EmailCategoriesDialog from './EmailCategoriesDialog'
-import EmailLeadReasonsDialog from './EmailLeadReasonsDialog'
 import EmailTemplateThumbnail from './EmailTemplateThumbnail'
 import {
   extractEmailTemplatesPayload,
@@ -29,7 +28,6 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
   const [editingId, setEditingId] = useState(null)
   const [previewId, setPreviewId] = useState(null)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
-  const [reasonsOpen, setReasonsOpen] = useState(false)
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -186,7 +184,29 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
   }
 
   return (
-    <TabsContent value="templates" className="mt-6 flex-1 min-h-0 flex flex-col gap-5">
+    <TabsContent value="templates" className="mt-3 flex-1 min-h-0 flex flex-col gap-5">
+      {editingId ? (
+        <EmailTemplateEditorDialog
+          open
+          templateId={editingId}
+          onClose={() => setEditingId(null)}
+          onSaved={() => {
+            fetchTemplates()
+            onDataChanged?.()
+          }}
+        />
+      ) : previewId ? (
+        <EmailTemplatePreviewDialog
+          open
+          templateId={previewId}
+          onClose={() => setPreviewId(null)}
+          onEdit={(id) => {
+            setPreviewId(null)
+            setEditingId(id)
+          }}
+        />
+      ) : (
+        <>
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">Create, organize, and manage reusable email templates.</p>
@@ -198,10 +218,6 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
           <Button variant="outline" className="w-full sm:w-auto" onClick={() => setCategoriesOpen(true)}>
             <Tags className="h-4 w-4 mr-2" />
             Categories
-          </Button>
-          <Button variant="outline" className="w-full sm:w-auto" onClick={() => setReasonsOpen(true)}>
-            <Tags className="h-4 w-4 mr-2" />
-            Lead reasons
           </Button>
           <Button variant="gradient" className="w-full sm:w-auto" onClick={onCreateNew}>
             <Plus className="h-4 w-4 mr-2" />
@@ -218,16 +234,6 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
           onDataChanged?.()
         }}
       />
-      <EmailLeadReasonsDialog
-        open={reasonsOpen}
-        onClose={() => setReasonsOpen(false)}
-        onChanged={() => {
-          fetchTemplates()
-          onDataChanged?.()
-        }}
-      />
-      <EmailTemplateEditorDialog open={!!editingId} onClose={() => setEditingId(null)} templateId={editingId} onSaved={fetchTemplates} />
-      <EmailTemplatePreviewDialog open={!!previewId} onClose={() => setPreviewId(null)} templateId={previewId} />
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
@@ -482,6 +488,8 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
               </Button>
             </div>
           </div>
+        </>
+      )}
         </>
       )}
     </TabsContent>
