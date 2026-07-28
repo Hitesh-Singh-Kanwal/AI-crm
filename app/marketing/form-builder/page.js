@@ -60,6 +60,9 @@ import {
   buildInputReactStyle,
   buildInputCssString,
   buildLabelCssString,
+  resolveFormBackground,
+  buildFormContainerCss,
+  buildFormPageCss,
 } from '@/lib/form-global-styles'
 import FormPhoneInput, {
   getFormPhoneExportMarkup,
@@ -594,8 +597,8 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove, globalStyles
       style={style}
       onClick={() => onSelect(field.id)}
       className={cn(
-        'group relative cursor-pointer border-b border-slate-200 px-5 py-4 transition-colors last:border-b-0',
-        isSelected ? 'bg-sky-50' : 'bg-white hover:bg-slate-50/80'
+        'group relative cursor-pointer border-b border-slate-200/60 px-5 py-4 transition-colors last:border-b-0',
+        isSelected ? 'bg-sky-500/10' : 'bg-transparent hover:bg-black/[0.03]'
       )}
     >
       <div className="flex items-start gap-3">
@@ -2123,7 +2126,8 @@ function FormsPageInner() {
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background-color: #f8fafc;
+      ${buildFormPageCss(globalStyles)}
+      background-attachment: fixed;
       padding: 2rem;
       display: flex;
       justify-content: center;
@@ -2131,7 +2135,7 @@ function FormsPageInner() {
       min-height: 100vh;
     }
     .form-container {
-      background: white;
+      ${buildFormContainerCss(globalStyles)}
       padding: 2rem;
       border-radius: 0.5rem;
       box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
@@ -2969,7 +2973,12 @@ ${getFormPhoneExportRuntimeScript()}
                           </p>
                         </div>
                       ) : (
-                        <div className="m-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                        <div
+                          className="m-4 overflow-hidden rounded-lg border border-slate-200 shadow-sm"
+                          style={{
+                            background: resolveFormBackground(globalStyles).background,
+                          }}
+                        >
                           <SortableContext items={formFields.filter(isCanvasField).map((f) => f.id)} strategy={verticalListSortingStrategy}>
                             {formFields.filter(isCanvasField).map((field) => (
                               <SortableFieldItem
@@ -2989,9 +2998,15 @@ ${getFormPhoneExportRuntimeScript()}
 
                           <div
                             className={cn(
-                              'border-t border-slate-200 px-5 py-5',
-                              selectedField === 'submit-button' ? 'bg-sky-50' : 'bg-white'
+                              'border-t border-slate-200/80 px-5 py-5',
+                              selectedField === 'submit-button' && 'ring-2 ring-inset ring-sky-300'
                             )}
+                            style={{
+                              background:
+                                selectedField === 'submit-button'
+                                  ? 'rgba(224, 242, 254, 0.55)'
+                                  : 'transparent',
+                            }}
                           >
                             <div
                               onClick={() => {

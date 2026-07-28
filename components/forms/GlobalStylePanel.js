@@ -7,7 +7,12 @@ import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getGlobalStyleExcludeKey } from '@/lib/form-global-styles'
+import {
+  getGlobalStyleExcludeKey,
+  FORM_BG_PRESETS,
+  FORM_PAGE_BG_PRESETS,
+  resolveFormBackground,
+} from '@/lib/form-global-styles'
 
 const fontFamilies = [
   'Arial',
@@ -43,6 +48,7 @@ export default function GlobalStylePanel({
   onExcludeKeysChange,
 }) {
   const [expandedSections, setExpandedSections] = useState({
+    formBackground: true,
     typography: true,
     colors: true,
     spacing: false,
@@ -68,6 +74,12 @@ export default function GlobalStylePanel({
       onExcludeKeysChange([...excludeKeys, key])
     }
   }
+
+  const updateStyles = (patch) => {
+    onStylesChange({ ...styles, ...patch })
+  }
+
+  const formBgPreview = resolveFormBackground(styles)
 
   const SectionHeader = ({ title, section }) => (
     <button
@@ -109,6 +121,216 @@ export default function GlobalStylePanel({
         </TabsList>
 
         <TabsContent value="style" className="space-y-3 mt-0">
+          <div className="border-b border-border pb-2">
+            <SectionHeader title="Form background" section="formBackground" />
+            {expandedSections.formBackground && (
+              <div className="space-y-2.5 mt-2.5">
+                <div
+                  className="h-16 w-full rounded-lg border border-border shadow-inner"
+                  style={{ background: formBgPreview.background }}
+                  title="Form background preview"
+                />
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Type</Label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { id: 'solid', label: 'Solid' },
+                      { id: 'gradient', label: 'Gradient' },
+                      { id: 'preset', label: 'Preset' },
+                    ].map((opt) => {
+                      const active = (styles.formBgMode || 'solid') === opt.id
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => updateStyles({ formBgMode: opt.id })}
+                          className={cn(
+                            'rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors',
+                            active
+                              ? 'border-sky-500 bg-sky-50 text-sky-800'
+                              : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {(styles.formBgMode || 'solid') === 'solid' ? (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Form color</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="color"
+                        value={
+                          styles.formBgColor && /^#([0-9A-Fa-f]{6})$/.test(styles.formBgColor)
+                            ? styles.formBgColor
+                            : '#ffffff'
+                        }
+                        onChange={(e) => updateStyles({ formBgMode: 'solid', formBgColor: e.target.value })}
+                        className="h-10 w-16 border-border cursor-pointer"
+                      />
+                      <Input
+                        type="text"
+                        value={styles.formBgColor || ''}
+                        onChange={(e) => updateStyles({ formBgMode: 'solid', formBgColor: e.target.value })}
+                        placeholder="#ffffff"
+                        className="flex-1 border-border bg-muted/50 focus:bg-background text-sm"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {styles.formBgMode === 'gradient' ? (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">From</Label>
+                        <div className="flex gap-1.5">
+                          <Input
+                            type="color"
+                            value={styles.formBgFrom || '#0ea5e9'}
+                            onChange={(e) => updateStyles({ formBgMode: 'gradient', formBgFrom: e.target.value })}
+                            className="h-9 w-10 border-border cursor-pointer p-1"
+                          />
+                          <Input
+                            type="text"
+                            value={styles.formBgFrom || ''}
+                            onChange={(e) => updateStyles({ formBgMode: 'gradient', formBgFrom: e.target.value })}
+                            placeholder="#0ea5e9"
+                            className="flex-1 border-border bg-muted/50 text-xs h-9"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">To</Label>
+                        <div className="flex gap-1.5">
+                          <Input
+                            type="color"
+                            value={styles.formBgTo || '#0369a1'}
+                            onChange={(e) => updateStyles({ formBgMode: 'gradient', formBgTo: e.target.value })}
+                            className="h-9 w-10 border-border cursor-pointer p-1"
+                          />
+                          <Input
+                            type="text"
+                            value={styles.formBgTo || ''}
+                            onChange={(e) => updateStyles({ formBgMode: 'gradient', formBgTo: e.target.value })}
+                            placeholder="#0369a1"
+                            className="flex-1 border-border bg-muted/50 text-xs h-9"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">
+                        Angle ({styles.formBgAngle || '135'}°)
+                      </Label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="360"
+                        value={styles.formBgAngle || '135'}
+                        onChange={(e) => updateStyles({ formBgMode: 'gradient', formBgAngle: e.target.value })}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {styles.formBgMode === 'preset' ? (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Presets</Label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {FORM_BG_PRESETS.map((preset) => {
+                        const active = (styles.formBgPreset || 'clean') === preset.id
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            title={preset.label}
+                            onClick={() => updateStyles({ formBgMode: 'preset', formBgPreset: preset.id })}
+                            className={cn(
+                              'rounded-md border p-1 text-left transition-all',
+                              active ? 'border-sky-500 ring-1 ring-sky-400' : 'border-border hover:border-slate-400'
+                            )}
+                          >
+                            <div
+                              className="mb-1 h-8 w-full rounded"
+                              style={{ background: preset.background }}
+                            />
+                            <span className="block truncate px-0.5 text-[10px] text-muted-foreground">
+                              {preset.label}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="space-y-1.5 border-t border-border pt-2.5">
+                  <Label className="text-xs text-muted-foreground">Page backdrop</Label>
+                  <Select
+                    value={styles.formPageBgMode || 'default'}
+                    onChange={(e) => updateStyles({ formPageBgMode: e.target.value })}
+                    className="border-border bg-muted/50 focus:bg-background text-sm"
+                  >
+                    <option value="default">Default slate</option>
+                    <option value="solid">Solid color</option>
+                    <option value="preset">Preset</option>
+                    <option value="match">Match form</option>
+                  </Select>
+                  {styles.formPageBgMode === 'solid' ? (
+                    <div className="flex gap-2">
+                      <Input
+                        type="color"
+                        value={styles.formPageBgColor || '#f8fafc'}
+                        onChange={(e) => updateStyles({ formPageBgColor: e.target.value })}
+                        className="h-10 w-16 border-border cursor-pointer"
+                      />
+                      <Input
+                        type="text"
+                        value={styles.formPageBgColor || ''}
+                        onChange={(e) => updateStyles({ formPageBgColor: e.target.value })}
+                        placeholder="#f8fafc"
+                        className="flex-1 border-border bg-muted/50 text-sm"
+                      />
+                    </div>
+                  ) : null}
+                  {styles.formPageBgMode === 'preset' ? (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {FORM_PAGE_BG_PRESETS.map((preset) => {
+                        const active = (styles.formPageBgPreset || 'slate') === preset.id
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => updateStyles({ formPageBgPreset: preset.id })}
+                            className={cn(
+                              'rounded-md border p-1 text-left',
+                              active ? 'border-sky-500 ring-1 ring-sky-400' : 'border-border'
+                            )}
+                          >
+                            <div
+                              className="mb-1 h-7 w-full rounded"
+                              style={{ background: preset.background }}
+                            />
+                            <span className="block truncate text-[10px] text-muted-foreground">
+                              {preset.label}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="border-b border-border pb-2">
             <SectionHeader title="Typography" section="typography" />
             {expandedSections.typography && (
