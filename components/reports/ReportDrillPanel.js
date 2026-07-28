@@ -15,7 +15,7 @@ export function ReportDrillPanel({ open, onClose, reportSlug, recordId, title, r
     setIsLoading(true)
     setError(null)
     setDetail(null)
-    api.get(`/api/reports/${reportSlug}/${recordId}`).then((res) => {
+    api.get(`/api/reports/${reportSlug}/${encodeURIComponent(recordId)}`).then((res) => {
       if (cancelled) return
       if (!res.success) {
         setError(res.error || 'Failed to load detail')

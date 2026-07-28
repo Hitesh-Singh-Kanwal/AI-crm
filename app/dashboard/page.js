@@ -59,7 +59,14 @@ export default function Dashboard() {
               widgets={visibleWidgets}
               sharedProps={{ defaultRange: range }}
               dataLoading={ownerWarmingUp}
-              toolbarExtra={<DateRangePresets value={range} onChange={setRange} />}
+              toolbarExtra={
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-foreground/55">
+                    Period
+                  </span>
+                  <DateRangePresets value={range} onChange={setRange} />
+                </div>
+              }
             />
           </div>
         )}
@@ -91,11 +98,16 @@ export default function Dashboard() {
           sharedProps={{ ...(overview || {}), defaultRange: range }}
           dataLoading={dataLoading}
           toolbarExtra={
-            <div className="flex items-center gap-2">
+            <div className="flex items-end gap-3">
               {isValidating && overview && (
-                <span className="text-[11px] text-muted-foreground">Updating…</span>
+                <span className="mb-2 text-[11px] text-muted-foreground">Updating…</span>
               )}
-              <DateRangePresets value={range} onChange={setRange} />
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-foreground/55">
+                  Period
+                </span>
+                <DateRangePresets value={range} onChange={setRange} />
+              </div>
             </div>
           }
         />
