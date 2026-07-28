@@ -24,7 +24,7 @@ function Dialog({ open, onClose, children, maxWidth = 'lg' }) {
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="flex min-h-full items-center justify-center p-4">
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-4 md:p-6">
         <div className={`relative z-50 w-full ${maxWidthClasses[maxWidth] || maxWidthClasses.lg} animate-scale-in`}>{children}</div>
       </div>
     </div>

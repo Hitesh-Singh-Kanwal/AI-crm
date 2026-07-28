@@ -1,6 +1,16 @@
 'use client'
 
 import { Card, SectionLabel, EmptyChart } from '@/components/dashboard/widgets/shared'
+import DetailsButton from './DetailsButton'
+
+const DETAIL_COLUMNS = [
+  { key: 'category', label: 'Category' },
+  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'label', label: 'Detail' },
+  { key: 'name', label: 'Name' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'value', label: 'Value', format: (v, row) => (row?.category === 'Revenue' ? `$${Number(v || 0).toLocaleString()}` : Number(v || 0).toLocaleString()) },
+]
 
 function formatValue(metric, n) {
   const num = Number(n) || 0
@@ -43,13 +53,21 @@ function GoalRow({ label, actual, target, pct, metric }) {
   )
 }
 
-export default function GoalsWidget({ goals }) {
+export default function GoalsWidget({ goals, rangeDays = 30 }) {
   const metrics = goals?.metrics || []
   const anyTargetSet = metrics.some((m) => m.target !== null)
 
   return (
     <Card>
-      <SectionLabel>Goals This Month</SectionLabel>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SectionLabel>Goals This Month</SectionLabel>
+        <DetailsButton
+          title="Goals This Month — full details"
+          metric="goalsDetail"
+          rangeDays={rangeDays}
+          columns={DETAIL_COLUMNS}
+        />
+      </div>
       {metrics.length > 0 ? (
         <div className="mt-2 divide-y divide-border">
           {metrics.map((m) => (

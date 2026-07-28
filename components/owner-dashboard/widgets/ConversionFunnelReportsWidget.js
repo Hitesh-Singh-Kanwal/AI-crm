@@ -3,6 +3,18 @@
 import { Card } from '@/components/dashboard/widgets/shared'
 import { FunnelStage, FunnelConnector } from './shared'
 import WidgetHeader from './WidgetHeader'
+import DetailsButton from './DetailsButton'
+
+const DETAIL_COLUMNS = [
+  { key: 'name', label: 'Lead' },
+  { key: 'email', label: 'Email' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'introBooked', label: 'Intro Booked' },
+  { key: 'introAttended', label: 'Intro Attended' },
+  { key: 'firstPurchase', label: 'First Purchase' },
+]
 
 export default function ConversionFunnelReportsWidget({ funnel, rangeDays, onRangeChange }) {
   const report1 = funnel?.report1 || { leadCount: 0, introBookedCount: 0, ratePct: 0, avgDaysToBook: 0 }
@@ -13,7 +25,19 @@ export default function ConversionFunnelReportsWidget({ funnel, rangeDays, onRan
 
   return (
     <Card>
-      <WidgetHeader title="Lead → Intro → First Purchase" rangeDays={rangeDays} onRangeChange={onRangeChange} />
+      <WidgetHeader
+        title="Lead → Intro → First Purchase"
+        rangeDays={rangeDays}
+        onRangeChange={onRangeChange}
+        detailsButton={
+          <DetailsButton
+            title="Lead → Intro → First Purchase — full details"
+            metric="conversionFunnelReports"
+            rangeDays={rangeDays}
+            columns={DETAIL_COLUMNS}
+          />
+        }
+      />
       <p className="mt-1 text-[11px] text-muted-foreground">
         Report 1 (Lead to Intro Booked) and Report 2 (Intro to First Purchase) chained into one funnel.
       </p>

@@ -38,6 +38,7 @@ export default function CatalogConditionValueInput({
   teachers = [],
   tags = [],
   memberships = [],
+  packages = [],
   loadingOptions = false,
 }) {
   const { stages } = useLeadStages()
@@ -107,7 +108,7 @@ export default function CatalogConditionValueInput({
     )
   }
 
-  const context = { leadReasons, locations, forms, teachers, tags, memberships, stages }
+  const context = { leadReasons, locations, forms, teachers, tags, memberships, stages, packages }
   let labeledOptions = null
   if (def.optionsKey) {
     labeledOptions = getFieldValueOptions(def.optionsKey === 'source' ? 'source' : def.value, context)
@@ -131,6 +132,9 @@ export default function CatalogConditionValueInput({
     }
     if (def.optionsKey === 'bookingStatus' || def.value === 'bookingStatus') {
       labeledOptions = getFieldValueOptions('bookingStatus', context)
+    }
+    if (def.optionsKey === 'packages' || def.value === 'package.packageID') {
+      labeledOptions = getFieldValueOptions('package.packageID', context)
     }
   } else if (def.staticOptions) {
     labeledOptions = toOptions(def.staticOptions)

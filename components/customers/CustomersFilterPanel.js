@@ -16,6 +16,7 @@ export default function CustomersFilterPanel({
   teachers = [],
   tags = [],
   memberships = [],
+  packages = [],
   loadingOptions = false,
 }) {
   const [draft, setDraft] = useState(appliedFilters)
@@ -79,6 +80,7 @@ export default function CustomersFilterPanel({
             teachers={teachers}
             tags={tags}
             memberships={memberships}
+            packages={packages}
             loadingOptions={loadingOptions}
           />
         </div>

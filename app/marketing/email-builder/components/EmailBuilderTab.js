@@ -3,18 +3,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Columns,
-  ChevronDown,
   FileText,
   GripVertical,
   Image as ImageIcon,
   Link2,
   Mail,
   Minus,
+  Code2,
+  Pencil,
   Send,
   Square,
   Copy,
   Trash2,
   Type,
+  Video,
   X,
 } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
@@ -23,16 +25,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
+import { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import { useToast } from '@/components/ui/toast'
 import StylePanel from '@/components/forms/StylePanel'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { formatLeadStageLabel, useLeadStages } from '@/lib/lead-stages'
 import EmailHtmlPanel from './EmailHtmlPanel'
 import EmailCanvasModeTabs from './EmailCanvasModeTabs'
 import EmailPreviewFrame from './EmailPreviewFrame'
-import { extractCategoriesList, extractLeadReasonsList } from '../emailBuilderApi'
+import EmailVisualHtmlEditor from './EmailVisualHtmlEditor'
+import EmailTemplateDetailsForm, { isTemplateDetailsComplete } from './EmailTemplateDetailsForm'
+import { EmailImageMediaFields, EmailVideoMediaFields } from './EmailMediaFields'
+import {
+  extractCategoriesList,
+  buildVideoEmailHtml,
+} from '../emailBuilderApi'
 
 import {
   DndContext,
@@ -55,14 +62,17 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 
 const contentBlocks = [
-  { id: 'heading', name: 'Heading', icon: FileText },
-  { id: 'text', name: 'Text', icon: Type },
-  { id: 'image', name: 'Image', icon: ImageIcon },
-  { id: 'button', name: 'Button', icon: Square },
-  { id: 'link', name: 'Link', icon: Link2 },
-  { id: 'columns', name: 'Columns', icon: Columns },
-  { id: 'divider', name: 'Divider', icon: Minus },
+  { id: 'heading', name: 'Heading', icon: FileText, group: 'Content' },
+  { id: 'text', name: 'Text', icon: Type, group: 'Content' },
+  { id: 'button', name: 'Button', icon: Square, group: 'Content' },
+  { id: 'link', name: 'Link', icon: Link2, group: 'Content' },
+  { id: 'image', name: 'Image', icon: ImageIcon, group: 'Media' },
+  { id: 'video', name: 'Video', icon: Video, group: 'Media' },
+  { id: 'columns', name: 'Columns', icon: Columns, group: 'Layout' },
+  { id: 'divider', name: 'Divider', icon: Minus, group: 'Layout' },
 ]
+
+const BLOCK_GROUPS = ['Content', 'Media', 'Layout']
 
 function escapeHtml(str) {
   return String(str || '')
@@ -77,7 +87,11 @@ function stylesToString(styles = {}) {
   const entries = Object.entries(styles || {}).filter(([, v]) => v != null && String(v).trim() !== '')
   if (entries.length === 0) return ''
   return entries
-    .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}:${String(v)}`)
+    .map(([k, v]) => {
+      const key = k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)
+      const value = String(v).replaceAll(';', '').replaceAll('"', '').replaceAll("'", '')
+      return `${key}:${value}`
+    })
     .join(';')
 }
 
@@ -93,18 +107,26 @@ function blockToHtml(block) {
       return `<p style="${style}">${contentWithBreaks || 'Text'}</p>`
     case 'divider':
       return `<hr style="${style}"/>`
-    case 'link':
-      return `<a href="#" style="${style}">${contentWithBreaks || 'Link'}</a>`
+    case 'link': {
+      const href = escapeHtml(String(block.href || '#').trim() || '#')
+      return `<a href="${href}" style="${style}">${contentWithBreaks || 'Link'}</a>`
+    }
     case 'button': {
+      const href = escapeHtml(String(block.href || '#').trim() || '#')
       const btnStyle = style || 'display:inline-block;padding:10px 14px;background:#3b82f6;color:#fff;border-radius:8px;text-decoration:none'
-      return `<a href="#" style="${btnStyle}">${contentWithBreaks || 'Button'}</a>`
+      return `<a href="${href}" style="${btnStyle}">${contentWithBreaks || 'Button'}</a>`
     }
     case 'image': {
       const src = String(block.content || '').trim()
       const safeSrc = src ? escapeHtml(src) : ''
       return safeSrc
-        ? `<img alt="Image" src="${safeSrc}" style="${style}"/>`
+        ? `<img alt="Image" src="${safeSrc}" style="${style || 'max-width:100%;height:auto;'}"/>`
         : `<div style="${style}">[Image]</div>`
+    }
+    case 'video': {
+      const url = String(block.href || block.content || '').trim()
+      if (!url) return `<div style="${style}">[Video]</div>`
+      return buildVideoEmailHtml(url, block.poster || '', style)
     }
     case 'columns':
       return `<table role="presentation" style="width:100%;${style}" cellspacing="0" cellpadding="0"><tr><td style="width:50%;padding:8px;background:#f1f5f9;border-radius:8px;">Column 1</td><td style="width:50%;padding:8px;background:#f1f5f9;border-radius:8px;">Column 2</td></tr></table>`
@@ -176,6 +198,53 @@ function SortableEmailBlock({ block, isSelected, onSelect, onRemove, onDuplicate
           </div>
         )
       }
+      case 'video': {
+        const url = String(block.href || block.content || '').trim()
+        let poster = String(block.poster || '').trim()
+        if (!poster && url) {
+          try {
+            // Lightweight YouTube thumb preview without importing helpers into the canvas renderer
+            const u = new URL(url)
+            let yt = null
+            if (u.hostname.includes('youtu.be')) yt = u.pathname.replace(/^\//, '').split('/')[0]
+            else if (u.hostname.includes('youtube.com') && u.searchParams.get('v')) yt = u.searchParams.get('v')
+            if (yt) poster = `https://img.youtube.com/vi/${yt}/hqdefault.jpg`
+          } catch {
+            /* ignore */
+          }
+        }
+        return (
+          <div style={baseStyle} className="text-center space-y-2">
+            {poster || /^https?:\/\//i.test(url) ? (
+              <div className="relative inline-block max-w-full">
+                {poster ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={poster}
+                    alt=""
+                    className="max-w-full h-auto max-h-48 mx-auto rounded-lg border border-slate-200 object-cover"
+                  />
+                ) : (
+                  <div className="w-64 h-36 bg-slate-900 rounded-lg flex items-center justify-center mx-auto">
+                    <Video className="h-10 w-10 text-white/80" />
+                  </div>
+                )}
+                <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <span className="h-12 w-12 rounded-full bg-white/90 flex items-center justify-center shadow">
+                    <Video className="h-5 w-5 text-slate-800" />
+                  </span>
+                </span>
+              </div>
+            ) : (
+              <div className="w-full h-40 bg-slate-100 rounded-lg flex flex-col items-center justify-center border border-slate-200 gap-2">
+                <Video className="h-10 w-10 text-slate-400" />
+                <span className="text-slate-500 text-xs">Video link</span>
+              </div>
+            )}
+            {url ? <p className="text-xs text-slate-500 truncate">{url}</p> : null}
+          </div>
+        )
+      }
       case 'button':
         return (
           <div style={baseStyle} className="text-center">
@@ -185,7 +254,9 @@ function SortableEmailBlock({ block, isSelected, onSelect, onRemove, onDuplicate
       case 'link':
         return (
           <div style={baseStyle}>
-            <a href="#" className="text-brand underline">{block.content || 'Link'}</a>
+            <a href={block.href || '#'} className="text-brand underline" onClick={(e) => e.preventDefault()}>
+              {block.content || 'Link'}
+            </a>
           </div>
         )
       case 'columns':
@@ -204,41 +275,60 @@ function SortableEmailBlock({ block, isSelected, onSelect, onRemove, onDuplicate
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative group ${isSelected ? 'ring-2 ring-brand ring-offset-2' : 'hover:bg-slate-50'} rounded-lg transition-all`}
+      className={cn(
+        'relative group rounded-xl border transition-all bg-white',
+        isSelected
+          ? 'border-brand ring-2 ring-brand/20 shadow-sm'
+          : 'border-transparent hover:border-slate-200 hover:shadow-sm',
+        isDragging && 'opacity-50',
+      )}
     >
-      <div className="absolute -left-10 top-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute -left-11 top-3 flex flex-col gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
         <button
           {...attributes}
           {...listeners}
-          className="p-1.5 hover:bg-slate-200 rounded cursor-grab active:cursor-grabbing bg-white border border-slate-200 shadow-sm"
+          className="p-1.5 hover:bg-slate-100 rounded-lg cursor-grab active:cursor-grabbing bg-white border border-slate-200 shadow-sm"
           onClick={(e) => e.stopPropagation()}
           title="Drag to reorder"
         >
-          <GripVertical className="h-4 w-4 text-slate-500" />
+          <GripVertical className="h-3.5 w-3.5 text-slate-500" />
         </button>
         <button
-          className="p-1.5 hover:bg-slate-100 rounded bg-white border border-slate-200 shadow-sm"
+          className="p-1.5 hover:bg-slate-100 rounded-lg bg-white border border-slate-200 shadow-sm"
           onClick={(e) => {
             e.stopPropagation()
             onDuplicate?.(block.id)
           }}
-          title="Duplicate block"
+          title="Duplicate"
         >
-          <Copy className="h-4 w-4 text-slate-500" />
+          <Copy className="h-3.5 w-3.5 text-slate-500" />
         </button>
         <button
-          className="p-1.5 hover:bg-red-50 rounded bg-white border border-slate-200 shadow-sm"
+          className="p-1.5 hover:bg-red-50 rounded-lg bg-white border border-slate-200 shadow-sm"
           onClick={(e) => {
             e.stopPropagation()
             onRemove(block.id)
           }}
-          title="Remove block"
+          title="Remove"
         >
-          <Trash2 className="h-4 w-4 text-slate-500 hover:text-red-500" />
+          <Trash2 className="h-3.5 w-3.5 text-slate-500 hover:text-red-500" />
         </button>
       </div>
 
-      <div onClick={() => onSelect(block.id)} className="p-4 cursor-pointer">
+      <div
+        onClick={() => onSelect(block.id)}
+        className="p-4 cursor-pointer"
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {block.type}
+          </span>
+          {isSelected ? (
+            <span className="text-[10px] font-medium text-brand bg-brand/10 px-1.5 py-0.5 rounded">
+              Editing
+            </span>
+          ) : null}
+        </div>
         {render()}
       </div>
     </div>
@@ -263,11 +353,14 @@ function DraggableContentBlock({ block, onClick }) {
       onClick={() => onClick?.(block)}
       type="button"
       className={cn(
-        'flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors text-xs font-medium text-slate-700 cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-200 min-h-[72px]',
-        isDragging && 'opacity-50'
+        'flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl transition-all text-[11px] font-medium text-slate-700',
+        'cursor-grab active:cursor-grabbing border border-slate-200/80 bg-white hover:border-brand/40 hover:bg-brand/5 hover:shadow-sm min-h-[68px]',
+        isDragging && 'opacity-50 scale-95',
       )}
     >
-      <Icon className="h-5 w-5 text-slate-600" />
+      <span className="h-8 w-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center">
+        <Icon className="h-4 w-4 text-slate-600" />
+      </span>
       <span className="text-center leading-tight">{block.name}</span>
     </button>
   )
@@ -295,7 +388,6 @@ function DroppableEmailCanvas({ children, isEmpty, onCanvasClick, className }) {
 
 export default function EmailBuilderTab({ onCreated }) {
   const toast = useToast()
-  const { stages: leadStageOptions } = useLeadStages()
 
   const [categories, setCategories] = useState([])
   const [categoryId, setCategoryId] = useState('')
@@ -306,9 +398,6 @@ export default function EmailBuilderTab({ onCreated }) {
   // - `htmlBody` is the actual email content
   const [templateName, setTemplateName] = useState('')
   const [templateDescription, setTemplateDescription] = useState('')
-  const [leadStage, setLeadStage] = useState('')
-  const [reasonCode, setReasonCode] = useState('')
-  const [reasons, setReasons] = useState([])
   const [emailBlocks, setEmailBlocks] = useState([])
   const [selectedBlock, setSelectedBlock] = useState(null)
   const [activeId, setActiveId] = useState(null)
@@ -316,6 +405,7 @@ export default function EmailBuilderTab({ onCreated }) {
   const [canvasView, setCanvasView] = useState('visual')
   const [htmlBody, setHtmlBody] = useState('')
   const [htmlCustomized, setHtmlCustomized] = useState(false)
+  const [step, setStep] = useState('details') // 'details' | 'design'
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -360,17 +450,9 @@ export default function EmailBuilderTab({ onCreated }) {
     )
   }, [locationScopedCategories])
 
-  const fetchReasons = useCallback(async () => {
-    const result = await api.get('/api/lead-reasons')
-    if (result.success) {
-      setReasons(extractLeadReasonsList(result))
-    }
-  }, [])
-
   useEffect(() => {
     fetchCategories()
-    fetchReasons()
-  }, [fetchCategories, fetchReasons])
+  }, [fetchCategories])
 
   const generatedHtml = useMemo(() => blocksToHtml(emailBlocks), [emailBlocks])
 
@@ -381,8 +463,7 @@ export default function EmailBuilderTab({ onCreated }) {
   }, [generatedHtml, htmlCustomized])
 
   const effectiveHtmlBody = useMemo(() => {
-    const custom = String(htmlBody || '').trim()
-    if (htmlCustomized && custom) return custom
+    if (htmlCustomized) return String(htmlBody || '')
     return generatedHtml
   }, [htmlBody, htmlCustomized, generatedHtml])
 
@@ -395,7 +476,9 @@ export default function EmailBuilderTab({ onCreated }) {
     const newBlock = {
       id: Date.now().toString(),
       type,
-      content: '',
+      content: type === 'button' ? 'Click here' : type === 'link' ? 'Learn more' : type === 'heading' ? 'Heading' : type === 'text' ? 'Write your message…' : '',
+      href: type === 'button' || type === 'link' || type === 'video' ? 'https://' : undefined,
+      poster: type === 'video' ? '' : undefined,
       styles: {},
     }
     setEmailBlocks((prev) => [...prev, newBlock])
@@ -428,13 +511,29 @@ export default function EmailBuilderTab({ onCreated }) {
   const resetBuilder = () => {
     setTemplateName('')
     setTemplateDescription('')
-    setLeadStage('')
-    setReasonCode('')
     setEmailBlocks([])
     setSelectedBlock(null)
     setCanvasView('visual')
     setHtmlCustomized(false)
     setHtmlBody('')
+    setStep('details')
+  }
+
+  const detailsComplete = isTemplateDetailsComplete({
+    locationID,
+    categoryId,
+    templateName,
+  })
+
+  const continueToDesign = () => {
+    if (!detailsComplete) {
+      toast.error({
+        title: 'Missing details',
+        message: 'Studio, category, and template name are required.',
+      })
+      return
+    }
+    setStep('design')
   }
 
   const handleDragStart = (event) => setActiveId(event.active.id)
@@ -470,8 +569,8 @@ export default function EmailBuilderTab({ onCreated }) {
     [emailBlocks, selectedBlock]
   )
 
-  const showBlockSettings = canvasView === 'visual' && !!selectedBlockData
-  const showComponentsSidebar = canvasView === 'visual'
+  const showBlockSettings = canvasView === 'visual' && !htmlCustomized && !!selectedBlockData
+  const showComponentsSidebar = canvasView === 'visual' && !htmlCustomized
   const mainColSpan = showComponentsSidebar ? (showBlockSettings ? 6 : 9) : 12
 
   useEffect(() => {
@@ -489,8 +588,12 @@ export default function EmailBuilderTab({ onCreated }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [showBlockSettings])
 
-  const updateBlock = (updatedBlock) => {
-    setEmailBlocks((prev) => prev.map((b) => (b.id === updatedBlock.id ? updatedBlock : b)))
+  const updateBlock = (patch) => {
+    const id = patch?.id || selectedBlock
+    if (!id) return
+    setEmailBlocks((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, ...patch, id: b.id } : b)),
+    )
   }
 
   const stylePanelField = useMemo(() => {
@@ -506,33 +609,12 @@ export default function EmailBuilderTab({ onCreated }) {
   }, [selectedBlockData])
 
   const saveTemplate = async () => {
-    if (!templateName.trim()) {
-      toast.error({ title: 'Missing template name', message: 'Please enter a name.' })
-      return
-    }
-    if (!templateDescription.trim()) {
-      toast.error({ title: 'Missing description', message: 'Please enter a description.' })
-      return
-    }
-    if (!String(leadStage || '').trim()) {
-      toast.error({ title: 'Missing lead stage', message: 'Please enter a lead stage.' })
-      return
-    }
-    if (!String(reasonCode || '').trim()) {
-      toast.error({ title: 'Missing reason', message: 'Please enter a reason.' })
-      return
-    }
-    if (!categoryId) {
+    if (!detailsComplete) {
       toast.error({
-        title: 'Missing category',
-        message: locationScopedCategories.length === 0
-          ? 'Create a category for this studio under Templates → Categories first.'
-          : 'Please select a category.',
+        title: 'Missing details',
+        message: 'Studio, category, and template name are required.',
       })
-      return
-    }
-    if (!locationID || (locationID !== ALL_BRANCHES_VALUE && (!Array.isArray(locationID) || locationID.length === 0))) {
-      toast.error({ title: 'Missing location', message: 'Select one or more studios, or All branches.' })
+      setStep('details')
       return
     }
     const htmlToSave = String(effectiveHtmlBody || '').trim()
@@ -546,9 +628,7 @@ export default function EmailBuilderTab({ onCreated }) {
       const payload = {
         categoryID: categoryId,
         subject: templateName.trim(),
-        body: templateDescription.trim(),
-        leadStage: String(leadStage || '').trim(),
-        reason: String(reasonCode || '').trim(),
+        body: templateDescription.trim() || null,
         htmlBody: htmlToSave,
         allLocations,
         locationID: allLocations ? [] : locationID,
@@ -569,209 +649,267 @@ export default function EmailBuilderTab({ onCreated }) {
     }
   }
 
+  if (step === 'details') {
+    return (
+      <TabsContent value="builder" className="mt-4">
+        <div className="flex items-center justify-center px-2 py-2 md:py-4">
+          <div className="w-full max-w-7xl">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2 px-0.5">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand">
+                  New template · Step 1 of 2
+                </p>
+                <h2 className="text-xl font-semibold tracking-tight text-slate-900 mt-0.5">
+                  Template details
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500">
+                Then design with blocks or paste HTML
+              </p>
+            </div>
+            <Card className="border-slate-200/80 shadow-md overflow-hidden rounded-2xl">
+              <CardContent className="p-4 md:p-5">
+                <EmailTemplateDetailsForm
+                  locationID={locationID}
+                  setLocationID={setLocationID}
+                  categoryId={categoryId}
+                  setCategoryId={setCategoryId}
+                  categories={locationScopedCategories}
+                  templateName={templateName}
+                  setTemplateName={setTemplateName}
+                  templateDescription={templateDescription}
+                  setTemplateDescription={setTemplateDescription}
+                  showContinue
+                  onContinue={continueToDesign}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </TabsContent>
+    )
+  }
+
   return (
-    <TabsContent value="builder" className="mt-6">
-      <div className="h-[calc(100vh-200px)] flex flex-col">
+    <TabsContent value="builder" className="mt-3">
+      <div className="h-[calc(100vh-148px)] flex flex-col">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="grid grid-cols-12 gap-4 flex-1 min-h-0">
-            {/* Components — visual mode only */}
+          <div className="grid grid-cols-12 gap-3 flex-1 min-h-0">
             {showComponentsSidebar && (
-            <div className="col-span-3 flex flex-col min-h-0 self-stretch">
-              <Card className="flex flex-col flex-1 min-h-0 h-full">
-                <CardHeader className="flex-shrink-0 border-b">
-                  <CardTitle className="text-base">Components</CardTitle>
-                </CardHeader>
-                <CardContent className="overflow-y-auto flex-1 pb-2 min-h-0 p-3" style={{ overscrollBehavior: 'contain' }}>
-                  <div className="grid grid-cols-2 gap-2">
-                  {contentBlocks.map((block) => (
-                    <DraggableContentBlock
-                      key={block.id}
-                      block={block}
-                      onClick={(b) => addBlock(b.id)}
-                    />
-                  ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+              <div className="col-span-3 flex flex-col min-h-0 self-stretch">
+                <Card className="flex flex-col flex-1 min-h-0 h-full border-slate-200/80 shadow-sm">
+                  <CardHeader className="flex-shrink-0 border-b py-2 px-3">
+                    <CardTitle className="text-sm font-semibold">Blocks</CardTitle>
+                  </CardHeader>
+                  <CardContent
+                    className="overflow-y-auto flex-1 pb-3 min-h-0 p-3 space-y-4"
+                    style={{ overscrollBehavior: 'contain' }}
+                  >
+                    {BLOCK_GROUPS.map((group) => (
+                      <div key={group} className="space-y-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 px-0.5">
+                          {group}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {contentBlocks
+                            .filter((b) => b.group === group)
+                            .map((block) => (
+                              <DraggableContentBlock
+                                key={block.id}
+                                block={block}
+                                onClick={(b) => addBlock(b.id)}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
             )}
 
-            {/* Main workspace — full width on HTML & Preview */}
             <div
               className={cn(
                 'flex flex-col min-h-0 transition-all duration-200',
-                mainColSpan === 12 ? 'col-span-12' : mainColSpan === 6 ? 'col-span-6' : 'col-span-9'
+                mainColSpan === 12 ? 'col-span-12' : mainColSpan === 6 ? 'col-span-6' : 'col-span-9',
               )}
             >
-              <Card className="flex flex-col flex-1 min-h-0">
-                <CardHeader className="flex-shrink-0 border-b space-y-3 pb-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <CardTitle className="text-base">Email content</CardTitle>
-                    <Button variant="gradient" size="sm" onClick={saveTemplate} disabled={saving} className="shrink-0">
-                      <Send className="h-4 w-4 mr-2" />
-                      {saving ? 'Saving…' : 'Save template'}
-                    </Button>
+              <Card className="flex flex-col flex-1 min-h-0 border-slate-200/80 shadow-sm overflow-hidden">
+                <CardHeader className="flex-shrink-0 border-b py-2 px-3 bg-white">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <EmailCanvasModeTabs
+                      value={canvasView}
+                      onChange={setCanvasView}
+                      className="shrink-0"
+                    />
+                    <div className="min-w-0 flex-1 hidden md:block">
+                      <p className="text-sm font-medium text-slate-800 truncate">
+                        {templateName.trim() || 'Untitled template'}
+                      </p>
+                    </div>
+                    {htmlCustomized && canvasView === 'visual' ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs shrink-0 hidden sm:inline-flex"
+                        onClick={syncHtmlFromVisual}
+                        title="Discard custom HTML and regenerate from blocks"
+                      >
+                        Reset to blocks
+                      </Button>
+                    ) : null}
+                    <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setStep('details')}
+                        className="h-8"
+                      >
+                        <Pencil className="h-3.5 w-3.5 sm:mr-1.5" />
+                        <span className="hidden sm:inline">Details</span>
+                      </Button>
+                      <Button
+                        variant="gradient"
+                        size="sm"
+                        onClick={saveTemplate}
+                        disabled={saving}
+                        className="h-8"
+                      >
+                        <Send className="h-3.5 w-3.5 sm:mr-1.5" />
+                        <span className="hidden sm:inline">{saving ? 'Saving…' : 'Save'}</span>
+                      </Button>
+                    </div>
                   </div>
-
-                  <EmailCanvasModeTabs value={canvasView} onChange={setCanvasView} className="w-full" />
                 </CardHeader>
 
                 <CardContent
-                  className="flex-1 min-h-0 flex flex-col gap-3 px-4 pt-3 pb-4 overflow-hidden"
+                  className="flex-1 min-h-0 flex flex-col px-3 pt-2 pb-3 overflow-hidden bg-slate-50/40"
                   style={{ overscrollBehavior: 'contain' }}
                 >
-                  <details
-                    className="group rounded-xl border border-slate-200/80 bg-slate-50/40 open:bg-white transition-colors shrink-0"
-                    open={canvasView === 'visual'}
-                  >
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-slate-700 [&::-webkit-details-marker]:hidden">
-                      <span>Template details</span>
-                      <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
-                    </summary>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-4 pb-4 border-t border-slate-100 pt-3">
-                      <div className="sm:col-span-2">
-                        <Label className="text-xs text-slate-600">Studio location *</Label>
-                        <div className="mt-1.5">
-                          <LocationSelector
-                            value={locationID}
-                            onChange={setLocationID}
-                            multiple
-                            allowAllBranches
-                            showAllOption={false}
-                            placeholder="Select studio(s)…"
-                          />
-                        </div>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <Label className="text-xs text-slate-600">Category</Label>
-                        <select
-                          value={categoryId}
-                          onChange={(e) => setCategoryId(e.target.value)}
-                          className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
-                        >
-                          <option value="">Select a category…</option>
-                          {locationScopedCategories.map((cat) => (
-                            <option key={cat._id} value={cat._id}>{cat.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <Label className="text-xs text-slate-600">Template name</Label>
-                        <Input
-                          value={templateName}
-                          onChange={(e) => setTemplateName(e.target.value)}
-                          placeholder="Template name"
-                          className="mt-1.5 rounded-lg"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-slate-600">Lead stage</Label>
-                        <select
-                          value={leadStage}
-                          onChange={(e) => setLeadStage(e.target.value)}
-                          className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
-                        >
-                          <option value="">Select lead stage…</option>
-                          {leadStageOptions.map((s) => (
-                            <option key={s.value} value={s.value}>
-                              {s.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <Label className="text-xs text-slate-600">Template description</Label>
-                        <Textarea
-                          value={templateDescription}
-                          onChange={(e) => setTemplateDescription(e.target.value)}
-                          rows={2}
-                          placeholder="Short description"
-                          className="mt-1.5 rounded-lg resize-none"
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <Label className="text-xs text-slate-600">Reason</Label>
-                        <select
-                          value={reasonCode}
-                          onChange={(e) => setReasonCode(e.target.value)}
-                          className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
-                        >
-                          <option value="">Select reason…</option>
-                          {reasons.map((r) => (
-                            <option key={r._id || r.reasonCode || r.name} value={r.reasonCode}>
-                              {r.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </details>
-
                   <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden">
-                  {canvasView === 'visual' && (
-                    <DroppableEmailCanvas
-                      isEmpty={emailBlocks.length === 0}
-                      onCanvasClick={clearBlockSelection}
-                      className="min-h-[420px] w-full"
-                    >
-                      {emailBlocks.length === 0 ? (
-                        <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50">
-                          <div className="h-14 w-14 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center mx-auto mb-4">
-                            <Mail className="h-7 w-7 text-slate-300" />
+                    {canvasView === 'visual' && htmlCustomized && (
+                      <EmailVisualHtmlEditor
+                        html={htmlBody}
+                        onChange={(value) => {
+                          setHtmlBody(value)
+                          setHtmlCustomized(true)
+                        }}
+                        className="h-full min-h-[calc(100vh-220px)]"
+                      />
+                    )}
+
+                    {canvasView === 'visual' && !htmlCustomized && (
+                      <DroppableEmailCanvas
+                        isEmpty={emailBlocks.length === 0}
+                        onCanvasClick={clearBlockSelection}
+                        className="min-h-[calc(100vh-220px)] w-full"
+                      >
+                        {emailBlocks.length === 0 ? (
+                          <div className="text-center py-10 px-6 rounded-2xl border-2 border-dashed border-slate-200 bg-white">
+                            <div className="h-12 w-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center mx-auto mb-3">
+                              <Mail className="h-6 w-6 text-slate-300" />
+                            </div>
+                            <p className="text-slate-800 text-sm font-semibold">Start your email</p>
+                            <p className="text-slate-500 text-xs mt-1 max-w-sm mx-auto">
+                              Drag blocks from the left, or paste HTML.
+                            </p>
+                            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                                onClick={() => addBlock('heading')}
+                              >
+                                <FileText className="h-3.5 w-3.5 mr-1.5" />
+                                Add heading
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                                onClick={() => setCanvasView('html')}
+                              >
+                                <Code2 className="h-3.5 w-3.5 mr-1.5" />
+                                Paste HTML
+                              </Button>
+                            </div>
                           </div>
-                          <p className="text-slate-600 text-sm font-medium">Add components to get started</p>
-                        </div>
-                      ) : (
-                        <div
-                          className="space-y-3 pl-10 pr-2 py-2 relative min-h-[200px]"
-                          onClick={(e) => {
-                            if (e.target === e.currentTarget) clearBlockSelection()
-                          }}
-                        >
-                          <SortableContext items={emailBlocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
-                            {emailBlocks.map((block) => (
-                              <SortableEmailBlock
-                                key={block.id}
-                                block={block}
-                                isSelected={selectedBlock === block.id}
-                                onSelect={setSelectedBlock}
-                                onRemove={removeBlock}
-                                onDuplicate={duplicateBlock}
-                              />
-                            ))}
-                          </SortableContext>
-                        </div>
-                      )}
-                    </DroppableEmailCanvas>
-                  )}
+                        ) : (
+                          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-slate-100 bg-slate-50/90">
+                              <div className="flex items-center gap-2">
+                                <span className="h-2 w-2 rounded-full bg-red-400/90" />
+                                <span className="h-2 w-2 rounded-full bg-amber-400/90" />
+                                <span className="h-2 w-2 rounded-full bg-emerald-400/90" />
+                                <span className="text-[11px] text-slate-500 ml-1">Email canvas</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400">
+                                Click a block to edit · drag to reorder
+                              </span>
+                            </div>
+                            <div
+                              className="space-y-2 pl-12 pr-4 py-4 relative min-h-[240px] max-w-[720px] mx-auto"
+                              onClick={(e) => {
+                                if (e.target === e.currentTarget) clearBlockSelection()
+                              }}
+                            >
+                              <SortableContext
+                                items={emailBlocks.map((b) => b.id)}
+                                strategy={verticalListSortingStrategy}
+                              >
+                                {emailBlocks.map((block) => (
+                                  <SortableEmailBlock
+                                    key={block.id}
+                                    block={block}
+                                    isSelected={selectedBlock === block.id}
+                                    onSelect={setSelectedBlock}
+                                    onRemove={removeBlock}
+                                    onDuplicate={duplicateBlock}
+                                  />
+                                ))}
+                              </SortableContext>
+                            </div>
+                          </div>
+                        )}
+                      </DroppableEmailCanvas>
+                    )}
 
-                  {canvasView === 'html' && (
-                    <EmailHtmlPanel
-                      htmlBody={htmlBody}
-                      onHtmlBodyChange={(value) => {
-                        setHtmlBody(value)
-                        setHtmlCustomized(true)
-                      }}
-                      onSyncFromVisual={syncHtmlFromVisual}
-                      showSyncFromVisual
-                      layout="editor-only"
-                      className="h-full min-h-[calc(100vh-340px)]"
-                    />
-                  )}
+                    {canvasView === 'html' && (
+                      <EmailHtmlPanel
+                        htmlBody={htmlBody}
+                        onHtmlBodyChange={(value) => {
+                          setHtmlBody(value)
+                          setHtmlCustomized(true)
+                        }}
+                        onSyncFromVisual={syncHtmlFromVisual}
+                        showSyncFromVisual
+                        onOpenDesign={() => setCanvasView('visual')}
+                        layout="editor-only"
+                        className="h-full min-h-[calc(100vh-220px)]"
+                      />
+                    )}
 
-                  {canvasView === 'preview' && (
-                    <EmailPreviewFrame
-                      html={effectiveHtmlBody}
-                      emptyMessage="Nothing to preview yet."
-                      fullWidth
-                      className="h-full min-h-[calc(100vh-340px)]"
-                    />
-                  )}
+                    {canvasView === 'preview' && (
+                      <EmailPreviewFrame
+                        html={effectiveHtmlBody}
+                        subject={templateName}
+                        emptyMessage="Nothing to preview yet"
+                        emptyHint="Add blocks in Design, or paste HTML, then come back here."
+                        emptyActionLabel="Go to Design"
+                        onEmptyAction={() => setCanvasView('visual')}
+                        fullWidth
+                        className="h-full min-h-[calc(100vh-220px)]"
+                      />
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -779,48 +917,94 @@ export default function EmailBuilderTab({ onCreated }) {
 
             {showBlockSettings && selectedBlockData && (
               <div className="col-span-3 flex flex-col min-h-0">
-                <Card className="flex flex-col flex-1 min-h-0 border-brand/20 shadow-md">
-                  <CardHeader className="flex-shrink-0 border-b pb-3">
+                <Card className="flex flex-col flex-1 min-h-0 border-brand/25 shadow-md overflow-hidden">
+                  <CardHeader className="flex-shrink-0 border-b pb-3 bg-gradient-to-r from-brand/5 to-transparent">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <CardTitle className="text-base capitalize">{selectedBlockData.type}</CardTitle>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-brand/80">
+                          Inspector
+                        </p>
+                        <CardTitle className="text-base capitalize mt-0.5">
+                          {selectedBlockData.type}
+                        </CardTitle>
                       </div>
                       <button
                         type="button"
                         onClick={clearBlockSelection}
                         className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                        title="Close settings"
+                        title="Close"
                         aria-label="Close block settings"
                       >
                         <X className="h-4 w-4" />
                       </button>
                     </div>
                   </CardHeader>
-                  <CardContent className="overflow-y-auto flex-1 pb-2 min-h-0" style={{ overscrollBehavior: 'contain' }}>
+                  <CardContent
+                    className="overflow-y-auto flex-1 pb-3 min-h-0"
+                    style={{ overscrollBehavior: 'contain' }}
+                  >
                     <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label className="text-xs">
-                          {selectedBlockData.type === 'image' ? 'Image URL' : 'Content'}
-                        </Label>
-                        <Textarea
+                      {selectedBlockData.type === 'image' ? (
+                        <EmailImageMediaFields
                           value={selectedBlockData.content}
-                          onChange={(e) => updateBlock({ ...selectedBlockData, content: e.target.value })}
-                          rows={selectedBlockData.type === 'image' ? 2 : 4}
-                          placeholder={
-                            selectedBlockData.type === 'image'
-                              ? 'https://example.com/image.jpg'
-                              : undefined
-                          }
-                          className="text-sm"
+                          onChange={(url) => updateBlock({ id: selectedBlockData.id, content: url })}
                         />
-                      </div>
+                      ) : selectedBlockData.type === 'video' ? (
+                        <EmailVideoMediaFields
+                          url={selectedBlockData.href || selectedBlockData.content || ''}
+                          poster={selectedBlockData.poster || ''}
+                          onUrlChange={(url) =>
+                            updateBlock({ id: selectedBlockData.id, href: url, content: url })
+                          }
+                          onPosterChange={(poster) =>
+                            updateBlock({ id: selectedBlockData.id, poster })
+                          }
+                        />
+                      ) : (
+                        <div className="space-y-2">
+                          <Label className="text-xs">Content</Label>
+                          <Textarea
+                            value={selectedBlockData.content}
+                            onChange={(e) =>
+                              updateBlock({ id: selectedBlockData.id, content: e.target.value })
+                            }
+                            rows={4}
+                            className="text-sm"
+                          />
+                        </div>
+                      )}
+
+                      {(selectedBlockData.type === 'button' || selectedBlockData.type === 'link') && (
+                        <div className="space-y-2">
+                          <Label className="text-xs">Link URL</Label>
+                          <Input
+                            value={selectedBlockData.href || ''}
+                            onChange={(e) =>
+                              updateBlock({ id: selectedBlockData.id, href: e.target.value })
+                            }
+                            placeholder="https://"
+                            className="text-sm"
+                          />
+                        </div>
+                      )}
+
                       <StylePanel
                         field={stylePanelField}
-                        onStyleChange={(updated) => updateBlock({ ...selectedBlockData, styles: updated.styles || {} })}
-                        onFieldUpdate={(updated) => {
+                        onStyleChange={(updated) =>
                           updateBlock({
-                            ...selectedBlockData,
-                            content: updated.label ?? selectedBlockData.content,
+                            id: selectedBlockData.id,
+                            styles: updated.styles || {},
+                          })
+                        }
+                        onFieldUpdate={(updated) => {
+                          const isMedia =
+                            selectedBlockData.type === 'image' ||
+                            selectedBlockData.type === 'video'
+                          updateBlock({
+                            id: selectedBlockData.id,
+                            ...(isMedia
+                              ? {}
+                              : { content: updated.label ?? selectedBlockData.content }),
                             styles: updated.styles || {},
                           })
                         }}
@@ -834,14 +1018,18 @@ export default function EmailBuilderTab({ onCreated }) {
 
           <DragOverlay>
             {activeId ? (
-              <div className="p-4 rounded-lg border-2 border-brand bg-white shadow-xl">
+              <div className="p-3 rounded-xl border border-brand/40 bg-white shadow-xl">
                 {String(activeId).startsWith('block-type-') ? (
                   (() => {
                     const block = contentBlocks.find((bt) => `block-type-${bt.id}` === String(activeId))
                     const Icon = block?.icon
                     return (
-                      <div className="flex items-center gap-3 text-sm font-medium text-slate-700">
-                        {Icon && <Icon className="h-5 w-5 text-slate-600" />}
+                      <div className="flex items-center gap-2.5 text-sm font-medium text-slate-700">
+                        {Icon && (
+                          <span className="h-8 w-8 rounded-lg bg-brand/10 flex items-center justify-center">
+                            <Icon className="h-4 w-4 text-brand" />
+                          </span>
+                        )}
                         <span>{block?.name}</span>
                       </div>
                     )

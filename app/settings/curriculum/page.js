@@ -16,7 +16,7 @@ import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 
-const EMPTY_FORM = { name: '', color: '#6366f1', isActive: true }
+const EMPTY_FORM = { name: '', isActive: true }
 
 function CurriculumDialog({ open, onClose, onSaved, initial }) {
   const [form, setForm] = useState(EMPTY_FORM)
@@ -28,7 +28,7 @@ function CurriculumDialog({ open, onClose, onSaved, initial }) {
   useEffect(() => {
     if (open) {
       setForm(initial
-        ? { name: initial.name || '', color: initial.color || '#6366f1', isActive: initial.isActive !== false }
+        ? { name: initial.name || '', isActive: initial.isActive !== false }
         : EMPTY_FORM)
       setError(null)
     }
@@ -71,15 +71,6 @@ function CurriculumDialog({ open, onClose, onSaved, initial }) {
               onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
               placeholder="e.g. Bronze I"
               className="h-9 text-[13px]"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="block text-[12px] font-medium text-muted-foreground">Color</label>
-            <input
-              type="color"
-              value={form.color}
-              onChange={(e) => setForm((p) => ({ ...p, color: e.target.value }))}
-              className="h-9 w-16 rounded-lg border border-border bg-background"
             />
           </div>
           {error && (
@@ -189,10 +180,6 @@ export default function CurriculumSettingsPage() {
                   className="flex items-center gap-3 px-4 py-3 hover:bg-muted/20"
                 >
                   <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground" />
-                  <span
-                    className="h-3 w-3 shrink-0 rounded-full"
-                    style={{ background: tier.color || 'var(--studio-primary)' }}
-                  />
                   <span className="flex-1 text-[13px] font-medium text-foreground">{tier.name}</span>
                   {!tier.isActive && (
                     <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">Inactive</span>
