@@ -28,6 +28,7 @@ export default function FormPhoneInput({
   disabled = false,
   readOnly = false,
   className,
+  style,
 }) {
   const options = useMemo(() => getPhoneCountryCodeOptions(), [])
   const [open, setOpen] = useState(false)
@@ -97,10 +98,12 @@ export default function FormPhoneInput({
     <div ref={rootRef} className={cn('relative w-full', className)}>
       <div
         className={cn(
-          'flex min-h-[52px] items-stretch overflow-hidden rounded-lg border bg-white transition-shadow',
-          open ? 'border-slate-700 shadow-sm' : 'border-slate-300',
+          'flex min-h-[52px] items-stretch overflow-hidden rounded-lg border transition-shadow',
+          !style?.backgroundColor && 'bg-white',
+          open ? 'border-slate-700 shadow-sm' : !style?.borderColor && 'border-slate-300',
           disabled && 'opacity-70'
         )}
+        style={style}
       >
         <button
           type="button"

@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/toast'
 import Switch from '@/components/ui/switch'
 import { formatDate, cn } from '@/lib/utils'
 import StylePanel from '@/components/forms/StylePanel'
+import GlobalStylePanel from '@/components/forms/GlobalStylePanel'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { getCurrentUser } from '@/lib/auth'
 import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
@@ -50,6 +51,16 @@ import {
   DEFAULT_PHONE_COUNTRY_ISO,
 } from '@/lib/phone-country-codes'
 import { buildHeadingBoxStyle, buildHeadingTextStyle, resolveHeadingTag } from '@/lib/form-heading-styles'
+import {
+  embedGlobalStylesMeta,
+  parseGlobalStylesMeta,
+  mergeFieldStyles,
+  isExcludedFromGlobalStyles,
+  buildLabelReactStyle,
+  buildInputReactStyle,
+  buildInputCssString,
+  buildLabelCssString,
+} from '@/lib/form-global-styles'
 import FormPhoneInput, {
   getFormPhoneExportMarkup,
   getFormPhoneExportRuntimeScript,
@@ -446,7 +457,7 @@ function FormFieldTag({ children, tone = 'teal' }) {
 }
 
 // Sortable Field Item Component
-function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
+function SortableFieldItem({ field, isSelected, onSelect, onRemove, globalStyles, globalStyleExcludeKeys }) {
   const {
     attributes,
     listeners,
@@ -462,7 +473,8 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
     opacity: isDragging ? 0.55 : 1,
   }
 
-  const fieldStyles = field.styles || {}
+  const excluded = isExcludedFromGlobalStyles(field, globalStyleExcludeKeys)
+  const fieldStyles = mergeFieldStyles(globalStyles, field.styles || {}, excluded)
   const propertyName = getFieldPropertyName(field)
   const isLeadProperty =
     field.propertyKind === 'lead' || (field.name && LEAD_PROPERTY_NAMES.has(field.name))
@@ -470,17 +482,10 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
   const defaultDisplayLabel = getFieldDefaultDisplayLabel(field)
 
   const inputClassName =
-    'w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-400 shadow-none pointer-events-none'
+    'w-full rounded-md border border-slate-300 px-3 py-2 shadow-none pointer-events-none'
 
-  const getInputStyle = () => ({
-    backgroundColor: fieldStyles.backgroundColor || '#ffffff',
-    padding: `${fieldStyles.paddingTop || '0.5rem'} ${fieldStyles.paddingRight || '0.75rem'} ${fieldStyles.paddingBottom || '0.5rem'} ${fieldStyles.paddingLeft || '0.75rem'}`,
-    borderWidth: fieldStyles.borderWidth || '1px',
-    borderStyle: fieldStyles.borderStyle || 'solid',
-    borderColor: fieldStyles.borderColor || '#cbd5e1',
-    borderRadius: fieldStyles.borderRadius || '0.375rem',
-    width: fieldStyles.width || '100%',
-  })
+  const getInputStyle = () => buildInputReactStyle(fieldStyles)
+  const getLabelStyle = () => buildLabelReactStyle(fieldStyles)
 
   const renderFieldControl = () => {
     if (field.type === 'heading') {
@@ -564,6 +569,7 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
           countryCode={field.defaultCountryCode || DEFAULT_PHONE_COUNTRY_CODE}
           countryIso={field.defaultCountryIso || DEFAULT_PHONE_COUNTRY_ISO}
           value={field.defaultValue || ''}
+          style={getInputStyle()}
         />
       )
     }
@@ -595,18 +601,27 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           {!isLayoutElement ? (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-              <span className="text-sm font-semibold text-slate-900">
+            <div className="space-y-1.5">
+              <div
+                className="block w-full"
+                style={{
+                  ...getLabelStyle(),
+                  textAlign: fieldStyles.textAlign || 'left',
+                }}
+              >
                 {field.label}
-                {field.required ? <span className="text-slate-900">*</span> : null}
-              </span>
-              <span className="text-xs italic text-slate-400">{propertyName}</span>
-              {isLeadProperty ? <FormFieldTag tone="teal">Lead property</FormFieldTag> : null}
-              {isMetadataProperty ? <FormFieldTag tone="slate">Metadata</FormFieldTag> : null}
-              {field.submitHidden ? <FormFieldTag tone="violet">Hidden field</FormFieldTag> : null}
-              {field.defaultValue && !field.submitHidden ? (
-                <FormFieldTag tone="slate">Default: {defaultDisplayLabel}</FormFieldTag>
-              ) : null}
+                {field.required ? <span>*</span> : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                <span className="text-xs italic text-slate-400">{propertyName}</span>
+                {isLeadProperty ? <FormFieldTag tone="teal">Lead property</FormFieldTag> : null}
+                {isMetadataProperty ? <FormFieldTag tone="slate">Metadata</FormFieldTag> : null}
+                {field.submitHidden ? <FormFieldTag tone="violet">Hidden field</FormFieldTag> : null}
+                {excluded ? <FormFieldTag tone="slate">No global CSS</FormFieldTag> : null}
+                {field.defaultValue && !field.submitHidden ? (
+                  <FormFieldTag tone="slate">Default: {defaultDisplayLabel}</FormFieldTag>
+                ) : null}
+              </div>
             </div>
           ) : field.type === 'captcha' ? (
             <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
@@ -1161,6 +1176,9 @@ function FormsPageInner() {
     label: 'Submit Form',
     styles: {},
   })
+  const [globalStyles, setGlobalStyles] = useState({})
+  const [globalStyleExcludeKeys, setGlobalStyleExcludeKeys] = useState([])
+  const [settingsPanelMode, setSettingsPanelMode] = useState('field') // 'field' | 'global'
 
   const setActiveTab = (tab) => {
     const params = new URLSearchParams(searchParams?.toString() || '')
@@ -1425,6 +1443,9 @@ function FormsPageInner() {
       label: 'Submit Form',
       styles: {},
     })
+    setGlobalStyles({})
+    setGlobalStyleExcludeKeys([])
+    setSettingsPanelMode('field')
     setActiveTab('builder')
   }
 
@@ -1692,6 +1713,9 @@ function FormsPageInner() {
           : [...REQUIRED_SYSTEM_FIELDS, ...inferredFiltered]
 
       setFormFields(nextFields)
+      const meta = parseGlobalStylesMeta(htmlCode)
+      setGlobalStyles(meta.styles || {})
+      setGlobalStyleExcludeKeys(meta.excludeKeys || [])
       const firstVisible = nextFields.find((f) => f && !f.hidden && f.type !== 'hidden')
       setSelectedField(firstVisible?.id || null)
       setActiveTab('builder')
@@ -1745,9 +1769,6 @@ function FormsPageInner() {
         styles: {
           textAlign: 'left',
           blockAlign: 'left',
-          fontSize: '24px',
-          fontWeight: '600',
-          color: '#0f172a',
           width: '100%',
         },
       }
@@ -1824,6 +1845,9 @@ function FormsPageInner() {
     setBuilderFormType('blank')
     setFormFields([...REQUIRED_SYSTEM_FIELDS, ...filtered])
     setSelectedField(normalized[0]?.id || null)
+    setGlobalStyles({})
+    setGlobalStyleExcludeKeys([])
+    setSettingsPanelMode('field')
     setActiveTab('builder')
   }
 
@@ -1917,6 +1941,11 @@ function FormsPageInner() {
     }
   }
 
+  const getEffectiveFieldStyles = (field) => {
+    const excluded = isExcludedFromGlobalStyles(field, globalStyleExcludeKeys)
+    return mergeFieldStyles(globalStyles, field?.styles || {}, excluded)
+  }
+
   const generateFieldHTML = (field) => {
     const fieldName = escapeHtmlAttr(getFieldNameForHtml(field))
     const defaultVal = field.defaultValue != null ? String(field.defaultValue) : ''
@@ -1936,7 +1965,7 @@ function FormsPageInner() {
       return `<input type="hidden" name="${fieldName}" value="${escapedDefault}" />`
     }
 
-    const fieldStyles = field.styles || {}
+    const fieldStyles = getEffectiveFieldStyles(field)
 
     if (field.type === 'heading') {
       const tag = resolveHeadingTag(field.headingLevel)
@@ -1957,39 +1986,8 @@ function FormsPageInner() {
       return getCaptchaExportMarkup(field)
     }
 
-    const styleString = `
-      background-color: ${fieldStyles.backgroundColor || '#ffffff'};
-      padding: ${fieldStyles.paddingTop || '0.5rem'} ${fieldStyles.paddingRight || '0.75rem'} ${fieldStyles.paddingBottom || '0.5rem'} ${fieldStyles.paddingLeft || '0.75rem'};
-      border-width: ${fieldStyles.borderWidth || '1px'};
-      border-style: ${fieldStyles.borderStyle || 'solid'};
-      border-color: ${fieldStyles.borderColor || '#e2e8f0'};
-      border-radius: ${fieldStyles.borderRadius || '0.375rem'};
-      width: ${fieldStyles.width || '100%'};
-      margin: ${fieldStyles.marginTop || '0'} ${fieldStyles.marginRight || '0'} ${fieldStyles.marginBottom || '0'} ${fieldStyles.marginLeft || '0'};
-      box-sizing: border-box;
-    `.trim().replace(/\s+/g, ' ')
-
-    const labelStyleParts = []
-    if (fieldStyles.fontFamily) {
-      labelStyleParts.push(`font-family: ${fieldStyles.fontFamily}`)
-    }
-    if (fieldStyles.fontSize) {
-      labelStyleParts.push(`font-size: ${fieldStyles.fontSize}`)
-    } else {
-      labelStyleParts.push(`font-size: 0.875rem`)
-    }
-    labelStyleParts.push(`font-weight: ${fieldStyles.fontWeight || '500'}`)
-    labelStyleParts.push(`color: ${fieldStyles.color || '#334155'}`)
-    if (fieldStyles.letterSpacing) {
-      labelStyleParts.push(`letter-spacing: ${fieldStyles.letterSpacing}`)
-    }
-    if (fieldStyles.textAlign) {
-      labelStyleParts.push(`text-align: ${fieldStyles.textAlign}`)
-    }
-    if (fieldStyles.textTransform) {
-      labelStyleParts.push(`text-transform: ${fieldStyles.textTransform}`)
-    }
-    const labelStyleString = labelStyleParts.join('; ')
+    const styleString = buildInputCssString(fieldStyles)
+    const labelStyleString = buildLabelCssString(fieldStyles)
 
     let fieldHTML = ''
     
@@ -2199,6 +2197,7 @@ function FormsPageInner() {
     }
   </style>
 ${gtagScript}
+  ${embedGlobalStylesMeta(globalStyles, globalStyleExcludeKeys)}
 </head>
 <body>
   <div class="form-container">
@@ -2361,40 +2360,9 @@ ${getFormPhoneExportRuntimeScript()}
   const renderPreviewField = (field) => {
     if (field.submitHidden || isSystemHiddenField(field)) return null
 
-    const fieldStyles = field.styles || {}
-    const inputStyle = {
-      backgroundColor: fieldStyles.backgroundColor || '#ffffff',
-      padding: `${fieldStyles.paddingTop || '0.5rem'} ${fieldStyles.paddingRight || '0.75rem'} ${fieldStyles.paddingBottom || '0.5rem'} ${fieldStyles.paddingLeft || '0.75rem'}`,
-      borderWidth: fieldStyles.borderWidth || '1px',
-      borderStyle: fieldStyles.borderStyle || 'solid',
-      borderColor: fieldStyles.borderColor || '#e2e8f0',
-      borderRadius: fieldStyles.borderRadius || '0.375rem',
-      width: fieldStyles.width || '100%',
-      margin: `${fieldStyles.marginTop || '0'} ${fieldStyles.marginRight || '0'} ${fieldStyles.marginBottom || '0'} ${fieldStyles.marginLeft || '0'}`,
-      boxSizing: 'border-box',
-    }
-
-    const labelStyle = {
-      fontWeight: fieldStyles.fontWeight || '500',
-      color: fieldStyles.color || '#334155',
-    }
-    if (fieldStyles.fontSize) {
-      labelStyle.fontSize = fieldStyles.fontSize
-    } else {
-      labelStyle.fontSize = '0.875rem'
-    }
-    if (fieldStyles.fontFamily) {
-      labelStyle.fontFamily = fieldStyles.fontFamily
-    }
-    if (fieldStyles.letterSpacing) {
-      labelStyle.letterSpacing = fieldStyles.letterSpacing
-    }
-    if (fieldStyles.textAlign) {
-      labelStyle.textAlign = fieldStyles.textAlign
-    }
-    if (fieldStyles.textTransform) {
-      labelStyle.textTransform = fieldStyles.textTransform
-    }
+    const fieldStyles = getEffectiveFieldStyles(field)
+    const inputStyle = buildInputReactStyle(fieldStyles)
+    const labelStyle = buildLabelReactStyle(fieldStyles)
 
     if (field.type === 'heading') {
       const Tag = resolveHeadingTag(field.headingLevel)
@@ -2419,7 +2387,7 @@ ${getFormPhoneExportRuntimeScript()}
 
     return (
       <div key={field.id} style={{ marginBottom: '1rem' }}>
-        <Label className="block mb-2" style={labelStyle}>
+        <Label className="block mb-2 w-full" style={labelStyle}>
           {field.label}
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </Label>
@@ -2473,6 +2441,7 @@ ${getFormPhoneExportRuntimeScript()}
             countryCode={field.defaultCountryCode || DEFAULT_PHONE_COUNTRY_CODE}
             countryIso={field.defaultCountryIso || DEFAULT_PHONE_COUNTRY_ISO}
             value={field.defaultValue || ''}
+            style={inputStyle}
           />
         ) : (
           <Input
@@ -3007,8 +2976,13 @@ ${getFormPhoneExportRuntimeScript()}
                                 key={field.id}
                                 field={field}
                                 isSelected={selectedField === field.id}
-                                onSelect={setSelectedField}
+                                onSelect={(id) => {
+                                  setSelectedField(id)
+                                  setSettingsPanelMode('field')
+                                }}
                                 onRemove={removeField}
+                                globalStyles={globalStyles}
+                                globalStyleExcludeKeys={globalStyleExcludeKeys}
                               />
                             ))}
                           </SortableContext>
@@ -3020,7 +2994,10 @@ ${getFormPhoneExportRuntimeScript()}
                             )}
                           >
                             <div
-                              onClick={() => setSelectedField('submit-button')}
+                              onClick={() => {
+                                setSelectedField('submit-button')
+                                setSettingsPanelMode('field')
+                              }}
                               className="inline-block cursor-pointer"
                             >
                               <button
@@ -3052,32 +3029,98 @@ ${getFormPhoneExportRuntimeScript()}
                 </Card>
               </div>
 
-              {/* Field Settings Panel */}
+              {/* Field Settings / Global CSS Panel */}
               <div className="col-span-3 flex flex-col min-h-0">
                 <Card className="flex flex-col flex-1 min-h-0">
-                  <CardHeader className="flex-shrink-0">
-                    <CardTitle className="text-base">
-                      {selectedFieldData ? 'Field Settings' : 'Properties'}
-                    </CardTitle>
-                    {selectedFieldData && (
-                      <p className="text-sm text-slate-500 capitalize">{selectedFieldData.type} field</p>
-                    )}
+                  <CardHeader className="flex-shrink-0 space-y-3">
+                    <div className="flex rounded-md border border-border p-0.5 bg-muted/30">
+                      <button
+                        type="button"
+                        onClick={() => setSettingsPanelMode('field')}
+                        className={cn(
+                          'flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors',
+                          settingsPanelMode === 'field'
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        Field
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSettingsPanelMode('global')
+                          setSelectedField(null)
+                        }}
+                        className={cn(
+                          'flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors',
+                          settingsPanelMode === 'global'
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        Global CSS
+                      </button>
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">
+                        {settingsPanelMode === 'global'
+                          ? 'Global CSS'
+                          : selectedFieldData
+                            ? 'Field Settings'
+                            : 'Properties'}
+                      </CardTitle>
+                      {settingsPanelMode === 'field' && selectedFieldData ? (
+                        <p className="text-sm text-slate-500 capitalize mt-0.5">
+                          {selectedFieldData.type} field
+                        </p>
+                      ) : settingsPanelMode === 'global' ? (
+                        <p className="text-sm text-slate-500 mt-0.5">Applies to all fields unless excluded</p>
+                      ) : null}
+                    </div>
                   </CardHeader>
                   <CardContent 
                     className="overflow-y-auto flex-1 pb-2 min-h-0"
                     style={{ overscrollBehavior: 'contain' }}
                   >
-                    {selectedFieldData ? (
+                    {settingsPanelMode === 'global' ? (
+                      <GlobalStylePanel
+                        styles={globalStyles}
+                        excludeKeys={globalStyleExcludeKeys}
+                        fields={[
+                          ...formFields.filter(isCanvasField),
+                          submitButton,
+                        ]}
+                        onStylesChange={setGlobalStyles}
+                        onExcludeKeysChange={setGlobalStyleExcludeKeys}
+                      />
+                    ) : selectedFieldData ? (
                       <StylePanel
                         field={selectedFieldData}
                         onStyleChange={handleFieldUpdate}
                         onFieldUpdate={handleFieldUpdate}
                         onLeadReasonsRefresh={refreshLeadReasons}
+                        globalStyleExcludeKeys={globalStyleExcludeKeys}
+                        onToggleGlobalExclude={(excludeKey, excluded) => {
+                          setGlobalStyleExcludeKeys((prev) => {
+                            if (excluded) {
+                              return prev.includes(excludeKey) ? prev : [...prev, excludeKey]
+                            }
+                            return prev.filter((k) => k !== excludeKey)
+                          })
+                        }}
                       />
                     ) : (
                       <div className="text-center py-12 text-slate-400">
                         <div className="mb-3 text-4xl">⚙️</div>
                         <p className="text-sm">Select a field to edit</p>
+                        <button
+                          type="button"
+                          className="mt-3 text-xs text-sky-700 hover:underline"
+                          onClick={() => setSettingsPanelMode('global')}
+                        >
+                          Or edit Global CSS
+                        </button>
                       </div>
                     )}
                   </CardContent>

@@ -17,6 +17,7 @@ import {
   getPhoneCountryCodeOptions,
 } from '@/lib/phone-country-codes'
 import { HEADING_LEVELS } from '@/lib/form-heading-styles'
+import { getGlobalStyleExcludeKey } from '@/lib/form-global-styles'
 
 const fontFamilies = [
   'Arial',
@@ -41,7 +42,14 @@ const fontFamilies = [
 
 const fontWeights = ['100', '200', '300', '400', '500', '600', '700', '800', '900']
 
-export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLeadReasonsRefresh }) {
+export default function StylePanel({
+  field,
+  onStyleChange,
+  onFieldUpdate,
+  onLeadReasonsRefresh,
+  globalStyleExcludeKeys = [],
+  onToggleGlobalExclude,
+}) {
   const toast = useToast()
   const [expandedSections, setExpandedSections] = useState({
     typography: true,
@@ -253,6 +261,24 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
             className="border-border bg-background text-sm h-9"
           />
         </div>
+        {typeof onToggleGlobalExclude === 'function' && field.type !== 'hidden' ? (
+          <label className="flex items-start gap-2.5 rounded-md border border-border bg-muted/20 px-2.5 py-2 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={globalStyleExcludeKeys.includes(getGlobalStyleExcludeKey(field))}
+              onChange={(e) =>
+                onToggleGlobalExclude(getGlobalStyleExcludeKey(field), e.target.checked)
+              }
+            />
+            <span className="min-w-0">
+              <span className="block text-xs font-medium text-foreground">Exclude from global CSS</span>
+              <span className="block text-[11px] text-muted-foreground">
+                This field will ignore form-wide styles
+              </span>
+            </span>
+          </label>
+        ) : null}
         {field.type === 'heading' ? (
           <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
             <div className="space-y-1.5">
