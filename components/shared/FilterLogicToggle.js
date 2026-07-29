@@ -16,7 +16,7 @@ export default function FilterLogicToggle({
   helpText,
   size = 'md',
 }) {
-  const help = helpText || DEFAULT_HELP[value] || DEFAULT_HELP.AND
+  const help = helpText === undefined ? DEFAULT_HELP[value] || DEFAULT_HELP.AND : helpText
   const isCompact = size === 'sm'
 
   return (
