@@ -241,14 +241,10 @@ export default function Header({
     pathname === "/inbox/all-messages" ||
     pathname === "/inbox/talk-to-assistant";
   const isForms = pathname?.startsWith("/marketing/form-builder");
-  const isSms = pathname?.startsWith("/marketing/sms-builder");
-  const isEmails = pathname?.startsWith("/marketing/email-builder");
   const isAICalling = pathname?.startsWith("/ai-automation/ai-calling");
   const isAIMessaging = pathname?.startsWith("/ai-automation/ai-messaging");
   const inboxFilter = (isInbox && searchParams?.get("filter")) || "all";
   const formsView = isForms ? searchParams?.get("view") || "templates" : null;
-  const smsView = isSms ? searchParams?.get("view") || "templates" : null;
-  const emailsView = isEmails ? searchParams?.get("view") || "templates" : null;
   const aiCallingView = isAICalling
     ? searchParams?.get("view") || "scripts"
     : null;
@@ -276,20 +272,6 @@ export default function Header({
     const params = new URLSearchParams(searchParams?.toString() || "");
     params.set("view", value);
     router.push(`/marketing/form-builder?${params.toString()}`);
-  };
-
-  const setSmsView = (value) => {
-    if (!isSms) return;
-    const params = new URLSearchParams(searchParams?.toString() || "");
-    params.set("view", value);
-    router.push(`/marketing/sms-builder?${params.toString()}`);
-  };
-
-  const setEmailsView = (value) => {
-    if (!isEmails) return;
-    const params = new URLSearchParams(searchParams?.toString() || "");
-    params.set("view", value);
-    router.push(`/marketing/email-builder?${params.toString()}`);
   };
 
   const setAICallingView = (value) => {
@@ -357,58 +339,6 @@ export default function Header({
                       <button
                         key={value}
                         onClick={() => setFormsView(value)}
-                        className={cn(
-                          "text-sm font-medium transition-colors duration-200 whitespace-nowrap",
-                          isActive
-                            ? "text-[var(--studio-primary)]"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : isSms ? (
-              <div className="flex items-center h-[44px]">
-                <div className="flex w-max items-center gap-5 sm:gap-8 rounded-full bg-muted px-4 sm:px-6 py-2">
-                  {[
-                    { value: "templates", label: "SMS Templates" },
-                    { value: "creator", label: "SMS Creator" },
-                    { value: "analytics", label: "Analytics" },
-                  ].map(({ value, label }) => {
-                    const isActive = smsView === value;
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => setSmsView(value)}
-                        className={cn(
-                          "text-sm font-medium transition-colors duration-200 whitespace-nowrap",
-                          isActive
-                            ? "text-[var(--studio-primary)]"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : isEmails ? (
-              <div className="flex items-center h-[44px]">
-                <div className="flex w-max items-center gap-5 sm:gap-8 rounded-full bg-muted px-4 sm:px-6 py-2">
-                  {[
-                    { value: "templates", label: "Templates" },
-                    { value: "builder", label: "Email Builder" },
-                    { value: "analytics", label: "Analytics" },
-                  ].map(({ value, label }) => {
-                    const isActive = emailsView === value;
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => setEmailsView(value)}
                         className={cn(
                           "text-sm font-medium transition-colors duration-200 whitespace-nowrap",
                           isActive

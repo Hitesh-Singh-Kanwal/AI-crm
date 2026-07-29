@@ -1,11 +1,57 @@
 'use client'
 
-import { Fragment } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+/** Nested dialogs: only lock scroll once; only topmost handles Escape. */
+let bodyScrollLockCount = 0
+let dialogStack = []
+
 function Dialog({ open, onClose, children, maxWidth = 'lg' }) {
-  if (!open) return null
+  const [mounted, setMounted] = useState(false)
+  const [stackDepth, setStackDepth] = useState(0)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return undefined
+
+    bodyScrollLockCount += 1
+    if (bodyScrollLockCount === 1) {
+      document.body.style.overflow = 'hidden'
+    }
+
+    const entry = { getOnClose: () => onCloseRef.current }
+    dialogStack.push(entry)
+    setStackDepth(dialogStack.length)
+
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return
+      const top = dialogStack[dialogStack.length - 1]
+      if (top !== entry) return
+      e.preventDefault()
+      e.stopPropagation()
+      onCloseRef.current?.()
+    }
+    window.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      dialogStack = dialogStack.filter((d) => d !== entry)
+      bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1)
+      if (bodyScrollLockCount === 0) {
+        document.body.style.overflow = ''
+      }
+    }
+  }, [open])
+
+  if (!open || !mounted) return null
 
   const maxWidthClasses = {
     sm: 'max-w-sm',
@@ -21,13 +67,32 @@ function Dialog({ open, onClose, children, maxWidth = 'lg' }) {
     full: 'max-w-full',
   }
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
+  const layer = Math.max(1, stackDepth)
+
+  return createPortal(
+    <div
+      className="fixed inset-0 overflow-y-auto"
+      role="presentation"
+      style={{ zIndex: 100 + layer }}
+    >
+      <div
+        className="fixed inset-0 bg-background/80 backdrop-blur-sm"
+        onClick={() => onCloseRef.current?.()}
+        aria-hidden="true"
+      />
       <div className="flex min-h-full items-center justify-center p-3 sm:p-4 md:p-6">
-        <div className={`relative z-50 w-full ${maxWidthClasses[maxWidth] || maxWidthClasses.lg} animate-scale-in`}>{children}</div>
+        <div
+          role="dialog"
+          aria-modal="true"
+          className={`relative my-auto w-full ${maxWidthClasses[maxWidth] || maxWidthClasses.lg} animate-scale-in`}
+          style={{ zIndex: 101 + layer }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {children}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -36,6 +101,7 @@ function DialogContent({ className, children, onClose }) {
     <div className={cn('relative rounded-xl border-2 border-border bg-card text-card-foreground shadow-2xl p-6', className)}>
       {onClose && (
         <button
+          type="button"
           onClick={onClose}
           className="absolute right-4 top-4 z-10 rounded-full p-1.5 bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
         >
@@ -65,5 +131,3 @@ function DialogFooter({ className, ...props }) {
 }
 
 export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter }
-
-
