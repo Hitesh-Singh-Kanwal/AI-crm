@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, X, MessageSquare, Mail, Send, Clock, UserRound, GraduationCap, Users } from 'lucide-react'
+import { Search, X, MessageSquare, Mail, Send, Clock, UserRound, GraduationCap, Users, LayoutTemplate } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,8 +13,12 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import { cn, getInitials } from '@/lib/utils'
 import api from '@/lib/api'
+import { htmlToPlainText, plainTextToHtml, toScheduleIsoOrNull, getScheduleMinLocalDatetime } from '@/lib/emailSend'
 import { fetchInboxContacts, INBOX_CONTACT_PAGE_SIZE } from '@/lib/inbox-contact-search'
 import InboxContactPagination from '@/app/inbox/components/InboxContactPagination'
+import InboxHtmlEmailFrame from '@/app/inbox/components/InboxHtmlEmailFrame'
+import WorkflowEmailTemplatePickerDialog from '@/components/workflow/WorkflowEmailTemplatePickerDialog'
+import WorkflowSmsTemplatePickerDialog from '@/components/workflow/WorkflowSmsTemplatePickerDialog'
 
 const TYPE_META = {
   Customers: {
@@ -61,12 +65,16 @@ export default function BatchSendDialog({
 
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
+  const [contentHtml, setContentHtml] = useState(null)
+  const [selectedTemplate, setSelectedTemplate] = useState(null)
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false)
 
   const [scheduleMode, setScheduleMode] = useState('now')
   const [scheduleDate, setScheduleDate] = useState('')
 
   const [sending, setSending] = useState(false)
   const requestIdRef = useRef(0)
+  const prevChannelRef = useRef(channel)
 
   const totalPages = Math.max(1, Math.ceil((total || 0) / INBOX_CONTACT_PAGE_SIZE))
 
@@ -108,9 +116,13 @@ export default function BatchSendDialog({
       setSelected([])
       setSubject('')
       setMessage('')
+      setContentHtml(null)
+      setSelectedTemplate(null)
+      setTemplatePickerOpen(false)
       setScheduleMode('now')
       setScheduleDate('')
       setChannel('SMS')
+      prevChannelRef.current = 'SMS'
       return
     }
   }, [open, contactType])
@@ -143,14 +155,86 @@ export default function BatchSendDialog({
     )
   }, [channel])
 
+  // Clear compose fields only when the user switches channel (not on first mount).
+  useEffect(() => {
+    if (prevChannelRef.current === channel) return
+    prevChannelRef.current = channel
+    setMessage('')
+    setSubject('')
+    setContentHtml(null)
+    setSelectedTemplate(null)
+    setTemplatePickerOpen(false)
+  }, [channel])
+
+  const hasContent = Boolean(String(contentHtml || '').trim() || message.trim())
+
   const canSend =
     selected.length > 0 &&
-    message.trim() &&
+    hasContent &&
     (channel === 'SMS' || subject.trim()) &&
     (scheduleMode === 'now' || !!scheduleDate)
 
+  const handleTemplateSelect = (tpl) => {
+    if (channel === 'Email') {
+      const html = String(tpl.htmlBody || '').trim()
+      if (!html) {
+        toast.error({
+          title: 'Template unavailable',
+          message: 'This email template has no HTML content.',
+        })
+        return
+      }
+      setSubject('')
+      setContentHtml(html)
+      setMessage('')
+      setSelectedTemplate({
+        id: tpl.emailTemplateId,
+        name: tpl.emailTemplateSubject || tpl.subject || 'Email template',
+      })
+    } else {
+      const script = String(tpl.script || '').trim()
+      if (!script) {
+        toast.error({
+          title: 'Template unavailable',
+          message: 'This SMS template has no message content.',
+        })
+        return
+      }
+      setMessage(script)
+      setContentHtml(null)
+      setSelectedTemplate({
+        id: tpl.smsTemplateId,
+        name: tpl.smsTemplateName || 'SMS template',
+      })
+    }
+  }
+
+  const handleMessageChange = (e) => {
+    const next = e.target.value
+    setMessage(next)
+    if (selectedTemplate && channel === 'SMS' && !next.trim()) {
+      setSelectedTemplate(null)
+    }
+  }
+
+  const clearTemplate = () => {
+    setContentHtml(null)
+    setSelectedTemplate(null)
+    if (channel === 'Email') setMessage('')
+  }
+
+  const usingHtmlTemplate = Boolean(channel === 'Email' && String(contentHtml || '').trim())
+
   const handleSend = async () => {
     if (!canSend) return
+    const scheduleIso =
+      scheduleMode === 'later'
+        ? toScheduleIsoOrNull(scheduleDate, { requireFuture: true })
+        : null
+    if (scheduleMode === 'later' && !scheduleIso) {
+      toast.error({ title: 'Invalid schedule time', message: 'Please pick a valid future date and time.' })
+      return
+    }
     setSending(true)
     try {
       const leadsPayload = selected.map((l) => ({
@@ -171,19 +255,23 @@ export default function BatchSendDialog({
           leads: leadsPayload,
           message: message.trim(),
           scheduleNow: scheduleMode === 'now',
-          scheduleDate: scheduleMode === 'later' ? new Date(scheduleDate).toISOString() : null,
+          scheduleDate: scheduleIso,
         })
         if (!result.success) {
           toast.error({ title: 'Failed', message: result.error || 'Could not send SMS batch.' })
           return
         }
       } else {
+        const htmlBody = String(contentHtml || '').trim()
+          ? String(contentHtml).trim()
+          : plainTextToHtml(message.trim())
         const result = await api.post('/api/email/', {
           leads: leadsPayload,
           subject: subject.trim(),
-          body: message.trim(),
+          html: htmlBody,
+          body: htmlBody,
           scheduleNow: scheduleMode === 'now',
-          scheduleDate: scheduleMode === 'later' ? new Date(scheduleDate).toISOString() : null,
+          scheduleDate: scheduleIso,
         })
         if (!result.success) {
           toast.error({ title: 'Failed', message: result.error || 'Could not send email batch.' })
@@ -195,9 +283,10 @@ export default function BatchSendDialog({
         channel,
         leads: selected,
         subject: subject.trim(),
-        content: message.trim(),
+        content: message.trim() || htmlToPlainText(contentHtml || ''),
+        contentHtml: contentHtml || undefined,
         scheduleNow: scheduleMode === 'now',
-        scheduleDate: scheduleMode === 'later' ? new Date(scheduleDate).toISOString() : null,
+        scheduleDate: scheduleIso,
         timestamp: new Date().toISOString(),
       })
 
@@ -216,7 +305,7 @@ export default function BatchSendDialog({
     }
   }
 
-  const minDateTime = new Date(Date.now() + 60000).toISOString().slice(0, 16)
+  const minDateTime = getScheduleMinLocalDatetime()
 
   const selectableCount = useMemo(
     () => contacts.filter((c) => (channel === 'SMS' ? !!c.phoneNumber : !!c.email)).length,
@@ -233,6 +322,7 @@ export default function BatchSendDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onClose={onClose} maxWidth="2xl">
       <DialogContent className="max-h-[90vh] overflow-y-auto" onClose={onClose}>
         <DialogHeader>
@@ -395,13 +485,91 @@ export default function BatchSendDialog({
           )}
 
           <div className="space-y-2">
-            <Label>Message</Label>
-            <Textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={5}
-              placeholder={channel === 'SMS' ? `Type your SMS to ${meta.plural}…` : `Type your email to ${meta.plural}…`}
-            />
+            <div className="flex items-center justify-between gap-2">
+              <Label>Message</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn(
+                  'h-8 gap-1.5 font-semibold',
+                  (selectedTemplate || usingHtmlTemplate) &&
+                    'border-[color:var(--studio-primary)]/40 bg-[color:var(--studio-primary-light)] text-[color:var(--studio-primary)]',
+                )}
+                onClick={() => setTemplatePickerOpen(true)}
+                disabled={sending}
+              >
+                <LayoutTemplate className="h-3.5 w-3.5" />
+                {usingHtmlTemplate || selectedTemplate ? 'Change template' : 'Use template'}
+              </Button>
+            </div>
+
+            {usingHtmlTemplate ? (
+              <div className="overflow-hidden rounded-xl border border-[color:var(--studio-primary)]/30 bg-background shadow-sm">
+                <div className="flex items-start gap-3 border-b border-border/80 bg-[color:var(--studio-primary-light)]/60 px-3.5 py-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--studio-primary)] text-white">
+                    <LayoutTemplate className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--studio-primary)]">
+                      HTML email template
+                    </p>
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {selectedTemplate?.name || 'Selected template'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearTemplate}
+                    disabled={sending}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-background disabled:opacity-50"
+                    aria-label="Remove template"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="bg-slate-100/80 p-2">
+                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    <InboxHtmlEmailFrame
+                      html={contentHtml}
+                      title="Selected email template"
+                      minHeight={140}
+                      maxHeight={260}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {selectedTemplate && channel === 'SMS' && (
+                  <div className="flex items-center gap-2 rounded-xl border border-[color:var(--studio-primary)]/25 bg-[color:var(--studio-primary-light)] px-3 py-2">
+                    <LayoutTemplate className="h-3.5 w-3.5 shrink-0 text-[color:var(--studio-primary)]" />
+                    <p className="min-w-0 flex-1 truncate text-xs font-medium text-[color:var(--studio-primary)]">
+                      SMS template: {selectedTemplate.name}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={clearTemplate}
+                      disabled={sending}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[color:var(--studio-primary)] hover:bg-white/60 disabled:opacity-50"
+                      aria-label="Clear template"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+                <Textarea
+                  value={message}
+                  onChange={handleMessageChange}
+                  rows={5}
+                  placeholder={
+                    channel === 'SMS'
+                      ? `Type your SMS to ${meta.plural}…`
+                      : `Type your email to ${meta.plural}…`
+                  }
+                />
+              </>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -458,5 +626,24 @@ export default function BatchSendDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    {channel === 'Email' ? (
+      <WorkflowEmailTemplatePickerDialog
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        selectedId={selectedTemplate?.id || ''}
+        description="Templates from Email Builder — select one to send to these recipients."
+        onSelect={handleTemplateSelect}
+      />
+    ) : (
+      <WorkflowSmsTemplatePickerDialog
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        selectedId={selectedTemplate?.id || ''}
+        description="Templates from SMS Builder — select one to send to these recipients."
+        onSelect={handleTemplateSelect}
+      />
+    )}
+    </>
   )
 }

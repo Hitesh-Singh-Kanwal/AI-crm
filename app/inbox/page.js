@@ -16,6 +16,7 @@ import api from '@/lib/api'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { useToast } from '@/components/ui/toast'
 import {
+  applyEmailTemplate,
   buildLeadRecipient,
   buildSendOneEmailPayload,
   dedupeThreadMessages,
@@ -245,6 +246,7 @@ function InboxPageContent() {
   const [batchOpen, setBatchOpen] = useState(false)
   const [selectedLeadData, setSelectedLeadData] = useState(null)
   const [emailSending, setEmailSending] = useState(false)
+  const [smsSending, setSmsSending] = useState(false)
   const [callPlacing, setCallPlacing] = useState(false)
   const [callLogsLoading, setCallLogsLoading] = useState(false)
   const [activeOutboundCall, setActiveOutboundCall] = useState(null)
@@ -544,9 +546,16 @@ function InboxPageContent() {
     }))
   }
 
-  const handleSendMessage = async ({ content, subject, channel, scheduleNow = true, scheduleDate = null }) => {
+  const handleSendMessage = async ({
+    content,
+    subject,
+    channel,
+    scheduleNow = true,
+    scheduleDate = null,
+    contentHtml = null,
+  }) => {
     const convId = selectedConversationRef.current || selectedConversation
-    if (!convId || !content.trim()) return
+    if (!convId || !(String(contentHtml || content || '').trim())) return false
 
     const convFromUI =
       convId
@@ -565,21 +574,56 @@ function InboxPageContent() {
         lead: leadRecipient,
         subject,
         content,
+        html: contentHtml,
         scheduleNow,
         scheduleDate,
       })
       if (validationError) {
         toast.error({ title: 'Cannot send email', message: validationError })
-        return
+        return false
+      }
+    } else if (scheduleNow === false) {
+      if (!scheduleDate) {
+        toast.error({
+          title: 'Cannot send SMS',
+          message: 'scheduleDate is required when scheduling for later',
+        })
+        return false
+      }
+      const when = new Date(scheduleDate)
+      if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
+        toast.error({
+          title: 'Cannot send SMS',
+          message: 'scheduleDate must be a valid future datetime',
+        })
+        return false
       }
     }
 
     const messageId = `${Date.now()}`
+    const leadRecipient = buildLeadRecipient(fallbackContact, selectedLeadData)
+    const personalizedContent =
+      effectiveChannel === 'SMS'
+        ? applyEmailTemplate(String(content || '').trim(), leadRecipient)
+        : String(content || '').trim()
+    // Optimistic bubble: personalize HTML locally; backend also personalizes on send.
+    const personalizedHtml =
+      contentHtml && effectiveChannel === 'Email'
+        ? applyEmailTemplate(String(contentHtml).trim(), leadRecipient)
+        : null
+    // Send raw template HTML so the server can personalize (and track) per recipient.
+    const htmlForSend =
+      contentHtml && effectiveChannel === 'Email'
+        ? String(contentHtml).trim()
+        : null
+    const displayContent =
+      personalizedContent || htmlToPlainText(personalizedHtml || '')
     const newMessage = {
       id: messageId,
       sender: 'You',
       direction: 'outbound',
-      content: content.trim(),
+      content: displayContent,
+      contentHtml: personalizedHtml || undefined,
       subject: effectiveChannel === 'Email' ? (subject || '').trim() : undefined,
       timestamp: new Date().toISOString(),
       channel: effectiveChannel,
@@ -594,7 +638,10 @@ function InboxPageContent() {
       const nextRow = {
         id: convId,
         contact: fallbackContact,
-        lastMessage: effectiveChannel === 'Email' ? (subject || content.trim()) : content.trim(),
+        lastMessage:
+          effectiveChannel === 'Email'
+            ? subject || displayContent
+            : displayContent,
         timestamp: newMessage.timestamp,
         unread: 0,
         channel: effectiveChannel,
@@ -606,6 +653,9 @@ function InboxPageContent() {
 
       return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     })
+
+    if (effectiveChannel === 'Email') setEmailSending(true)
+    else setSmsSending(true)
 
     try {
       if (isTalkToAssistant) {
@@ -619,35 +669,38 @@ function InboxPageContent() {
           : String(locationRaw?._id ?? locationRaw ?? '')
 
         if (!fromNumber) {
+          revertOptimisticMessage(convId, messageId)
           toast.error({
             title: 'Missing phone',
             message: 'Select a lead with a phone number to message the assistant.',
           })
-          return
+          return false
         }
         if (!locationID) {
+          revertOptimisticMessage(convId, messageId)
           toast.error({
             title: 'Missing studio',
             message: 'Assign the lead to a studio, then add that studio’s phone in Settings → Studio.',
           })
-          return
+          return false
         }
 
         const locationResult = await api.get(`/api/location/${encodeURIComponent(locationID)}`)
         const studio = locationResult?.data
         const toNumber = studio?.phoneNumber
         if (!locationResult.success || !toNumber || studio?.phoneStatus !== 'connected') {
+          revertOptimisticMessage(convId, messageId)
           toast.error({
             title: 'Studio phone not connected',
             message: 'Add a Twilio number for this studio in Settings → Studio.',
           })
-          return
+          return false
         }
 
         const assistantResult = await api.post('/api/sms/incoming_sms', {
           From: fromNumber,
           To: toNumber,
-          Body: content.trim(),
+          Body: personalizedContent || content.trim(),
           MessageSid: `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
         })
         const assistantReply =
@@ -684,6 +737,7 @@ function InboxPageContent() {
             return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
           })
         }
+        return true
       } else if (effectiveChannel === 'SMS') {
         const phoneNumber = selectedLeadData?.phoneNumber || fallbackContact.phoneNumber
         if (!phoneNumber) {
@@ -692,7 +746,7 @@ function InboxPageContent() {
             title: 'Missing phone',
             message: 'This contact has no phone number on file.',
           })
-          return
+          return false
         }
 
         const locationRaw = selectedLeadData?.locationID ?? fallbackContact.locationID
@@ -709,8 +763,10 @@ function InboxPageContent() {
             name: getContactDisplayName(selectedLeadData || fallbackContact),
             stage: selectedLeadData?.stage || fallbackContact.stage || '',
             locationID: locationIDs,
+            email: selectedLeadData?.email || fallbackContact.email || '',
+            location: selectedLeadData?.location || fallbackContact.location || '',
           },
-          message: content.trim(),
+          message: personalizedContent,
           scheduleNow,
           scheduleDate,
         })
@@ -720,7 +776,7 @@ function InboxPageContent() {
             title: 'SMS not sent',
             message: result.error || 'Could not send SMS. Check the studio phone is connected.',
           })
-          return
+          return false
         }
         toast.success({
           title: scheduleNow ? 'SMS sent' : 'SMS scheduled',
@@ -728,13 +784,13 @@ function InboxPageContent() {
             result.message ||
             (scheduleNow ? 'SMS sent successfully' : 'SMS scheduled successfully'),
         })
+        return true
       } else if (effectiveChannel === 'Email') {
-        setEmailSending(true)
-        const leadRecipient = buildLeadRecipient(fallbackContact, selectedLeadData)
         const payload = buildSendOneEmailPayload({
           lead: leadRecipient,
           subject,
-          content,
+          content: personalizedContent,
+          html: htmlForSend,
           scheduleNow,
           scheduleDate,
         })
@@ -743,15 +799,19 @@ function InboxPageContent() {
           revertOptimisticMessage(convId, messageId)
           toast.error({
             title: 'Email not sent',
-            message: result.error || 'Could not schedule email.',
+            message: result.error || 'Could not send email.',
           })
-          return
+          return false
         }
         toast.success({
-          title: scheduleNow ? 'Email scheduled' : 'Email scheduled for later',
-          message: result.message || 'Email scheduled successfully',
+          title: scheduleNow ? 'Email sent' : 'Email scheduled',
+          message:
+            result.message ||
+            (scheduleNow ? 'Email sent successfully' : 'Email scheduled successfully'),
         })
+        return true
       }
+      return false
     } catch (e) {
       console.error('Failed to queue message:', e)
       revertOptimisticMessage(convId, messageId)
@@ -759,8 +819,10 @@ function InboxPageContent() {
         title: effectiveChannel === 'Email' ? 'Email not sent' : 'SMS not sent',
         message: 'Something went wrong. Please try again.',
       })
+      return false
     } finally {
       if (effectiveChannel === 'Email') setEmailSending(false)
+      else setSmsSending(false)
     }
   }
 
@@ -1455,6 +1517,7 @@ function InboxPageContent() {
             loadingMore={threadMeta[selectedConversation]?.loading ?? false}
             leadData={selectedLeadData}
             emailSending={emailSending}
+            smsSending={smsSending}
             callPlacing={callPlacing}
             callLogsLoading={callLogsLoading}
             onPlaceCall={handlePlaceCall}

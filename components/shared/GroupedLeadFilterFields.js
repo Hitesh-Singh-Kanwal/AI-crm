@@ -24,8 +24,10 @@ import {
 import { summarizeCondition } from '@/lib/dynamic-list-normalize'
 import FilterLogicToggle from '@/components/shared/FilterLogicToggle'
 import CatalogConditionValueInput from '@/components/shared/CatalogConditionValueInput'
+import { REPORT_FILTER_CATALOGS, DASHBOARD_DETAILS_FILTER_CATALOGS } from '@/lib/report-filter-catalogs'
 
-function getCatalogApi(entityType) {
+function getCatalogApi(entityType, catalogKey, catalogOverride = null) {
+  if (catalogOverride) return catalogOverride
   if (entityType === 'customer') {
     return {
       FILTER_GROUPS: CUSTOMER_FILTER_GROUPS,
@@ -35,6 +37,9 @@ function getCatalogApi(entityType) {
       getFilterFieldDef: getCustomerFilterFieldDef,
       getOperatorsForFilterField: getOperatorsForCustomerFilterField,
     }
+  }
+  if (entityType === 'report') {
+    return DASHBOARD_DETAILS_FILTER_CATALOGS[catalogKey] || REPORT_FILTER_CATALOGS[catalogKey] || null
   }
   return {
     FILTER_GROUPS: LEAD_FILTER_GROUPS,
@@ -116,6 +121,103 @@ function FieldPicker({ open, group, hiddenFields, onClose, onPick }) {
   )
 }
 
+function ReportColumnFilters({
+  catalog,
+  catalogKey,
+  conditions,
+  setConditions,
+  conditionLogic,
+  onLogicChange,
+  hiddenFields,
+  context,
+  loadingOptions,
+}) {
+  const fields = catalog.FILTER_GROUPS.flatMap((g) =>
+    g.fields
+      .filter((f) => !hiddenFields.has(f.value))
+      .map((f) => ({ ...f, groupId: g.id }))
+  )
+
+  function rowFor(field) {
+    return (
+      conditions.find((c) => c.field === field.value) || {
+        id: `report-${field.value}`,
+        groupId: field.groupId,
+        field: field.value,
+        operator: catalog.getDefaultOperatorForField(field.value),
+        value: catalog.emptyValueForOperator(catalog.getDefaultOperatorForField(field.value)),
+      }
+    )
+  }
+
+  function upsert(field, patch) {
+    const existing = conditions.find((c) => c.field === field.value)
+    if (existing) {
+      setConditions(conditions.map((c) => (c.field === field.value ? { ...c, ...patch } : c)))
+      return
+    }
+    const operator = patch.operator || catalog.getDefaultOperatorForField(field.value)
+    setConditions([
+      ...conditions,
+      {
+        id: `report-${field.value}`,
+        groupId: field.groupId,
+        field: field.value,
+        operator,
+        value: patch.value !== undefined ? patch.value : catalog.emptyValueForOperator(operator),
+        ...patch,
+      },
+    ])
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.04em] text-foreground/55">Column filters</div>
+        <FilterLogicToggle value={conditionLogic || 'AND'} onChange={onLogicChange} label="" helpText="" size="sm" />
+      </div>
+      <div className="space-y-3">
+        {fields.map((field) => {
+          const row = rowFor(field)
+          const operators = catalog.getOperatorsForFilterField(field.value)
+          return (
+            <div key={field.value} className="space-y-1.5">
+              <label className="text-[12px] font-medium text-foreground">{field.label}</label>
+              <div className="grid grid-cols-[110px_1fr] gap-2">
+                <select
+                  value={row.operator || 'eq'}
+                  onChange={(e) => {
+                    const operator = e.target.value
+                    upsert(field, { operator, value: catalog.emptyValueForOperator(operator) })
+                  }}
+                  className="h-10 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-[var(--studio-primary)]"
+                >
+                  {operators.map((op) => (
+                    <option key={op.value} value={op.value}>
+                      {op.label}
+                    </option>
+                  ))}
+                </select>
+                <CatalogConditionValueInput
+                  field={field.value}
+                  operator={row.operator}
+                  value={row.value}
+                  onChange={(value) => upsert(field, { value })}
+                  entityType="report"
+                  catalogKey={catalogKey}
+                  catalogOverride={catalog}
+                  {...context}
+                  loadingOptions={loadingOptions}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function ConditionRow({
   condition,
   catalogGroupId,
@@ -126,6 +228,7 @@ function ConditionRow({
   canRemove,
   catalog,
   entityType,
+  catalogKey,
 }) {
   const operators = catalog.getOperatorsForFilterField(condition.field)
   const fields = catalog.FILTER_GROUPS.find((g) => g.id === catalogGroupId)?.fields || []
@@ -184,6 +287,7 @@ function ConditionRow({
           value={condition.value}
           onChange={(value) => onChange({ value })}
           entityType={entityType}
+          catalogKey={catalogKey}
           {...context}
           loadingOptions={loadingOptions}
         />
@@ -207,6 +311,7 @@ function GroupToggleRow({
   hiddenFields,
   catalog,
   entityType,
+  catalogKey,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const activeCount = conditions.filter(catalog.conditionHasValue).length
@@ -272,6 +377,7 @@ function GroupToggleRow({
                   canRemove
                   catalog={catalog}
                   entityType={entityType}
+                  catalogKey={catalogKey}
                 />
                 {index === conditions.length - 1 ? (
                   <div className="flex flex-wrap items-center gap-2 pl-1">
@@ -315,6 +421,8 @@ export default function GroupedLeadFilterFields({
   onDraftChange,
   hiddenFields = new Set(),
   entityType = 'lead',
+  catalogKey = null,
+  catalogOverride = null,
   locations = [],
   forms = [],
   leadReasons = [],
@@ -324,12 +432,19 @@ export default function GroupedLeadFilterFields({
   packages = [],
   loadingOptions = false,
 }) {
-  const catalog = useMemo(() => getCatalogApi(entityType), [entityType])
+  const catalog = useMemo(
+    () => getCatalogApi(entityType, catalogKey, catalogOverride),
+    [entityType, catalogKey, catalogOverride]
+  )
   const context = useMemo(
     () => ({ leadReasons, locations, forms, teachers, tags, memberships, packages }),
     [leadReasons, locations, forms, teachers, tags, memberships, packages]
   )
-  const entityLabel = entityType === 'customer' ? 'customer' : 'lead'
+  const entityLabel = entityType === 'customer' ? 'customer' : entityType === 'report' ? 'column' : 'lead'
+
+  if (!catalog) {
+    return <p className="text-sm text-muted-foreground">No column filters available for this view yet.</p>
+  }
 
   const conditions = useMemo(
     () => (Array.isArray(draft?.conditions) ? draft.conditions : []),
@@ -389,6 +504,10 @@ export default function GroupedLeadFilterFields({
   }
 
   const isGroupEnabled = (group) => {
+    if (entityType === 'report') {
+      if (enabledGroups[group.id] === false) return false
+      return true
+    }
     if (enabledGroups[group.id] === false) return false
     if (enabledGroups[group.id] === true) return true
     return conditions.some((c) => c.groupId === group.id || group.fields.some((f) => f.value === c.field))
@@ -396,50 +515,67 @@ export default function GroupedLeadFilterFields({
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="mb-3 text-[13px] font-semibold text-foreground">Step 1: Choose a filter type</div>
-        <FilterLogicToggle
-          value={draft.conditionLogic || 'AND'}
-          onChange={(logic) => patchDraft({ conditionLogic: logic })}
-          label=""
-          helpText={
-            (draft.conditionLogic || 'AND') === 'OR'
-              ? `A ${entityLabel} must be present in at least one filter group to appear in the segment.`
-              : `A ${entityLabel} must be present in all filter groups to appear in the segment.`
-          }
+      {entityType === 'report' ? (
+        <ReportColumnFilters
+          catalog={catalog}
+          catalogKey={catalogKey}
+          conditions={conditions}
+          setConditions={setConditions}
+          conditionLogic={draft.conditionLogic || 'AND'}
+          onLogicChange={(logic) => patchDraft({ conditionLogic: logic })}
+          hiddenFields={hiddenFields}
+          context={context}
+          loadingOptions={loadingOptions}
         />
-      </div>
-
-      <div className="space-y-1">
-        {catalog.FILTER_GROUPS.map((group) => {
-          const availableFields = group.fields.filter((f) => !hiddenFields.has(f.value))
-          if (availableFields.length === 0) return null
-          const enabled = isGroupEnabled(group)
-          const groupConditions = conditions.filter(
-            (c) => c.groupId === group.id || availableFields.some((f) => f.value === c.field)
-          )
-
-          return (
-            <GroupToggleRow
-              key={group.id}
-              group={group}
-              enabled={enabled}
-              onToggle={(checked) => setGroupEnabled(group.id, checked)}
-              logic={groupLogics[group.id] || 'AND'}
-              onLogicChange={(logic) => setGroupLogic(group.id, logic)}
-              conditions={groupConditions}
-              onAdd={(fieldValue) => addCondition(fieldValue, group.id)}
-              onUpdate={updateCondition}
-              onRemove={removeCondition}
-              context={context}
-              loadingOptions={loadingOptions}
-              hiddenFields={hiddenFields}
-              catalog={catalog}
-              entityType={entityType}
+      ) : (
+        <>
+          <div>
+            <div className="mb-3 text-[13px] font-semibold text-foreground">Step 1: Choose a filter type</div>
+            <FilterLogicToggle
+              value={draft.conditionLogic || 'AND'}
+              onChange={(logic) => patchDraft({ conditionLogic: logic })}
+              label=""
+              helpText={
+                (draft.conditionLogic || 'AND') === 'OR'
+                  ? `A ${entityLabel} must be present in at least one filter group to appear in the segment.`
+                  : `A ${entityLabel} must be present in all filter groups to appear in the segment.`
+              }
             />
-          )
-        })}
-      </div>
+          </div>
+
+          <div className="space-y-1">
+            {catalog.FILTER_GROUPS.map((group) => {
+              const availableFields = group.fields.filter((f) => !hiddenFields.has(f.value))
+              if (availableFields.length === 0) return null
+              const enabled = isGroupEnabled(group)
+              const groupConditions = conditions.filter(
+                (c) => c.groupId === group.id || availableFields.some((f) => f.value === c.field)
+              )
+
+              return (
+                <GroupToggleRow
+                  key={group.id}
+                  group={group}
+                  enabled={enabled}
+                  onToggle={(checked) => setGroupEnabled(group.id, checked)}
+                  logic={groupLogics[group.id] || 'AND'}
+                  onLogicChange={(logic) => setGroupLogic(group.id, logic)}
+                  conditions={groupConditions}
+                  onAdd={(fieldValue) => addCondition(fieldValue, group.id)}
+                  onUpdate={updateCondition}
+                  onRemove={removeCondition}
+                  context={context}
+                  loadingOptions={loadingOptions}
+                  hiddenFields={hiddenFields}
+                  catalog={catalog}
+                  entityType={entityType}
+                  catalogKey={catalogKey}
+                />
+              )
+            })}
+          </div>
+        </>
+      )}
     </div>
   )
 }

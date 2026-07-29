@@ -6,10 +6,18 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { extractLeadReasonsList } from '@/app/marketing/email-builder/emailBuilderApi'
+import {
+  DEFAULT_PHONE_COUNTRY_CODE,
+  DEFAULT_PHONE_COUNTRY_ISO,
+  getPhoneCountryCodeOptions,
+} from '@/lib/phone-country-codes'
+import { HEADING_LEVELS } from '@/lib/form-heading-styles'
+import { getGlobalStyleExcludeKey } from '@/lib/form-global-styles'
 
 const fontFamilies = [
   'Arial',
@@ -34,7 +42,14 @@ const fontFamilies = [
 
 const fontWeights = ['100', '200', '300', '400', '500', '600', '700', '800', '900']
 
-export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLeadReasonsRefresh }) {
+export default function StylePanel({
+  field,
+  onStyleChange,
+  onFieldUpdate,
+  onLeadReasonsRefresh,
+  globalStyleExcludeKeys = [],
+  onToggleGlobalExclude,
+}) {
   const toast = useToast()
   const [expandedSections, setExpandedSections] = useState({
     typography: true,
@@ -77,6 +92,88 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
   const handleFieldUpdate = (updates) => {
     onFieldUpdate(updates)
   }
+
+  const supportsDefaultValue =
+    field.type !== 'submit' &&
+    field.type !== 'hidden' &&
+    field.type !== 'checkbox' &&
+    field.type !== 'rating' &&
+    field.type !== 'file' &&
+    field.type !== 'heading' &&
+    field.type !== 'captcha'
+
+  const defaultValueControls = supportsDefaultValue ? (
+    <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+      {field.type === 'select' ? (
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground font-medium">Default / submitted value</Label>
+          <Select
+            value={field.defaultValue || ''}
+            onChange={(e) => {
+              const nextValue = e.target.value
+              handleFieldUpdate({
+                ...field,
+                defaultValue: nextValue || undefined,
+                submitHidden: nextValue ? field.submitHidden : false,
+              })
+            }}
+          >
+            <option value="">Visitor chooses (visible dropdown)</option>
+            {(field.options || []).map((opt, idx) => (
+              <option key={opt.value || opt.label || idx} value={opt.value || opt.label}>
+                {opt.label || opt.value}
+              </option>
+            ))}
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Pick a value to pre-select or submit when the field is hidden.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground font-medium">Default value</Label>
+          <Input
+            value={field.defaultValue || ''}
+            onChange={(e) => {
+              const nextValue = e.target.value
+              handleFieldUpdate({
+                ...field,
+                defaultValue: nextValue || undefined,
+                submitHidden: nextValue ? field.submitHidden : false,
+              })
+            }}
+            placeholder="Pre-filled value for this field"
+            className="border-border bg-background text-sm h-9"
+          />
+        </div>
+      )}
+
+      {(field.type === 'select' ? Boolean(field.defaultValue) : Boolean(field.defaultValue)) ? (
+        <div className="flex items-start gap-2 pt-1">
+          <input
+            type="checkbox"
+            id={`submit-hidden-${field.id}`}
+            checked={Boolean(field.submitHidden)}
+            onChange={(e) =>
+              handleFieldUpdate({
+                ...field,
+                submitHidden: e.target.checked,
+              })
+            }
+            className="mt-0.5"
+          />
+          <div>
+            <Label htmlFor={`submit-hidden-${field.id}`} className="text-xs text-foreground">
+              Hide field (submit this value)
+            </Label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Field stays in the form HTML but is not shown to visitors. The value above is still submitted.
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  ) : null
 
   const handleAddReason = async () => {
     const name = newReasonName.trim()
@@ -129,6 +226,22 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
     </button>
   )
 
+  const optionsLocked =
+    Boolean(field.locked) ||
+    Boolean(field.optionsLocked) ||
+    ['locationID', 'reason', 'utm_source'].includes(field.name)
+
+  const isLeadProperty =
+    field.propertyKind === 'lead' ||
+    ['name', 'email', 'phoneNumber', 'locationID', 'reason', 'location', 'utm_source'].includes(
+      field.name
+    )
+  const isMetadataProperty = field.propertyKind === 'metadata' || Boolean(field.metadataKey)
+
+  const internalNameDisplay = isMetadataProperty
+    ? `metadata.${field.metadataKey || 'custom'}`
+    : field.name || '—'
+
   return (
     <Tabs defaultValue="content" className="w-full">
       <TabsList className="grid w-full grid-cols-3 mb-3 h-9">
@@ -139,14 +252,145 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
 
       <TabsContent value="content" className="space-y-3 mt-0">
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground font-medium">Label</Label>
+          <Label className="text-xs text-muted-foreground font-medium">
+            {field.type === 'heading' ? 'Heading text' : field.type === 'captcha' ? 'Captcha text' : 'Label'}
+          </Label>
           <Input
             value={field.label}
             onChange={(e) => handleFieldUpdate({ ...field, label: e.target.value })}
             className="border-border bg-background text-sm h-9"
           />
         </div>
-        {field.type !== 'submit' && (
+        {typeof onToggleGlobalExclude === 'function' && field.type !== 'hidden' ? (
+          <label className="flex items-start gap-2.5 rounded-md border border-border bg-muted/20 px-2.5 py-2 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={globalStyleExcludeKeys.includes(getGlobalStyleExcludeKey(field))}
+              onChange={(e) =>
+                onToggleGlobalExclude(getGlobalStyleExcludeKey(field), e.target.checked)
+              }
+            />
+            <span className="min-w-0">
+              <span className="block text-xs font-medium text-foreground">Exclude from form CSS</span>
+              <span className="block text-[11px] text-muted-foreground">
+                This field will ignore this form&apos;s shared styles
+              </span>
+            </span>
+          </label>
+        ) : null}
+        {field.type === 'heading' ? (
+          <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground font-medium">Heading level</Label>
+              <Select
+                value={field.headingLevel || 'h2'}
+                onChange={(e) => {
+                  const level = e.target.value
+                  const meta = HEADING_LEVELS.find((h) => h.value === level)
+                  handleFieldUpdate({
+                    ...field,
+                    headingLevel: level,
+                    styles: {
+                      ...styles,
+                      fontSize: meta?.defaultSize || styles.fontSize || '24px',
+                    },
+                  })
+                }}
+                className="border-border bg-background text-sm h-9"
+              >
+                {HEADING_LEVELS.map((h) => (
+                  <option key={h.value} value={h.value}>
+                    {h.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground font-medium">Position</Label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  { value: 'left', label: 'Left', Icon: AlignLeft },
+                  { value: 'center', label: 'Middle', Icon: AlignCenter },
+                  { value: 'right', label: 'Right', Icon: AlignRight },
+                ].map(({ value, label, Icon }) => {
+                  const active = (styles.blockAlign || styles.textAlign || 'left') === value
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        onStyleChange({
+                          ...field,
+                          styles: {
+                            ...styles,
+                            textAlign: value,
+                            blockAlign: value,
+                          },
+                        })
+                      }}
+                      className={cn(
+                        'flex items-center justify-center gap-1.5 rounded-md border px-2 py-2 text-xs font-medium transition-colors',
+                        active
+                          ? 'border-sky-500 bg-sky-50 text-sky-800'
+                          : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {field.type !== 'submit' &&
+        field.type !== 'heading' &&
+        field.type !== 'captcha' &&
+        (isLeadProperty || isMetadataProperty || field.name) ? (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground font-medium">Internal name</Label>
+            {isMetadataProperty ? (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <span className="shrink-0 text-xs text-muted-foreground font-mono">metadata.</span>
+                  <Input
+                    value={field.metadataKey || ''}
+                    onChange={(e) => {
+                      const metadataKey = e.target.value
+                        .replace(/[^\w.-]/g, '_')
+                        .replace(/^_+|_+$/g, '')
+                      handleFieldUpdate({
+                        ...field,
+                        metadataKey,
+                        name: `metadata.${metadataKey || 'custom'}`,
+                      })
+                    }}
+                    placeholder="custom_key"
+                    className="border-border bg-background text-sm h-9 font-mono"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Saved on the lead under metadata.
+                </p>
+              </>
+            ) : (
+              <>
+                <Input
+                  value={internalNameDisplay}
+                  readOnly
+                  disabled
+                  className="border-border bg-muted/40 text-sm h-9 font-mono italic"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Fixed submit key — renaming the label does not change this.
+                </p>
+              </>
+            )}
+          </div>
+        ) : null}
+        {field.type !== 'submit' && field.type !== 'heading' && field.type !== 'captcha' && (
           <>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground font-medium">Placeholder</Label>
@@ -156,10 +400,38 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                 className="border-border bg-background text-sm h-9"
               />
             </div>
+            {(field.type === 'phone' || field.name === 'phoneNumber') && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground font-medium">
+                  Default country
+                </Label>
+                <Select
+                  value={`${field.defaultCountryIso || DEFAULT_PHONE_COUNTRY_ISO}|${field.defaultCountryCode || DEFAULT_PHONE_COUNTRY_CODE}`}
+                  onChange={(e) => {
+                    const [iso, code] = String(e.target.value).split('|')
+                    handleFieldUpdate({
+                      ...field,
+                      defaultCountryCode: code || DEFAULT_PHONE_COUNTRY_CODE,
+                      defaultCountryIso: iso || DEFAULT_PHONE_COUNTRY_ISO,
+                    })
+                  }}
+                  className="border-border bg-background text-sm h-9"
+                >
+                  {getPhoneCountryCodeOptions().map((opt) => (
+                    <option key={`${opt.iso}-${opt.code}`} value={`${opt.iso}|${opt.code}`}>
+                      {opt.flag} {opt.label}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Visitors pick a country; number is saved as +code… (e.g. +11234567890)
+                </p>
+              </div>
+            )}
             {(field.type === 'select' || field.type === 'checkbox') && (
               <div className="space-y-2.5">
                 <Label className="text-xs text-muted-foreground font-medium">Options</Label>
-                {field.locked ? (
+                {optionsLocked ? (
                   <div className="space-y-2.5">
                     {field.name === 'reason' && (
                       <p className="text-xs text-muted-foreground">
@@ -171,6 +443,11 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                       <p className="text-xs text-muted-foreground">
                         Options are loaded from your active studios/locations. The selected value is
                         saved as locationID when the form is submitted.
+                      </p>
+                    )}
+                    {field.name === 'utm_source' && (
+                      <p className="text-xs text-muted-foreground">
+                        Source options are fixed: Google Ads and Website. Saved as utm_source.
                       </p>
                     )}
                     <ul className="text-xs text-muted-foreground space-y-1 rounded-md border border-border p-2 max-h-36 overflow-y-auto">
@@ -269,13 +546,15 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                 )}
               </div>
             )}
+            {defaultValueControls}
             <div className="flex items-center gap-2 pt-2 border-t border-border">
               <input
                 type="checkbox"
                 id="required"
                 checked={field.required}
                 onChange={(e) => handleFieldUpdate({ ...field, required: e.target.checked })}
-                className="text-muted-foreground"
+                disabled={field.locked}
+                className="text-muted-foreground disabled:opacity-50"
               />
               <Label htmlFor="required" className="text-xs text-foreground">
                 Required Field
@@ -283,6 +562,45 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
             </div>
           </>
         )}
+        {field.type === 'captcha' ? (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground font-medium">Captcha type</Label>
+              <Select
+                value={field.captchaType || 'robot'}
+                onChange={(e) => {
+                  const captchaType = e.target.value
+                  const meta =
+                    [
+                      { id: 'images', name: 'Images', label: 'Select the matching images' },
+                      { id: 'robot', name: "I'm not a robot", label: "I'm not a robot" },
+                      { id: 'audio', name: 'Audio', label: 'Listen and type the code' },
+                      { id: 'math', name: 'Math-based', label: 'Solve the math problem' },
+                      { id: 'invisible', name: 'Invisible / Score-based', label: 'Protected by invisible captcha' },
+                      { id: 'text', name: 'Text-based', label: 'Enter the characters you see' },
+                    ].find((t) => t.id === captchaType) || { id: 'robot', label: "I'm not a robot" }
+                  handleFieldUpdate({
+                    ...field,
+                    captchaType: meta.id,
+                    label: meta.label,
+                    required: true,
+                  })
+                }}
+                className="border-border bg-background text-sm h-9"
+              >
+                <option value="images">Images</option>
+                <option value="robot">I&apos;m not a robot</option>
+                <option value="audio">Audio</option>
+                <option value="math">Math-based</option>
+                <option value="invisible">Invisible / Score-based</option>
+                <option value="text">Text-based</option>
+              </Select>
+            </div>
+            <p className="text-[11px] text-muted-foreground border-t border-border pt-2">
+              Captcha is always required. Visitors must complete it before the form can be submitted.
+            </p>
+          </div>
+        ) : null}
       </TabsContent>
 
       <TabsContent value="style" className="space-y-3 mt-0">
@@ -342,11 +660,34 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                   className="border-border bg-muted/50 focus:bg-background text-sm"
                 />
               </div>
+              {field.type === 'heading' ? (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Line Height</Label>
+                  <Input
+                    type="number"
+                    step="0.05"
+                    value={styles.lineHeight ? parseFloat(String(styles.lineHeight).replace(/px$/, '')) : ''}
+                    onChange={(e) => updateStyle('lineHeight', e.target.value || '')}
+                    placeholder="1.3"
+                    className="border-border bg-muted/50 focus:bg-background text-sm"
+                  />
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Text Align</Label>
                 <Select
                   value={styles.textAlign || 'left'}
-                  onChange={(e) => updateStyle('textAlign', e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (field.type === 'heading') {
+                      onStyleChange({
+                        ...field,
+                        styles: { ...styles, textAlign: value, blockAlign: value },
+                      })
+                    } else {
+                      updateStyle('textAlign', value)
+                    }
+                  }}
                   className="border-border bg-muted/50 focus:bg-background text-sm"
                 >
                   <option value="left">Left</option>
@@ -400,18 +741,41 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                 <div className="flex gap-2">
                   <Input
                     type="color"
-                    value={styles.backgroundColor || '#ffffff'}
+                    value={
+                      styles.backgroundColor &&
+                      styles.backgroundColor !== 'transparent' &&
+                      /^#([0-9A-Fa-f]{6})$/.test(styles.backgroundColor)
+                        ? styles.backgroundColor
+                        : field.type === 'heading'
+                          ? '#fef08a'
+                          : '#ffffff'
+                    }
                     onChange={(e) => updateStyle('backgroundColor', e.target.value)}
                     className="h-10 w-16 border-border cursor-pointer"
+                    title="Pick background color"
                   />
                   <Input
                     type="text"
-                    value={styles.backgroundColor || '#ffffff'}
+                    value={styles.backgroundColor || (field.type === 'heading' ? '' : '#ffffff')}
                     onChange={(e) => updateStyle('backgroundColor', e.target.value)}
-                    placeholder="#ffffff"
+                    placeholder={field.type === 'heading' ? '#fef08a' : '#ffffff'}
                     className="flex-1 border-border bg-muted/50 focus:bg-background text-sm"
                   />
                 </div>
+                {field.type === 'heading' ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="text-[11px] text-sky-700 hover:underline"
+                      onClick={() => updateStyle('backgroundColor', '')}
+                    >
+                      Clear background
+                    </button>
+                    {!styles.backgroundColor || styles.backgroundColor === 'transparent' ? (
+                      <span className="text-[11px] text-muted-foreground">No background set</span>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
           )}
@@ -536,11 +900,44 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                   <Label className="text-xs text-muted-foreground">Border Radius (px)</Label>
                   <Input
                     type="number"
-                    value={styles.borderRadius ? parseFloat(styles.borderRadius.replace('px', '')) : ''}
+                    value={
+                      styles.borderRadius && styles.borderRadius !== '9999px'
+                        ? parseFloat(String(styles.borderRadius).replace('px', '')) || ''
+                        : ''
+                    }
                     onChange={(e) => updateStyle('borderRadius', e.target.value ? `${e.target.value}px` : '')}
-                    placeholder="4"
+                    placeholder={styles.borderRadius === '9999px' ? 'Full' : '4'}
                     className="border-border bg-muted/50 focus:bg-background text-sm"
                   />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Corner round</Label>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[
+                    { label: 'None', value: '' },
+                    { label: 'Soft', value: '4px' },
+                    { label: 'Med', value: '8px' },
+                    { label: 'Large', value: '16px' },
+                    { label: 'Round', value: '9999px' },
+                  ].map(({ label, value }) => {
+                    const active = (styles.borderRadius || '') === value
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => updateStyle('borderRadius', value)}
+                        className={cn(
+                          'rounded-md border px-1 py-1.5 text-[11px] font-medium transition-colors',
+                          active
+                            ? 'border-sky-500 bg-sky-50 text-sky-800'
+                            : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
               <div className="space-y-2">
@@ -588,8 +985,20 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Width</Label>
                 <Select
-                  value={styles.width || '100%'}
-                  onChange={(e) => updateStyle('width', e.target.value)}
+                  value={
+                    ['auto', '100%', '75%', '50%', '25%'].includes(styles.width)
+                      ? styles.width
+                      : styles.width
+                        ? 'custom'
+                        : '100%'
+                  }
+                  onChange={(e) => {
+                    if (e.target.value === 'custom') {
+                      updateStyle('width', styles.width && !['auto', '100%', '75%', '50%', '25%'].includes(styles.width) ? styles.width : '300px')
+                    } else {
+                      updateStyle('width', e.target.value)
+                    }
+                  }}
                   className="border-border bg-muted/50 focus:bg-background text-sm"
                 >
                   <option value="auto">Auto</option>
@@ -597,8 +1006,65 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                   <option value="75%">75%</option>
                   <option value="50%">50%</option>
                   <option value="25%">25%</option>
+                  <option value="custom">Custom</option>
                 </Select>
+                {styles.width && !['auto', '100%', '75%', '50%', '25%'].includes(styles.width) ? (
+                  <Input
+                    type="text"
+                    value={styles.width}
+                    onChange={(e) => updateStyle('width', e.target.value)}
+                    placeholder="300px or 40%"
+                    className="border-border bg-muted/50 focus:bg-background text-sm"
+                  />
+                ) : null}
               </div>
+              {field.type === 'heading' ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Height (px)</Label>
+                      <Input
+                        type="number"
+                        value={styles.height ? parseFloat(String(styles.height).replace('px', '')) : ''}
+                        onChange={(e) => updateStyle('height', e.target.value ? `${e.target.value}px` : '')}
+                        placeholder="Auto"
+                        className="border-border bg-muted/50 focus:bg-background text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Min height (px)</Label>
+                      <Input
+                        type="number"
+                        value={styles.minHeight ? parseFloat(String(styles.minHeight).replace('px', '')) : ''}
+                        onChange={(e) => updateStyle('minHeight', e.target.value ? `${e.target.value}px` : '')}
+                        placeholder="0"
+                        className="border-border bg-muted/50 focus:bg-background text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Block position</Label>
+                    <Select
+                      value={styles.blockAlign || styles.textAlign || 'left'}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        onStyleChange({
+                          ...field,
+                          styles: { ...styles, blockAlign: value, textAlign: value },
+                        })
+                      }}
+                      className="border-border bg-muted/50 focus:bg-background text-sm"
+                    >
+                      <option value="left">Left</option>
+                      <option value="center">Middle</option>
+                      <option value="right">Right</option>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      Positions the heading block when width is less than 100%.
+                    </p>
+                  </div>
+                </>
+              ) : null}
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Display</Label>
                 <Select
@@ -612,19 +1078,21 @@ export default function StylePanel({ field, onStyleChange, onFieldUpdate, onLead
                   <option value="flex">Flex</option>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Position</Label>
-                <Select
-                  value={styles.position || 'static'}
-                  onChange={(e) => updateStyle('position', e.target.value)}
-                  className="border-border bg-muted/50 focus:bg-background text-sm"
-                >
-                  <option value="static">Static</option>
-                  <option value="relative">Relative</option>
-                  <option value="absolute">Absolute</option>
-                  <option value="fixed">Fixed</option>
-                </Select>
-              </div>
+              {field.type !== 'heading' ? (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Position</Label>
+                  <Select
+                    value={styles.position || 'static'}
+                    onChange={(e) => updateStyle('position', e.target.value)}
+                    className="border-border bg-muted/50 focus:bg-background text-sm"
+                  >
+                    <option value="static">Static</option>
+                    <option value="relative">Relative</option>
+                    <option value="absolute">Absolute</option>
+                    <option value="fixed">Fixed</option>
+                  </Select>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

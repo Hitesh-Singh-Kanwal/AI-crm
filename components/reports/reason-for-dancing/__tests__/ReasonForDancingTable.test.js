@@ -5,31 +5,34 @@ import { ReasonForDancingTable } from '../ReasonForDancingTable'
 
 const rows = [
   {
-    id: 'cust-1',
-    studentName: 'Jane Doe',
-    type: 'Customer',
-    reasonForDancing: 'Wedding',
+    id: 'reason:Wedding',
+    reason: 'Wedding',
+    studentCount: 3,
+    totalSales: 1200,
+    cashCollected: 800,
+    conversionPct: 67,
     studioName: 'Downtown',
-    dateCreated: '2026-06-01',
   },
 ]
 
 describe('ReasonForDancingTable', () => {
-  it('renders a row with the reason', () => {
+  it('renders a row with the reason and metrics', () => {
     render(<ReasonForDancingTable rows={rows} onRowClick={vi.fn()} />)
-    expect(screen.getByText('Jane Doe')).toBeInTheDocument()
+    expect(screen.getByText('Reason')).toBeInTheDocument()
     expect(screen.getByText('Wedding')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.getByText('1200')).toBeInTheDocument()
   })
 
   it('shows an empty state when there are no rows', () => {
     render(<ReasonForDancingTable rows={[]} onRowClick={vi.fn()} />)
-    expect(screen.getByText('No leads or students found for the selected filters.')).toBeInTheDocument()
+    expect(screen.getByText('No reasons found for the selected filters.')).toBeInTheDocument()
   })
 
   it('calls onRowClick with the row when clicked', async () => {
     const onRowClick = vi.fn()
     render(<ReasonForDancingTable rows={rows} onRowClick={onRowClick} />)
-    await userEvent.click(screen.getByText('Jane Doe'))
+    await userEvent.click(screen.getByText('Wedding'))
     expect(onRowClick).toHaveBeenCalledWith(rows[0])
   })
 })

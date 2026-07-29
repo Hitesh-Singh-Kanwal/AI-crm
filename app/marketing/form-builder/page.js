@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X } from 'lucide-react'
+import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck, Image, Volume2, Calculator, EyeOff } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,8 +12,9 @@ import { Badge } from '@/components/ui/badge'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import Switch from '@/components/ui/switch'
-import { formatDate } from '@/lib/utils'
+import { formatDate, cn } from '@/lib/utils'
 import StylePanel from '@/components/forms/StylePanel'
+import GlobalStylePanel from '@/components/forms/GlobalStylePanel'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { getCurrentUser } from '@/lib/auth'
 import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
@@ -39,6 +40,114 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { extractLeadReasonsList } from '../email-builder/emailBuilderApi'
+import { SOURCE_OPTIONS } from '@/lib/dynamic-list-constants'
+import {
+  DynamicCaptcha,
+  getCaptchaExportMarkup,
+  getCaptchaExportRuntimeScript,
+} from '@/components/forms/DynamicCaptcha'
+import {
+  DEFAULT_PHONE_COUNTRY_CODE,
+  DEFAULT_PHONE_COUNTRY_ISO,
+} from '@/lib/phone-country-codes'
+import { buildHeadingBoxStyle, buildHeadingTextStyle, resolveHeadingTag } from '@/lib/form-heading-styles'
+import {
+  embedGlobalStylesMeta,
+  parseGlobalStylesMeta,
+  mergeFieldStyles,
+  isExcludedFromGlobalStyles,
+  buildLabelReactStyle,
+  buildInputReactStyle,
+  buildInputCssString,
+  buildLabelCssString,
+  resolveFormBackground,
+  buildFormContainerCss,
+  buildFormPageCss,
+} from '@/lib/form-global-styles'
+import FormPhoneInput, {
+  getFormPhoneExportMarkup,
+  getFormPhoneExportRuntimeScript,
+} from '@/components/forms/FormPhoneInput'
+
+const UTM_SOURCE_FIELD_OPTIONS = SOURCE_OPTIONS.map((value) => ({
+  value,
+  label: value === 'google-add' ? 'Google Ads' : value === 'website' ? 'Website' : value,
+}))
+
+/** Lead schema properties available in the builder. `name` is the fixed submit key. */
+const LEAD_PROPERTIES = [
+  {
+    id: 'name',
+    name: 'name',
+    label: 'Name',
+    type: 'text',
+    placeholder: 'Enter your name',
+    icon: Type,
+    frequentlyUsed: true,
+  },
+  {
+    id: 'email',
+    name: 'email',
+    label: 'Email',
+    type: 'email',
+    placeholder: 'you@email.com',
+    icon: Mail,
+    frequentlyUsed: true,
+  },
+  {
+    id: 'phoneNumber',
+    name: 'phoneNumber',
+    label: 'Phone Number',
+    type: 'phone',
+    placeholder: 'Phone number',
+    icon: Phone,
+    frequentlyUsed: true,
+    defaultCountryCode: DEFAULT_PHONE_COUNTRY_CODE,
+    defaultCountryIso: DEFAULT_PHONE_COUNTRY_ISO,
+  },
+  {
+    id: 'locationID',
+    name: 'locationID',
+    label: 'Studio',
+    type: 'select',
+    placeholder: 'Select studio',
+    icon: MapPin,
+    optionsFrom: 'locations',
+    frequentlyUsed: true,
+  },
+  {
+    id: 'reason',
+    name: 'reason',
+    label: 'Reason',
+    type: 'select',
+    placeholder: 'Select reason',
+    icon: Hash,
+    optionsFrom: 'reasons',
+    frequentlyUsed: true,
+  },
+  {
+    id: 'location',
+    name: 'location',
+    label: 'Location',
+    type: 'text',
+    placeholder: 'City or location text',
+    icon: MapPin,
+    frequentlyUsed: false,
+  },
+  {
+    id: 'utm_source',
+    name: 'utm_source',
+    label: 'Source',
+    type: 'select',
+    placeholder: 'Select source',
+    icon: Megaphone,
+    options: UTM_SOURCE_FIELD_OPTIONS,
+    frequentlyUsed: false,
+  },
+]
+
+const LEAD_PROPERTY_NAMES = new Set(LEAD_PROPERTIES.map((p) => p.name))
+const CORE_LEAD_PROPERTY_NAMES = ['name', 'email', 'phoneNumber', 'locationID', 'reason']
 
 const fieldTypes = [
   { id: 'text', name: 'Text Input', icon: Type },
@@ -51,6 +160,57 @@ const fieldTypes = [
   { id: 'file', name: 'File Upload', icon: Paperclip },
   { id: 'rating', name: 'Rating', icon: Star },
 ]
+
+/** Field types offered when adding a custom (metadata) property */
+const CUSTOM_FIELD_TYPES = [
+  { id: 'text', name: 'Text Input', icon: Type },
+  { id: 'textarea', name: 'Text Area', icon: FileText },
+  { id: 'checkbox', name: 'Checkbox', icon: CheckSquare },
+  { id: 'date', name: 'Date Picker', icon: Calendar },
+  { id: 'select', name: 'Dropdown', icon: ChevronDown },
+  { id: 'file', name: 'File Upload', icon: Paperclip },
+  { id: 'rating', name: 'Rating', icon: Star },
+]
+
+/** Always-available layout / form elements (not lead properties) */
+const FORM_ELEMENTS = [
+  {
+    id: 'heading',
+    type: 'heading',
+    name: 'Heading',
+    label: 'Heading',
+    icon: Heading,
+  },
+]
+
+/** Captcha variants — pick one when adding Captcha */
+const CAPTCHA_TYPES = [
+  { id: 'images', name: 'Images', label: 'Select the matching images', icon: Image },
+  { id: 'robot', name: "I'm not a robot", label: "I'm not a robot", icon: ShieldCheck },
+  { id: 'audio', name: 'Audio', label: 'Listen and type the code', icon: Volume2 },
+  { id: 'math', name: 'Math-based', label: 'Solve the math problem', icon: Calculator },
+  { id: 'invisible', name: 'Invisible / Score-based', label: 'Protected by invisible captcha', icon: EyeOff },
+  { id: 'text', name: 'Text-based', label: 'Enter the characters you see', icon: Type },
+]
+
+function getCaptchaTypeMeta(captchaType) {
+  return CAPTCHA_TYPES.find((t) => t.id === captchaType) || CAPTCHA_TYPES.find((t) => t.id === 'robot')
+}
+
+function createCaptchaField(captchaType = 'robot') {
+  const meta = getCaptchaTypeMeta(captchaType)
+  return {
+    id: `captcha-${Date.now()}`,
+    type: 'captcha',
+    name: 'captcha',
+    captchaType: meta.id,
+    label: meta.label,
+    placeholder: '',
+    required: true,
+    propertyKind: 'layout',
+    styles: {},
+  }
+}
 
 const templateFields = {
   f1: [
@@ -74,46 +234,324 @@ const templateFields = {
   ],
 }
 
-function buildRequiredLeadFields(leadReasons = [], locations = []) {
-  const reasonOptions = (leadReasons || []).map((r) => ({
+function buildReasonOptions(leadReasons = []) {
+  return (leadReasons || []).map((r) => ({
     label: r.name,
     value: r.reasonCode || r._id || r.name,
   }))
-  const studioOptions = (locations || []).map((loc) => ({
+}
+
+function buildStudioOptions(locations = []) {
+  return (locations || []).map((loc) => ({
     label: loc.name || 'Unnamed location',
     value: String(loc._id),
   }))
-  return [
-    { id: 'req-name', type: 'text', name: 'name', label: 'Name', placeholder: 'Enter your name', required: true, locked: true, styles: {} },
-    { id: 'req-email', type: 'email', name: 'email', label: 'Email', placeholder: 'you@email.com', required: true, locked: true, styles: {} },
-    { id: 'req-phoneNumber', type: 'phone', name: 'phoneNumber', label: 'Phone Number', placeholder: '(555) 123-4567', required: true, locked: true, styles: {} },
-    {
-      id: 'req-studio',
-      type: 'select',
-      name: 'locationID',
-      label: 'Studio',
-      placeholder: 'Select studio',
-      required: true,
+}
+
+function resolvePropertyOptions(prop, leadReasons = [], locations = []) {
+  if (prop.options) return prop.options
+  if (prop.optionsFrom === 'locations') return buildStudioOptions(locations)
+  if (prop.optionsFrom === 'reasons') return buildReasonOptions(leadReasons)
+  return []
+}
+
+function createLeadPropertyField(prop, { leadReasons = [], locations = [], locked = false, required = false } = {}) {
+  const options = resolvePropertyOptions(prop, leadReasons, locations)
+  return {
+    id: `lead-${prop.name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: prop.type,
+    name: prop.name,
+    label: prop.label,
+    placeholder: prop.placeholder || '',
+    required,
+    locked,
+    propertyKind: 'lead',
+    styles: {},
+    options: prop.type === 'select' || prop.type === 'checkbox' ? options : undefined,
+    optionsLocked: Boolean(prop.options || prop.optionsFrom),
+    ...(prop.defaultCountryCode ? { defaultCountryCode: prop.defaultCountryCode } : {}),
+    ...(prop.defaultCountryIso ? { defaultCountryIso: prop.defaultCountryIso } : {}),
+  }
+}
+
+function createMetadataField(type = 'text', label = 'Custom field') {
+  const typeMeta = CUSTOM_FIELD_TYPES.find((t) => t.id === type) || CUSTOM_FIELD_TYPES[0]
+  const keyBase = String(label || typeMeta.name || 'custom_field')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '') || 'custom_field'
+  const metadataKey = `${keyBase}_${Date.now().toString(36).slice(-4)}`
+  return {
+    id: `meta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: typeMeta.id,
+    name: `metadata.${metadataKey}`,
+    metadataKey,
+    label,
+    placeholder: typeMeta.id === 'select' || typeMeta.id === 'checkbox' ? '' : 'Enter value…',
+    required: false,
+    locked: false,
+    propertyKind: 'metadata',
+    styles: {},
+    options:
+      typeMeta.id === 'select' || typeMeta.id === 'checkbox'
+        ? [{ label: 'Option 1', value: 'option_1' }]
+        : undefined,
+  }
+}
+
+function buildRequiredLeadFields(leadReasons = [], locations = []) {
+  return CORE_LEAD_PROPERTY_NAMES.map((name) => {
+    const prop = LEAD_PROPERTIES.find((p) => p.name === name)
+    const field = createLeadPropertyField(prop, {
+      leadReasons,
+      locations,
       locked: true,
-      styles: {},
-      options: studioOptions,
-    },
-    {
-      id: 'req-reason',
-      type: 'select',
-      name: 'reason',
-      label: 'Reason',
-      placeholder: 'Select reason',
       required: true,
-      locked: true,
-      styles: {},
-      options: reasonOptions,
-    },
-  ]
+    })
+    // Stable ids for core required fields (easier option sync / import)
+    field.id = `req-${name === 'locationID' ? 'studio' : name}`
+    return field
+  })
+}
+
+const REQUIRED_SYSTEM_FIELDS = [
+  { id: 'sys-organisationID', type: 'hidden', name: 'organisationID', label: 'organisationID', hidden: true, locked: true, styles: {} },
+  { id: 'sys-formID', type: 'hidden', name: 'formID', label: 'formID', hidden: true, locked: true, styles: {} },
+]
+
+const FORM_TYPE_OPTIONS = [
+  {
+    id: 'blank',
+    title: 'Blank',
+    description: 'Start with an empty form and add your own fields from scratch.',
+    icon: Plus,
+  },
+  {
+    id: 'lead',
+    title: 'Lead form',
+    description: 'Includes required lead fields (name, email, phone, studio, reason). Add Source, Location, or metadata from the sidebar.',
+    icon: UserRound,
+  },
+]
+
+function buildInitialFormFields(formType, leadReasons = [], locations = []) {
+  if (formType === 'lead') {
+    return [...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations)]
+  }
+  return [...REQUIRED_SYSTEM_FIELDS]
+}
+
+function detectFormTypeFromInferred(inferred = []) {
+  const names = new Set(inferred.map((f) => f?.name).filter(Boolean))
+  const hasLeadCore = ['name', 'email', 'phoneNumber'].every((n) => names.has(n))
+  const hasLeadExtras = names.has('reason') || names.has('locationID')
+  return hasLeadCore && hasLeadExtras ? 'lead' : 'blank'
+}
+
+function escapeHtmlAttr(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function isSystemHiddenField(field) {
+  return field?.type === 'hidden' || (field?.hidden && !field?.submitHidden)
+}
+
+/** Phone widget helper inputs that must never appear as real builder fields */
+const PHONE_WIDGET_JUNK_NAMES = new Set([
+  'phonelocal',
+  'phonecountrycode',
+  'phone_local',
+  'phone_country_code',
+  'phone-local',
+  'phone-country-code',
+])
+
+function normalizeFieldKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\[\]$/, '')
+}
+
+function isPhoneWidgetJunkField(field) {
+  if (!field) return true
+  // Layout elements are never phone helpers
+  if (field.type === 'heading' || field.type === 'captcha') return false
+
+  const name = normalizeFieldKey(field.name)
+  const label = normalizeFieldKey(field.label)
+  const placeholder = String(field.placeholder || '')
+  const prop = normalizeFieldKey(field.name || field.label || field.id || '')
+
+  if (PHONE_WIDGET_JUNK_NAMES.has(name) || PHONE_WIDGET_JUNK_NAMES.has(label) || PHONE_WIDGET_JUNK_NAMES.has(prop)) {
+    return true
+  }
+  if (/search\s+for\s+countries/i.test(placeholder)) return true
+  if (/search\s+for\s+countries/i.test(String(field.label || ''))) return true
+  // Nameless / generic leftovers from the country search box
+  if (!name && (/^field$/i.test(label) || !label)) return true
+  // Phone UI wrongly saved under a helper name
+  if (
+    (field.type === 'phone' || field.type === 'tel') &&
+    name &&
+    name !== 'phonenumber' &&
+    !name.startsWith('metadata.') &&
+    (name.includes('phonelocal') || name.includes('countrycode') || name.includes('phone_local'))
+  ) {
+    return true
+  }
+  return false
+}
+
+function sanitizeFormFields(fields = []) {
+  const cleaned = []
+  const seen = new Set()
+  for (const field of fields || []) {
+    if (!field || isPhoneWidgetJunkField(field)) continue
+    const key =
+      field.type === 'heading'
+        ? `heading:${field.id}`
+        : field.type === 'captcha'
+          ? 'captcha'
+          : normalizeFieldKey(field.name || field.id || '')
+    if (key && field.type !== 'heading' && field.type !== 'captcha' && seen.has(key)) continue
+    if (key) seen.add(key)
+    if (field.name === 'phoneNumber' && field.type !== 'phone') {
+      cleaned.push({
+        ...field,
+        type: 'phone',
+        propertyKind: field.propertyKind || 'lead',
+      })
+      continue
+    }
+    cleaned.push(field)
+  }
+  return cleaned
+}
+
+function isCanvasField(field) {
+  return field && !isSystemHiddenField(field) && !isPhoneWidgetJunkField(field)
+}
+
+/** Keep headings above all other visible fields (system hiddens stay first). */
+function pinHeadingsToTop(fields = []) {
+  const system = []
+  const headings = []
+  const rest = []
+  for (const field of fields || []) {
+    if (!field) continue
+    if (isSystemHiddenField(field) || field.name === 'organisationID' || field.name === 'formID') {
+      system.push(field)
+    } else if (field.type === 'heading') {
+      headings.push(field)
+    } else {
+      rest.push(field)
+    }
+  }
+  return [...system, ...headings, ...rest]
+}
+
+function FormTypePreview({ formType }) {
+  if (formType === 'lead') {
+    const previewFields = [
+      { label: 'Name', required: true },
+      { label: 'Email', required: true },
+      { label: 'Phone Number', required: true },
+      { label: 'Studio', required: true },
+      { label: 'Reason', required: true },
+    ]
+    return (
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        {previewFields.map((field, index) => (
+          <div
+            key={field.label}
+            className={cn(
+              'border-b border-slate-200 px-5 py-4 last:border-b-0',
+              index === 0 && 'bg-sky-50'
+            )}
+          >
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-sm font-semibold text-slate-900">
+                {field.label}
+                {field.required ? <span>*</span> : null}
+              </span>
+              <span className="text-xs italic text-slate-400">
+                {field.label.toLowerCase().replace(/\s+/g, '')}
+              </span>
+              <FormFieldTag tone="teal">Lead property</FormFieldTag>
+            </div>
+            <div className="mt-2.5 h-10 rounded-md border border-slate-300 bg-white" />
+          </div>
+        ))}
+        <div className="border-t border-slate-200 px-5 py-5">
+          <div className="inline-flex rounded-full bg-[color:var(--studio-primary)] px-6 py-2.5 text-sm font-semibold text-white">
+            Submit
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-muted/20 p-10 text-center">
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+        <LayoutTemplate className="h-7 w-7 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium text-foreground">Blank form</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Drag components from the sidebar to build your form.
+      </p>
+    </div>
+  )
+}
+
+function getFieldPropertyName(field) {
+  if (field?.type === 'heading') return 'heading'
+  if (field?.type === 'captcha') return 'captcha'
+  if (field?.propertyKind === 'metadata' || field?.metadataKey) {
+    return `metadata.${field.metadataKey || 'custom'}`
+  }
+  if (field?.name) return field.name
+  return (field?.label || field?.id || 'field')
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+}
+
+function getFieldDefaultDisplayLabel(field) {
+  const value = field?.defaultValue
+  if (value == null || value === '') return ''
+  const str = String(value)
+  const options = field?.options || []
+  const match = options.find(
+    (opt) => String(opt.value ?? '') === str || String(opt.label ?? '') === str
+  )
+  return match?.label || match?.value || str
+}
+
+function FormFieldTag({ children, tone = 'teal' }) {
+  const tones = {
+    teal: 'border-teal-500/50 bg-teal-50 text-teal-700',
+    violet: 'border-violet-500/50 bg-violet-50 text-violet-700',
+    slate: 'border-slate-300 bg-slate-50 text-slate-600',
+  }
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-[11px] font-medium leading-none',
+        tones[tone] || tones.slate
+      )}
+    >
+      {children}
+    </span>
+  )
 }
 
 // Sortable Field Item Component
-function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
+function SortableFieldItem({ field, isSelected, onSelect, onRemove, globalStyles, globalStyleExcludeKeys }) {
   const {
     attributes,
     listeners,
@@ -126,165 +564,232 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove }) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.55 : 1,
   }
 
-  const fieldStyles = field.styles || {}
+  const excluded = isExcludedFromGlobalStyles(field, globalStyleExcludeKeys)
+  const fieldStyles = mergeFieldStyles(globalStyles, field.styles || {}, excluded)
+  const propertyName = getFieldPropertyName(field)
+  const isLeadProperty =
+    field.propertyKind === 'lead' || (field.name && LEAD_PROPERTY_NAMES.has(field.name))
+  const isMetadataProperty = field.propertyKind === 'metadata' || Boolean(field.metadataKey)
+  const defaultDisplayLabel = getFieldDefaultDisplayLabel(field)
 
-  const getInputStyle = () => {
-    return {
-      backgroundColor: fieldStyles.backgroundColor,
-      padding: `${fieldStyles.paddingTop || '0.5rem'} ${fieldStyles.paddingRight || '0.75rem'} ${fieldStyles.paddingBottom || '0.5rem'} ${fieldStyles.paddingLeft || '0.75rem'}`,
-      borderWidth: fieldStyles.borderWidth || '1px',
-      borderStyle: fieldStyles.borderStyle || 'solid',
-      borderColor: fieldStyles.borderColor || '#e2e8f0',
-      borderRadius: fieldStyles.borderRadius || '0.375rem',
-      width: fieldStyles.width || '100%',
+  const inputClassName =
+    'w-full rounded-md border border-slate-300 px-3 py-2 shadow-none pointer-events-none'
+
+  const getInputStyle = () => buildInputReactStyle(fieldStyles)
+  const getLabelStyle = () => buildLabelReactStyle(fieldStyles)
+
+  const renderFieldControl = () => {
+    if (field.type === 'heading') {
+      const Tag = resolveHeadingTag(field.headingLevel)
+      const text = (field.label || '').trim()
+      return (
+        <div className="pointer-events-none min-h-[2rem]" style={buildHeadingBoxStyle(fieldStyles)}>
+          <Tag
+            style={{
+              ...buildHeadingTextStyle(fieldStyles),
+              ...(text ? null : { opacity: 0.45, fontStyle: 'italic' }),
+            }}
+          >
+            {text || 'Heading'}
+          </Tag>
+        </div>
+      )
     }
+    if (field.type === 'captcha') {
+      return <DynamicCaptcha field={field} interactive />
+    }
+    if (field.type === 'textarea') {
+      return (
+        <textarea
+          placeholder={field.placeholder}
+          className={cn(inputClassName, 'min-h-[88px] resize-none')}
+          style={getInputStyle()}
+          rows={3}
+          disabled
+          readOnly
+        />
+      )
+    }
+    if (field.type === 'select') {
+      return (
+        <select
+          className={inputClassName}
+          style={getInputStyle()}
+          disabled
+          defaultValue={field.defaultValue || ''}
+        >
+          <option value="">{field.placeholder || 'Select an option'}</option>
+          {(field.options || []).map((opt) => (
+            <option key={opt.value || opt.label} value={opt.value || opt.label}>
+              {opt.label || opt.value}
+            </option>
+          ))}
+        </select>
+      )
+    }
+    if (field.type === 'checkbox') {
+      return (
+        <div className="flex flex-col gap-2 py-1">
+          {(field.options && field.options.length > 0) ? (
+            field.options.map((opt) => (
+              <div key={opt.value || opt.label} className="flex items-center gap-2">
+                <input type="checkbox" disabled className="h-4 w-4" />
+                <span className="text-sm text-slate-600">{opt.label || opt.value}</span>
+              </div>
+            ))
+          ) : (
+            <div className="flex items-center gap-2">
+              <input type="checkbox" disabled className="h-4 w-4" />
+              <span className="text-sm text-slate-600">{field.placeholder || 'Checkbox option'}</span>
+            </div>
+          )}
+        </div>
+      )
+    }
+    if (field.type === 'rating') {
+      return (
+        <div className="flex gap-1 py-1">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <span key={star} className="text-2xl text-slate-300">
+              ★
+            </span>
+          ))}
+        </div>
+      )
+    }
+    if (field.type === 'phone' || field.name === 'phoneNumber') {
+      return (
+        <FormPhoneInput
+          label={field.label || 'Phone number'}
+          required={Boolean(field.required)}
+          placeholder={field.placeholder || ''}
+          countryCode={field.defaultCountryCode || DEFAULT_PHONE_COUNTRY_CODE}
+          countryIso={field.defaultCountryIso || DEFAULT_PHONE_COUNTRY_ISO}
+          value={field.defaultValue || ''}
+          style={getInputStyle()}
+        />
+      )
+    }
+    return (
+      <Input
+        type={field.type}
+        placeholder={field.placeholder}
+        defaultValue={field.defaultValue || ''}
+        disabled
+        readOnly
+        className={inputClassName}
+        style={getInputStyle()}
+      />
+    )
   }
 
-  const getLabelStyle = () => {
-    const style = {
-      fontWeight: fieldStyles.fontWeight || '500',
-      color: fieldStyles.color || '#334155',
-    }
-    if (fieldStyles.fontSize) {
-      style.fontSize = fieldStyles.fontSize
-    } else {
-      style.fontSize = '0.875rem'
-    }
-    if (fieldStyles.fontFamily) {
-      style.fontFamily = fieldStyles.fontFamily
-    }
-    if (fieldStyles.letterSpacing) {
-      style.letterSpacing = fieldStyles.letterSpacing
-    }
-    if (fieldStyles.textAlign) {
-      style.textAlign = fieldStyles.textAlign
-    }
-    if (fieldStyles.textTransform) {
-      style.textTransform = fieldStyles.textTransform
-    }
-    return style
-  }
-
-  const containerStyle = {
-    margin: `${fieldStyles.marginTop || '0'} ${fieldStyles.marginRight || '0'} ${fieldStyles.marginBottom || '0'} ${fieldStyles.marginLeft || '0'}`,
-  }
+  const isLayoutElement = field.type === 'heading' || field.type === 'captcha'
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative group ${
-        isSelected
-          ? 'ring-2 ring-brand ring-offset-2'
-          : 'hover:bg-slate-50'
-      } rounded-lg transition-all`}
+      onClick={() => onSelect(field.id)}
+      className={cn(
+        'group relative cursor-pointer border-b border-slate-200/60 px-5 py-4 transition-colors last:border-b-0',
+        isSelected ? 'bg-sky-500/10' : 'bg-transparent hover:bg-black/[0.03]'
+      )}
     >
-      {/* Control buttons - only show on hover */}
-      <div className="absolute -left-10 top-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          {...attributes}
-          {...listeners}
-          className="p-1.5 hover:bg-slate-200 rounded cursor-grab active:cursor-grabbing bg-white border border-slate-200 shadow-sm"
-          onClick={(e) => e.stopPropagation()}
-          title="Drag to reorder"
-        >
-          <GripVertical className="h-4 w-4 text-slate-500" />
-        </button>
-        <button
-          className={`p-1.5 rounded bg-white border border-slate-200 shadow-sm ${
-            field.locked ? 'opacity-40 cursor-not-allowed' : 'hover:bg-red-50'
-          }`}
-          onClick={(e) => {
-            e.stopPropagation()
-            if (field.locked) return
-            onRemove(field.id)
-          }}
-          title={field.locked ? 'This field is required' : 'Remove field'}
-          disabled={field.locked}
-        >
-          <Trash2 className="h-4 w-4 text-slate-500 hover:text-red-500" />
-        </button>
-      </div>
-      
-      <div 
-        onClick={() => onSelect(field.id)}
-        className="p-4 cursor-pointer"
-        style={containerStyle}
-      >
-        <Label className="block mb-2" style={getLabelStyle()}>
-          {field.label}
-          {field.required && <span className="text-red-500 ml-1">*</span>}
-        </Label>
-        
-        {field.type === 'textarea' ? (
-          <textarea
-            placeholder={field.placeholder}
-            className="w-full resize-none focus:outline-none focus:ring-2 focus:ring-brand"
-            style={getInputStyle()}
-            rows={3}
-            disabled
-          />
-        ) : field.type === 'select' ? (
-          <select
-            className="w-full focus:outline-none focus:ring-2 focus:ring-brand"
-            style={getInputStyle()}
-            disabled
-            defaultValue=""
-          >
-            <option value="">{field.placeholder || 'Select an option'}</option>
-            {(field.options || []).map((opt) => (
-              <option key={opt.value || opt.label} value={opt.value || opt.label}>
-                {opt.label || opt.value}
-              </option>
-            ))}
-          </select>
-        ) : field.type === 'checkbox' ? (
-          <div className="flex flex-col gap-2">
-            {(field.options && field.options.length > 0) ? (
-              field.options.map((opt) => (
-                <div key={opt.value || opt.label} className="flex items-center gap-2">
-                  <input type="checkbox" disabled className="h-4 w-4 text-brand" />
-                  <span className="text-sm text-slate-600">{opt.label || opt.value}</span>
-                </div>
-              ))
-            ) : (
-              <div className="flex items-center gap-2">
-                <input type="checkbox" disabled className="h-4 w-4 text-brand" />
-                <span className="text-sm text-slate-600">{field.placeholder || 'Checkbox option'}</span>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          {!isLayoutElement ? (
+            <div className="space-y-1.5">
+              <div
+                className="block w-full"
+                style={{
+                  ...getLabelStyle(),
+                  textAlign: fieldStyles.textAlign || 'left',
+                }}
+              >
+                {field.label}
+                {field.required ? <span>*</span> : null}
               </div>
-            )}
-          </div>
-        ) : field.type === 'rating' ? (
-          <div className="flex gap-1">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <span key={star} className="text-2xl" style={{ color: '#cbd5e1' }}>★</span>
-            ))}
-          </div>
-        ) : (
-          <Input
-            type={field.type}
-            placeholder={field.placeholder}
-            disabled
-            className="focus:outline-none focus:ring-2 focus:ring-brand"
-            style={getInputStyle()}
-          />
-        )}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                <span className="text-xs italic text-slate-400">{propertyName}</span>
+                {isLeadProperty ? <FormFieldTag tone="teal">Lead property</FormFieldTag> : null}
+                {isMetadataProperty ? <FormFieldTag tone="slate">Metadata</FormFieldTag> : null}
+                {field.submitHidden ? <FormFieldTag tone="violet">Hidden field</FormFieldTag> : null}
+                {excluded ? <FormFieldTag tone="slate">No form CSS</FormFieldTag> : null}
+                {field.defaultValue && !field.submitHidden ? (
+                  <FormFieldTag tone="slate">Default: {defaultDisplayLabel}</FormFieldTag>
+                ) : null}
+              </div>
+            </div>
+          ) : field.type === 'heading' ? (
+            <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <span className="text-sm font-semibold text-slate-900">Heading</span>
+              <FormFieldTag tone="slate">{field.headingLevel || 'h2'}</FormFieldTag>
+            </div>
+          ) : field.type === 'captcha' ? (
+            <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <span className="text-sm font-semibold text-slate-900">Captcha</span>
+              <FormFieldTag tone="violet">
+                {getCaptchaTypeMeta(field.captchaType).name}
+              </FormFieldTag>
+            </div>
+          ) : null}
+
+          <div className={cn(!isLayoutElement && 'mt-2.5')}>{renderFieldControl()}</div>
+
+          {field.submitHidden && field.defaultValue ? (
+            <p className="mt-1.5 text-[11px] text-violet-700">
+              Submits <span className="font-medium">{defaultDisplayLabel}</span> when the form is posted.
+            </p>
+          ) : null}
+        </div>
+
+        <div
+          className={cn(
+            'flex shrink-0 flex-col items-center gap-1 pt-0.5 transition-opacity',
+            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          )}
+        >
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-600"
+            onClick={(e) => e.stopPropagation()}
+            title="Drag to reorder"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          {!field.locked || isPhoneWidgetJunkField(field) ? (
+            <button
+              type="button"
+              className="rounded p-1 text-slate-400 hover:bg-white hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRemove(field.id)
+              }}
+              title="Remove field"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   )
 }
 
 // Draggable Field Type Component
-function DraggableFieldType({ fieldType, onClick }) {
+function DraggableFieldType({ fieldType, onClick, disabled = false }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `field-type-${fieldType.id}`,
     data: {
       type: 'fieldType',
       fieldType,
     },
+    disabled,
   })
 
   const style = transform
@@ -299,20 +804,118 @@ function DraggableFieldType({ fieldType, onClick }) {
     <button
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
-      onClick={() => onClick?.(fieldType)}
-      className={`w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors text-sm font-medium text-slate-700 cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-200 ${
-        isDragging ? 'opacity-50' : ''
-      }`}
+      {...(disabled ? {} : { ...listeners, ...attributes })}
+      onClick={() => {
+        if (disabled) return
+        onClick?.(fieldType)
+      }}
+      disabled={disabled}
+      className={cn(
+        'w-full flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors',
+        disabled
+          ? 'cursor-not-allowed border-transparent bg-slate-50 text-slate-400'
+          : 'cursor-grab border-transparent bg-sky-50/70 text-slate-700 hover:border-sky-200 hover:bg-sky-50 active:cursor-grabbing',
+        isDragging && 'opacity-50'
+      )}
     >
-      <IconComponent className="h-5 w-5 text-slate-600" />
-      <span className="text-left flex-1">{fieldType.name}</span>
+      <GripVertical className={cn('h-3.5 w-3.5 shrink-0', disabled ? 'text-slate-300' : 'text-slate-400')} />
+      <IconComponent className={cn('h-4 w-4 shrink-0', disabled ? 'text-slate-300' : 'text-slate-500')} />
+      <span className="flex-1 text-left font-medium">{fieldType.name}</span>
     </button>
   )
 }
 
-// Droppable Canvas Area
+function DraggableLeadProperty({ property, used = false, onAdd }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `lead-prop-${property.id}`,
+    data: {
+      type: 'leadProperty',
+      property,
+    },
+    disabled: used,
+  })
+
+  const style = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+      }
+    : undefined
+
+  const IconComponent = property.icon || Type
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      {...(used ? {} : { ...listeners, ...attributes })}
+      onClick={() => {
+        if (used) return
+        onAdd?.(property)
+      }}
+      disabled={used}
+      title={used ? 'Already on this form' : `Add ${property.label}`}
+      className={cn(
+        'w-full flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors',
+        used
+          ? 'cursor-not-allowed border-transparent bg-slate-50 text-slate-400'
+          : 'cursor-grab border-transparent bg-sky-50/70 text-slate-700 hover:border-sky-200 hover:bg-sky-50 active:cursor-grabbing',
+        isDragging && 'opacity-50'
+      )}
+    >
+      <GripVertical className={cn('h-3.5 w-3.5 shrink-0', used ? 'text-slate-300' : 'text-slate-400')} />
+      <IconComponent className={cn('h-4 w-4 shrink-0', used ? 'text-slate-300' : 'text-slate-500')} />
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate font-medium">{property.label}</span>
+        <span className="block truncate text-[11px] italic text-slate-400">{property.name}</span>
+      </span>
+    </button>
+  )
+}
+
+function DraggableFormElement({ element, used = false, onAdd }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `form-el-${element.id}`,
+    data: {
+      type: 'formElement',
+      element,
+    },
+    disabled: used,
+  })
+
+  const style = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+      }
+    : undefined
+
+  const IconComponent = element.icon || Type
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      {...(used ? {} : { ...listeners, ...attributes })}
+      onClick={() => {
+        if (used) return
+        onAdd?.(element)
+      }}
+      disabled={used}
+      title={used ? 'Already on this form' : `Add ${element.name}`}
+      className={cn(
+        'flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors',
+        used
+          ? 'cursor-not-allowed border-transparent bg-slate-50 text-slate-400'
+          : 'cursor-grab border-transparent bg-sky-50/70 text-slate-700 hover:border-sky-200 hover:bg-sky-50 active:cursor-grabbing',
+        isDragging && 'opacity-50'
+      )}
+    >
+      <GripVertical className={cn('h-3.5 w-3.5 shrink-0', used ? 'text-slate-300' : 'text-slate-400')} />
+      <IconComponent className={cn('h-4 w-4 shrink-0', used ? 'text-slate-300' : 'text-slate-500')} />
+      <span className="flex-1 text-left font-medium">{element.name}</span>
+    </button>
+  )
+}
+
 function DroppableCanvas({ children, isEmpty }) {
   const { setNodeRef, isOver } = useDroppable({
     id: 'form-canvas',
@@ -324,11 +927,10 @@ function DroppableCanvas({ children, isEmpty }) {
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-[500px] transition-colors ${
-        isOver ? 'bg-brand/10 border-2 border-brand-light border-dashed' : ''
-      } ${
-        isEmpty ? 'border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center' : ''
-      }`}
+      className={cn(
+        'min-h-[500px] transition-colors',
+        isOver && 'bg-sky-50/50 ring-2 ring-inset ring-sky-300'
+      )}
     >
       {children}
     </div>
@@ -651,10 +1253,6 @@ function FormsPageInner() {
   // Backend-required hidden fields injected into exported HTML
   const organisationID = user?.organisationID || ''
   const formID = editingFormId || ''
-  const REQUIRED_SYSTEM_FIELDS = [
-    { id: 'sys-organisationID', type: 'hidden', name: 'organisationID', label: 'organisationID', hidden: true, locked: true, styles: {} },
-    { id: 'sys-formID', type: 'hidden', name: 'formID', label: 'formID', hidden: true, locked: true, styles: {} },
-  ]
   const REQUIRED_FIELD_NAMES = new Set([
     'organisationID',
     'formID',
@@ -665,10 +1263,13 @@ function FormsPageInner() {
     'reason',
   ])
 
-  const [formFields, setFormFields] = useState([
-    ...REQUIRED_SYSTEM_FIELDS,
-    ...buildRequiredLeadFields([], []),
-  ])
+  const [builderFormType, setBuilderFormType] = useState('lead')
+  const [pendingFormType, setPendingFormType] = useState('lead')
+  const [propertySearch, setPropertySearch] = useState('')
+  const [showCustomFieldTypes, setShowCustomFieldTypes] = useState(false)
+  const [showCaptchaTypes, setShowCaptchaTypes] = useState(false)
+
+  const [formFields, setFormFields] = useState(() => buildInitialFormFields('lead', [], []))
   const [selectedField, setSelectedField] = useState(null)
   const [activeId, setActiveId] = useState(null)
   const [showPreview, setShowPreview] = useState(false)
@@ -680,6 +1281,9 @@ function FormsPageInner() {
     label: 'Submit Form',
     styles: {},
   })
+  const [globalStyles, setGlobalStyles] = useState({})
+  const [globalStyleExcludeKeys, setGlobalStyleExcludeKeys] = useState([])
+  const [settingsPanelMode, setSettingsPanelMode] = useState('field') // 'field' | 'global'
 
   const setActiveTab = (tab) => {
     const params = new URLSearchParams(searchParams?.toString() || '')
@@ -725,106 +1329,205 @@ function FormsPageInner() {
   }, [])
 
   useEffect(() => {
-    const reasonOptions = leadReasons.map((r) => ({
-      label: r.name,
-      value: r.reasonCode || r._id || r.name,
-    }))
-    const studioOptions = locations.map((loc) => ({
-      label: loc.name || 'Unnamed location',
-      value: String(loc._id),
-    }))
-    const studioField = {
-      id: 'req-studio',
-      type: 'select',
-      name: 'locationID',
-      label: 'Studio',
-      placeholder: 'Select studio',
-      required: true,
-      locked: true,
-      styles: {},
-      options: studioOptions,
-    }
+    const reasonOptions = buildReasonOptions(leadReasons)
+    const studioOptions = buildStudioOptions(locations)
+    const optsKey = (opts) =>
+      JSON.stringify((opts || []).map((o) => [o.value, o.label]))
 
     setFormFields((prev) => {
-      let next = prev
-        .filter(
-          (f) =>
-            !(
-              f.id === 'req-location' ||
-              (f.name === 'location' && f.locked && f.type !== 'select')
-            )
-        )
-        .map((f) => {
-          if (f.id === 'req-reason' || f.name === 'reason') {
-            return { ...f, type: 'select', options: reasonOptions }
+      let changed = false
+      let next = prev.map((f) => {
+        if (f.name === 'reason') {
+          if (
+            f.type === 'select' &&
+            f.optionsLocked &&
+            optsKey(f.options) === optsKey(reasonOptions)
+          ) {
+            return f
           }
-          if (f.id === 'req-studio' || f.name === 'locationID') {
-            return {
-              ...f,
-              id: 'req-studio',
-              type: 'select',
-              name: 'locationID',
-              label: f.label === 'locationID' ? 'Studio' : f.label || 'Studio',
-              placeholder: f.placeholder || 'Select studio',
-              required: true,
-              locked: true,
-              hidden: false,
-              options: studioOptions,
-            }
+          changed = true
+          return {
+            ...f,
+            type: 'select',
+            propertyKind: f.propertyKind || 'lead',
+            optionsLocked: true,
+            options: reasonOptions,
           }
-          // Drop leftover hidden locationID system field from older forms
-          if (f.id === 'sys-locationID') return null
-          return f
-        })
-        .filter(Boolean)
+        }
+        if (f.name === 'locationID') {
+          const nextLabel = f.label === 'locationID' ? 'Studio' : f.label || 'Studio'
+          if (
+            f.type === 'select' &&
+            f.optionsLocked &&
+            f.label === nextLabel &&
+            optsKey(f.options) === optsKey(studioOptions)
+          ) {
+            return f
+          }
+          changed = true
+          return {
+            ...f,
+            type: 'select',
+            name: 'locationID',
+            label: nextLabel,
+            propertyKind: f.propertyKind || 'lead',
+            optionsLocked: true,
+            hidden: false,
+            options: studioOptions,
+          }
+        }
+        if (f.name === 'utm_source') {
+          const nextLabel = f.label === 'utm_source' ? 'Source' : f.label || 'Source'
+          if (
+            f.type === 'select' &&
+            f.optionsLocked &&
+            f.label === nextLabel &&
+            optsKey(f.options) === optsKey(UTM_SOURCE_FIELD_OPTIONS)
+          ) {
+            return f
+          }
+          changed = true
+          return {
+            ...f,
+            type: 'select',
+            label: nextLabel,
+            propertyKind: f.propertyKind || 'lead',
+            optionsLocked: true,
+            options: UTM_SOURCE_FIELD_OPTIONS,
+          }
+        }
+        return f
+      })
 
-      const hasStudio = next.some((f) => f.id === 'req-studio' || f.name === 'locationID')
-      if (!hasStudio) {
-        const phoneIdx = next.findIndex((f) => f.name === 'phoneNumber')
-        next = [...next]
-        next.splice(phoneIdx >= 0 ? phoneIdx + 1 : next.length, 0, studioField)
+      if (builderFormType === 'lead') {
+        const hasStudio = next.some((f) => f.name === 'locationID')
+        if (!hasStudio) {
+          const studioProp = LEAD_PROPERTIES.find((p) => p.name === 'locationID')
+          const studioField = createLeadPropertyField(studioProp, {
+            locations,
+            locked: true,
+            required: true,
+          })
+          studioField.id = 'req-studio'
+          const phoneIdx = next.findIndex((f) => f.name === 'phoneNumber')
+          next = [...next]
+          next.splice(phoneIdx >= 0 ? phoneIdx + 1 : next.length, 0, studioField)
+          changed = true
+        }
       }
-      return next
+
+      return changed ? next : prev
     })
-  }, [leadReasons, locations])
+  }, [leadReasons, locations, builderFormType])
+
+  // Always strip phone-widget helper fields from builder state
+  useEffect(() => {
+    setFormFields((prev) => {
+      if (!prev.some(isPhoneWidgetJunkField)) return prev
+      return sanitizeFormFields(prev)
+    })
+  }, [formFields])
 
   const saveForm = async () => {
     if (!formName.trim()) {
       toast.error({ title: 'Name required', message: 'Please enter a form name before saving.' })
       return
     }
-    if (!formLocationID || (formLocationID !== ALL_BRANCHES_VALUE && (!Array.isArray(formLocationID) || formLocationID.length === 0))) {
-      toast.error({ title: 'Location required', message: 'Select one or more studios, or All branches.' })
+
+    let locationValue = formLocationID
+    const locationMissing =
+      !locationValue ||
+      (locationValue !== ALL_BRANCHES_VALUE &&
+        (!Array.isArray(locationValue) || locationValue.length === 0))
+
+    if (locationMissing) {
+      const studioField = formFields.find((f) => f?.name === 'locationID')
+      const studioDefault = studioField?.defaultValue
+      if (studioDefault != null && String(studioDefault).trim() !== '') {
+        locationValue = [String(studioDefault)]
+        setFormLocationID(locationValue)
+      }
+    }
+
+    const stillMissing =
+      !locationValue ||
+      (locationValue !== ALL_BRANCHES_VALUE &&
+        (!Array.isArray(locationValue) || locationValue.length === 0))
+
+    if (stillMissing) {
+      toast.error({
+        title: 'Location required',
+        message:
+          'Select one or more studios in the top bar (or All branches) before saving.',
+      })
+      document.getElementById('form-builder-location')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
       return
     }
-    if (formFields.length === 0) {
+
+    if (formFields.filter((f) => !isPhoneWidgetJunkField(f)).length === 0) {
       toast.error({ title: 'Empty form', message: 'Please add at least one field before saving.' })
       return
     }
+
+    // Drop any leaked phone helper fields before save
+    const fieldsToSave = sanitizeFormFields(formFields)
+    if (fieldsToSave.length !== formFields.length) {
+      setFormFields(fieldsToSave)
+    }
+
     setSavingForm(true)
     try {
       const htmlCode = generateExportedHTML()
-      const allLocations = formLocationID === ALL_BRANCHES_VALUE
+      if (!htmlCode || !String(htmlCode).trim()) {
+        toast.error({ title: 'Export failed', message: 'Could not generate form HTML to save.' })
+        return
+      }
+
+      const allLocations = locationValue === ALL_BRANCHES_VALUE
       const payload = {
         name: formName.trim(),
         description: formDescription.trim(),
         htmlCode,
         allLocations,
-        locationID: allLocations ? [] : formLocationID,
+        locationID: allLocations ? [] : locationValue.map(String),
       }
+
       const result = editingFormId
         ? await api.put(`/api/formBuilder/${editingFormId}`, payload)
         : await api.post('/api/formBuilder', payload)
+
       if (result.success) {
-        toast.success({ title: 'Saved', message: editingFormId ? 'Form updated successfully.' : 'Form created successfully.' })
-        setEditingFormId(result.data?._id || editingFormId)
+        const savedId = result.data?._id || editingFormId
+        if (savedId) setEditingFormId(savedId)
+        // Keep header location in sync with what the API accepted
+        if (result.data?.allLocations) {
+          setFormLocationID(ALL_BRANCHES_VALUE)
+        } else if (Array.isArray(result.data?.locationID) && result.data.locationID.length) {
+          setFormLocationID(
+            result.data.locationID.map((l) => String(l?._id || l)).filter(Boolean)
+          )
+        }
+        toast.success({
+          title: editingFormId ? 'Updated' : 'Saved',
+          message: editingFormId ? 'Form updated successfully.' : 'Form created successfully.',
+        })
         fetchForms()
-        setActiveTab('templates')
+        // Stay in the builder after update so edits are not lost from a bad re-import
+        if (!editingFormId && savedId) {
+          setEditingFormId(savedId)
+        }
       } else {
-        toast.error({ title: 'Save failed', message: result.error || 'Could not save form.' })
+        toast.error({
+          title: editingFormId ? 'Update failed' : 'Save failed',
+          message: result.error || result.message || 'Could not save form.',
+        })
       }
     } catch (e) {
-      toast.error({ title: 'Error', message: 'Could not save form.' })
+      console.error(e)
+      toast.error({ title: 'Error', message: e?.message || 'Could not save form.' })
     } finally {
       setSavingForm(false)
     }
@@ -896,14 +1599,34 @@ function FormsPageInner() {
     }
   }
 
-  const openBuilderForNew = () => {
+  const openFormTypePicker = () => {
+    setPendingFormType('lead')
+    setActiveTab('select-type')
+  }
+
+  const startBuilderWithType = (formType) => {
+    const type = formType === 'blank' ? 'blank' : 'lead'
+    setBuilderFormType(type)
     setFormName('')
     setFormDescription('')
     setFormLocationID([])
     setEditingFormId(null)
-    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations)])
+    setFormFields(buildInitialFormFields(type, leadReasons, locations))
     setSelectedField(null)
+    setSubmitButton({
+      id: 'submit-button',
+      type: 'submit',
+      label: 'Submit Form',
+      styles: {},
+    })
+    setGlobalStyles({})
+    setGlobalStyleExcludeKeys([])
+    setSettingsPanelMode('field')
     setActiveTab('builder')
+  }
+
+  const openBuilderForNew = () => {
+    openFormTypePicker()
   }
 
   const sensors = useSensors(
@@ -917,11 +1640,34 @@ function FormsPageInner() {
     })
   )
 
-  const RESERVED_FIELD_NAMES = new Set(['organisationID', 'formID', 'name', 'email', 'phoneNumber', 'locationID', 'reason'])
+  const RESERVED_FIELD_NAMES = new Set([
+    'organisationID',
+    'formID',
+    'name',
+    'email',
+    'phoneNumber',
+    'locationID',
+    'reason',
+    'location',
+    'utm_source',
+    'metadata',
+  ])
   const SYSTEM_HIDDEN_FIELD_NAMES = new Set(['organisationID', 'formID'])
 
   const getFieldNameForHtml = (field) => {
-    if (field?.name) return field.name
+    if (field?.type === 'heading') return `heading_${field.id}`
+    if (field?.type === 'captcha') return 'captcha'
+    if (field?.propertyKind === 'metadata' || field?.metadataKey) {
+      const key = String(field.metadataKey || 'custom')
+        .replace(/[^\w.-]/g, '_')
+        .replace(/^_+|_+$/g, '') || 'custom'
+      return `metadata[${key}]`
+    }
+    if (field?.name && !String(field.name).startsWith('metadata.')) return field.name
+    if (field?.name?.startsWith('metadata.')) {
+      const key = field.name.slice('metadata.'.length)
+      return `metadata[${key}]`
+    }
     return (field?.label || field?.id || 'field').toLowerCase().replace(/\s+/g, '_')
   }
 
@@ -1025,6 +1771,14 @@ function FormsPageInner() {
       })
     }
 
+    const defaultValue =
+      control.getAttribute('value') ||
+      (type === 'select'
+        ? control.querySelector('option[selected]')?.getAttribute('value') ||
+          control.querySelector('option[selected]')?.textContent?.trim()
+        : '') ||
+      ''
+
     return {
       id: `import-${idSeed}-${Date.now()}`,
       type,
@@ -1032,6 +1786,7 @@ function FormsPageInner() {
       name: nameAttr ? nameAttr.replace(/\[\]$/, '') : undefined,
       placeholder,
       required,
+      defaultValue: defaultValue || undefined,
       styles,
       options,
     }
@@ -1041,26 +1796,37 @@ function FormsPageInner() {
     try {
       setSavingForm(false)
       setSelectedField(null)
+      setSettingsPanelMode('field')
 
-      let htmlCode = form?.htmlCode || ''
-      if (!htmlCode && form?._id) {
+      // Always load the full form so location + htmlCode are complete for updates
+      let full = form
+      if (form?._id) {
         const result = await api.get(`/api/formBuilder/${form._id}`)
-        if (result.success) htmlCode = result.data?.htmlCode || ''
+        if (result.success && result.data) {
+          full = result.data
+        } else if (!form?.htmlCode) {
+          toast.error({
+            title: 'Load failed',
+            message: result.error || 'Could not load this form for editing.',
+          })
+          return
+        }
       }
 
-      // Set metadata first (so required hidden fields pick up formID)
-      setEditingFormId(form?._id || null)
-      setFormName(form?.name || '')
-      setFormDescription(form?.description || '')
-      setFormLocationID(
-        form?.allLocations
-          ? ALL_BRANCHES_VALUE
-          : Array.isArray(form?.locationID)
-            ? form.locationID.map((l) => l?._id || l).filter(Boolean)
-            : form?.locationID?._id || form?.locationID
-              ? [form.locationID?._id || form.locationID]
-              : []
-      )
+      const htmlCode = full?.htmlCode || ''
+
+      setEditingFormId(full?._id || form?._id || null)
+      setFormName(full?.name || form?.name || '')
+      setFormDescription(full?.description || form?.description || '')
+
+      const locIds = full?.allLocations
+        ? ALL_BRANCHES_VALUE
+        : Array.isArray(full?.locationID)
+          ? full.locationID.map((l) => String(l?._id || l)).filter(Boolean)
+          : full?.locationID?._id || full?.locationID
+            ? [String(full.locationID?._id || full.locationID)]
+            : []
+      setFormLocationID(locIds)
 
       const inferred = []
       const byName = new Map()
@@ -1069,14 +1835,93 @@ function FormsPageInner() {
         const doc = new DOMParser().parseFromString(htmlCode, 'text/html')
         const formEl = doc.querySelector('form')
 
-        // Capture submit button label if present
         const submitEl = formEl?.querySelector('button[type="submit"], input[type="submit"]')
         const submitLabel = submitEl
-          ? (submitEl.tagName.toLowerCase() === 'input' ? submitEl.getAttribute('value') : submitEl.textContent)
+          ? submitEl.tagName.toLowerCase() === 'input'
+            ? submitEl.getAttribute('value')
+            : submitEl.textContent
           : ''
         if (submitLabel && submitLabel.trim()) {
-          setSubmitButton((prev) => ({ ...prev, label: submitLabel.trim() }))
+          setSubmitButton((prev) => ({
+            ...prev,
+            label: submitLabel.trim(),
+            styles: prev.styles || {},
+          }))
         }
+
+        // Restore headings (not present as inputs)
+        const headingEls = formEl
+          ? Array.from(formEl.querySelectorAll('h1, h2, h3, h4'))
+          : []
+        headingEls.forEach((el, idx) => {
+          const tag = el.tagName.toLowerCase()
+          const box = el.parentElement?.style || {}
+          const text = el.style || {}
+          const styles = {}
+          const bg = box.background || box.backgroundColor || text.backgroundColor
+          if (bg) styles.backgroundColor = bg
+          if (text.fontSize || box.fontSize) styles.fontSize = parseCssSize(text.fontSize || box.fontSize)
+          if (text.fontWeight || box.fontWeight) styles.fontWeight = text.fontWeight || box.fontWeight
+          if (text.color || box.color) styles.color = text.color || box.color
+          if (text.fontFamily || box.fontFamily) styles.fontFamily = text.fontFamily || box.fontFamily
+          if (text.textAlign || box.textAlign) {
+            styles.textAlign = text.textAlign || box.textAlign
+            styles.blockAlign = text.textAlign || box.textAlign
+          }
+          if (box.paddingTop) styles.paddingTop = box.paddingTop
+          if (box.paddingRight) styles.paddingRight = box.paddingRight
+          if (box.paddingBottom) styles.paddingBottom = box.paddingBottom
+          if (box.paddingLeft) styles.paddingLeft = box.paddingLeft
+          if (box.borderRadius) styles.borderRadius = box.borderRadius
+          if (box.width) styles.width = box.width
+          inferred.push({
+            id: `import-heading-${idx}-${Date.now()}`,
+            type: 'heading',
+            headingLevel: tag,
+            label: (el.textContent || 'Heading').trim(),
+            propertyKind: 'layout',
+            required: false,
+            styles,
+          })
+        })
+
+        // Restore captcha block if present
+        const captchaEl = formEl?.querySelector('[data-crm-captcha], .crm-captcha, [data-captcha-type]')
+        if (captchaEl) {
+          const captchaType =
+            captchaEl.getAttribute('data-captcha-type') ||
+            captchaEl.getAttribute('data-crm-captcha') ||
+            'robot'
+          inferred.push(createCaptchaField(captchaType))
+        }
+
+        // Restore phone widgets as a single phone field (ignore helper inputs)
+        const PHONE_HELPER_NAMES = new Set(['phoneLocal', 'phoneCountryCode'])
+        const phoneWidgets = formEl
+          ? Array.from(formEl.querySelectorAll('[data-phone-field="1"], .crm-phone-field'))
+          : []
+        phoneWidgets.forEach((wrap, idx) => {
+          const e164 = wrap.querySelector('.crm-phone-e164, [data-crm-phone-e164]')
+          const nameAttr = (e164?.getAttribute('name') || 'phoneNumber').trim()
+          const labelEl = wrap.querySelector('.crm-phone-label')
+          const labelText = (labelEl?.textContent || 'Phone number').replace(/\*/g, '').trim()
+          const defaultCode = wrap.getAttribute('data-default-code') || '+1'
+          const defaultIso = wrap.getAttribute('data-default-iso') || 'US'
+          const local = wrap.querySelector('.crm-phone-local')
+          const required = local?.hasAttribute('required') || e164?.hasAttribute('required')
+          inferred.push({
+            id: `import-phone-${idx}-${Date.now()}`,
+            type: 'phone',
+            name: nameAttr,
+            label: labelText || 'Phone number',
+            placeholder: local?.getAttribute('placeholder') || '',
+            required: Boolean(required),
+            defaultCountryCode: defaultCode,
+            defaultCountryIso: defaultIso,
+            propertyKind: LEAD_PROPERTY_NAMES.has(nameAttr) ? 'lead' : 'custom',
+            styles: {},
+          })
+        })
 
         const controls = formEl ? Array.from(formEl.querySelectorAll('input, textarea, select')) : []
         controls.forEach((control, idx) => {
@@ -1085,15 +1930,51 @@ function FormsPageInner() {
           const nameAttr = (control.getAttribute('name') || '').trim().replace(/\[\]$/, '')
 
           if (typeAttr === 'submit') return
-          if (typeAttr === 'hidden') return
+          // Skip phone widget internals (local/cc/search/e164 — e164 handled above)
+          if (
+            control.closest('[data-phone-field="1"], .crm-phone-field') ||
+            control.classList?.contains('crm-phone-local') ||
+            control.classList?.contains('crm-phone-cc') ||
+            control.classList?.contains('crm-phone-search') ||
+            control.classList?.contains('crm-phone-e164') ||
+            control.hasAttribute('data-crm-phone-local') ||
+            control.hasAttribute('data-crm-phone-cc') ||
+            control.hasAttribute('data-crm-phone-search') ||
+            control.hasAttribute('data-crm-phone-e164')
+          ) {
+            return
+          }
+          if (PHONE_HELPER_NAMES.has(nameAttr)) return
+          // Skip nameless helper inputs (e.g. old country search)
+          if (!nameAttr) return
+
+          if (typeAttr === 'hidden') {
+            if (SYSTEM_HIDDEN_FIELD_NAMES.has(nameAttr)) return
+            if (PHONE_HELPER_NAMES.has(nameAttr)) return
+            inferred.push({
+              id: `import-hidden-${idx}-${Date.now()}`,
+              type: nameAttr === 'locationID' || nameAttr === 'reason' || nameAttr === 'utm_source' ? 'select' : 'text',
+              label: nameAttr.replace(/[_-]+/g, ' '),
+              name: nameAttr,
+              defaultValue: control.getAttribute('value') || '',
+              submitHidden: true,
+              required: false,
+              styles: {},
+              propertyKind: LEAD_PROPERTY_NAMES.has(nameAttr) ? 'lead' : undefined,
+            })
+            return
+          }
           if (SYSTEM_HIDDEN_FIELD_NAMES.has(nameAttr)) return
 
-          // Group checkbox options with the same name into a single field
           if (tag === 'input' && typeAttr === 'checkbox' && nameAttr) {
             const existing = byName.get(nameAttr)
             if (existing) {
               const labelEl = control.closest('div')?.querySelector('label')
-              const optLabel = (labelEl?.textContent || control.getAttribute('value') || `Option ${existing.options.length + 1}`).trim()
+              const optLabel = (
+                labelEl?.textContent ||
+                control.getAttribute('value') ||
+                `Option ${existing.options.length + 1}`
+              ).trim()
               const optValue = (control.getAttribute('value') || optLabel).trim()
               existing.options.push({ label: optLabel, value: optValue })
               return
@@ -1101,20 +1982,92 @@ function FormsPageInner() {
           }
 
           const field = buildFieldFromControl(control, idx)
-          // De-dupe by name if possible
           if (field?.name) {
             if (byName.has(field.name)) return
             byName.set(field.name, field)
+            if (LEAD_PROPERTY_NAMES.has(field.name)) field.propertyKind = 'lead'
+            if (String(field.name).startsWith('metadata.') || String(nameAttr).startsWith('metadata[')) {
+              field.propertyKind = 'metadata'
+              const metaMatch = String(nameAttr).match(/^metadata\[([^\]]+)\]$/)
+              if (metaMatch) {
+                field.metadataKey = metaMatch[1]
+                field.name = `metadata.${metaMatch[1]}`
+              }
+            }
+            // Ensure phoneNumber comes back as phone type
+            if (field.name === 'phoneNumber' || field.type === 'phone') {
+              field.type = 'phone'
+            }
           }
           inferred.push(field)
         })
       }
 
-      // Ensure required lead fields always exist, and avoid duplicates
-      const inferredFiltered = inferred.filter((f) => !REQUIRED_FIELD_NAMES.has(String(f?.name || '').trim()))
-      const nextFields = [...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations), ...inferredFiltered]
-      setFormFields(nextFields)
-      const firstVisible = [...buildRequiredLeadFields(leadReasons, locations), ...inferredFiltered].find((f) => f && !f.hidden && f.type !== 'hidden')
+      const detectedType = detectFormTypeFromInferred(inferred)
+      setBuilderFormType(detectedType)
+
+      const baseFields =
+        detectedType === 'lead'
+          ? buildInitialFormFields('lead', leadReasons, locations)
+          : [...REQUIRED_SYSTEM_FIELDS]
+
+      // Merge imported core fields into base (preserve defaults, hidden, styles, labels)
+      const inferredByName = new Map()
+      inferred.forEach((f) => {
+        if (f?.name) inferredByName.set(f.name, f)
+      })
+
+      const mergedBase = baseFields.map((base) => {
+        if (!base?.name || !inferredByName.has(base.name)) return base
+        const imp = inferredByName.get(base.name)
+        inferredByName.delete(base.name)
+        return {
+          ...base,
+          type: imp.type === 'phone' || base.name === 'phoneNumber' ? 'phone' : base.type,
+          label: imp.label && imp.label.trim() ? imp.label : base.label,
+          placeholder: imp.placeholder != null ? imp.placeholder : base.placeholder,
+          required: typeof imp.required === 'boolean' ? imp.required : base.required,
+          defaultValue: imp.defaultValue != null && imp.defaultValue !== '' ? imp.defaultValue : base.defaultValue,
+          submitHidden: Boolean(imp.submitHidden),
+          styles: { ...(base.styles || {}), ...(imp.styles || {}) },
+          ...(imp.defaultCountryCode || base.defaultCountryCode
+            ? { defaultCountryCode: imp.defaultCountryCode || base.defaultCountryCode }
+            : {}),
+          ...(imp.defaultCountryIso || base.defaultCountryIso
+            ? { defaultCountryIso: imp.defaultCountryIso || base.defaultCountryIso }
+            : {}),
+          options:
+            base.optionsLocked || base.name === 'locationID' || base.name === 'reason'
+              ? base.options
+              : imp.options?.length
+                ? imp.options
+                : base.options,
+        }
+      })
+
+      const PHONE_JUNK = new Set(['phoneLocal', 'phoneCountryCode'])
+      const leftover = [...inferredByName.values()].filter(
+        (f) =>
+          f &&
+          f.name &&
+          !SYSTEM_HIDDEN_FIELD_NAMES.has(f.name) &&
+          !PHONE_JUNK.has(f.name)
+      )
+      const layoutExtras = inferred.filter((f) => f?.type === 'heading' || f?.type === 'captcha')
+
+      const nextFields = sanitizeFormFields([
+        ...mergedBase,
+        ...leftover.filter((f) => f.type !== 'heading' && f.type !== 'captcha'),
+        ...layoutExtras,
+      ])
+
+      setFormFields(pinHeadingsToTop(nextFields))
+      const meta = parseGlobalStylesMeta(htmlCode)
+      // Always replace — form CSS is per-form and must not carry over from the previous form
+      setGlobalStyles(meta.styles && typeof meta.styles === 'object' ? { ...meta.styles } : {})
+      setGlobalStyleExcludeKeys(Array.isArray(meta.excludeKeys) ? [...meta.excludeKeys] : [])
+      setSettingsPanelMode('field')
+      const firstVisible = nextFields.find((f) => f && !f.hidden && f.type !== 'hidden')
       setSelectedField(firstVisible?.id || null)
       setActiveTab('builder')
     } catch (e) {
@@ -1123,18 +2076,113 @@ function FormsPageInner() {
     }
   }
 
+  const usedLeadPropertyNames = new Set(
+    formFields
+      .filter((f) => f?.name && LEAD_PROPERTY_NAMES.has(f.name))
+      .map((f) => f.name)
+  )
+
+  const addLeadProperty = (property) => {
+    if (!property?.name) return
+    if (usedLeadPropertyNames.has(property.name)) {
+      toast.error({ title: 'Already added', message: `${property.label} is already on this form.` })
+      return
+    }
+    const newField = createLeadPropertyField(property, {
+      leadReasons,
+      locations,
+      locked: false,
+      required: false,
+    })
+    setFormFields((prev) => pinHeadingsToTop([...prev, newField]))
+    setSelectedField(newField.id)
+  }
+
+  const addMetadataField = (type = 'text') => {
+    const typeMeta = CUSTOM_FIELD_TYPES.find((t) => t.id === type)
+    const newField = createMetadataField(type, typeMeta?.name || 'Custom field')
+    setFormFields((prev) => pinHeadingsToTop([...prev, newField]))
+    setSelectedField(newField.id)
+    setShowCustomFieldTypes(false)
+  }
+
+  const addFormElement = (element) => {
+    if (!element?.type) return
+    if (element.type === 'heading') {
+      const newField = {
+        id: `heading-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'heading',
+        label: 'Heading',
+        headingLevel: 'h2',
+        placeholder: '',
+        required: false,
+        propertyKind: 'layout',
+        styles: {
+          textAlign: 'left',
+          blockAlign: 'left',
+          width: '100%',
+        },
+      }
+      // Always insert heading at the top of the form (after system fields)
+      setFormFields((prev) => pinHeadingsToTop([newField, ...prev]))
+      setSelectedField(newField.id)
+    }
+  }
+
+  const addCaptchaField = (captchaType = 'robot') => {
+    const already = formFields.find((f) => f.type === 'captcha')
+    if (already) {
+      const meta = getCaptchaTypeMeta(captchaType)
+      if (already.captchaType === meta.id) {
+        setSelectedField(already.id)
+        setShowCaptchaTypes(false)
+        return
+      }
+      const updated = {
+        ...already,
+        captchaType: meta.id,
+        label: meta.label,
+        required: true,
+      }
+      setFormFields((prev) => prev.map((f) => (f.id === already.id ? updated : f)))
+      setSelectedField(already.id)
+      setShowCaptchaTypes(false)
+      return
+    }
+    const newField = createCaptchaField(captchaType)
+    setFormFields((prev) => pinHeadingsToTop([...prev, newField]))
+    setSelectedField(newField.id)
+    setShowCaptchaTypes(false)
+  }
+
   const addField = (type) => {
-    const fieldType = fieldTypes.find(ft => ft.id === type)
+    const fieldType = fieldTypes.find((ft) => ft.id === type)
+    const baseLabel = fieldType?.name || `New ${type} field`
+    const slug = baseLabel.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+    let uniqueName = slug || `field_${Date.now()}`
+    const existing = new Set(formFields.map((f) => getFieldNameForHtml(f)))
+    let i = 2
+    while (existing.has(uniqueName) || RESERVED_FIELD_NAMES.has(uniqueName)) {
+      uniqueName = `${slug}_${i}`
+      i += 1
+    }
     const newField = {
       id: Date.now().toString(),
       type,
-      label: fieldType?.name || `New ${type} field`,
+      name: uniqueName,
+      label: baseLabel,
       placeholder: `Enter ${type}...`,
       required: false,
+      propertyKind: 'custom',
       styles: {},
-      options: type === 'select' ? [{ label: 'Option 1', value: 'option_1' }] : type === 'checkbox' ? [{ label: 'Option 1', value: 'option_1' }] : [],
+      options:
+        type === 'select'
+          ? [{ label: 'Option 1', value: 'option_1' }]
+          : type === 'checkbox'
+            ? [{ label: 'Option 1', value: 'option_1' }]
+            : [],
     }
-    setFormFields([...formFields, newField])
+    setFormFields((prev) => pinHeadingsToTop([...prev, newField]))
     setSelectedField(newField.id)
   }
 
@@ -1145,18 +2193,38 @@ function FormsPageInner() {
       id: `${templateId}-${index}-${Date.now()}`,
       styles: {},
     }))
-    // Prevent template fields from duplicating reserved backend field names (e.g. a second "email")
     const filtered = normalized.filter((f) => !REQUIRED_FIELD_NAMES.has(getFieldNameForHtml(f)))
-    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...buildRequiredLeadFields(leadReasons, locations), ...filtered])
+    setBuilderFormType('blank')
+    setFormFields([...REQUIRED_SYSTEM_FIELDS, ...filtered])
     setSelectedField(normalized[0]?.id || null)
+    setGlobalStyles({})
+    setGlobalStyleExcludeKeys([])
+    setSettingsPanelMode('field')
     setActiveTab('builder')
   }
 
   const removeField = (id) => {
     const field = formFields.find((f) => f.id === id)
-    if (field?.locked) return
-    setFormFields(formFields.filter((f) => f.id !== id))
+    // Always allow removing phone-widget junk, even if somehow marked locked
+    if (field?.locked && !isPhoneWidgetJunkField(field)) return
+    setFormFields((prev) => sanitizeFormFields(prev.filter((f) => f.id !== id)))
     if (selectedField === id) setSelectedField(null)
+  }
+
+  const purgePhoneJunkFields = () => {
+    setFormFields((prev) => {
+      const next = sanitizeFormFields(prev)
+      const removed = prev.length - next.length
+      if (removed > 0) {
+        toast.success({
+          title: 'Cleaned up',
+          message: `Removed ${removed} invalid phone helper field${removed === 1 ? '' : 's'}.`,
+        })
+      } else {
+        toast.success({ title: 'Already clean', message: 'No phone helper fields found.' })
+      }
+      return next
+    })
   }
 
   const handleDragStart = (event) => {
@@ -1171,14 +2239,34 @@ function FormsPageInner() {
       return
     }
 
-    // Handle dropping field types from left panel to canvas
-    if (active.id.toString().startsWith('field-type-')) {
-      const fieldTypeId = active.id.toString().replace('field-type-', '')
-      const fieldType = fieldTypes.find((ft) => ft.id === fieldTypeId)
-      
-      if (fieldType) {
-        addField(fieldType.id)
+    const activeIdStr = active.id.toString()
+
+    if (activeIdStr.startsWith('lead-prop-')) {
+      const propId = activeIdStr.replace('lead-prop-', '')
+      const property = LEAD_PROPERTIES.find((p) => p.id === propId)
+      if (property) addLeadProperty(property)
+      setActiveId(null)
+      return
+    }
+
+    if (activeIdStr.startsWith('form-el-')) {
+      const elId = activeIdStr.replace('form-el-', '')
+      if (elId.startsWith('captcha-')) {
+        const captchaType = elId.replace('captcha-', '')
+        addCaptchaField(captchaType)
+        setActiveId(null)
+        return
       }
+      const element = FORM_ELEMENTS.find((e) => e.id === elId)
+      if (element) addFormElement(element)
+      setActiveId(null)
+      return
+    }
+
+    if (activeIdStr.startsWith('field-type-')) {
+      const fieldTypeId = activeIdStr.replace('field-type-', '')
+      const fieldType = fieldTypes.find((ft) => ft.id === fieldTypeId)
+      if (fieldType) addField(fieldType.id)
       setActiveId(null)
       return
     }
@@ -1187,9 +2275,9 @@ function FormsPageInner() {
     if (active.id !== over.id) {
       const activeIndex = formFields.findIndex((item) => item.id === active.id)
       const overIndex = formFields.findIndex((item) => item.id === over.id)
-      
+
       if (activeIndex !== -1 && overIndex !== -1) {
-        setFormFields((items) => arrayMove(items, activeIndex, overIndex))
+        setFormFields((items) => pinHeadingsToTop(arrayMove(items, activeIndex, overIndex)))
       }
     }
 
@@ -1200,81 +2288,101 @@ function FormsPageInner() {
     if (updatedField.id === 'submit-button' || updatedField.type === 'submit') {
       setSubmitButton(updatedField)
     } else {
-      setFormFields(
-        formFields.map((f) => (f.id === updatedField.id ? updatedField : f))
-      )
+      // Never let label edits overwrite fixed lead property names
+      let next = { ...updatedField }
+      if (next.propertyKind === 'lead' || LEAD_PROPERTY_NAMES.has(next.name)) {
+        const catalog = LEAD_PROPERTIES.find((p) => p.name === next.name)
+        if (catalog) next.name = catalog.name
+      }
+      if (next.propertyKind === 'metadata' || next.metadataKey) {
+        const key = String(next.metadataKey || '')
+          .trim()
+          .replace(/[^\w.-]/g, '_')
+          .replace(/^_+|_+$/g, '')
+        next.metadataKey = key || next.metadataKey
+        next.name = `metadata.${next.metadataKey}`
+      }
+      // Captcha is always required when present on the form
+      if (next.type === 'captcha') {
+        next.required = true
+      }
+      setFormFields((prev) => prev.map((f) => (f.id === next.id ? next : f)))
     }
   }
 
+  const getEffectiveFieldStyles = (field) => {
+    const excluded = isExcludedFromGlobalStyles(field, globalStyleExcludeKeys)
+    return mergeFieldStyles(globalStyles, field?.styles || {}, excluded)
+  }
+
   const generateFieldHTML = (field) => {
-    if (field.type === 'hidden' || field.hidden) {
+    if (isPhoneWidgetJunkField(field)) return ''
+
+    const fieldName = escapeHtmlAttr(getFieldNameForHtml(field))
+    const defaultVal = field.defaultValue != null ? String(field.defaultValue) : ''
+    const escapedDefault = escapeHtmlAttr(defaultVal)
+
+    if (isSystemHiddenField(field)) {
       if (field.name === 'organisationID') {
         return `<input type="hidden" name="organisationID" value="${organisationID}" />`
       }
       if (field.name === 'formID') {
         return `<input type="hidden" name="formID" value="${formID}" />`
       }
-      return `<input type="hidden" name="${field.name || field.id}" value="" />`
+      return `<input type="hidden" name="${fieldName}" value="${escapedDefault}" />`
     }
 
-    const fieldStyles = field.styles || {}
-    const styleString = `
-      background-color: ${fieldStyles.backgroundColor || '#ffffff'};
-      padding: ${fieldStyles.paddingTop || '0.5rem'} ${fieldStyles.paddingRight || '0.75rem'} ${fieldStyles.paddingBottom || '0.5rem'} ${fieldStyles.paddingLeft || '0.75rem'};
-      border-width: ${fieldStyles.borderWidth || '1px'};
-      border-style: ${fieldStyles.borderStyle || 'solid'};
-      border-color: ${fieldStyles.borderColor || '#e2e8f0'};
-      border-radius: ${fieldStyles.borderRadius || '0.375rem'};
-      width: ${fieldStyles.width || '100%'};
-      margin: ${fieldStyles.marginTop || '0'} ${fieldStyles.marginRight || '0'} ${fieldStyles.marginBottom || '0'} ${fieldStyles.marginLeft || '0'};
-      box-sizing: border-box;
-    `.trim().replace(/\s+/g, ' ')
+    if (field.submitHidden) {
+      return `<input type="hidden" name="${fieldName}" value="${escapedDefault}" />`
+    }
 
-    const labelStyleParts = []
-    if (fieldStyles.fontFamily) {
-      labelStyleParts.push(`font-family: ${fieldStyles.fontFamily}`)
+    const fieldStyles = getEffectiveFieldStyles(field)
+
+    if (field.type === 'heading') {
+      const tag = resolveHeadingTag(field.headingLevel)
+      const box = buildHeadingBoxStyle(fieldStyles)
+      const text = buildHeadingTextStyle(fieldStyles)
+      const boxCss = Object.entries(box)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}: ${v}`)
+        .join('; ')
+      const textCss = Object.entries(text)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}: ${v}`)
+        .join('; ')
+      return `<div style="${boxCss}; margin-bottom: 1rem"><${tag} style="${textCss}">${escapeHtmlAttr(field.label || 'Heading')}</${tag}></div>`
     }
-    if (fieldStyles.fontSize) {
-      labelStyleParts.push(`font-size: ${fieldStyles.fontSize}`)
-    } else {
-      labelStyleParts.push(`font-size: 0.875rem`)
+
+    if (field.type === 'captcha') {
+      return getCaptchaExportMarkup(field)
     }
-    labelStyleParts.push(`font-weight: ${fieldStyles.fontWeight || '500'}`)
-    labelStyleParts.push(`color: ${fieldStyles.color || '#334155'}`)
-    if (fieldStyles.letterSpacing) {
-      labelStyleParts.push(`letter-spacing: ${fieldStyles.letterSpacing}`)
-    }
-    if (fieldStyles.textAlign) {
-      labelStyleParts.push(`text-align: ${fieldStyles.textAlign}`)
-    }
-    if (fieldStyles.textTransform) {
-      labelStyleParts.push(`text-transform: ${fieldStyles.textTransform}`)
-    }
-    const labelStyleString = labelStyleParts.join('; ')
+
+    const styleString = buildInputCssString(fieldStyles)
+    const labelStyleString = buildLabelCssString(fieldStyles)
 
     let fieldHTML = ''
-    const fieldName = getFieldNameForHtml(field)
     
     if (field.type === 'textarea') {
       fieldHTML = `<textarea 
         name="${fieldName}" 
-        placeholder="${field.placeholder || ''}" 
+        placeholder="${escapeHtmlAttr(field.placeholder || '')}" 
         ${field.required ? 'required' : ''}
         style="${styleString}"
         rows="3"
-      ></textarea>`
+      >${escapedDefault}</textarea>`
     } else if (field.type === 'select') {
       const optsHtml = (field.options || []).map(opt => {
-        const v = (opt.value || opt.label || '').toString().replace(/"/g, '&quot;')
-        const l = (opt.label || opt.value || '').toString().replace(/"/g, '&quot;')
-        return `<option value="${v}">${l}</option>`
+        const v = escapeHtmlAttr((opt.value || opt.label || '').toString())
+        const l = escapeHtmlAttr((opt.label || opt.value || '').toString())
+        const selected = defaultVal && v === defaultVal ? ' selected' : ''
+        return `<option value="${v}"${selected}>${l}</option>`
       }).join('')
       fieldHTML = `<select 
         name="${fieldName}" 
         ${field.required ? 'required' : ''}
         style="${styleString}"
       >
-        <option value="">${field.placeholder || 'Select an option'}</option>
+        <option value="">${escapeHtmlAttr(field.placeholder || 'Select an option')}</option>
         ${optsHtml}
       </select>`
     } else if (field.type === 'checkbox') {
@@ -1310,14 +2418,26 @@ function FormsPageInner() {
           >★</label>
         `).join('')}
       </div>`
+    } else if (field.type === 'phone' || field.name === 'phoneNumber') {
+      fieldHTML = getFormPhoneExportMarkup(field, {
+        fieldName,
+        styleString,
+        escapeHtmlAttr,
+        required: Boolean(field.required),
+      })
     } else {
       fieldHTML = `<input 
         type="${field.type}" 
         name="${fieldName}" 
-        placeholder="${field.placeholder || ''}" 
+        placeholder="${escapeHtmlAttr(field.placeholder || '')}" 
+        ${defaultVal ? `value="${escapedDefault}"` : ''}
         ${field.required ? 'required' : ''}
         style="${styleString}"
       />`
+    }
+
+    if (field.type === 'phone' || field.name === 'phoneNumber') {
+      return `<div style="margin-bottom: 1rem;">${fieldHTML}</div>`
     }
 
     return `
@@ -1338,15 +2458,16 @@ function FormsPageInner() {
 
     // De-dupe by HTML field name to avoid FormData arrays + duplicated UI fields
     const seenNames = new Set()
-    const fieldsHTML = formFields
+    const fieldsHTML = sanitizeFormFields(formFields)
       .filter((field) => {
         const key = getFieldNameForHtml(field)
-        if (!key) return true
+        if (!key) return field?.type === 'heading' || field?.type === 'captcha'
         if (seenNames.has(key)) return false
         seenNames.add(key)
         return true
       })
       .map((field) => generateFieldHTML(field))
+      .filter(Boolean)
       .join('\n')
     // Analytics snippet injected into exported HTML <head>
     const gtagScript = `  <!-- Google tag (gtag.js) -->
@@ -1374,7 +2495,8 @@ function FormsPageInner() {
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background-color: #f8fafc;
+      ${buildFormPageCss(globalStyles)}
+      background-attachment: fixed;
       padding: 2rem;
       display: flex;
       justify-content: center;
@@ -1382,7 +2504,7 @@ function FormsPageInner() {
       min-height: 100vh;
     }
     .form-container {
-      background: white;
+      ${buildFormContainerCss(globalStyles)}
       padding: 2rem;
       border-radius: 0.5rem;
       box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
@@ -1448,6 +2570,7 @@ function FormsPageInner() {
     }
   </style>
 ${gtagScript}
+  ${embedGlobalStylesMeta(globalStyles, globalStyleExcludeKeys)}
 </head>
 <body>
   <div class="form-container">
@@ -1457,11 +2580,21 @@ ${gtagScript}
     </form>
   </div>
   <script>
+${getCaptchaExportRuntimeScript()}
+${getFormPhoneExportRuntimeScript()}
     (function() {
       const form = document.getElementById('exportedForm');
       if (form) {
         form.addEventListener('submit', async function(event) {
           event.preventDefault();
+
+          if (typeof window.__crmValidateCaptchas === 'function' && !window.__crmValidateCaptchas()) {
+            return;
+          }
+
+          if (typeof window.__crmSyncPhones === 'function') {
+            window.__crmSyncPhones(form);
+          }
 
           // Capture page URL (prefer top-level URL; fallback to referrer / iframe URL)
           let capturedUrl = '';
@@ -1487,19 +2620,37 @@ ${gtagScript}
           });
 
           const pickFirst = (v) => Array.isArray(v) ? v[0] : v;
+
+          // Nest metadata[key] entries into payload.metadata
+          const metadata = {};
+          Object.keys(payload).forEach((key) => {
+            const match = key.match(/^metadata\\[(.+)\\]$/);
+            if (match) {
+              metadata[match[1]] = pickFirst(payload[key]);
+              delete payload[key];
+            }
+          });
+          if (Object.keys(metadata).length > 0) payload.metadata = metadata;
+
           payload.name = payload.name || pickFirst(payload.full_name) || pickFirst(payload.student_name) || pickFirst(payload.parent_name);
           payload.email = payload.email || pickFirst(payload.email_address) || pickFirst(payload.parent_email);
-          payload.phone = payload.phone || pickFirst(payload.phone_number) || pickFirst(payload.phone);
-          payload.source = payload.source || 'website';
-          payload.url = capturedUrl;
+          payload.phoneNumber = pickFirst(payload.phoneNumber) || pickFirst(payload.phone) || pickFirst(payload.phone_number);
+          delete payload.phoneCountryCode;
+          delete payload.phoneLocal;
+          delete payload.phone;
           payload.reason = pickFirst(payload.reason);
           payload.locationID = pickFirst(payload.locationID);
+          payload.location = pickFirst(payload.location);
+          payload.utm_source = pickFirst(payload.utm_source) || null;
+          payload.url = capturedUrl;
           // Safety: ensure backend required ids are scalar even if duplicated somehow
           payload.organisationID = pickFirst(payload.organisationID);
           payload.formID = pickFirst(payload.formID);
+          delete payload.captcha;
+          delete payload.captcha_images;
 
           try {
-            const res = await fetch('https://98.88.253.231.sslip.io/api/lead/form', {
+            const res = await fetch('https://backend.cadance.ai/api/lead/form', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -1580,44 +2731,36 @@ ${gtagScript}
   }
 
   const renderPreviewField = (field) => {
-    const fieldStyles = field.styles || {}
-    const inputStyle = {
-      backgroundColor: fieldStyles.backgroundColor || '#ffffff',
-      padding: `${fieldStyles.paddingTop || '0.5rem'} ${fieldStyles.paddingRight || '0.75rem'} ${fieldStyles.paddingBottom || '0.5rem'} ${fieldStyles.paddingLeft || '0.75rem'}`,
-      borderWidth: fieldStyles.borderWidth || '1px',
-      borderStyle: fieldStyles.borderStyle || 'solid',
-      borderColor: fieldStyles.borderColor || '#e2e8f0',
-      borderRadius: fieldStyles.borderRadius || '0.375rem',
-      width: fieldStyles.width || '100%',
-      margin: `${fieldStyles.marginTop || '0'} ${fieldStyles.marginRight || '0'} ${fieldStyles.marginBottom || '0'} ${fieldStyles.marginLeft || '0'}`,
-      boxSizing: 'border-box',
+    if (field.submitHidden || isSystemHiddenField(field)) return null
+
+    const fieldStyles = getEffectiveFieldStyles(field)
+    const inputStyle = buildInputReactStyle(fieldStyles)
+    const labelStyle = buildLabelReactStyle(fieldStyles)
+
+    if (field.type === 'heading') {
+      const Tag = resolveHeadingTag(field.headingLevel)
+      return (
+        <div key={field.id} style={{ marginBottom: '1rem' }}>
+          <div style={buildHeadingBoxStyle(fieldStyles)}>
+            <Tag style={buildHeadingTextStyle(fieldStyles)}>
+              {field.label || 'Heading'}
+            </Tag>
+          </div>
+        </div>
+      )
     }
 
-    const labelStyle = {
-      fontWeight: fieldStyles.fontWeight || '500',
-      color: fieldStyles.color || '#334155',
-    }
-    if (fieldStyles.fontSize) {
-      labelStyle.fontSize = fieldStyles.fontSize
-    } else {
-      labelStyle.fontSize = '0.875rem'
-    }
-    if (fieldStyles.fontFamily) {
-      labelStyle.fontFamily = fieldStyles.fontFamily
-    }
-    if (fieldStyles.letterSpacing) {
-      labelStyle.letterSpacing = fieldStyles.letterSpacing
-    }
-    if (fieldStyles.textAlign) {
-      labelStyle.textAlign = fieldStyles.textAlign
-    }
-    if (fieldStyles.textTransform) {
-      labelStyle.textTransform = fieldStyles.textTransform
+    if (field.type === 'captcha') {
+      return (
+        <div key={field.id} style={{ marginBottom: '1rem' }}>
+          <DynamicCaptcha field={field} interactive />
+        </div>
+      )
     }
 
     return (
       <div key={field.id} style={{ marginBottom: '1rem' }}>
-        <Label className="block mb-2" style={labelStyle}>
+        <Label className="block mb-2 w-full" style={labelStyle}>
           {field.label}
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </Label>
@@ -1632,7 +2775,7 @@ ${gtagScript}
           <select
             style={inputStyle}
             className="w-full focus:outline-none focus:ring-2 focus:ring-brand"
-            defaultValue=""
+            defaultValue={field.defaultValue || ''}
           >
             <option value="">{field.placeholder || 'Select an option'}</option>
             {(field.options || []).map((opt) => (
@@ -1663,10 +2806,21 @@ ${gtagScript}
               <span key={star} className="text-2xl text-yellow-400 cursor-pointer">★</span>
             ))}
           </div>
+        ) : field.type === 'phone' || field.name === 'phoneNumber' ? (
+          <FormPhoneInput
+            label={field.label || 'Phone number'}
+            required={Boolean(field.required)}
+            placeholder={field.placeholder || ''}
+            countryCode={field.defaultCountryCode || DEFAULT_PHONE_COUNTRY_CODE}
+            countryIso={field.defaultCountryIso || DEFAULT_PHONE_COUNTRY_ISO}
+            value={field.defaultValue || ''}
+            style={inputStyle}
+          />
         ) : (
           <Input
             type={field.type}
             placeholder={field.placeholder}
+            defaultValue={field.defaultValue || ''}
             style={inputStyle}
             className="focus:outline-none focus:ring-2 focus:ring-brand"
           />
@@ -1728,7 +2882,7 @@ ${gtagScript}
                     <FileText className="h-7 w-7 text-muted-foreground" />
                   </div>
                   <p className="font-medium text-muted-foreground">No forms yet</p>
-                  <p className="text-sm text-muted-foreground mt-1">Create your first form to get started.</p>
+                  <p className="text-sm text-muted-foreground mt-1">Create a blank form or a lead capture form to get started.</p>
                 </CardContent>
               </Card>
             )}
@@ -1856,9 +3010,105 @@ ${gtagScript}
           </div>
         )}
 
+        {/* Form type picker (HubSpot-style) */}
+        {activeTab === 'select-type' && (
+          <div className="flex min-h-[calc(100vh-220px)] flex-col">
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <button
+                type="button"
+                onClick={() => setActiveTab('templates')}
+                className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to forms
+              </button>
+              <Button variant="gradient" onClick={() => startBuilderWithType(pendingFormType)}>
+                Start
+              </Button>
+            </div>
+
+            <div className="mb-8">
+              <h2 className="text-2xl font-semibold text-foreground">Select a form type</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Choose how you want to start building your form.
+              </p>
+            </div>
+
+            <div className="grid flex-1 gap-6 lg:grid-cols-12">
+              <div className="space-y-3 lg:col-span-5">
+                {FORM_TYPE_OPTIONS.map((option) => {
+                  const Icon = option.icon
+                  const selected = pendingFormType === option.id
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setPendingFormType(option.id)}
+                      className={`w-full rounded-xl border p-4 text-left transition-all ${
+                        selected
+                          ? 'border-[color:var(--studio-primary)] bg-[color:var(--studio-primary)]/5 ring-1 ring-[color:var(--studio-primary)]/30'
+                          : 'border-border bg-card hover:border-muted-foreground/30 hover:bg-muted/30'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                            selected ? 'bg-[color:var(--studio-primary)] text-white' : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-foreground">{option.title}</div>
+                          <p className="mt-1 text-sm text-muted-foreground">{option.description}</p>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="lg:col-span-7">
+                <div className="rounded-2xl border border-border bg-muted/20 p-4 sm:p-6">
+                  <p className="mb-4 text-sm font-medium text-muted-foreground">Preview</p>
+                  <div className="mx-auto max-w-lg rounded-xl border border-border bg-background p-3 shadow-sm">
+                    <div className="mb-3 flex items-center gap-1.5 border-b border-border px-2 pb-3">
+                      <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                    </div>
+                    <FormTypePreview formType={pendingFormType} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Builder View */}
         {activeTab === 'builder' && (
           <div className="h-[calc(100vh-200px)] flex flex-col gap-3">
+          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+            <button
+              type="button"
+              onClick={() => {
+                // Reset form-scoped styles when leaving the builder so they never leak to the next form
+                if (editingFormId) {
+                  setGlobalStyles({})
+                  setGlobalStyleExcludeKeys([])
+                  setSettingsPanelMode('field')
+                }
+                setActiveTab(editingFormId ? 'templates' : 'select-type')
+              }}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+            <Badge variant="secondary" className="capitalize">
+              {builderFormType === 'lead' ? 'Lead form' : 'Blank form'}
+            </Badge>
+          </div>
           {/* Form name + description row */}
           <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
             <Input
@@ -1873,14 +3123,23 @@ ${gtagScript}
               onChange={(e) => setFormDescription(e.target.value)}
               className="max-w-sm"
             />
-            <div className="w-64">
+            <div
+              id="form-builder-location"
+              className={cn(
+                'w-64 rounded-md',
+                (!formLocationID ||
+                  (formLocationID !== ALL_BRANCHES_VALUE &&
+                    (!Array.isArray(formLocationID) || formLocationID.length === 0))) &&
+                  'ring-2 ring-amber-400 ring-offset-1'
+              )}
+            >
               <LocationSelector
                 value={formLocationID}
                 onChange={setFormLocationID}
                 multiple
                 allowAllBranches
                 showAllOption={false}
-                placeholder="Select studio(s)…"
+                placeholder="Studio(s) required…"
               />
             </div>
             {editingFormId && (
@@ -1894,118 +3153,287 @@ ${gtagScript}
             onDragEnd={handleDragEnd}
           >
             <div className="grid grid-cols-12 gap-4 flex-1 min-h-0">
-              {/* Field Types Panel */}
+              {/* Properties palette */}
               <div className="col-span-3 flex flex-col min-h-0 self-stretch">
                 <Card className="flex flex-col flex-1 min-h-0" style={{ height: 'calc(100% + 30px)' }}>
-                  <CardHeader className="flex-shrink-0">
-                    <CardTitle className="text-base">Components</CardTitle>
-                    <p className="text-sm text-slate-500">Drag to add or click to insert</p>
+                  <CardHeader className="flex-shrink-0 space-y-3 pb-3">
+                    <div>
+                      <CardTitle className="text-base">Properties</CardTitle>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Drag onto the form. Labels can change; internal names stay fixed.
+                      </p>
+                    </div>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        value={propertySearch}
+                        onChange={(e) => setPropertySearch(e.target.value)}
+                        placeholder="Search for properties and fields"
+                        className="h-9 border-slate-200 bg-white pl-8 text-sm"
+                      />
+                    </div>
                   </CardHeader>
-                  <CardContent 
-                    className="space-y-1 overflow-y-auto flex-1 pb-2 min-h-0"
+                  <CardContent
+                    className="overflow-y-auto flex-1 space-y-1 pb-3 min-h-0"
                     style={{ overscrollBehavior: 'contain' }}
                   >
-                    {fieldTypes.map((fieldType) => (
-                      <DraggableFieldType
-                        key={fieldType.id}
-                        fieldType={fieldType}
-                        onClick={(fieldType) => addField(fieldType.id)}
-                      />
+                    {(() => {
+                      const q = propertySearch.trim().toLowerCase()
+                      const matches = (prop) =>
+                        !q ||
+                        prop.label.toLowerCase().includes(q) ||
+                        prop.name.toLowerCase().includes(q)
+                      const leadProps = LEAD_PROPERTIES.filter(matches)
+                      const formEls = FORM_ELEMENTS.filter(
+                        (el) =>
+                          !q ||
+                          el.name.toLowerCase().includes(q) ||
+                          el.type.toLowerCase().includes(q)
+                      )
+                      const showCaptcha =
+                        !q ||
+                        'captcha'.includes(q) ||
+                        CAPTCHA_TYPES.some(
+                          (t) =>
+                            t.name.toLowerCase().includes(q) || t.id.toLowerCase().includes(q)
+                        )
+                      const showCustom =
+                        !q ||
+                        'custom'.includes(q) ||
+                        'metadata'.includes(q) ||
+                        'add custom'.includes(q)
+                      const currentCaptchaType = formFields.find((f) => f.type === 'captcha')?.captchaType
+                      return (
+                        <div className="space-y-1">
+                          {leadProps.length === 0 && formEls.length === 0 && !showCaptcha && !showCustom ? (
+                            <p className="px-1 py-2 text-xs text-slate-400">No matches</p>
+                          ) : null}
 
-                    ))}
+                          {leadProps.map((prop) => (
+                            <DraggableLeadProperty
+                              key={prop.id}
+                              property={prop}
+                              used={usedLeadPropertyNames.has(prop.name)}
+                              onAdd={addLeadProperty}
+                            />
+                          ))}
+
+                          {formEls.map((element) => (
+                            <DraggableFormElement
+                              key={element.id}
+                              element={element}
+                              onAdd={addFormElement}
+                            />
+                          ))}
+
+                          {showCaptcha ? (
+                            <div className="space-y-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowCaptchaTypes((v) => !v)
+                                  setShowCustomFieldTypes(false)
+                                }}
+                                className={cn(
+                                  'flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm font-medium transition-colors',
+                                  showCaptchaTypes
+                                    ? 'border-sky-300 bg-sky-50 text-slate-800'
+                                    : 'cursor-pointer border-transparent bg-sky-50/70 text-slate-700 hover:border-sky-200 hover:bg-sky-50'
+                                )}
+                              >
+                                <ShieldCheck className="h-4 w-4 shrink-0 text-slate-500" />
+                                <span className="flex-1 text-left">Captcha</span>
+                                <ChevronDown
+                                  className={cn(
+                                    'h-3.5 w-3.5 text-slate-400 transition-transform',
+                                    showCaptchaTypes && 'rotate-180'
+                                  )}
+                                />
+                              </button>
+
+                              {showCaptchaTypes ? (
+                                <div className="ml-1 space-y-1 border-l-2 border-sky-100 pl-2">
+                                  {CAPTCHA_TYPES.map((captchaType) => {
+                                    const IconComponent = captchaType.icon
+                                    const selected = currentCaptchaType === captchaType.id
+                                    return (
+                                      <button
+                                        key={captchaType.id}
+                                        type="button"
+                                        onClick={() => addCaptchaField(captchaType.id)}
+                                        className={cn(
+                                          'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
+                                          selected
+                                            ? 'bg-sky-100 text-slate-800'
+                                            : 'text-slate-700 hover:bg-sky-50'
+                                        )}
+                                      >
+                                        <IconComponent className="h-4 w-4 shrink-0 text-slate-500" />
+                                        <span className="text-left font-medium">{captchaType.name}</span>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {showCustom ? (
+                            <div className="space-y-1 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowCustomFieldTypes((v) => !v)
+                                  setShowCaptchaTypes(false)
+                                }}
+                                className={cn(
+                                  'flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm font-medium transition-colors',
+                                  showCustomFieldTypes
+                                    ? 'border-sky-300 bg-sky-50 text-slate-800'
+                                    : 'border-dashed border-slate-300 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50/50'
+                                )}
+                              >
+                                <Plus className="h-4 w-4 text-slate-500" />
+                                <span className="flex-1 text-left">Add custom property</span>
+                                <ChevronDown
+                                  className={cn(
+                                    'h-3.5 w-3.5 text-slate-400 transition-transform',
+                                    showCustomFieldTypes && 'rotate-180'
+                                  )}
+                                />
+                              </button>
+
+                              {showCustomFieldTypes ? (
+                                <div className="ml-1 space-y-1 border-l-2 border-sky-100 pl-2">
+                                  {CUSTOM_FIELD_TYPES.map((fieldType) => {
+                                    const IconComponent = fieldType.icon
+                                    return (
+                                      <button
+                                        key={fieldType.id}
+                                        type="button"
+                                        onClick={() => addMetadataField(fieldType.id)}
+                                        className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-slate-700 hover:bg-sky-50"
+                                      >
+                                        <IconComponent className="h-4 w-4 shrink-0 text-slate-500" />
+                                        <span className="text-left font-medium">{fieldType.name}</span>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })()}
                   </CardContent>
                 </Card>
               </div>
 
               {/* Form Canvas */}
               <div className="col-span-6 flex flex-col min-h-0">
-                <Card className="flex flex-col flex-1 min-h-0">
-                  <CardHeader className="flex-shrink-0">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">Form Preview</CardTitle>
+                <Card className="flex flex-col flex-1 min-h-0 overflow-hidden border-slate-200">
+                  <CardHeader className="flex-shrink-0 border-b border-slate-200 bg-white pb-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-base">Form editor</CardTitle>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Click a field to edit. Tags show lead mapping and hidden values.
+                        </p>
+                      </div>
                       <div className="flex items-center gap-2">
-                       
+                        {formFields.some(isPhoneWidgetJunkField) ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={purgePhoneJunkFields}
+                            className="border-amber-400 text-amber-800 hover:bg-amber-50"
+                          >
+                            Remove invalid phone fields
+                          </Button>
+                        ) : null}
                         <Button variant="gradient" size="sm" onClick={saveForm} disabled={savingForm}>
                           {savingForm ? 'Saving…' : (editingFormId ? 'Update Form' : 'Save Form')}
                         </Button>
                       </div>
-
                     </div>
                   </CardHeader>
-                  <CardContent 
-                    className="overflow-y-auto flex-1 pb-2 min-h-0"
-                    style={{ overscrollBehavior: 'contain', padding: '8px' }}
+                  <CardContent
+                    className="overflow-y-auto flex-1 p-0 min-h-0 bg-slate-100/60"
+                    style={{ overscrollBehavior: 'contain' }}
                   >
-                    <DroppableCanvas isEmpty={formFields.length === 0}>
-                      {formFields.length === 0 ? (
-                        <div className="text-center py-12">
-                          <FileText className="h-16 w-16 mx-auto mb-4 text-slate-300" />
-                          <p className="text-slate-500 text-sm">
+                    <DroppableCanvas isEmpty={sanitizeFormFields(formFields).filter(isCanvasField).length === 0}>
+                      {sanitizeFormFields(formFields).filter(isCanvasField).length === 0 ? (
+                        <div className="m-4 rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center">
+                          <FileText className="mx-auto mb-4 h-12 w-12 text-slate-300" />
+                          <p className="text-sm text-slate-500">
                             Drag components here or click to add
                           </p>
                         </div>
                       ) : (
-                        <div className="space-y-4 pl-10 pr-2">
-                          <SortableContext items={formFields.filter((f) => !f.hidden && f.type !== 'hidden').map((f) => f.id)} strategy={verticalListSortingStrategy}>
-                            {formFields.filter((f) => !f.hidden && f.type !== 'hidden').map((field) => (
+                        <div
+                          className="m-4 overflow-hidden rounded-lg border border-slate-200 shadow-sm"
+                          style={{
+                            background: resolveFormBackground(globalStyles).background,
+                          }}
+                        >
+                          <SortableContext items={sanitizeFormFields(formFields).filter(isCanvasField).map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                            {sanitizeFormFields(formFields).filter(isCanvasField).map((field) => (
                               <SortableFieldItem
                                 key={field.id}
                                 field={field}
                                 isSelected={selectedField === field.id}
-                                onSelect={setSelectedField}
+                                onSelect={(id) => {
+                                  setSelectedField(id)
+                                  setSettingsPanelMode('field')
+                                }}
                                 onRemove={removeField}
+                                globalStyles={globalStyles}
+                                globalStyleExcludeKeys={globalStyleExcludeKeys}
                               />
                             ))}
                           </SortableContext>
-                          
-                          <div className="pt-6 border-t">
-                            <div
-                              onClick={() => setSelectedField('submit-button')}
-                              className={`relative group cursor-pointer rounded-lg transition-all ${
+
+                          <div
+                            className={cn(
+                              'border-t border-slate-200/80 px-5 py-5',
+                              selectedField === 'submit-button' && 'ring-2 ring-inset ring-sky-300'
+                            )}
+                            style={{
+                              background:
                                 selectedField === 'submit-button'
-                                  ? 'ring-2 ring-brand ring-offset-2'
-                                  : ''
-                              }`}
+                                  ? 'rgba(224, 242, 254, 0.55)'
+                                  : 'transparent',
+                            }}
+                          >
+                            <div
+                              onClick={() => {
+                                setSelectedField('submit-button')
+                                setSettingsPanelMode('field')
+                              }}
+                              className="inline-block cursor-pointer"
                             >
-                              <Button 
-                                variant="gradient" 
-                                className="w-full"
+                              <button
+                                type="button"
+                                className="rounded-full px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
                                 style={{
                                   fontFamily: submitButton.styles?.fontFamily,
                                   fontSize: submitButton.styles?.fontSize,
-                                  fontWeight: submitButton.styles?.fontWeight,
-                                  color: submitButton.styles?.color,
-                                  backgroundColor: submitButton.styles?.backgroundColor,
-                                  padding: submitButton.styles?.paddingTop ? `${submitButton.styles.paddingTop} ${submitButton.styles.paddingRight || submitButton.styles.paddingTop} ${submitButton.styles.paddingBottom || submitButton.styles.paddingTop} ${submitButton.styles.paddingLeft || submitButton.styles.paddingTop}` : undefined,
-                                  ...(submitButton.styles?.borderWidth ? { 
-                                    borderWidth: submitButton.styles.borderWidth,
-                                    borderStyle: submitButton.styles.borderStyle || 'solid',
-                                    borderColor: submitButton.styles.borderColor || '#e2e8f0'
-                                  } : { border: 'none' }),
-                                  borderRadius: submitButton.styles?.borderRadius,
-                                  width: submitButton.styles?.width || '100%',
-                                  margin: submitButton.styles?.marginTop ? `${submitButton.styles.marginTop} ${submitButton.styles.marginRight || '0'} ${submitButton.styles.marginBottom || '0'} ${submitButton.styles.marginLeft || '0'}` : undefined,
-                                  /* typography support */
+                                  fontWeight: submitButton.styles?.fontWeight || 600,
+                                  color: submitButton.styles?.color || '#ffffff',
+                                  backgroundColor:
+                                    submitButton.styles?.backgroundColor || 'var(--studio-primary)',
+                                  padding: submitButton.styles?.paddingTop
+                                    ? `${submitButton.styles.paddingTop} ${submitButton.styles.paddingRight || submitButton.styles.paddingTop} ${submitButton.styles.paddingBottom || submitButton.styles.paddingTop} ${submitButton.styles.paddingLeft || submitButton.styles.paddingTop}`
+                                    : undefined,
+                                  borderRadius: submitButton.styles?.borderRadius || '9999px',
                                   letterSpacing: submitButton.styles?.letterSpacing,
                                   textTransform: submitButton.styles?.textTransform,
-                                  textAlign: submitButton.styles?.textAlign,
-                                  /* ensure alignment inside the UI Button (which uses flex) */
-                                  display: submitButton.styles?.textAlign ? 'flex' : undefined,
-                                  justifyContent: submitButton.styles?.textAlign
-                                    ? submitButton.styles.textAlign === 'left'
-                                      ? 'flex-start'
-                                      : submitButton.styles.textAlign === 'center'
-                                      ? 'center'
-                                      : submitButton.styles.textAlign === 'right'
-                                      ? 'flex-end'
-                                      : submitButton.styles.textAlign === 'justify'
-                                      ? 'space-between'
-                                      : undefined
-                                    : undefined,
                                 }}
                               >
                                 {submitButton.label}
-                              </Button>
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -2015,32 +3443,100 @@ ${gtagScript}
                 </Card>
               </div>
 
-              {/* Field Settings Panel */}
+              {/* Field Settings / Global CSS Panel */}
               <div className="col-span-3 flex flex-col min-h-0">
                 <Card className="flex flex-col flex-1 min-h-0">
-                  <CardHeader className="flex-shrink-0">
-                    <CardTitle className="text-base">
-                      {selectedFieldData ? 'Field Settings' : 'Properties'}
-                    </CardTitle>
-                    {selectedFieldData && (
-                      <p className="text-sm text-slate-500 capitalize">{selectedFieldData.type} field</p>
-                    )}
+                  <CardHeader className="flex-shrink-0 space-y-3">
+                    <div className="flex rounded-md border border-border p-0.5 bg-muted/30">
+                      <button
+                        type="button"
+                        onClick={() => setSettingsPanelMode('field')}
+                        className={cn(
+                          'flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors',
+                          settingsPanelMode === 'field'
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        Field
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSettingsPanelMode('global')
+                          setSelectedField(null)
+                        }}
+                        className={cn(
+                          'flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors',
+                          settingsPanelMode === 'global'
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        Form CSS
+                      </button>
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">
+                        {settingsPanelMode === 'global'
+                          ? 'Form CSS'
+                          : selectedFieldData
+                            ? 'Field Settings'
+                            : 'Properties'}
+                      </CardTitle>
+                      {settingsPanelMode === 'field' && selectedFieldData ? (
+                        <p className="text-sm text-slate-500 capitalize mt-0.5">
+                          {selectedFieldData.type} field
+                        </p>
+                      ) : settingsPanelMode === 'global' ? (
+                        <p className="text-sm text-slate-500 mt-0.5">
+                          Styles for this form only — not shared with other forms
+                        </p>
+                      ) : null}
+                    </div>
                   </CardHeader>
                   <CardContent 
                     className="overflow-y-auto flex-1 pb-2 min-h-0"
                     style={{ overscrollBehavior: 'contain' }}
                   >
-                    {selectedFieldData ? (
+                    {settingsPanelMode === 'global' ? (
+                      <GlobalStylePanel
+                        styles={globalStyles}
+                        excludeKeys={globalStyleExcludeKeys}
+                        fields={[
+                          ...formFields.filter(isCanvasField),
+                          submitButton,
+                        ]}
+                        onStylesChange={setGlobalStyles}
+                        onExcludeKeysChange={setGlobalStyleExcludeKeys}
+                      />
+                    ) : selectedFieldData ? (
                       <StylePanel
                         field={selectedFieldData}
                         onStyleChange={handleFieldUpdate}
                         onFieldUpdate={handleFieldUpdate}
                         onLeadReasonsRefresh={refreshLeadReasons}
+                        globalStyleExcludeKeys={globalStyleExcludeKeys}
+                        onToggleGlobalExclude={(excludeKey, excluded) => {
+                          setGlobalStyleExcludeKeys((prev) => {
+                            if (excluded) {
+                              return prev.includes(excludeKey) ? prev : [...prev, excludeKey]
+                            }
+                            return prev.filter((k) => k !== excludeKey)
+                          })
+                        }}
                       />
                     ) : (
                       <div className="text-center py-12 text-slate-400">
                         <div className="mb-3 text-4xl">⚙️</div>
                         <p className="text-sm">Select a field to edit</p>
+                        <button
+                          type="button"
+                          className="mt-3 text-xs text-sky-700 hover:underline"
+                          onClick={() => setSettingsPanelMode('global')}
+                        >
+                          Or edit this form&apos;s CSS
+                        </button>
                       </div>
                     )}
                   </CardContent>
@@ -2062,21 +3558,49 @@ ${gtagScript}
 
             <DragOverlay>
               {activeId ? (
-                <div className="p-4 rounded-lg border-2 border-brand bg-white shadow-xl">
-                  {activeId.toString().startsWith('field-type-') ? (
+                <div className="rounded-md border border-sky-200 bg-white px-3 py-2 shadow-xl">
+                  {activeId.toString().startsWith('lead-prop-') ? (
                     (() => {
-                      const fieldType = fieldTypes.find((ft) => `field-type-${ft.id}` === activeId.toString())
+                      const prop = LEAD_PROPERTIES.find(
+                        (p) => `lead-prop-${p.id}` === activeId.toString()
+                      )
+                      const IconComponent = prop?.icon
+                      return (
+                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                          {IconComponent ? <IconComponent className="h-4 w-4 text-slate-500" /> : null}
+                          <span>{prop?.label}</span>
+                        </div>
+                      )
+                    })()
+                  ) : activeId.toString().startsWith('form-el-') ? (
+                    (() => {
+                      const element = FORM_ELEMENTS.find(
+                        (e) => `form-el-${e.id}` === activeId.toString()
+                      )
+                      const IconComponent = element?.icon
+                      return (
+                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                          {IconComponent ? <IconComponent className="h-4 w-4 text-slate-500" /> : null}
+                          <span>{element?.name}</span>
+                        </div>
+                      )
+                    })()
+                  ) : activeId.toString().startsWith('field-type-') ? (
+                    (() => {
+                      const fieldType = fieldTypes.find(
+                        (ft) => `field-type-${ft.id}` === activeId.toString()
+                      )
                       const IconComponent = fieldType?.icon
                       return (
-                        <div className="flex items-center gap-3 text-sm font-medium text-slate-700">
-                          {IconComponent && <IconComponent className="h-5 w-5 text-slate-600" />}
+                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                          {IconComponent ? <IconComponent className="h-4 w-4 text-slate-500" /> : null}
                           <span>{fieldType?.name}</span>
                         </div>
                       )
                     })()
                   ) : (
                     <div className="text-sm font-medium text-slate-700">
-                      {formFields.find(f => f.id === activeId)?.label || 'Moving field...'}
+                      {formFields.find((f) => f.id === activeId)?.label || 'Moving field...'}
                     </div>
                   )}
                 </div>
@@ -2587,7 +4111,8 @@ ${gtagScript}
               <div className="bg-white rounded-lg shadow-sm border border-slate-200" style={{ maxWidth: '600px', margin: '0 auto', overflow: 'hidden' }}>
                 <iframe
                   title="Form Preview"
-                  sandbox="allow-scripts allow-forms allow-same-origin"
+                  sandbox="allow-scripts allow-forms allow-same-origin allow-modals"
+                  allow="autoplay; speaker-selection"
                   srcDoc={generateExportedHTML()}
                   style={{ width: '100%', height: '620px', border: 0, display: 'block' }}
                 />

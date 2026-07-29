@@ -18,6 +18,7 @@ import {
   Type,
   Video,
   X,
+  ArrowLeft,
 } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -386,7 +387,7 @@ function DroppableEmailCanvas({ children, isEmpty, onCanvasClick, className }) {
   )
 }
 
-export default function EmailBuilderTab({ onCreated }) {
+export default function EmailBuilderTab({ onCreated, onBack }) {
   const toast = useToast()
 
   const [categories, setCategories] = useState([])
@@ -656,6 +657,14 @@ export default function EmailBuilderTab({ onCreated }) {
           <div className="w-full max-w-7xl">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-2 px-0.5">
               <div>
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-2"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to templates
+                </button>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand">
                   New template · Step 1 of 2
                 </p>
@@ -693,6 +702,16 @@ export default function EmailBuilderTab({ onCreated }) {
   return (
     <TabsContent value="builder" className="mt-3">
       <div className="h-[calc(100vh-148px)] flex flex-col">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to templates
+          </button>
+        </div>
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}

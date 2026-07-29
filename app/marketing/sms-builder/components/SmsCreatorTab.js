@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Send, Sparkles } from 'lucide-react'
+import { ArrowLeft, Send } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,19 +14,16 @@ import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/Locati
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
-import { extractLeadReasonsList } from '../../email-builder/emailBuilderApi'
+import { extractSmsCategoriesList } from '../smsBuilderApi'
 import { SMS_VARIABLES, previewMessage } from './constants'
 
-export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion = 0 }) {
+export default function SmsCreatorTab({ initialTemplate, onCreated, onBack, dataVersion = 0 }) {
   const toast = useToast()
 
   const [categories, setCategories] = useState([])
   const [loadingCats, setLoadingCats] = useState(false)
-  const [reasons, setReasons] = useState([])
-  const [loadingReasons, setLoadingReasons] = useState(false)
 
   const [name, setName] = useState(initialTemplate?.name || '')
-  const [subCategory, setSubCategory] = useState(initialTemplate?.subCategory || '')
   const [categoryId, setCategoryId] = useState(initialTemplate?.categoryID?._id || '')
   const [locationID, setLocationID] = useState(
     initialTemplate?.allLocations
@@ -37,15 +34,12 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
           ? [initialTemplate.locationID?._id || initialTemplate.locationID]
           : []
   )
-  const [reasonCode, setReasonCode] = useState(initialTemplate?.reason || '')
   const [message, setMessage] = useState(initialTemplate?.message || '')
-
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!initialTemplate) return
     setName(initialTemplate.name || '')
-    setSubCategory(initialTemplate.subCategory || '')
     setCategoryId(initialTemplate.categoryID?._id || '')
     setLocationID(
       initialTemplate.allLocations
@@ -56,7 +50,6 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
             ? [initialTemplate.locationID?._id || initialTemplate.locationID]
             : []
     )
-    setReasonCode(initialTemplate.reason || '')
     setMessage(initialTemplate.message || '')
   }, [initialTemplate])
 
@@ -64,8 +57,7 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
     setLoadingCats(true)
     try {
       const result = await api.get('/api/smsBuilder/categories')
-      const list = result.data?.categories ?? result.data
-      if (result.success && Array.isArray(list)) setCategories(list)
+      if (result.success) setCategories(extractSmsCategoriesList(result))
     } catch (e) {
       console.error(e)
     } finally {
@@ -73,30 +65,9 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
     }
   }, [])
 
-  const fetchReasons = useCallback(async () => {
-    setLoadingReasons(true)
-    try {
-      const result = await api.get('/api/lead-reasons')
-      if (result.success) {
-        const list = extractLeadReasonsList(result)
-        setReasons(list)
-        setReasonCode((prev) => {
-          if (prev) return prev
-          const first = list[0]?.reasonCode
-          return first ? String(first) : ''
-        })
-      }
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoadingReasons(false)
-    }
-  }, [])
-
   useEffect(() => {
     fetchCategories()
-    fetchReasons()
-  }, [fetchCategories, fetchReasons, dataVersion])
+  }, [fetchCategories, dataVersion])
 
   const locationScopedCategories = useMemo(() => {
     if (!locationID || (locationID !== ALL_BRANCHES_VALUE && (!Array.isArray(locationID) || locationID.length === 0))) {
@@ -137,15 +108,9 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
     !!name.trim() &&
     !!message.trim() &&
     !!categoryId &&
-    !!(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0)) &&
-    !!subCategory.trim() &&
-    !!String(reasonCode || '').trim()
+    !!(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0))
 
   const createTemplate = async () => {
-    if (!String(reasonCode || '').trim()) {
-      toast.error({ title: 'Missing reason', message: 'Reason is required.' })
-      return
-    }
     if (!(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0))) {
       toast.error({ title: 'Missing location', message: 'Select one or more studios, or All branches.' })
       return
@@ -156,9 +121,7 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
       const allLocations = locationID === ALL_BRANCHES_VALUE
       const payload = {
         name: name.trim(),
-        subCategory: subCategory.trim(),
         categoryID: categoryId,
-        reason: String(reasonCode || '').trim(),
         message: String(message || ''),
         allLocations,
         locationID: allLocations ? [] : locationID,
@@ -169,6 +132,8 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
         return
       }
       toast.success({ title: 'Created', message: 'Template created successfully.' })
+      setName('')
+      setMessage('')
       onCreated?.(result.data)
     } catch (e) {
       console.error(e)
@@ -180,14 +145,26 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
 
   return (
     <TabsContent value="creator" className="space-y-6 mt-6">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to templates
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
-        {/* Variables */}
         <div className="md:col-span-4 lg:col-span-3">
           <Card className="rounded-2xl">
             <CardHeader>
               <CardTitle className="text-sm">Variables</CardTitle>
             </CardHeader>
-            <CardContent className="p-3">
+            <CardContent className="p-3 space-y-3">
+              <p className="text-xs text-muted-foreground px-1">
+                Insert into the message. Replaced with lead details when sent from campaigns or workflows.
+              </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-2">
                 {SMS_VARIABLES.map((variable) => (
                   <button
@@ -201,15 +178,10 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
                   </button>
                 ))}
               </div>
-              <Button variant="outline" size="sm" className="w-full mt-4 text-xs sm:text-sm" disabled>
-                <Sparkles className="h-4 w-4 mr-2" />
-                AI Generate (soon)
-              </Button>
             </CardContent>
           </Card>
         </div>
 
-        {/* Editor */}
         <div className="md:col-span-8 lg:col-span-5">
           <Card className="rounded-2xl">
             <CardHeader>
@@ -242,7 +214,6 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
           </Card>
         </div>
 
-        {/* Settings */}
         <div className="md:col-span-12 lg:col-span-4">
           <Card className="rounded-2xl">
             <CardHeader>
@@ -284,31 +255,6 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label>Sub-category</Label>
-                <Input value={subCategory} onChange={(e) => setSubCategory(e.target.value)} placeholder="e.g. Welcome" />
-              </div>
-
-              <div className="space-y-2">
-                <Label>
-                  Reason <span className="text-red-500">*</span>
-                </Label>
-                {loadingReasons ? (
-                  <div className="py-2">
-                    <LoadingSpinner size="sm" text="Loading reasons…" />
-                  </div>
-                ) : (
-                  <Select value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
-                    <option value="">Select reason…</option>
-                    {reasons.map((r) => (
-                      <option key={r._id || r.reasonCode || r.name} value={r.reasonCode}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </div>
-
               <Button variant="gradient" className="w-full" onClick={createTemplate} disabled={saving || !canSave}>
                 <Send className="h-4 w-4 mr-2" />
                 {saving ? 'Saving…' : 'Save template'}
@@ -318,10 +264,11 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
                 <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                   <p className="font-medium text-foreground">Required:</p>
                   <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                    {!(locationID === ALL_BRANCHES_VALUE || (Array.isArray(locationID) && locationID.length > 0)) && (
+                      <li>Studio location</li>
+                    )}
                     {!name.trim() && <li>Template name</li>}
                     {!categoryId && <li>Category</li>}
-                    {!subCategory.trim() && <li>Sub-category</li>}
-                    {!String(reasonCode || '').trim() && <li>Reason</li>}
                     {!message.trim() && <li>Message</li>}
                   </ul>
                 </div>
@@ -333,4 +280,3 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, dataVersion 
     </TabsContent>
   )
 }
-

@@ -2,6 +2,16 @@
  * Normalizers for /api/smsBuilder responses.
  */
 
+export function extractSmsCategoriesList(result) {
+  const payload = result?.data
+  const list = Array.isArray(payload?.categories)
+    ? payload.categories
+    : Array.isArray(payload)
+      ? payload
+      : []
+  return Array.isArray(list) ? list : []
+}
+
 export function extractSmsTemplatesPayload(result) {
   const payload = result?.data
   const list = Array.isArray(payload?.smsList)

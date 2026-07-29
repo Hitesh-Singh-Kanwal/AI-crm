@@ -182,9 +182,7 @@
 import { useState, useEffect, useRef } from "react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
-  Bell,
   Menu,
-  Search,
   LogOut,
   Moon,
   Sun,
@@ -212,7 +210,6 @@ export default function Header({
   onMenuClick,
   mobileMenuOpen = false,
 }) {
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [createEnrollmentOpen, setCreateEnrollmentOpen] = useState(false);
   const profileRef = useRef(null);
@@ -241,14 +238,10 @@ export default function Header({
     pathname === "/inbox/all-messages" ||
     pathname === "/inbox/talk-to-assistant";
   const isForms = pathname?.startsWith("/marketing/form-builder");
-  const isSms = pathname?.startsWith("/marketing/sms-builder");
-  const isEmails = pathname?.startsWith("/marketing/email-builder");
   const isAICalling = pathname?.startsWith("/ai-automation/ai-calling");
   const isAIMessaging = pathname?.startsWith("/ai-automation/ai-messaging");
   const inboxFilter = (isInbox && searchParams?.get("filter")) || "all";
   const formsView = isForms ? searchParams?.get("view") || "templates" : null;
-  const smsView = isSms ? searchParams?.get("view") || "templates" : null;
-  const emailsView = isEmails ? searchParams?.get("view") || "templates" : null;
   const aiCallingView = isAICalling
     ? searchParams?.get("view") || "scripts"
     : null;
@@ -276,20 +269,6 @@ export default function Header({
     const params = new URLSearchParams(searchParams?.toString() || "");
     params.set("view", value);
     router.push(`/marketing/form-builder?${params.toString()}`);
-  };
-
-  const setSmsView = (value) => {
-    if (!isSms) return;
-    const params = new URLSearchParams(searchParams?.toString() || "");
-    params.set("view", value);
-    router.push(`/marketing/sms-builder?${params.toString()}`);
-  };
-
-  const setEmailsView = (value) => {
-    if (!isEmails) return;
-    const params = new URLSearchParams(searchParams?.toString() || "");
-    params.set("view", value);
-    router.push(`/marketing/email-builder?${params.toString()}`);
   };
 
   const setAICallingView = (value) => {
@@ -357,58 +336,6 @@ export default function Header({
                       <button
                         key={value}
                         onClick={() => setFormsView(value)}
-                        className={cn(
-                          "text-sm font-medium transition-colors duration-200 whitespace-nowrap",
-                          isActive
-                            ? "text-[var(--studio-primary)]"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : isSms ? (
-              <div className="flex items-center h-[44px]">
-                <div className="flex w-max items-center gap-5 sm:gap-8 rounded-full bg-muted px-4 sm:px-6 py-2">
-                  {[
-                    { value: "templates", label: "SMS Templates" },
-                    { value: "creator", label: "SMS Creator" },
-                    { value: "analytics", label: "Analytics" },
-                  ].map(({ value, label }) => {
-                    const isActive = smsView === value;
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => setSmsView(value)}
-                        className={cn(
-                          "text-sm font-medium transition-colors duration-200 whitespace-nowrap",
-                          isActive
-                            ? "text-[var(--studio-primary)]"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : isEmails ? (
-              <div className="flex items-center h-[44px]">
-                <div className="flex w-max items-center gap-5 sm:gap-8 rounded-full bg-muted px-4 sm:px-6 py-2">
-                  {[
-                    { value: "templates", label: "Templates" },
-                    { value: "builder", label: "Email Builder" },
-                    { value: "analytics", label: "Analytics" },
-                  ].map(({ value, label }) => {
-                    const isActive = emailsView === value;
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => setEmailsView(value)}
                         className={cn(
                           "text-sm font-medium transition-colors duration-200 whitespace-nowrap",
                           isActive
@@ -530,47 +457,6 @@ export default function Header({
                   <Moon className="h-5 w-5" aria-hidden />
                 )}
               </Button>
-
-              {/* SEARCH + NOTIFICATION PILL */}
-              <div className="hidden sm:flex items-center h-[38px] gap-1 rounded-full bg-muted px-0.5">
-                <div className="relative">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShowNotifications(!showNotifications)}
-                    className="h-[38px] w-[38px] rounded-full text-muted-foreground hover:bg-muted/80"
-                  >
-                    <Bell className="h-5 w-5" />
-                  </Button>
-
-                  {showNotifications && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setShowNotifications(false)}
-                      />
-                      <div className="absolute right-0 top-full mt-2 w-80 z-50 rounded-xl border border-border bg-popover text-popover-foreground shadow-xl">
-                        <div className="p-4 border-b border-border">
-                          <h3 className="font-semibold text-sm">
-                            Notifications
-                          </h3>
-                        </div>
-                        <div className="p-4 text-sm text-muted-foreground">
-                          No new notifications.
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-[38px] w-[38px] rounded-full text-muted-foreground hover:bg-muted/80"
-                >
-                  <Search className="h-5 w-5" />
-                </Button>
-              </div>
 
               {/* BRANCH / LOCATION SELECTOR */}
               <div className="hidden md:block w-[170px] lg:w-[200px]">

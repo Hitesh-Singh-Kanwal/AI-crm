@@ -2,6 +2,7 @@
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
+import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 
 export const LEAD_CONVERSION_COLUMNS = [
   { key: 'leadName', label: 'Lead Name' },
