@@ -2650,7 +2650,7 @@ ${getFormPhoneExportRuntimeScript()}
           delete payload.captcha_images;
 
           try {
-            const res = await fetch('https://98.88.253.231.sslip.io/api/lead/form', {
+            const res = await fetch('https://backend.cadance.ai/api/lead/form', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
