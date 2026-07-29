@@ -34,15 +34,6 @@ export function extractEmailTemplatesPayload(result) {
   }
 }
 
-export function extractEmailHistoryList(result) {
-  const payload = result?.data
-  const list = Array.isArray(payload) ? payload : []
-  return {
-    list,
-    total: result?.pagination?.total ?? list.length,
-  }
-}
-
 /** Used by StylePanel / form-builder / SMS — not email templates. */
 export function extractLeadReasonsList(result) {
   const payload = result?.data
@@ -68,36 +59,6 @@ export function getTemplateCategoryName(template) {
   if (!template?.categoryID) return null
   if (typeof template.categoryID === 'object') return template.categoryID.name || null
   return null
-}
-
-export function aggregateEmailHistoryStats(records = []) {
-  const stats = { sent: 0, opened: 0, clicked: 0, bounced: 0 }
-  const bySubject = {}
-
-  for (const row of records) {
-    if (!row) continue
-    stats.sent += 1
-    const status = String(row.status || '').toLowerCase()
-    const wasOpened = status.includes('open') || status.includes('click') || Number(row.openCount) > 0
-    const wasClicked = status.includes('click') || Number(row.clickCount) > 0
-    const wasBounced = status.includes('bounce')
-    if (wasOpened) stats.opened += 1
-    if (wasClicked) stats.clicked += 1
-    if (wasBounced) stats.bounced += 1
-
-    const subject = String(row.subject || 'No subject').trim() || 'No subject'
-    if (!bySubject[subject]) {
-      bySubject[subject] = { subject, sent: 0, opened: 0, clicked: 0, bounced: 0 }
-    }
-    bySubject[subject].sent += 1
-    if (wasOpened) bySubject[subject].opened += 1
-    if (wasClicked) bySubject[subject].clicked += 1
-    if (wasBounced) bySubject[subject].bounced += 1
-  }
-
-  const byTemplate = Object.values(bySubject).sort((a, b) => b.sent - a.sent)
-
-  return { stats, byTemplate }
 }
 
 /**

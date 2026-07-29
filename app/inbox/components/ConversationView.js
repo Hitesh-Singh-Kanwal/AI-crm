@@ -10,6 +10,8 @@ import EmailMessageInput from './EmailMessageInput'
 import CallMessageInput from './CallMessageInput'
 import CallLogList from './CallLogList'
 import ConversationChannelTabs from './ConversationChannelTabs'
+import InboxHtmlEmailFrame, { isRichEmailHtml } from './InboxHtmlEmailFrame'
+import { htmlToPlainText } from '@/lib/emailSend'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -35,6 +37,7 @@ export default function ConversationView({
   loadingMore,
   leadData = null,
   emailSending = false,
+  smsSending = false,
   onEmailTabActive,
   onCallTabActive,
   onPlaceCall,
@@ -233,8 +236,22 @@ export default function ConversationView({
             {(() => {
               const filtered = messages.filter((m) => m.channel === TAB_CHANNEL_MAP[activeTab])
               if (filtered.length === 0) return (
-                <div className="text-center text-muted-foreground text-sm py-8">
-                  {messages.length === 0 ? 'No messages yet. Start the conversation!' : `No ${activeTab} messages.`}
+                <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
+                  {activeTab === 'E-mail' ? (
+                    <>
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-card shadow-sm">
+                        <Mail className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm font-medium text-foreground">No emails yet</p>
+                      <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                        Write a message below or choose a template to send a designed email.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {messages.length === 0 ? 'No messages yet. Start the conversation!' : `No ${activeTab} messages.`}
+                    </p>
+                  )}
                 </div>
               )
               return filtered.map((message, idx) => {
@@ -266,37 +283,92 @@ export default function ConversationView({
                           </Avatar>
                         </div>
                       )}
-                      <div className={cn('max-w-[85%] sm:max-w-[75%]', isInbound ? 'items-start' : 'items-end')}>
-                        <div
-                          className={cn(
-                            'rounded-2xl px-3.5 py-2.5 text-sm shadow-sm',
-                            isInbound
-                              ? 'bg-card border border-border text-foreground rounded-tl-md'
-                              : 'bg-[color:var(--studio-primary)] text-white rounded-tr-md',
-                          )}
-                        >
-                          {message.channel === 'Email' && message.subject && (
-                            <p className={cn('text-xs font-semibold mb-1', isInbound ? 'text-foreground' : 'text-white/90')}>
-                              {message.subject}
-                            </p>
-                          )}
-                          {message.channel === 'Email' ? (
-                            <div className={cn('prose prose-sm max-w-none', !isInbound && 'prose-invert')}>
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm, remarkBreaks]}
-                                components={{
-                                  a: ({ node, ...props }) => (
-                                    <a {...props} target="_blank" rel="noreferrer noopener" />
-                                  ),
-                                }}
+                      <div
+                        className={cn(
+                          'flex max-w-[90%] flex-col sm:max-w-[80%]',
+                          isInbound ? 'items-start' : 'items-end',
+                        )}
+                      >
+                        {message.channel === 'Email' ? (
+                          <div
+                            className={cn(
+                              'overflow-hidden rounded-2xl border bg-card shadow-sm w-[min(100%,460px)]',
+                              isInbound
+                                ? 'border-border rounded-tl-md'
+                                : 'border-[color:var(--studio-primary)]/25 rounded-tr-md',
+                            )}
+                          >
+                            <div
+                              className={cn(
+                                'flex items-start gap-2.5 border-b px-3.5 py-2.5',
+                                isInbound
+                                  ? 'border-border bg-muted/40'
+                                  : 'border-[color:var(--studio-primary)]/15 bg-[color:var(--studio-primary-light)]/50',
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+                                  isInbound
+                                    ? 'bg-muted text-muted-foreground'
+                                    : 'bg-[color:var(--studio-primary)] text-white',
+                                )}
                               >
-                                {String(message.content || '')}
-                              </ReactMarkdown>
+                                <Mail className="h-3.5 w-3.5" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                    {isInbound ? 'Received email' : 'Sent email'}
+                                  </p>
+                                  {message.status ? (
+                                    <span className="rounded-full bg-background/80 px-1.5 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+                                      {message.status}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="truncate text-sm font-semibold text-foreground leading-snug">
+                                  {message.subject?.trim() || '(No subject)'}
+                                </p>
+                              </div>
                             </div>
-                          ) : (
+
+                            {isRichEmailHtml(message.contentHtml) ? (
+                              <InboxHtmlEmailFrame
+                                html={message.contentHtml}
+                                title={message.subject || 'Email message'}
+                                minHeight={120}
+                                maxHeight={340}
+                              />
+                            ) : (
+                              <div className="px-3.5 py-3 text-sm text-foreground">
+                                <div className="prose prose-sm max-w-none">
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm, remarkBreaks]}
+                                    components={{
+                                      a: ({ node, ...props }) => (
+                                        <a {...props} target="_blank" rel="noreferrer noopener" />
+                                      ),
+                                    }}
+                                  >
+                                    {String(message.content || htmlToPlainText(message.contentHtml) || '')}
+                                  </ReactMarkdown>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div
+                            className={cn(
+                              'rounded-2xl px-3.5 py-2.5 text-sm shadow-sm',
+                              isInbound
+                                ? 'bg-card border border-border text-foreground rounded-tl-md'
+                                : 'bg-[color:var(--studio-primary)] text-white rounded-tr-md',
+                            )}
+                          >
                             <p className="whitespace-pre-wrap break-words">{message.content}</p>
-                          )}
-                        </div>
+                          </div>
+                        )}
                         <div className="mt-2 text-xs text-muted-foreground">{formatDateTime(message.timestamp)}</div>
                       </div>
                       {!isInbound && (
@@ -339,14 +411,18 @@ export default function ConversationView({
               sending={emailSending}
             />
           ) : (
-            <div className="px-4 py-6 text-center border-t border-border bg-card/80">
-              <p className="text-sm text-destructive">
-                This contact has no email on file. Add an email to send messages.
+            <div className="border-t border-border bg-card px-4 py-6 text-center">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+                <Mail className="h-4 w-4" />
+              </div>
+              <p className="text-sm font-medium text-foreground">No email on file</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Add an email address on this contact to send messages.
               </p>
             </div>
           )
         ) : (
-          <MessageInput onSendMessage={onSendMessage} channel="SMS" />
+          <MessageInput onSendMessage={onSendMessage} channel="SMS" sending={smsSending} />
         )}
       </div>
     </main>
