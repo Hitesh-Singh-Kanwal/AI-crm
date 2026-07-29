@@ -182,9 +182,7 @@
 import { useState, useEffect, useRef } from "react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
-  Bell,
   Menu,
-  Search,
   LogOut,
   Moon,
   Sun,
@@ -212,7 +210,6 @@ export default function Header({
   onMenuClick,
   mobileMenuOpen = false,
 }) {
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [createEnrollmentOpen, setCreateEnrollmentOpen] = useState(false);
   const profileRef = useRef(null);
@@ -460,47 +457,6 @@ export default function Header({
                   <Moon className="h-5 w-5" aria-hidden />
                 )}
               </Button>
-
-              {/* SEARCH + NOTIFICATION PILL */}
-              <div className="hidden sm:flex items-center h-[38px] gap-1 rounded-full bg-muted px-0.5">
-                <div className="relative">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShowNotifications(!showNotifications)}
-                    className="h-[38px] w-[38px] rounded-full text-muted-foreground hover:bg-muted/80"
-                  >
-                    <Bell className="h-5 w-5" />
-                  </Button>
-
-                  {showNotifications && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setShowNotifications(false)}
-                      />
-                      <div className="absolute right-0 top-full mt-2 w-80 z-50 rounded-xl border border-border bg-popover text-popover-foreground shadow-xl">
-                        <div className="p-4 border-b border-border">
-                          <h3 className="font-semibold text-sm">
-                            Notifications
-                          </h3>
-                        </div>
-                        <div className="p-4 text-sm text-muted-foreground">
-                          No new notifications.
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-[38px] w-[38px] rounded-full text-muted-foreground hover:bg-muted/80"
-                >
-                  <Search className="h-5 w-5" />
-                </Button>
-              </div>
 
               {/* BRANCH / LOCATION SELECTOR */}
               <div className="hidden md:block w-[170px] lg:w-[200px]">

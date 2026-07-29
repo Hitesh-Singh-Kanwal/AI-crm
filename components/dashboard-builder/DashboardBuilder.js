@@ -440,9 +440,9 @@ export default function DashboardBuilder({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-end justify-end gap-2">
         {editing && (
-          <span className="mr-auto text-[11px] text-muted-foreground">
+          <span className="mr-auto self-center text-[11px] text-muted-foreground">
             Drag · resize · remove
             {saveState === 'saving' && <span className="ml-1.5">· Saving…</span>}
             {saveState === 'saved' && (
@@ -457,7 +457,7 @@ export default function DashboardBuilder({
 
         <div className="flex items-center gap-1.5">
           {(editing || hiddenWidgets.length > 0) && (
-            <Button variant="outline" size="sm" className="h-8 px-2.5 text-[13px]" onClick={() => setCatalogOpen(true)}>
+            <Button variant="outline" size="sm" className="h-9 px-2.5 text-[13px]" onClick={() => setCatalogOpen(true)}>
               <Plus className="mr-1 h-3.5 w-3.5" />
               Add
               {hiddenWidgets.length > 0 && (
@@ -471,7 +471,7 @@ export default function DashboardBuilder({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 px-2.5 text-[13px]"
+              className="h-9 px-2.5 text-[13px]"
               onClick={resetLayout}
               title="Reset to default layout"
             >
@@ -482,7 +482,7 @@ export default function DashboardBuilder({
           <Button
             variant={editing ? 'gradient' : 'outline'}
             size="sm"
-            className="h-8 px-2.5 text-[13px]"
+            className="h-9 px-2.5 text-[13px]"
             onClick={() => setEditing((e) => !e)}
           >
             <LayoutGrid className="mr-1 h-3.5 w-3.5" />

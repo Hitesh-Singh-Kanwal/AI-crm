@@ -12,6 +12,7 @@ import { getCustomerFilterFieldDef } from '@/lib/customer-list-filter-catalog'
 import { getFieldValueOptions as getCustomerFieldValueOptions } from '@/lib/customer-filter-fields'
 import { getFieldValueOptions as getLeadFieldValueOptions } from '@/lib/lead-filter-fields'
 import { formatFieldDisplayValue } from '@/lib/dynamic-list-normalize'
+import { REPORT_FILTER_CATALOGS, DASHBOARD_DETAILS_FILTER_CATALOGS } from '@/lib/report-filter-catalogs'
 
 const inputClass =
   'h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]'
@@ -31,6 +32,8 @@ export default function CatalogConditionValueInput({
   value,
   onChange,
   entityType = 'lead',
+  catalogKey = null,
+  catalogOverride = null,
   leadReasons = [],
   locations = [],
   forms = [],
@@ -40,7 +43,13 @@ export default function CatalogConditionValueInput({
   packages = [],
   loadingOptions = false,
 }) {
-  const getFilterFieldDef = entityType === 'customer' ? getCustomerFilterFieldDef : getLeadFilterFieldDef
+  const reportCatalog = entityType === 'report'
+    ? (catalogOverride || DASHBOARD_DETAILS_FILTER_CATALOGS[catalogKey] || REPORT_FILTER_CATALOGS[catalogKey])
+    : null
+  const getFilterFieldDef =
+    entityType === 'customer' ? getCustomerFilterFieldDef
+    : entityType === 'report' ? (reportCatalog?.getFilterFieldDef || (() => null))
+    : getLeadFilterFieldDef
   const getFieldValueOptions = entityType === 'customer' ? getCustomerFieldValueOptions : getLeadFieldValueOptions
   const def = getFilterFieldDef(field)
   if (!def) {

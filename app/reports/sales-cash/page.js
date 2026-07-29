@@ -19,8 +19,10 @@ export default function SalesCashReportPage() {
       ]}
       renderDrill={(detail) => (
         <div className="space-y-2 p-4 text-sm">
+          <p><strong>Type:</strong> {detail.transactionType}</p>
           <p><strong>Student:</strong> {detail.studentName}</p>
           <p><strong>Teacher:</strong> {detail.teacherName}</p>
+          <p><strong>Program:</strong> {detail.programName}</p>
           <p><strong>Sale Amount:</strong> {detail.saleAmount}</p>
           <p><strong>Cash Collected:</strong> {detail.cashCollected}</p>
         </div>

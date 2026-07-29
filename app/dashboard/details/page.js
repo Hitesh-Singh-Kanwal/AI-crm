@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
+import { ReportFilterPanel } from '@/components/reports/ReportFilterPanel'
+import { ReportActiveFiltersBar } from '@/components/reports/ReportActiveFiltersBar'
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput'
 import { ReportSavedViews } from '@/components/reports/ReportSavedViews'
 import { useDashboardDetailsRequest } from '@/lib/dashboardDetailsStore'
 import { useDashboardOverviewDetails, useOwnerOverviewDetails } from '@/lib/hooks/useAnalyticsOverview'
@@ -13,6 +15,8 @@ import { useReportFilterOptions } from '@/lib/hooks/useReportFilterOptions'
 import { useReportPreferences } from '@/lib/hooks/useReportPreferences'
 import { buildLeadQueryParams } from '@/lib/lead-filter-fields'
 import { dateBoundsFromPresetDays } from '@/lib/reports/reportFilters'
+import { countActiveReportFilters, buildReportQueryParams } from '@/lib/reports/buildReportQueryParams'
+import { getActiveReportFilterChips, removeReportFilterChip } from '@/lib/reports/reportActiveFilterChips'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 import api from '@/lib/api'
 
@@ -40,6 +44,9 @@ const EMPTY_FILTERS = {
   comparison: '',
   activeWindowDays: '',
   status: '',
+  conditions: [],
+  conditionLogic: 'AND',
+  search: '',
 }
 
 function formatCell(row, column) {
@@ -119,7 +126,8 @@ export default function DashboardDetailsPage() {
   const request = useDashboardDetailsRequest()
   const [page, setPage] = useState(1)
   const [filters, setFilters] = useState(() => filtersFromRequest(request))
-  const { studios, teachers, programs, leadSources } = useReportFilterOptions({ enabled: Boolean(request) })
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const { studios, teachers, programs } = useReportFilterOptions({ enabled: Boolean(request) })
   const { savedViews, saveView, deleteView } = useReportPreferences()
 
   const savedViewsSlug = useMemo(() => {
@@ -187,6 +195,20 @@ export default function DashboardDetailsPage() {
       delete base.leadSource
       delete base.uploadType
     }
+    const conditionParams = buildReportQueryParams({
+      conditions: filters.conditions,
+      conditionLogic: filters.conditionLogic,
+      search: filters.search,
+    })
+    if (conditionParams.has('conditions')) {
+      base.conditions = conditionParams.get('conditions')
+      base.conditionLogic = conditionParams.get('conditionLogic')
+    } else {
+      delete base.conditions
+      delete base.conditionLogic
+    }
+    if (conditionParams.has('search')) base.search = conditionParams.get('search')
+    else delete base.search
     return base
   }, [
     request?.params,
@@ -197,6 +219,9 @@ export default function DashboardDetailsPage() {
     filters.teacherId,
     filters.programId,
     filters.leadSource,
+    filters.conditions,
+    filters.conditionLogic,
+    filters.search,
   ])
 
   const dashboardResult = useDashboardOverviewDetails({
@@ -289,6 +314,15 @@ export default function DashboardDetailsPage() {
       : { rows: leadsData?.rows || [], total: leadsData?.total || 0, isLoading: leadsLoading }
 
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1)
+  const activeFilterCount = countActiveReportFilters(filters)
+  const activeFilterChips = getActiveReportFilterChips(filters, {
+    studios,
+    teachers,
+    programs,
+    catalogKey: request?.metric,
+    columns: request?.columns || [],
+    includeSearch: false,
+  })
 
   return (
     <MainLayout title={request.title} subtitle="Full details">
@@ -300,31 +334,50 @@ export default function DashboardDetailsPage() {
         Back to Dashboard
       </Link>
 
-      <div className="mt-4">
-        <ReportFilterBar
-          filters={filters}
-          onChange={handleFiltersChange}
-          studios={studios}
-          teachers={teachers}
-          programs={programs}
-          leadSources={leadSources}
-          showLeadSource
-          defaultDateRangeDays={defaultDateRangeDays}
-          footer={({ clearFilters, clearToken }) => (
-            <ReportSavedViews
-              compact
-              reportSlug={savedViewsSlug}
-              savedViews={savedViews}
-              currentFilters={filters}
-              clearToken={clearToken}
-              onApply={handleFiltersChange}
-              onResetFilters={clearFilters}
-              onSave={(view) => saveView(view).catch(() => {})}
-              onDelete={(id) => deleteView(id).catch(() => {})}
-            />
-          )}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <ReportSearchInput
+          value={filters.search || ''}
+          onChange={(search) => handleFiltersChange({ ...filters, search })}
+        />
+        <ReportActiveFiltersBar
+          activeCount={activeFilterCount}
+          onOpenFilters={() => setFilterPanelOpen(true)}
+          chips={activeFilterChips}
+          onRemoveChip={(chip) => handleFiltersChange(removeReportFilterChip(filters, chip))}
+          onReset={() => handleFiltersChange(filtersFromRequest(request))}
         />
       </div>
+
+      <ReportFilterPanel
+        open={filterPanelOpen}
+        appliedFilters={filters}
+        onClose={() => setFilterPanelOpen(false)}
+        onApply={(next) => {
+          handleFiltersChange(next)
+          setFilterPanelOpen(false)
+        }}
+        studios={studios}
+        teachers={teachers}
+        programs={programs}
+        catalogKey={request?.metric}
+        columns={request?.columns || []}
+        defaultDateRangeDays={defaultDateRangeDays}
+        savedViewsSlot={
+          <ReportSavedViews
+            compact
+            reportSlug={savedViewsSlug}
+            savedViews={savedViews}
+            currentFilters={filters}
+            onApply={(next) => {
+              handleFiltersChange(next)
+              setFilterPanelOpen(false)
+            }}
+            onResetFilters={() => handleFiltersChange(filtersFromRequest(request))}
+            onSave={(view) => saveView(view).catch(() => {})}
+            onDelete={(id) => deleteView(id).catch(() => {})}
+          />
+        }
+      />
 
       <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         {isLoading && rows.length === 0 ? (
