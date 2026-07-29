@@ -6,7 +6,8 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportFilterPanel } from '@/components/reports/ReportFilterPanel'
-import { ReportFiltersButton } from '@/components/reports/ReportFiltersButton'
+import { ReportActiveFiltersBar } from '@/components/reports/ReportActiveFiltersBar'
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput'
 import { ReportSavedViews } from '@/components/reports/ReportSavedViews'
 import { useDashboardDetailsRequest } from '@/lib/dashboardDetailsStore'
 import { useDashboardOverviewDetails, useOwnerOverviewDetails } from '@/lib/hooks/useAnalyticsOverview'
@@ -15,6 +16,7 @@ import { useReportPreferences } from '@/lib/hooks/useReportPreferences'
 import { buildLeadQueryParams } from '@/lib/lead-filter-fields'
 import { dateBoundsFromPresetDays } from '@/lib/reports/reportFilters'
 import { countActiveReportFilters, buildReportQueryParams } from '@/lib/reports/buildReportQueryParams'
+import { getActiveReportFilterChips, removeReportFilterChip } from '@/lib/reports/reportActiveFilterChips'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 import api from '@/lib/api'
 
@@ -312,6 +314,15 @@ export default function DashboardDetailsPage() {
       : { rows: leadsData?.rows || [], total: leadsData?.total || 0, isLoading: leadsLoading }
 
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1)
+  const activeFilterCount = countActiveReportFilters(filters)
+  const activeFilterChips = getActiveReportFilterChips(filters, {
+    studios,
+    teachers,
+    programs,
+    catalogKey: request?.metric,
+    columns: request?.columns || [],
+    includeSearch: false,
+  })
 
   return (
     <MainLayout title={request.title} subtitle="Full details">
@@ -323,8 +334,18 @@ export default function DashboardDetailsPage() {
         Back to Dashboard
       </Link>
 
-      <div className="mt-4">
-        <ReportFiltersButton activeCount={countActiveReportFilters(filters)} onClick={() => setFilterPanelOpen(true)} />
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <ReportSearchInput
+          value={filters.search || ''}
+          onChange={(search) => handleFiltersChange({ ...filters, search })}
+        />
+        <ReportActiveFiltersBar
+          activeCount={activeFilterCount}
+          onOpenFilters={() => setFilterPanelOpen(true)}
+          chips={activeFilterChips}
+          onRemoveChip={(chip) => handleFiltersChange(removeReportFilterChip(filters, chip))}
+          onReset={() => handleFiltersChange(filtersFromRequest(request))}
+        />
       </div>
 
       <ReportFilterPanel
@@ -339,6 +360,7 @@ export default function DashboardDetailsPage() {
         teachers={teachers}
         programs={programs}
         catalogKey={request?.metric}
+        columns={request?.columns || []}
         defaultDateRangeDays={defaultDateRangeDays}
         savedViewsSlot={
           <ReportSavedViews

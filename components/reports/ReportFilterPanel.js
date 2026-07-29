@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/select'
 import { dateBoundsFromPresetDays } from '@/lib/reports/reportFilters'
 import GroupedLeadFilterFields from '@/components/shared/GroupedLeadFilterFields'
 import { DASHBOARD_DETAILS_FILTER_CATALOGS, REPORT_FILTER_CATALOGS } from '@/lib/report-filter-catalogs'
+import { buildCatalogFromColumns } from '@/lib/reports/buildCatalogFromColumns'
 
 const EMPTY_DRAFT_EXTRAS = { conditions: [], conditionLogic: 'AND', search: '' }
 
@@ -20,13 +21,15 @@ export function ReportFilterPanel({
   teachers = [],
   programs = [],
   catalogKey,
+  columns = [],
   defaultDateRangeDays = 30,
   savedViewsSlot = null,
 }) {
   const [draft, setDraft] = useState(appliedFilters)
-  const hasCatalog = Boolean(
-    DASHBOARD_DETAILS_FILTER_CATALOGS[catalogKey] || REPORT_FILTER_CATALOGS[catalogKey]
-  )
+  const catalog =
+    DASHBOARD_DETAILS_FILTER_CATALOGS[catalogKey] ||
+    REPORT_FILTER_CATALOGS[catalogKey] ||
+    buildCatalogFromColumns(columns)
 
   useEffect(() => {
     if (open) setDraft(appliedFilters)
@@ -127,21 +130,11 @@ export function ReportFilterPanel({
           </div>
 
           <div className="border-t border-border/70 pt-5">
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.04em] text-foreground/55">Search</label>
-            <input
-              type="text"
-              placeholder="Search this table…"
-              value={draft.search || ''}
-              onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))}
-              className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]"
-            />
-          </div>
-
-          <div className="border-t border-border/70 pt-5">
-            {hasCatalog ? (
+            {catalog ? (
               <GroupedLeadFilterFields
                 entityType="report"
                 catalogKey={catalogKey}
+                catalogOverride={catalog}
                 draft={{ conditions: draft.conditions || [], conditionLogic: draft.conditionLogic || 'AND' }}
                 onDraftChange={(next) => setDraft((d) => ({ ...d, conditions: next.conditions, conditionLogic: next.conditionLogic }))}
               />

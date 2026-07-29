@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import { BackToReportsLink } from '@/components/reports/BackToReportsLink'
 import { ReportFilterPanel } from '@/components/reports/ReportFilterPanel'
-import { ReportFiltersButton } from '@/components/reports/ReportFiltersButton'
+import { ReportActiveFiltersBar } from '@/components/reports/ReportActiveFiltersBar'
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput'
+import { ReportExportMenu } from '@/components/reports/ReportExportMenu'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { ReportFavoriteStar } from '@/components/reports/ReportFavoriteStar'
 import { ReportSavedViews } from '@/components/reports/ReportSavedViews'
@@ -14,6 +16,7 @@ import { useReportPreferences } from '@/lib/hooks/useReportPreferences'
 import { useReportFilterOptions } from '@/lib/hooks/useReportFilterOptions'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
 import { countActiveReportFilters } from '@/lib/reports/buildReportQueryParams'
+import { getActiveReportFilterChips, removeReportFilterChip } from '@/lib/reports/reportActiveFilterChips'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
 import { exportCurrentPageToPdf } from '@/lib/reports/exportPdf'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
@@ -63,6 +66,20 @@ function ReportPageShellContent({
     router.push(`/reports/${slug}?${buildReportQuery(nextFilters, { page: 1, pageSize: 50 })}`)
   }
 
+  function handleSearchChange(search) {
+    handleFiltersChange({ ...filters, search })
+  }
+
+  const activeFilterCount = countActiveReportFilters(filters)
+  const activeFilterChips = getActiveReportFilterChips(filters, {
+    studios,
+    teachers,
+    programs,
+    catalogKey: slug,
+    columns,
+    includeSearch: false,
+  })
+
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
   return (
@@ -77,15 +94,20 @@ function ReportPageShellContent({
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <ReportFiltersButton activeCount={countActiveReportFilters(filters)} onClick={() => setFilterPanelOpen(true)} />
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => exportCurrentPageToCsv(rows, columns, `${slug}.csv`)}>
-            Export CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => exportCurrentPageToPdf(rows, columns, title, `${slug}.pdf`)}>
-            Export PDF
-          </Button>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <ReportSearchInput value={filters.search || ''} onChange={handleSearchChange} />
+          <ReportActiveFiltersBar
+            activeCount={activeFilterCount}
+            onOpenFilters={() => setFilterPanelOpen(true)}
+            chips={activeFilterChips}
+            onRemoveChip={(chip) => handleFiltersChange(removeReportFilterChip(filters, chip))}
+            onReset={() => handleFiltersChange({})}
+          />
         </div>
+        <ReportExportMenu
+          onExportCsv={() => exportCurrentPageToCsv(rows, columns, `${slug}.csv`)}
+          onExportPdf={() => exportCurrentPageToPdf(rows, columns, title, `${slug}.pdf`)}
+        />
       </div>
 
       <ReportFilterPanel
@@ -100,6 +122,7 @@ function ReportPageShellContent({
         teachers={teachers}
         programs={programs}
         catalogKey={slug}
+        columns={columns}
         defaultDateRangeDays={defaultActiveWindowDays || optionsDefaultWindow}
         savedViewsSlot={
           <ReportSavedViews

@@ -33,6 +33,7 @@ export default function CatalogConditionValueInput({
   onChange,
   entityType = 'lead',
   catalogKey = null,
+  catalogOverride = null,
   leadReasons = [],
   locations = [],
   forms = [],
@@ -43,7 +44,7 @@ export default function CatalogConditionValueInput({
   loadingOptions = false,
 }) {
   const reportCatalog = entityType === 'report'
-    ? (DASHBOARD_DETAILS_FILTER_CATALOGS[catalogKey] || REPORT_FILTER_CATALOGS[catalogKey])
+    ? (catalogOverride || DASHBOARD_DETAILS_FILTER_CATALOGS[catalogKey] || REPORT_FILTER_CATALOGS[catalogKey])
     : null
   const getFilterFieldDef =
     entityType === 'customer' ? getCustomerFilterFieldDef

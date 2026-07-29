@@ -26,7 +26,8 @@ import FilterLogicToggle from '@/components/shared/FilterLogicToggle'
 import CatalogConditionValueInput from '@/components/shared/CatalogConditionValueInput'
 import { REPORT_FILTER_CATALOGS, DASHBOARD_DETAILS_FILTER_CATALOGS } from '@/lib/report-filter-catalogs'
 
-function getCatalogApi(entityType, catalogKey) {
+function getCatalogApi(entityType, catalogKey, catalogOverride = null) {
+  if (catalogOverride) return catalogOverride
   if (entityType === 'customer') {
     return {
       FILTER_GROUPS: CUSTOMER_FILTER_GROUPS,
@@ -204,6 +205,7 @@ function ReportColumnFilters({
                   onChange={(value) => upsert(field, { value })}
                   entityType="report"
                   catalogKey={catalogKey}
+                  catalogOverride={catalog}
                   {...context}
                   loadingOptions={loadingOptions}
                 />
@@ -420,6 +422,7 @@ export default function GroupedLeadFilterFields({
   hiddenFields = new Set(),
   entityType = 'lead',
   catalogKey = null,
+  catalogOverride = null,
   locations = [],
   forms = [],
   leadReasons = [],
@@ -429,7 +432,10 @@ export default function GroupedLeadFilterFields({
   packages = [],
   loadingOptions = false,
 }) {
-  const catalog = useMemo(() => getCatalogApi(entityType, catalogKey), [entityType, catalogKey])
+  const catalog = useMemo(
+    () => getCatalogApi(entityType, catalogKey, catalogOverride),
+    [entityType, catalogKey, catalogOverride]
+  )
   const context = useMemo(
     () => ({ leadReasons, locations, forms, teachers, tags, memberships, packages }),
     [leadReasons, locations, forms, teachers, tags, memberships, packages]
