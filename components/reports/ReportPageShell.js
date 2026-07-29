@@ -200,6 +200,7 @@ function ReportPageShellContent({
         reportSlug={slug}
         recordId={drillId}
         title={drillTitle}
+        filters={filters}
         renderDetail={(detail) =>
           renderDrill ? (
             renderDrill(detail)
@@ -210,6 +211,26 @@ function ReportPageShellContent({
                   <strong>{col.label}:</strong> {formatReportCellValue(detail?.[col.key], col)}
                 </p>
               ))}
+              {Array.isArray(detail?.attendanceByServiceType) && detail.attendanceByServiceType.length > 0 && (
+                <div className="mt-4 space-y-3 border-t border-border pt-3">
+                  <p className="font-semibold">Students attended</p>
+                  {detail.attendanceByServiceType.map((group) => (
+                    <div key={group.serviceType}>
+                      <p className="text-muted-foreground">
+                        {group.label} ({group.studentCount})
+                      </p>
+                      <ul className="mt-1 list-disc pl-5">
+                        {group.students.map((student) => (
+                          <li key={student.id}>
+                            {student.studentName} · {student.lessonsAttended} lesson
+                            {student.lessonsAttended === 1 ? '' : 's'}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )
         }
