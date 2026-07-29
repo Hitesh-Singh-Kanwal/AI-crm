@@ -51,6 +51,10 @@ import WalletShortfallField, { walletPaymentFields } from "@/components/payments
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
 import { getInitials, formatDate } from "@/lib/utils";
+import {
+  customerLifecycleBadgeClass,
+  customerLifecycleLabel,
+} from "@/lib/customer-lifecycle";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -6069,18 +6073,10 @@ export default function CustomerDetailPage() {
                 <span
                   className={[
                     "inline-flex flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                    customer.lifecycleStatus === "inactive"
-                      ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400"
-                      : customer.lifecycleStatus === "archived"
-                        ? "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300"
-                        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+                    customerLifecycleBadgeClass(customer.lifecycleStatus),
                   ].join(" ")}
                 >
-                  {customer.lifecycleStatus === "inactive"
-                    ? "Inactive"
-                    : customer.lifecycleStatus === "archived"
-                      ? "Archived"
-                      : "Active"}
+                  {customerLifecycleLabel(customer.lifecycleStatus)}
                 </span>
               </div>
               <p className="text-[13px] text-muted-foreground truncate">

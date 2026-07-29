@@ -33,10 +33,6 @@ const CUSTOMER_CONDITION_TYPES = {
   HAS_ACTIVE_PACKAGE: 'has_active_package',
   HAS_ACTIVE_ENROLLMENT: 'has_active_enrollment',
   PACKAGE_EXHAUSTED: 'package_exhausted',
-  PACKAGE_COUNT_GTE: 'package_count_gte',
-  TOTAL_SPEND_GTE: 'total_spend_gte',
-  SESSION_COMPLETED_COUNT_GTE: 'session_completed_count_gte',
-  NO_SHOW_COUNT_GTE: 'no_show_count_gte',
   EVENT_OCCURRED: 'event_occurred',
 }
 
@@ -54,9 +50,13 @@ const DAY_TYPES = new Set([
 ])
 
 const LIFECYCLE_STATUS_OPTIONS = [
-  { value: 'active', label: 'Active' },
-  { value: 'inactive', label: 'Inactive' },
-  { value: 'archived', label: 'Archived' },
+  { value: 'trial_scheduled', label: 'Intro Scheduled', hint: 'First purchase done; intro lesson booked' },
+  { value: 'trial_unscheduled', label: 'Intro Unscheduled', hint: 'First purchase / convert; lesson not booked yet' },
+  { value: 'trial_no_show', label: 'Intro No-Show', hint: 'Missed the intro lesson' },
+  { value: 'no_sale', label: 'No Sale', hint: 'Attended intro, no program yet' },
+  { value: 'active', label: 'Active', hint: 'Bought a program / package again' },
+  { value: 'inactive', label: 'Inactive', hint: 'Lapsed or idle' },
+  { value: 'archived', label: 'Archived', hint: 'Closed / no longer managed' },
 ]
 
 function blankCondition(type) {
@@ -66,10 +66,6 @@ function blankCondition(type) {
     return { type, lifecycleStatus: 'active' }
   if (DAY_TYPES.has(type)) return { type, days: 30 }
   if (BOOLEAN_TYPES.has(type)) return { type, value: true }
-  if (type === CUSTOMER_CONDITION_TYPES.PACKAGE_COUNT_GTE) return { type, count: 1 }
-  if (type === CUSTOMER_CONDITION_TYPES.TOTAL_SPEND_GTE) return { type, amount: 100 }
-  if (type === CUSTOMER_CONDITION_TYPES.SESSION_COMPLETED_COUNT_GTE) return { type, count: 1 }
-  if (type === CUSTOMER_CONDITION_TYPES.NO_SHOW_COUNT_GTE) return { type, count: 1 }
   if (type === CUSTOMER_CONDITION_TYPES.EVENT_OCCURRED)
     return { type, event: 'payment_received' }
   return { type }
@@ -131,16 +127,16 @@ function describeCondition(c, events) {
       return c.value ? 'has active enrollment' : 'no active enrollment'
     case CUSTOMER_CONDITION_TYPES.PACKAGE_EXHAUSTED:
       return c.value ? 'has exhausted package' : 'no exhausted package'
-    case CUSTOMER_CONDITION_TYPES.PACKAGE_COUNT_GTE:
-      return `packages purchased ≥ ${c.count ?? '?'}`
-    case CUSTOMER_CONDITION_TYPES.TOTAL_SPEND_GTE:
-      return `total spend ≥ $${c.amount ?? '?'}`
-    case CUSTOMER_CONDITION_TYPES.SESSION_COMPLETED_COUNT_GTE:
-      return `completed sessions ≥ ${c.count ?? '?'}`
-    case CUSTOMER_CONDITION_TYPES.NO_SHOW_COUNT_GTE:
-      return `no-shows ≥ ${c.count ?? '?'}`
     case CUSTOMER_CONDITION_TYPES.EVENT_OCCURRED:
       return eventLabel(c.event)
+    case 'package_count_gte':
+      return `packages purchased ≥ ${c.count ?? '?'}`
+    case 'total_spend_gte':
+      return `total spend ≥ $${c.amount ?? '?'}`
+    case 'session_completed_count_gte':
+      return `completed sessions ≥ ${c.count ?? '?'}`
+    case 'no_show_count_gte':
+      return `no-shows ≥ ${c.count ?? '?'}`
     default:
       return c.type
   }
@@ -194,7 +190,11 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
         base.conditions = [emptyCondition(nextCatalog)]
       }
       const wiredKeys = new Set(nextCatalog.events.map((e) => e.key))
+      const allowedTypes = new Set(nextCatalog.conditions.map((c) => c.type))
       base.conditions = base.conditions.map((c) => {
+        if (!allowedTypes.has(c.type)) {
+          return emptyCondition(nextCatalog)
+        }
         if (
           c.type === CUSTOMER_CONDITION_TYPES.EVENT_OCCURRED &&
           c.event &&
@@ -290,26 +290,10 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
         setError('Enter a valid number of days')
         return
       }
-      if (
-        (c.type === CUSTOMER_CONDITION_TYPES.PACKAGE_COUNT_GTE ||
-          c.type === CUSTOMER_CONDITION_TYPES.SESSION_COMPLETED_COUNT_GTE ||
-          c.type === CUSTOMER_CONDITION_TYPES.NO_SHOW_COUNT_GTE) &&
-        (c.count === '' || c.count == null || Number(c.count) < 0)
-      ) {
-        setError('Count must be at least 0')
-        return
-      }
-      if (
-        c.type === CUSTOMER_CONDITION_TYPES.TOTAL_SPEND_GTE &&
-        (c.amount === '' || c.amount == null || Number(c.amount) < 0)
-      ) {
-        setError('Amount must be at least 0')
-        return
-      }
     }
 
     if (!form.actionStatus || !LIFECYCLE_STATUS_OPTIONS.some((s) => s.value === form.actionStatus)) {
-      setError('Select Active, Inactive, or Archived as the action')
+      setError('Select a customer lifecycle status for the action')
       return
     }
 
@@ -347,7 +331,7 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
         <DialogShell
           icon={Users}
           title={isEdit ? 'Edit customer rule' : 'New customer rule'}
-          description="When conditions match, mark the customer Active, Inactive, or Archived."
+          description="When conditions match, set Intro or Active / Inactive / Archived."
           onClose={handleClose}
           saving={saving}
           footer={<FormActions onCancel={onClose} saving={saving} isEdit={isEdit} />}
@@ -503,43 +487,6 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
                         </div>
                       )}
 
-                      {(cond.type === CUSTOMER_CONDITION_TYPES.PACKAGE_COUNT_GTE ||
-                        cond.type === CUSTOMER_CONDITION_TYPES.SESSION_COMPLETED_COUNT_GTE ||
-                        cond.type === CUSTOMER_CONDITION_TYPES.NO_SHOW_COUNT_GTE) && (
-                        <div>
-                          <FieldLabel required>Minimum count</FieldLabel>
-                          <input
-                            type="number"
-                            min={0}
-                            value={cond.count ?? ''}
-                            onChange={(e) => updateCondition(index, { count: Number(e.target.value) })}
-                            disabled={saving}
-                            className={cn(fieldClass, 'max-w-[140px]')}
-                          />
-                        </div>
-                      )}
-
-                      {cond.type === CUSTOMER_CONDITION_TYPES.TOTAL_SPEND_GTE && (
-                        <div>
-                          <FieldLabel required>Minimum spend</FieldLabel>
-                          <div className="relative max-w-[160px]">
-                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">
-                              $
-                            </span>
-                            <input
-                              type="number"
-                              min={0}
-                              value={cond.amount ?? ''}
-                              onChange={(e) =>
-                                updateCondition(index, { amount: Number(e.target.value) })
-                              }
-                              disabled={saving}
-                              className={cn(fieldClass, 'pl-7')}
-                            />
-                          </div>
-                        </div>
-                      )}
-
                       {cond.type === CUSTOMER_CONDITION_TYPES.EVENT_OCCURRED && (
                         <div>
                           <FieldLabel required>Event</FieldLabel>
@@ -577,33 +524,10 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
               <StepHeader
                 step={3}
                 title="Then"
-                description="Choose whether to mark the customer Active, Inactive, or Archived."
+                description="Choose the customer lifecycle status to set when conditions match."
               />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {[
-                  {
-                    value: 'active',
-                    label: 'Active',
-                    hint: 'Engaged customer',
-                    selectedClass:
-                      'border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/30',
-                    badgeClass: 'bg-emerald-500',
-                  },
-                  {
-                    value: 'inactive',
-                    label: 'Inactive',
-                    hint: 'Lapsed or idle',
-                    selectedClass: 'border-rose-500 bg-rose-500/5 ring-1 ring-rose-500/30',
-                    badgeClass: 'bg-rose-500',
-                  },
-                  {
-                    value: 'archived',
-                    label: 'Archived',
-                    hint: 'Closed / no longer managed',
-                    selectedClass: 'border-slate-500 bg-slate-500/5 ring-1 ring-slate-500/30',
-                    badgeClass: 'bg-slate-500',
-                  },
-                ].map((opt) => {
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {LIFECYCLE_STATUS_OPTIONS.map((opt) => {
                   const selected = form.actionStatus === opt.value
                   return (
                     <button
@@ -612,15 +536,14 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
                       disabled={saving}
                       onClick={() => set('actionStatus', opt.value)}
                       className={cn(
-                        'rounded-xl border px-4 py-3.5 text-left transition',
-                        selected ? opt.selectedClass : 'border-border bg-background hover:bg-muted/40'
+                        'rounded-xl border px-3.5 py-3 text-left transition',
+                        selected
+                          ? 'border-[var(--studio-primary)] bg-[var(--studio-primary)]/5 ring-1 ring-[var(--studio-primary)]/30'
+                          : 'border-border bg-background hover:bg-muted/40'
                       )}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className={cn('h-2 w-2 rounded-full', opt.badgeClass)} />
-                        <span className="text-[14px] font-semibold text-foreground">{opt.label}</span>
-                      </div>
-                      <p className="mt-1 text-[12px] text-muted-foreground">{opt.hint}</p>
+                      <span className="text-[13px] font-semibold text-foreground">{opt.label}</span>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">{opt.hint}</p>
                     </button>
                   )
                 })}

@@ -31,7 +31,6 @@ const CONDITION_TYPES = {
   DAYS_SINCE_LAST_ACTIVITY: 'days_since_last_activity',
   EVENT_OCCURRED: 'event_occurred',
   EVENT_NOT_OCCURRED: 'event_not_occurred',
-  PACKAGE_COUNT_GTE: 'package_count_gte',
   CALL_DURATION_GTE: 'call_duration_gte',
   CALL_USER_TURNS_GTE: 'call_user_turns_gte',
   INBOUND_SMS_COUNT_GTE: 'inbound_sms_count_gte',
@@ -57,8 +56,6 @@ function blankCondition(type) {
     case CONDITION_TYPES.EVENT_OCCURRED:
     case CONDITION_TYPES.EVENT_NOT_OCCURRED:
       return { type, event: 'inbound_reply' }
-    case CONDITION_TYPES.PACKAGE_COUNT_GTE:
-      return { type, count: 1 }
     case CONDITION_TYPES.CALL_DURATION_GTE:
       return { type, seconds: 45 }
     case CONDITION_TYPES.CALL_USER_TURNS_GTE:
@@ -149,7 +146,7 @@ function describeCondition(c, statuses, events) {
       return eventLabel(events, c.event)
     case CONDITION_TYPES.EVENT_NOT_OCCURRED:
       return `${eventLabel(events, c.event)} has not happened`
-    case CONDITION_TYPES.PACKAGE_COUNT_GTE:
+    case 'package_count_gte':
       return `package purchases ≥ ${c.count ?? '?'}`
     case CONDITION_TYPES.CALL_DURATION_GTE:
       return `latest call ≥ ${c.seconds ?? '?'}s`
@@ -209,6 +206,13 @@ function ConditionValue({ cond, index, saving, activeStatuses, catalog, updateCo
     cond.type === CONDITION_TYPES.EVENT_OCCURRED ||
     cond.type === CONDITION_TYPES.EVENT_NOT_OCCURRED
   ) {
+    const eventOptions = [...(catalog.events || [])]
+    if (cond.event && !eventOptions.some((ev) => ev.key === cond.event)) {
+      eventOptions.unshift({
+        key: cond.event,
+        label: String(cond.event).replace(/_/g, ' '),
+      })
+    }
     return (
       <div>
         <FieldLabel required>Event</FieldLabel>
@@ -218,28 +222,12 @@ function ConditionValue({ cond, index, saving, activeStatuses, catalog, updateCo
           disabled={saving}
           className={selectClass}
         >
-          {(catalog.events || []).map((ev) => (
+          {eventOptions.map((ev) => (
             <option key={ev.key} value={ev.key}>
               {ev.label}
             </option>
           ))}
         </select>
-      </div>
-    )
-  }
-
-  if (cond.type === CONDITION_TYPES.PACKAGE_COUNT_GTE) {
-    return (
-      <div>
-        <FieldLabel required>Min packages</FieldLabel>
-        <input
-          type="number"
-          min={1}
-          value={cond.count ?? ''}
-          onChange={(e) => updateCondition(index, { count: Number(e.target.value) })}
-          disabled={saving}
-          className={cn(fieldClass, 'max-w-[120px]')}
-        />
       </div>
     )
   }
@@ -319,13 +307,17 @@ export default function LeadAutomationFormDialog({
       if (!base.conditions.length) {
         base.conditions = [emptyCondition(nextCatalog)]
       }
-      const wiredKeys = new Set(nextCatalog.events.map((e) => e.key))
+      const allowedTypes = new Set(nextCatalog.conditions.map((c) => c.type))
       base.conditions = base.conditions.map((c) => {
+        if (!allowedTypes.has(c.type)) {
+          return emptyCondition(nextCatalog)
+        }
+        // Keep hidden/legacy events (e.g. lead_converted on seeded rules).
+        // Only replace when the event is missing entirely.
         if (
           (c.type === CONDITION_TYPES.EVENT_OCCURRED ||
             c.type === CONDITION_TYPES.EVENT_NOT_OCCURRED) &&
-          c.event &&
-          !wiredKeys.has(c.event)
+          !c.event
         ) {
           return { ...c, event: nextCatalog.events[0]?.key || 'inbound_reply' }
         }
@@ -431,10 +423,6 @@ export default function LeadAutomationFormDialog({
         (c.days === '' || c.days == null || Number(c.days) < 0)
       ) {
         setError('Enter a valid number of days')
-        return
-      }
-      if (c.type === CONDITION_TYPES.PACKAGE_COUNT_GTE && (!c.count || Number(c.count) < 1)) {
-        setError('Package count must be at least 1')
         return
       }
       if (

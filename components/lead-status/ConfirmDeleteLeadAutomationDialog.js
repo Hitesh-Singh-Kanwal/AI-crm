@@ -34,7 +34,7 @@ export default function ConfirmDeleteLeadAutomationDialog({
             )}
             <span className="mt-2 block">
               {isCustomer
-                ? 'Customers will no longer change Active/Inactive/Archived via this rule.'
+                ? 'Customers will no longer change lifecycle status via this rule.'
                 : 'Leads will no longer change stage via this rule.'}
             </span>
           </DialogDescription>

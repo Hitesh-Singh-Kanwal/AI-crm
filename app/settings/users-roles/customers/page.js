@@ -37,6 +37,10 @@ import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LocationSelector from '@/components/shared/LocationSelector'
 import { getInitials, formatDate, cn } from '@/lib/utils'
+import {
+  customerLifecycleBadgeClass,
+  customerLifecycleLabel,
+} from '@/lib/customer-lifecycle'
 
 const EMPTY_FORM = {
   name: '',
@@ -617,18 +621,10 @@ export default function CustomersPage() {
                       <span
                         className={cn(
                           'inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                          customer.lifecycleStatus === 'inactive'
-                            ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
-                            : customer.lifecycleStatus === 'archived'
-                              ? 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300'
-                              : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          customerLifecycleBadgeClass(customer.lifecycleStatus)
                         )}
                       >
-                        {customer.lifecycleStatus === 'inactive'
-                          ? 'Inactive'
-                          : customer.lifecycleStatus === 'archived'
-                            ? 'Archived'
-                            : 'Active'}
+                        {customerLifecycleLabel(customer.lifecycleStatus)}
                       </span>
                     </TableCell>
                     <TableCell>

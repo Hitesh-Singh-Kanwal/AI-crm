@@ -11,6 +11,9 @@ import LeadAutomationFormDialog from '@/components/lead-status/LeadAutomationFor
 import CustomerAutomationFormDialog from '@/components/lead-status/CustomerAutomationFormDialog'
 import ConfirmDeleteLeadStatusDialog from '@/components/lead-status/ConfirmDeleteLeadStatusDialog'
 import ConfirmDeleteLeadAutomationDialog from '@/components/lead-status/ConfirmDeleteLeadAutomationDialog'
+import {
+  CUSTOMER_LIFECYCLE_STATUS_META,
+} from '@/lib/customer-lifecycle'
 
 const ENTITY_TABS = [
   { value: 'lead', label: 'Leads', icon: Layers },
@@ -24,20 +27,44 @@ function activeBadge(isActive) {
 }
 
 function lifecycleBadge(status) {
-  if (status === 'inactive') {
-    return 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+  switch (status) {
+    case 'inactive':
+      return 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+    case 'archived':
+      return 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300'
+    case 'trial_scheduled':
+      return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
+    case 'trial_unscheduled':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+    case 'trial_no_show':
+      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+    case 'no_sale':
+      return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
+    case 'active':
+    default:
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
   }
-  if (status === 'archived') {
-    return 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300'
-  }
-  return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
 }
 
 function lifecycleLabel(status) {
-  if (status === 'inactive') return 'Inactive'
-  if (status === 'archived') return 'Archived'
-  if (status === 'active') return 'Active'
-  return '—'
+  switch (status) {
+    case 'trial_scheduled':
+      return 'Intro Scheduled'
+    case 'trial_unscheduled':
+      return 'Intro Unscheduled'
+    case 'trial_no_show':
+      return 'Intro No-Show'
+    case 'no_sale':
+      return 'No Sale'
+    case 'inactive':
+      return 'Inactive'
+    case 'archived':
+      return 'Archived'
+    case 'active':
+      return 'Active'
+    default:
+      return status ? String(status).replace(/_/g, ' ') : '—'
+  }
 }
 
 function summarizeLeadRule(rule, statuses) {
@@ -92,6 +119,7 @@ export default function LeadStatusManagerClient() {
   const [statuses, setStatuses] = useState([])
   const [automations, setAutomations] = useState([])
   const [customerAutomations, setCustomerAutomations] = useState([])
+  const [customerStatuses, setCustomerStatuses] = useState(CUSTOMER_LIFECYCLE_STATUS_META)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -138,13 +166,25 @@ export default function LeadStatusManagerClient() {
   }, [])
 
   const loadCustomerAutomations = useCallback(async () => {
-    const res = await api.get('/api/customer-lifecycle-automation')
-    if (res?.success) {
-      setCustomerAutomations(Array.isArray(res.data) ? res.data : [])
-      return null
+    const [rulesRes, catalogRes] = await Promise.all([
+      api.get('/api/customer-lifecycle-automation'),
+      api.get('/api/customer-lifecycle-automation/catalog'),
+    ])
+    if (rulesRes?.success) {
+      setCustomerAutomations(Array.isArray(rulesRes.data) ? rulesRes.data : [])
+    } else {
+      setCustomerAutomations([])
     }
-    setCustomerAutomations([])
-    return res?.error || 'Failed to load customer automations.'
+    const meta = catalogRes?.data?.lifecycleStatusMeta
+    if (Array.isArray(meta) && meta.length) {
+      setCustomerStatuses(meta)
+    } else {
+      setCustomerStatuses(CUSTOMER_LIFECYCLE_STATUS_META)
+    }
+    if (!rulesRes?.success) {
+      return rulesRes?.error || 'Failed to load customer automations.'
+    }
+    return null
   }, [])
 
   const loadAll = useCallback(async () => {
@@ -311,29 +351,24 @@ export default function LeadStatusManagerClient() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-brand">Rules</div>
-            <div className="mt-2 text-3xl font-bold text-foreground">{customerStats.rules}</div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-brand">Statuses</div>
+            <div className="mt-2 text-3xl font-bold text-foreground">{customerStatuses.length}</div>
           </div>
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="text-[11px] font-bold uppercase tracking-wide text-brand">Active rules</div>
             <div className="mt-2 text-3xl font-bold text-emerald-600 dark:text-emerald-400">
               {customerStats.activeRules}
+              <span className="ml-1.5 text-lg font-medium text-muted-foreground">
+                / {customerStats.rules}
+              </span>
             </div>
           </div>
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-brand">Lifecycle</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="inline-flex rounded-md bg-emerald-100 px-2 py-1 text-[12px] font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                Active
-              </span>
-              <span className="text-muted-foreground">/</span>
-              <span className="inline-flex rounded-md bg-rose-100 px-2 py-1 text-[12px] font-semibold text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
-                Inactive
-              </span>
-              <span className="text-muted-foreground">/</span>
-              <span className="inline-flex rounded-md bg-slate-100 px-2 py-1 text-[12px] font-semibold text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
-                Archived
-              </span>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-brand">Phases</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-foreground">
+              <span>Intro</span>
+              <span className="text-muted-foreground">+</span>
+              <span>Student</span>
             </div>
           </div>
         </div>
@@ -349,7 +384,7 @@ export default function LeadStatusManagerClient() {
             <p className="mt-1 max-w-2xl text-[15px] text-muted-foreground">
               {isLead
                 ? 'Customize pipeline stages, then set rules that move leads automatically.'
-                : 'Customers are Active, Inactive, or Archived. Rules flip that status from real activity — payments, sessions, memberships, and more.'}
+                : 'Customers start in Intro after first purchase / convert, then become Active when they buy a program. Rules move them through Intro → Active.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -658,12 +693,68 @@ export default function LeadStatusManagerClient() {
 
         {/* ─── CUSTOMER TAB ─── */}
         {!isLead && (
-          <div className="mt-6 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-6 space-y-6">
+            <section>
+              <div className="mb-3">
+                <h3 className="text-[15px] font-semibold text-foreground">Statuses</h3>
+                <p className="text-[13px] text-muted-foreground">
+                  Fixed platform statuses (not studio-editable). Automations move customers between
+                  them.
+                </p>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <table className="min-w-full text-left text-[13px]">
+                  <thead className="border-b border-border bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">Key</th>
+                      <th className="px-4 py-3 font-semibold">Phase</th>
+                      <th className="px-4 py-3 font-semibold">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customerStatuses.map((status) => (
+                      <tr
+                        key={status.value}
+                        className="border-b border-border/70 align-top transition-colors hover:bg-muted/20"
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="inline-block h-3 w-3 flex-shrink-0 rounded-full"
+                              style={{ background: status.color || '#6B7280' }}
+                            />
+                            <span className="font-semibold text-foreground">{status.label}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+                            {status.value}
+                          </code>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex rounded-md bg-muted px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            {status.phase === 'intro' || status.phase === 'trial'
+                              ? 'Intro'
+                              : 'Student'}
+                          </span>
+                        </td>
+                        <td className="max-w-[360px] px-4 py-3 text-[12px] text-muted-foreground">
+                          {status.description || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-[15px] font-semibold text-foreground">Automations</h3>
                 <p className="text-[13px] text-muted-foreground">
-                  IF conditions match → mark customer Active, Inactive, or Archived.
+                  IF conditions match → set Intro or Active / Inactive / Archived.
                 </p>
               </div>
               <button
@@ -784,6 +875,7 @@ export default function LeadStatusManagerClient() {
                 </tbody>
               </table>
             </div>
+            </section>
           </div>
         )}
       </div>
