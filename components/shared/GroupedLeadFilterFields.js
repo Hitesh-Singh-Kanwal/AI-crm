@@ -120,32 +120,99 @@ function FieldPicker({ open, group, hiddenFields, onClose, onPick }) {
   )
 }
 
-function ReportAddFilterButton({ group, hiddenFields, onPick, compact = false }) {
-  const [open, setOpen] = useState(false)
+function ReportColumnFilters({
+  catalog,
+  catalogKey,
+  conditions,
+  setConditions,
+  conditionLogic,
+  onLogicChange,
+  hiddenFields,
+  context,
+  loadingOptions,
+}) {
+  const fields = catalog.FILTER_GROUPS.flatMap((g) =>
+    g.fields
+      .filter((f) => !hiddenFields.has(f.value))
+      .map((f) => ({ ...f, groupId: g.id }))
+  )
+
+  function rowFor(field) {
+    return (
+      conditions.find((c) => c.field === field.value) || {
+        id: `report-${field.value}`,
+        groupId: field.groupId,
+        field: field.value,
+        operator: catalog.getDefaultOperatorForField(field.value),
+        value: catalog.emptyValueForOperator(catalog.getDefaultOperatorForField(field.value)),
+      }
+    )
+  }
+
+  function upsert(field, patch) {
+    const existing = conditions.find((c) => c.field === field.value)
+    if (existing) {
+      setConditions(conditions.map((c) => (c.field === field.value ? { ...c, ...patch } : c)))
+      return
+    }
+    const operator = patch.operator || catalog.getDefaultOperatorForField(field.value)
+    setConditions([
+      ...conditions,
+      {
+        id: `report-${field.value}`,
+        groupId: field.groupId,
+        field: field.value,
+        operator,
+        value: patch.value !== undefined ? patch.value : catalog.emptyValueForOperator(operator),
+        ...patch,
+      },
+    ])
+  }
+
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={cn(
-          'inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground hover:bg-muted/40',
-          !compact && 'mt-3'
-        )}
-      >
-        <Plus className="h-3.5 w-3.5" />
-        Add filter
-      </button>
-      <FieldPicker
-        open={open}
-        group={group}
-        hiddenFields={hiddenFields}
-        onClose={() => setOpen(false)}
-        onPick={(fieldValue) => {
-          onPick(fieldValue)
-          setOpen(false)
-        }}
-      />
-    </>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.04em] text-foreground/55">Column filters</div>
+        <FilterLogicToggle value={conditionLogic || 'AND'} onChange={onLogicChange} label="" helpText="" size="sm" />
+      </div>
+      <div className="space-y-3">
+        {fields.map((field) => {
+          const row = rowFor(field)
+          const operators = catalog.getOperatorsForFilterField(field.value)
+          return (
+            <div key={field.value} className="space-y-1.5">
+              <label className="text-[12px] font-medium text-foreground">{field.label}</label>
+              <div className="grid grid-cols-[110px_1fr] gap-2">
+                <select
+                  value={row.operator || 'eq'}
+                  onChange={(e) => {
+                    const operator = e.target.value
+                    upsert(field, { operator, value: catalog.emptyValueForOperator(operator) })
+                  }}
+                  className="h-10 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-[var(--studio-primary)]"
+                >
+                  {operators.map((op) => (
+                    <option key={op.value} value={op.value}>
+                      {op.label}
+                    </option>
+                  ))}
+                </select>
+                <CatalogConditionValueInput
+                  field={field.value}
+                  operator={row.operator}
+                  value={row.value}
+                  onChange={(value) => upsert(field, { value })}
+                  entityType="report"
+                  catalogKey={catalogKey}
+                  {...context}
+                  loadingOptions={loadingOptions}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -442,115 +509,67 @@ export default function GroupedLeadFilterFields({
 
   return (
     <div className="space-y-6">
-      {entityType !== 'report' && (
-        <div>
-          <div className="mb-3 text-[13px] font-semibold text-foreground">Step 1: Choose a filter type</div>
-          <FilterLogicToggle
-            value={draft.conditionLogic || 'AND'}
-            onChange={(logic) => patchDraft({ conditionLogic: logic })}
-            label=""
-            helpText={
-              (draft.conditionLogic || 'AND') === 'OR'
-                ? `A ${entityLabel} must be present in at least one filter group to appear in the segment.`
-                : `A ${entityLabel} must be present in all filter groups to appear in the segment.`
-            }
-          />
-        </div>
-      )}
-
-      {entityType === 'report' && (
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.04em] text-foreground/55">Column filters</div>
-          <FilterLogicToggle
-            value={draft.conditionLogic || 'AND'}
-            onChange={(logic) => patchDraft({ conditionLogic: logic })}
-            label=""
-            helpText=""
-          />
-        </div>
-      )}
-
-      <div className="space-y-1">
-        {catalog.FILTER_GROUPS.map((group) => {
-          const availableFields = group.fields.filter((f) => !hiddenFields.has(f.value))
-          if (availableFields.length === 0) return null
-          const enabled = isGroupEnabled(group)
-          const groupConditions = conditions.filter(
-            (c) => c.groupId === group.id || availableFields.some((f) => f.value === c.field)
-          )
-
-          if (entityType === 'report') {
-            return (
-              <div key={group.id} className="space-y-3">
-                {groupConditions.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border bg-background/60 px-3 py-4 text-center">
-                    <div className="text-[12px] text-muted-foreground">
-                      Add a condition on any table column.
-                    </div>
-                    <ReportAddFilterButton
-                      group={group}
-                      hiddenFields={hiddenFields}
-                      onPick={(fieldValue) => addCondition(fieldValue, group.id)}
-                    />
-                  </div>
-                ) : (
-                  groupConditions.map((condition, index) => (
-                    <div key={condition.id || `${condition.field}-${index}`} className="space-y-3">
-                      <ConditionRow
-                        condition={condition}
-                        catalogGroupId={group.id}
-                        onChange={(patch) => updateCondition(condition.id, patch)}
-                        onRemove={() => removeCondition(condition.id)}
-                        context={context}
-                        loadingOptions={loadingOptions}
-                        canRemove
-                        catalog={catalog}
-                        entityType={entityType}
-                        catalogKey={catalogKey}
-                      />
-                      {index === groupConditions.length - 1 ? (
-                        <div className="flex flex-wrap items-center gap-2 pl-1">
-                          <ReportAddFilterButton
-                            group={group}
-                            hiddenFields={hiddenFields}
-                            onPick={(fieldValue) => addCondition(fieldValue, group.id)}
-                            compact
-                          />
-                        </div>
-                      ) : (
-                        <div className="pl-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          {(draft.conditionLogic || 'AND').toLowerCase()}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            )
-          }
-
-          return (
-            <GroupToggleRow
-              key={group.id}
-              group={group}
-              enabled={enabled}
-              onToggle={(checked) => setGroupEnabled(group.id, checked)}
-              logic={groupLogics[group.id] || 'AND'}
-              onLogicChange={(logic) => setGroupLogic(group.id, logic)}
-              conditions={groupConditions}
-              onAdd={(fieldValue) => addCondition(fieldValue, group.id)}
-              onUpdate={updateCondition}
-              onRemove={removeCondition}
-              context={context}
-              loadingOptions={loadingOptions}
-              hiddenFields={hiddenFields}
-              catalog={catalog}
-              entityType={entityType}
-              catalogKey={catalogKey}
+      {entityType === 'report' ? (
+        <ReportColumnFilters
+          catalog={catalog}
+          catalogKey={catalogKey}
+          conditions={conditions}
+          setConditions={setConditions}
+          conditionLogic={draft.conditionLogic || 'AND'}
+          onLogicChange={(logic) => patchDraft({ conditionLogic: logic })}
+          hiddenFields={hiddenFields}
+          context={context}
+          loadingOptions={loadingOptions}
+        />
+      ) : (
+        <>
+          <div>
+            <div className="mb-3 text-[13px] font-semibold text-foreground">Step 1: Choose a filter type</div>
+            <FilterLogicToggle
+              value={draft.conditionLogic || 'AND'}
+              onChange={(logic) => patchDraft({ conditionLogic: logic })}
+              label=""
+              helpText={
+                (draft.conditionLogic || 'AND') === 'OR'
+                  ? `A ${entityLabel} must be present in at least one filter group to appear in the segment.`
+                  : `A ${entityLabel} must be present in all filter groups to appear in the segment.`
+              }
             />
-          )
-        })}
-      </div>
+          </div>
+
+          <div className="space-y-1">
+            {catalog.FILTER_GROUPS.map((group) => {
+              const availableFields = group.fields.filter((f) => !hiddenFields.has(f.value))
+              if (availableFields.length === 0) return null
+              const enabled = isGroupEnabled(group)
+              const groupConditions = conditions.filter(
+                (c) => c.groupId === group.id || availableFields.some((f) => f.value === c.field)
+              )
+
+              return (
+                <GroupToggleRow
+                  key={group.id}
+                  group={group}
+                  enabled={enabled}
+                  onToggle={(checked) => setGroupEnabled(group.id, checked)}
+                  logic={groupLogics[group.id] || 'AND'}
+                  onLogicChange={(logic) => setGroupLogic(group.id, logic)}
+                  conditions={groupConditions}
+                  onAdd={(fieldValue) => addCondition(fieldValue, group.id)}
+                  onUpdate={updateCondition}
+                  onRemove={removeCondition}
+                  context={context}
+                  loadingOptions={loadingOptions}
+                  hiddenFields={hiddenFields}
+                  catalog={catalog}
+                  entityType={entityType}
+                  catalogKey={catalogKey}
+                />
+              )
+            })}
+          </div>
+        </>
+      )}
     </div>
   )
 }
