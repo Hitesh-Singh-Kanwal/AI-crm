@@ -14,7 +14,7 @@ import { useReportFilterOptions } from '@/lib/hooks/useReportFilterOptions'
 import { useReportPreferences } from '@/lib/hooks/useReportPreferences'
 import { buildLeadQueryParams } from '@/lib/lead-filter-fields'
 import { dateBoundsFromPresetDays } from '@/lib/reports/reportFilters'
-import { countActiveReportFilters } from '@/lib/reports/buildReportQueryParams'
+import { countActiveReportFilters, buildReportQueryParams } from '@/lib/reports/buildReportQueryParams'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 import api from '@/lib/api'
 
@@ -193,16 +193,19 @@ export default function DashboardDetailsPage() {
       delete base.leadSource
       delete base.uploadType
     }
-    const validConditions = (filters.conditions || []).filter((c) => c?.field && String(c.value ?? '').trim() !== '')
-    if (validConditions.length > 0) {
-      base.conditions = JSON.stringify(validConditions)
-      base.conditionLogic = filters.conditionLogic === 'OR' ? 'OR' : 'AND'
+    const conditionParams = buildReportQueryParams({
+      conditions: filters.conditions,
+      conditionLogic: filters.conditionLogic,
+      search: filters.search,
+    })
+    if (conditionParams.has('conditions')) {
+      base.conditions = conditionParams.get('conditions')
+      base.conditionLogic = conditionParams.get('conditionLogic')
     } else {
       delete base.conditions
       delete base.conditionLogic
     }
-    const trimmedSearch = String(filters.search ?? '').trim()
-    if (trimmedSearch) base.search = trimmedSearch
+    if (conditionParams.has('search')) base.search = conditionParams.get('search')
     else delete base.search
     return base
   }, [
