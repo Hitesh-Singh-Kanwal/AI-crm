@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import { BackToReportsLink } from '@/components/reports/BackToReportsLink'
-import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
+import { ReportFilterPanel } from '@/components/reports/ReportFilterPanel'
+import { ReportFiltersButton } from '@/components/reports/ReportFiltersButton'
 import { ReportDrillPanel } from '@/components/reports/ReportDrillPanel'
 import { ReportFavoriteStar } from '@/components/reports/ReportFavoriteStar'
 import { ReportSavedViews } from '@/components/reports/ReportSavedViews'
@@ -12,6 +13,7 @@ import { useReportData } from '@/lib/hooks/useReportData'
 import { useReportPreferences } from '@/lib/hooks/useReportPreferences'
 import { useReportFilterOptions } from '@/lib/hooks/useReportFilterOptions'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
+import { countActiveReportFilters } from '@/lib/reports/buildReportQueryParams'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
 import { exportCurrentPageToPdf } from '@/lib/reports/exportPdf'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
@@ -39,13 +41,13 @@ function ReportPageShellContent({
   const filters = parseReportFiltersFromSearchParams(searchParams)
   const [page, setPage] = useState(1)
   const [drillId, setDrillId] = useState(null)
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
 
   const { favorites, toggleFavorite, savedViews, saveView, deleteView } = useReportPreferences()
   const {
     studios,
     teachers,
     programs,
-    leadSources,
     defaultActiveWindowDays: optionsDefaultWindow,
   } = useReportFilterOptions()
   const favorited = favorites.includes(slug)
@@ -74,50 +76,47 @@ function ReportPageShellContent({
         />
       </div>
 
-      <div className="mt-4 space-y-3">
-        <ReportFilterBar
-          filters={filters}
-          onChange={handleFiltersChange}
-          studios={studios}
-          teachers={teachers}
-          programs={programs}
-          leadSources={leadSources}
-          showLeadSource={showLeadSource}
-          showComparison={showComparison}
-          showActiveWindow={showActiveWindow}
-          showGroupBy={showGroupBy}
-          defaultActiveWindowDays={defaultActiveWindowDays || optionsDefaultWindow}
-          footer={({ clearFilters, clearToken }) => (
-            <ReportSavedViews
-              compact
-              reportSlug={slug}
-              savedViews={savedViews}
-              currentFilters={filters}
-              clearToken={clearToken}
-              onApply={handleFiltersChange}
-              onResetFilters={clearFilters}
-              onSave={(view) => saveView(view).catch(() => {})}
-              onDelete={(id) => deleteView(id).catch(() => {})}
-            />
-          )}
-        />
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => exportCurrentPageToCsv(rows, columns, `${slug}.csv`)}
-          >
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <ReportFiltersButton activeCount={countActiveReportFilters(filters)} onClick={() => setFilterPanelOpen(true)} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => exportCurrentPageToCsv(rows, columns, `${slug}.csv`)}>
             Export CSV
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => exportCurrentPageToPdf(rows, columns, title, `${slug}.pdf`)}
-          >
+          <Button variant="outline" size="sm" onClick={() => exportCurrentPageToPdf(rows, columns, title, `${slug}.pdf`)}>
             Export PDF
           </Button>
         </div>
       </div>
+
+      <ReportFilterPanel
+        open={filterPanelOpen}
+        appliedFilters={filters}
+        onClose={() => setFilterPanelOpen(false)}
+        onApply={(next) => {
+          handleFiltersChange(next)
+          setFilterPanelOpen(false)
+        }}
+        studios={studios}
+        teachers={teachers}
+        programs={programs}
+        catalogKey={slug}
+        defaultDateRangeDays={defaultActiveWindowDays || optionsDefaultWindow}
+        savedViewsSlot={
+          <ReportSavedViews
+            compact
+            reportSlug={slug}
+            savedViews={savedViews}
+            currentFilters={filters}
+            onApply={(next) => {
+              handleFiltersChange(next)
+              setFilterPanelOpen(false)
+            }}
+            onResetFilters={() => handleFiltersChange({})}
+            onSave={(view) => saveView(view).catch(() => {})}
+            onDelete={(id) => deleteView(id).catch(() => {})}
+          />
+        }
+      />
 
       {error && (
         <div className="mt-4 flex items-center justify-between rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3">

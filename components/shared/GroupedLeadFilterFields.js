@@ -24,8 +24,9 @@ import {
 import { summarizeCondition } from '@/lib/dynamic-list-normalize'
 import FilterLogicToggle from '@/components/shared/FilterLogicToggle'
 import CatalogConditionValueInput from '@/components/shared/CatalogConditionValueInput'
+import { REPORT_FILTER_CATALOGS, DASHBOARD_DETAILS_FILTER_CATALOGS } from '@/lib/report-filter-catalogs'
 
-function getCatalogApi(entityType) {
+function getCatalogApi(entityType, catalogKey) {
   if (entityType === 'customer') {
     return {
       FILTER_GROUPS: CUSTOMER_FILTER_GROUPS,
@@ -35,6 +36,9 @@ function getCatalogApi(entityType) {
       getFilterFieldDef: getCustomerFilterFieldDef,
       getOperatorsForFilterField: getOperatorsForCustomerFilterField,
     }
+  }
+  if (entityType === 'report') {
+    return DASHBOARD_DETAILS_FILTER_CATALOGS[catalogKey] || REPORT_FILTER_CATALOGS[catalogKey] || null
   }
   return {
     FILTER_GROUPS: LEAD_FILTER_GROUPS,
@@ -126,6 +130,7 @@ function ConditionRow({
   canRemove,
   catalog,
   entityType,
+  catalogKey,
 }) {
   const operators = catalog.getOperatorsForFilterField(condition.field)
   const fields = catalog.FILTER_GROUPS.find((g) => g.id === catalogGroupId)?.fields || []
@@ -184,6 +189,7 @@ function ConditionRow({
           value={condition.value}
           onChange={(value) => onChange({ value })}
           entityType={entityType}
+          catalogKey={catalogKey}
           {...context}
           loadingOptions={loadingOptions}
         />
@@ -207,6 +213,7 @@ function GroupToggleRow({
   hiddenFields,
   catalog,
   entityType,
+  catalogKey,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const activeCount = conditions.filter(catalog.conditionHasValue).length
@@ -272,6 +279,7 @@ function GroupToggleRow({
                   canRemove
                   catalog={catalog}
                   entityType={entityType}
+                  catalogKey={catalogKey}
                 />
                 {index === conditions.length - 1 ? (
                   <div className="flex flex-wrap items-center gap-2 pl-1">
@@ -315,6 +323,7 @@ export default function GroupedLeadFilterFields({
   onDraftChange,
   hiddenFields = new Set(),
   entityType = 'lead',
+  catalogKey = null,
   locations = [],
   forms = [],
   leadReasons = [],
@@ -324,12 +333,16 @@ export default function GroupedLeadFilterFields({
   packages = [],
   loadingOptions = false,
 }) {
-  const catalog = useMemo(() => getCatalogApi(entityType), [entityType])
+  const catalog = useMemo(() => getCatalogApi(entityType, catalogKey), [entityType, catalogKey])
   const context = useMemo(
     () => ({ leadReasons, locations, forms, teachers, tags, memberships, packages }),
     [leadReasons, locations, forms, teachers, tags, memberships, packages]
   )
-  const entityLabel = entityType === 'customer' ? 'customer' : 'lead'
+  const entityLabel = entityType === 'customer' ? 'customer' : entityType === 'report' ? 'column' : 'lead'
+
+  if (!catalog) {
+    return <p className="text-sm text-muted-foreground">No column filters available for this view yet.</p>
+  }
 
   const conditions = useMemo(
     () => (Array.isArray(draft?.conditions) ? draft.conditions : []),
@@ -436,6 +449,7 @@ export default function GroupedLeadFilterFields({
               hiddenFields={hiddenFields}
               catalog={catalog}
               entityType={entityType}
+              catalogKey={catalogKey}
             />
           )
         })}
