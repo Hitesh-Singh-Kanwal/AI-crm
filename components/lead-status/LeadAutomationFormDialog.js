@@ -35,6 +35,8 @@ const CONDITION_TYPES = {
   CALL_USER_TURNS_GTE: 'call_user_turns_gte',
   INBOUND_SMS_COUNT_GTE: 'inbound_sms_count_gte',
   INBOUND_EMAIL_COUNT_GTE: 'inbound_email_count_gte',
+  OPT_OUT_EVIDENCE_IS: 'opt_out_evidence_is',
+  HUMAN_ESCALATION_REASON_IS: 'human_escalation_reason_is',
 }
 
 function resolveStageKeys(c = {}) {
@@ -42,6 +44,14 @@ function resolveStageKeys(c = {}) {
     return c.stageKeys.map(String).filter(Boolean)
   }
   if (c.stageKey) return [String(c.stageKey)]
+  return []
+}
+
+function resolveEvidenceKeys(c = {}) {
+  if (Array.isArray(c.evidenceKeys) && c.evidenceKeys.length) {
+    return c.evidenceKeys.map(String).filter(Boolean)
+  }
+  if (c.evidenceKey) return [String(c.evidenceKey)]
   return []
 }
 
@@ -64,6 +74,10 @@ function blankCondition(type) {
       return { type, count: 2 }
     case CONDITION_TYPES.INBOUND_EMAIL_COUNT_GTE:
       return { type, count: 1 }
+    case CONDITION_TYPES.OPT_OUT_EVIDENCE_IS:
+      return { type, evidenceKeys: ['explicit_keyword', 'ai_classified'] }
+    case CONDITION_TYPES.HUMAN_ESCALATION_REASON_IS:
+      return { type, evidenceKeys: ['requested_human', 'ai_missing_info'] }
     default:
       return { type }
   }
@@ -98,6 +112,12 @@ function formFromRule(rule, statuses) {
           ) {
             next.stageKeys = resolveStageKeys(next)
           }
+          if (
+            next.type === CONDITION_TYPES.OPT_OUT_EVIDENCE_IS ||
+            next.type === CONDITION_TYPES.HUMAN_ESCALATION_REASON_IS
+          ) {
+            next.evidenceKeys = resolveEvidenceKeys(next)
+          }
           return next
         })
       : [],
@@ -120,7 +140,11 @@ function eventLabel(events, key) {
   return events.find((e) => e.key === key)?.label || String(key || '').replace(/_/g, ' ')
 }
 
-function describeCondition(c, statuses, events) {
+function evidenceLabel(options, key) {
+  return options.find((o) => o.key === key)?.label || String(key || '').replace(/_/g, ' ')
+}
+
+function describeCondition(c, statuses, events, catalog) {
   switch (c.type) {
     case CONDITION_TYPES.CURRENT_STAGE_IS: {
       const keys = resolveStageKeys(c)
@@ -156,6 +180,25 @@ function describeCondition(c, statuses, events) {
       return `inbound SMS ≥ ${c.count ?? '?'}`
     case CONDITION_TYPES.INBOUND_EMAIL_COUNT_GTE:
       return `inbound email ≥ ${c.count ?? '?'}`
+    case CONDITION_TYPES.OPT_OUT_EVIDENCE_IS: {
+      const keys = resolveEvidenceKeys(c)
+      const options =
+        catalog?.conditions?.find((x) => x.type === CONDITION_TYPES.OPT_OUT_EVIDENCE_IS)?.options ||
+        catalog?.evidenceOptions?.opt_out ||
+        []
+      if (!keys.length) return 'opt-out evidence is …'
+      return `opt-out evidence is ${keys.map((k) => evidenceLabel(options, k)).join(' or ')}`
+    }
+    case CONDITION_TYPES.HUMAN_ESCALATION_REASON_IS: {
+      const keys = resolveEvidenceKeys(c)
+      const options =
+        catalog?.conditions?.find((x) => x.type === CONDITION_TYPES.HUMAN_ESCALATION_REASON_IS)
+          ?.options ||
+        catalog?.evidenceOptions?.human_escalation ||
+        []
+      if (!keys.length) return 'escalation reason is …'
+      return `escalation reason is ${keys.map((k) => evidenceLabel(options, k)).join(' or ')}`
+    }
     default:
       return c.type
   }
@@ -213,21 +256,79 @@ function ConditionValue({ cond, index, saving, activeStatuses, catalog, updateCo
         label: String(cond.event).replace(/_/g, ' '),
       })
     }
+    const selected = eventOptions.find((ev) => ev.key === cond.event)
     return (
-      <div>
-        <FieldLabel required>Event</FieldLabel>
-        <select
-          value={cond.event || ''}
-          onChange={(e) => updateCondition(index, { event: e.target.value })}
-          disabled={saving}
-          className={selectClass}
-        >
-          {eventOptions.map((ev) => (
-            <option key={ev.key} value={ev.key}>
-              {ev.label}
-            </option>
-          ))}
-        </select>
+      <div className="space-y-2">
+        <div>
+          <FieldLabel required>Event</FieldLabel>
+          <select
+            value={cond.event || ''}
+            onChange={(e) => updateCondition(index, { event: e.target.value })}
+            disabled={saving}
+            className={selectClass}
+          >
+            {eventOptions.map((ev) => (
+              <option key={ev.key} value={ev.key}>
+                {ev.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {selected?.description ? (
+          <p className="text-xs text-muted-foreground leading-relaxed">{selected.description}</p>
+        ) : null}
+        {selected?.requiresEvidence ||
+        cond.event === 'opt_out_requested' ||
+        cond.event === 'human_escalation' ? (
+          <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+            This event only fires with verified evidence. Also add an evidence/reason condition below
+            so the rule cannot match by mistake.
+          </p>
+        ) : null}
+      </div>
+    )
+  }
+
+  if (
+    cond.type === CONDITION_TYPES.OPT_OUT_EVIDENCE_IS ||
+    cond.type === CONDITION_TYPES.HUMAN_ESCALATION_REASON_IS
+  ) {
+    const meta = (catalog.conditions || []).find((c) => c.type === cond.type)
+    const options =
+      meta?.options ||
+      (cond.type === CONDITION_TYPES.OPT_OUT_EVIDENCE_IS
+        ? catalog.evidenceOptions?.opt_out
+        : catalog.evidenceOptions?.human_escalation) ||
+      []
+    return (
+      <div className="space-y-2">
+        <div>
+          <FieldLabel required>
+            {cond.type === CONDITION_TYPES.OPT_OUT_EVIDENCE_IS
+              ? 'Accepted evidence'
+              : 'Accepted reasons'}
+          </FieldLabel>
+          <MultiSelectCheckboxDropdown
+            options={options.map((o) => ({ value: o.key, label: o.label }))}
+            values={resolveEvidenceKeys(cond)}
+            onChange={(evidenceKeys) => updateCondition(index, { evidenceKeys })}
+            placeholder="Select evidence…"
+            disabled={saving}
+            showSelectAll
+          />
+        </div>
+        {meta?.description ? (
+          <p className="text-xs text-muted-foreground leading-relaxed">{meta.description}</p>
+        ) : null}
+        {options.length ? (
+          <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+            {options.map((o) => (
+              <li key={o.key}>
+                <span className="font-medium text-foreground/80">{o.label}:</span> {o.description}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     )
   }
@@ -282,7 +383,7 @@ export default function LeadAutomationFormDialog({
 }) {
   const isEdit = Boolean(rule?._id || rule?.id)
   const [form, setForm] = useState(() => createEmptyForm(statuses))
-  const [catalog, setCatalog] = useState({ conditions: [], events: [] })
+  const [catalog, setCatalog] = useState({ conditions: [], events: [], evidenceOptions: {} })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -296,6 +397,7 @@ export default function LeadAutomationFormDialog({
       const nextCatalog = {
         conditions: Array.isArray(res?.data?.conditions) ? res.data.conditions : [],
         events: Array.isArray(res?.data?.events) ? res.data.events : [],
+        evidenceOptions: res?.data?.evidenceOptions || {},
       }
       if (cancelled) return
       setCatalog(nextCatalog)
@@ -381,9 +483,9 @@ export default function LeadAutomationFormDialog({
 
   const plainEnglish = useMemo(() => {
     if (!conditions.length || !form.actionStageKey) return null
-    const parts = conditions.map((c) => describeCondition(c, statuses, catalog.events))
+    const parts = conditions.map((c) => describeCondition(c, statuses, catalog.events, catalog))
     return `If ${formatJoinedConditionEnglish(parts, conditions)} → set stage to ${statusName(statuses, form.actionStageKey)}.`
-  }, [conditions, form.actionStageKey, statuses, catalog.events])
+  }, [conditions, form.actionStageKey, statuses, catalog])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -441,6 +543,43 @@ export default function LeadAutomationFormDialog({
         setError('Enter a valid count')
         return
       }
+      if (
+        (c.type === CONDITION_TYPES.OPT_OUT_EVIDENCE_IS ||
+          c.type === CONDITION_TYPES.HUMAN_ESCALATION_REASON_IS) &&
+        !resolveEvidenceKeys(c).length
+      ) {
+        setError('Select at least one evidence / reason option')
+        return
+      }
+    }
+
+    const hasOptOutEvent = conditions.some(
+      (c) =>
+        (c.type === CONDITION_TYPES.EVENT_OCCURRED || c.type === CONDITION_TYPES.EVENT_NOT_OCCURRED) &&
+        c.event === 'opt_out_requested'
+    )
+    const hasHumanEvent = conditions.some(
+      (c) =>
+        (c.type === CONDITION_TYPES.EVENT_OCCURRED || c.type === CONDITION_TYPES.EVENT_NOT_OCCURRED) &&
+        c.event === 'human_escalation'
+    )
+    if (
+      hasOptOutEvent &&
+      !conditions.some((c) => c.type === CONDITION_TYPES.OPT_OUT_EVIDENCE_IS)
+    ) {
+      setError(
+        'Opt-out / DND rules must also include “Opt-out evidence type is” so they only fire with verified evidence.'
+      )
+      return
+    }
+    if (
+      hasHumanEvent &&
+      !conditions.some((c) => c.type === CONDITION_TYPES.HUMAN_ESCALATION_REASON_IS)
+    ) {
+      setError(
+        'Human escalation rules must also include “Human escalation reason is” so they only fire with a verified reason.'
+      )
+      return
     }
 
     setSaving(true)
