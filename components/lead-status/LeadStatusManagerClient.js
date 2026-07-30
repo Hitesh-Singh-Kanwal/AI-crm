@@ -231,10 +231,23 @@ export default function LeadStatusManagerClient() {
     setEditingStatus(status)
     setFormOpen(true)
   }
-  const handleStatusSaved = ({ isEdit }) => {
+  const handleStatusSaved = ({ isEdit, status: saved }) => {
     invalidateLeadStagesCache()
     toast.success(isEdit ? 'Lead stage updated' : 'Lead stage created')
-    loadStatuses()
+    if (saved) {
+      const savedId = saved._id || saved.id
+      setStatuses((prev) => {
+        const idx = prev.findIndex((s) => (s._id || s.id) === savedId)
+        if (idx >= 0) {
+          const next = [...prev]
+          next[idx] = saved
+          return next
+        }
+        return [...prev, saved]
+      })
+    } else {
+      loadStatuses()
+    }
   }
   const requestDeleteStatus = (status) => {
     setDeleteTarget({ id: status._id || status.id, name: status.name })
@@ -244,15 +257,22 @@ export default function LeadStatusManagerClient() {
     const id = deleteTarget?.id
     if (!id || deleting) return
     setDeleting(true)
+    setError('')
+    // Optimistically remove from list so UI feels instant
+    const snapshot = statuses
+    setStatuses((prev) => prev.filter((s) => (s._id || s.id) !== id))
+    setDeleteOpen(false)
+    setDeleteTarget(null)
     const res = await api.delete(`/api/lead-status/${id}`)
     if (res?.success) {
       invalidateLeadStagesCache()
       toast.success('Lead stage deleted')
-      setDeleteOpen(false)
-      setDeleteTarget(null)
-      await loadStatuses()
     } else {
-      setError(res?.error || 'Failed to delete lead stage.')
+      // Restore on failure
+      setStatuses(snapshot)
+      const msg = res?.error || 'Failed to delete lead stage.'
+      setError(msg)
+      toast.error(msg)
     }
     setDeleting(false)
   }
@@ -498,11 +518,6 @@ export default function LeadStatusManagerClient() {
                                   style={{ background: status.color || '#6B7280' }}
                                 />
                                 <span className="font-semibold text-foreground">{status.name}</span>
-                                {status.isDefault && (
-                                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                                    default
-                                  </span>
-                                )}
                               </div>
                             </td>
                             <td className="px-4 py-3">
@@ -533,16 +548,14 @@ export default function LeadStatusManagerClient() {
                                   <Pencil className="h-3.5 w-3.5" />
                                   Edit
                                 </button>
-                                {!status.isDefault && (
-                                  <button
-                                    type="button"
-                                    onClick={() => requestDeleteStatus(status)}
-                                    className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#EF4444] px-2 text-[11px] font-medium text-white hover:bg-[#DC2626]"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    Delete
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => requestDeleteStatus(status)}
+                                  className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#EF4444] px-2 text-[11px] font-medium text-white hover:bg-[#DC2626]"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Delete
+                                </button>
                               </div>
                             </td>
                           </tr>

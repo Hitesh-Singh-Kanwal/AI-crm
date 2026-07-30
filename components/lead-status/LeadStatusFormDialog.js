@@ -75,7 +75,7 @@ export default function LeadStatusFormDialog({ open, onClose, status, onSaved })
       : await api.post('/api/lead-status', payload)
 
     if (res?.success) {
-      onSaved?.({ isEdit })
+      onSaved?.({ isEdit, status: res.data })
       onClose()
     } else {
       setError(res?.error || 'Failed to save lead stage')

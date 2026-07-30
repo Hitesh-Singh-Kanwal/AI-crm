@@ -28,7 +28,7 @@ const CONDITION_TYPES = {
   CURRENT_STAGE_IS: 'current_stage_is',
   CURRENT_STAGE_IS_NOT: 'current_stage_is_not',
   DAYS_SINCE_CREATED: 'days_since_created',
-  DAYS_SINCE_LAST_ACTIVITY: 'days_since_last_activity',
+  DAYS_SINCE_LAST_MEANINGFUL_ENGAGEMENT: 'days_since_last_meaningful_engagement',
   EVENT_OCCURRED: 'event_occurred',
   EVENT_NOT_OCCURRED: 'event_not_occurred',
   CALL_DURATION_GTE: 'call_duration_gte',
@@ -61,7 +61,7 @@ function blankCondition(type) {
     case CONDITION_TYPES.CURRENT_STAGE_IS_NOT:
       return { type, stageKeys: [] }
     case CONDITION_TYPES.DAYS_SINCE_CREATED:
-    case CONDITION_TYPES.DAYS_SINCE_LAST_ACTIVITY:
+    case CONDITION_TYPES.DAYS_SINCE_LAST_MEANINGFUL_ENGAGEMENT:
       return { type, days: 30 }
     case CONDITION_TYPES.EVENT_OCCURRED:
     case CONDITION_TYPES.EVENT_NOT_OCCURRED:
@@ -164,7 +164,7 @@ function describeCondition(c, statuses, events, catalog) {
     }
     case CONDITION_TYPES.DAYS_SINCE_CREATED:
       return `created ≥ ${c.days ?? '?'} days ago`
-    case CONDITION_TYPES.DAYS_SINCE_LAST_ACTIVITY:
+    case CONDITION_TYPES.DAYS_SINCE_LAST_MEANINGFUL_ENGAGEMENT:
       return `no activity for ≥ ${c.days ?? '?'} days`
     case CONDITION_TYPES.EVENT_OCCURRED:
       return eventLabel(events, c.event)
@@ -228,7 +228,7 @@ function ConditionValue({ cond, index, saving, activeStatuses, catalog, updateCo
 
   if (
     cond.type === CONDITION_TYPES.DAYS_SINCE_CREATED ||
-    cond.type === CONDITION_TYPES.DAYS_SINCE_LAST_ACTIVITY
+    cond.type === CONDITION_TYPES.DAYS_SINCE_LAST_MEANINGFUL_ENGAGEMENT
   ) {
     return (
       <div>
@@ -521,7 +521,7 @@ export default function LeadAutomationFormDialog({
       }
       if (
         (c.type === CONDITION_TYPES.DAYS_SINCE_CREATED ||
-          c.type === CONDITION_TYPES.DAYS_SINCE_LAST_ACTIVITY) &&
+          c.type === CONDITION_TYPES.DAYS_SINCE_LAST_MEANINGFUL_ENGAGEMENT) &&
         (c.days === '' || c.days == null || Number(c.days) < 0)
       ) {
         setError('Enter a valid number of days')
