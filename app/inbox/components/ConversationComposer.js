@@ -198,8 +198,8 @@ function EmailComposer({
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
-            <div className="bg-slate-100/70 p-1.5">
-              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+            <div className="min-w-0 w-full overflow-hidden bg-white">
+              <div className="min-w-0 overflow-hidden">
                 <ScaledInboxHtmlEmail
                   html={contentHtml}
                   title={selectedTemplate?.name || 'Selected email template'}

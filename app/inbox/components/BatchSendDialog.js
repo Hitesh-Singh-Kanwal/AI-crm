@@ -528,15 +528,13 @@ export default function BatchSendDialog({
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="bg-slate-100/80 p-2">
-                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                    <ScaledInboxHtmlEmail
-                      html={contentHtml}
-                      title="Selected email template"
-                      minHeight={140}
-                      maxHeight={280}
-                    />
-                  </div>
+                <div className="min-w-0 w-full overflow-hidden bg-white">
+                  <ScaledInboxHtmlEmail
+                    html={contentHtml}
+                    title="Selected email template"
+                    minHeight={140}
+                    maxHeight={280}
+                  />
                 </div>
               </div>
             ) : (

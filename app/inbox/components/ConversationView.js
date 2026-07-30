@@ -137,7 +137,7 @@ export default function ConversationView({
   }
 
   return (
-    <main className="flex-1 flex flex-col min-h-0 bg-card h-full border-l-0 lg:border-l border-border overflow-hidden">
+    <main className="flex-1 flex flex-col min-h-0 min-w-0 bg-card h-full border-l-0 lg:border-l border-border overflow-hidden">
       {/* Header */}
       <div className="p-3 sm:p-4 border-b border-border bg-card flex-shrink-0">
         <div className="flex items-center justify-between gap-2 sm:gap-4">
@@ -208,7 +208,7 @@ export default function ConversationView({
       </div>
 
       {/* Messages / call logs */}
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar-hide py-3 px-3 sm:px-4 bg-muted/40">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden scrollbar-hide py-3 px-3 sm:px-4 bg-muted/40">
         {activeTab === 'Call' ? (
           callLogsLoading && callMessages.length === 0 ? (
             <div className="text-center text-muted-foreground text-sm py-8">Loading call logs…</div>
@@ -285,14 +285,14 @@ export default function ConversationView({
                       )}
                       <div
                         className={cn(
-                          'flex max-w-[90%] flex-col sm:max-w-[80%]',
+                          'flex min-w-0 max-w-[min(100%,28rem)] flex-col sm:max-w-[min(100%,32rem)]',
                           isInbound ? 'items-start' : 'items-end',
                         )}
                       >
                         {message.channel === 'Email' ? (
                           <div
                             className={cn(
-                              'overflow-hidden rounded-2xl border bg-card shadow-sm w-[min(100%,520px)]',
+                              'w-full min-w-0 max-w-full overflow-hidden rounded-2xl border bg-card shadow-sm',
                               isInbound
                                 ? 'border-border rounded-tl-md'
                                 : 'border-[color:var(--studio-primary)]/25 rounded-tr-md',
@@ -334,12 +334,14 @@ export default function ConversationView({
                             </div>
 
                             {isRichEmailHtml(message.contentHtml) ? (
-                              <ScaledInboxHtmlEmail
-                                html={message.contentHtml}
-                                title={message.subject || 'Email message'}
-                                minHeight={120}
-                                maxHeight={380}
-                              />
+                              <div className="min-w-0 w-full overflow-hidden">
+                                <ScaledInboxHtmlEmail
+                                  html={message.contentHtml}
+                                  title={message.subject || 'Email message'}
+                                  minHeight={120}
+                                  maxHeight={380}
+                                />
+                              </div>
                             ) : (
                               <div className="px-3.5 py-3 text-sm text-foreground">
                                 <div className="prose prose-sm max-w-none">

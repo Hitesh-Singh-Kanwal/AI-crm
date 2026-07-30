@@ -1476,7 +1476,7 @@ function InboxPageContent() {
         onSent={handleBatchSent}
         contactType={contactFilter}
       />
-      <div className="flex flex-col lg:flex-row gap-0 h-full min-h-0 flex-1">
+      <div className="flex flex-col lg:flex-row gap-0 h-full min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* Left: Contact list — full screen on mobile until a thread is opened */}
         <div
           className={cn(
@@ -1501,7 +1501,7 @@ function InboxPageContent() {
         {/* Middle: Conversation — hidden on mobile while the list is visible */}
         <div
           className={cn(
-            'flex-col min-h-0 h-full w-full lg:flex-1',
+            'flex-col min-h-0 h-full w-full lg:flex-1 lg:min-w-0',
             showContactList ? 'hidden lg:flex' : 'flex',
           )}
         >
@@ -1528,7 +1528,7 @@ function InboxPageContent() {
 
         {/* Right: Details — desktop side panel */}
         {showDetails && selectedConvData && (
-          <div className="hidden lg:flex flex-col w-80 min-h-0 h-full">
+          <div className="hidden lg:flex flex-col w-80 shrink-0 min-w-[20rem] min-h-0 h-full overflow-hidden">
             <ContactDetails contact={selectedConvData.contact} leadData={selectedLeadData} onClose={() => setShowDetails(false)} />
           </div>
         )}
