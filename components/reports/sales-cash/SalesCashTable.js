@@ -3,6 +3,7 @@
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
+import { useReportTimezone } from '@/lib/reports/ReportTimezoneContext'
 
 export const SALES_CASH_COLUMNS = [
   { key: 'transactionType', label: 'Transaction Type' },
@@ -22,6 +23,8 @@ export const SALES_CASH_COLUMNS = [
 ]
 
 export function SalesCashTable({ rows, onRowClick }) {
+  const timeZone = useReportTimezone()
+
   if (!rows.length) {
     return <p className="py-8 text-center text-sm text-muted-foreground">No transactions found for the selected filters.</p>
   }
@@ -40,7 +43,9 @@ export function SalesCashTable({ rows, onRowClick }) {
           {rows.map((row) => (
             <TableRow key={row.id} className={reportTableRowClass} onClick={() => onRowClick(row)}>
               {SALES_CASH_COLUMNS.map((col) => (
-                <TableCell key={col.key} className={reportTableCellClass}>{formatReportCellValue(row[col.key], col)}</TableCell>
+                <TableCell key={col.key} className={reportTableCellClass}>
+                  {formatReportCellValue(row[col.key], col, timeZone)}
+                </TableCell>
               ))}
             </TableRow>
           ))}

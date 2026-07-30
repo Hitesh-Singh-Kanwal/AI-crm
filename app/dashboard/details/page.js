@@ -49,7 +49,7 @@ const EMPTY_FILTERS = {
   search: '',
 }
 
-function formatCell(row, column) {
+function formatCell(row, column, timeZone) {
   if (column.format) {
     try {
       return column.format(row[column.key], row)
@@ -57,7 +57,7 @@ function formatCell(row, column) {
       // fall through
     }
   }
-  return formatReportCellValue(row[column.key], column)
+  return formatReportCellValue(row[column.key], column, timeZone)
 }
 
 function isCustomRange(value) {
@@ -65,12 +65,12 @@ function isCustomRange(value) {
 }
 
 /** Resolve filter-bar / widget range into absolute YYYY-MM-DD bounds. */
-function absoluteRangeBounds(range) {
+function absoluteRangeBounds(range, timeZone) {
   if (isCustomRange(range)) {
     return { from: range.from, to: range.to }
   }
   const days = typeof range === 'number' && range > 0 ? range : 30
-  const bounds = dateBoundsFromPresetDays(days)
+  const bounds = dateBoundsFromPresetDays(days, timeZone)
   return { from: bounds.dateFrom, to: bounds.dateTo }
 }
 
@@ -127,8 +127,16 @@ export default function DashboardDetailsPage() {
   const [page, setPage] = useState(1)
   const [filters, setFilters] = useState(() => filtersFromRequest(request))
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
-  const { studios, teachers, programs } = useReportFilterOptions({ enabled: Boolean(request) })
+  const { studios, teachers, programs, timezone: filterOptionsTimezone } = useReportFilterOptions({ enabled: Boolean(request) })
   const { savedViews, saveView, deleteView } = useReportPreferences()
+
+  const reportTimezone = useMemo(() => {
+    if (filters.studioId) {
+      const studio = studios.find((s) => s.id === filters.studioId)
+      if (studio?.timezone) return studio.timezone
+    }
+    return filterOptionsTimezone || 'America/New_York'
+  }, [filters.studioId, studios, filterOptionsTimezone])
 
   const savedViewsSlug = useMemo(() => {
     if (!request) return 'dashboard-details'
@@ -248,7 +256,7 @@ export default function DashboardDetailsPage() {
     if (!isLeads) return
     let cancelled = false
     setLeadsLoading(true)
-    const { from, to } = absoluteRangeBounds(range)
+    const { from, to } = absoluteRangeBounds(range, reportTimezone)
     const conditions = [
       { field: 'createdFrom', operator: 'eq', value: from },
       { field: 'createdTo', operator: 'eq', value: to },
@@ -282,7 +290,7 @@ export default function DashboardDetailsPage() {
     return () => {
       cancelled = true
     }
-  }, [isLeads, page, range, filters.studioId, filters.leadSource])
+  }, [isLeads, page, range, filters.studioId, filters.leadSource, reportTimezone])
 
   function handleFiltersChange(nextFilters) {
     setPage(1)
@@ -362,6 +370,7 @@ export default function DashboardDetailsPage() {
         catalogKey={request?.metric}
         columns={request?.columns || []}
         defaultDateRangeDays={defaultDateRangeDays}
+        timeZone={reportTimezone}
         savedViewsSlot={
           <ReportSavedViews
             compact
@@ -403,7 +412,7 @@ export default function DashboardDetailsPage() {
                 <TableRow key={row._id || row.id || i} className="even:bg-muted/20">
                   {request.columns.map((col) => (
                     <TableCell key={col.key} className="whitespace-nowrap text-sm">
-                      {formatCell(row, col)}
+                      {formatCell(row, col, reportTimezone)}
                     </TableCell>
                   ))}
                 </TableRow>

@@ -19,11 +19,11 @@ export default function ActiveInactiveStudentsReportPage() {
         { key: 'activeCount', label: 'Active' },
         { key: 'inactiveCount', label: 'Inactive' },
       ]}
-      renderDrill={(detail) => (
+      renderDrill={(detail, timeZone) => (
         <div className="space-y-2 p-4 text-sm">
           <p><strong>Student:</strong> {detail.studentName}</p>
           <p><strong>Status:</strong> {detail.status}</p>
-          <p><strong>Last Lesson:</strong> {formatReportCellValue(detail.lastLessonDate)}</p>
+          <p><strong>Last Lesson:</strong> {formatReportCellValue(detail.lastLessonDate, {}, timeZone)}</p>
         </div>
       )}
     />

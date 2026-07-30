@@ -82,6 +82,7 @@ export function ReportFilterBar({
   showGroupBy = false,
   defaultActiveWindowDays = 30,
   defaultDateRangeDays = 30,
+  timeZone,
   footer = null,
 }) {
   const set = (key) => (value) => onChange({ ...filters, [key]: value })
@@ -97,7 +98,7 @@ export function ReportFilterBar({
   const dirty = hasActiveFilters(filters, defaultDays)
 
   function clearAllFilters() {
-    const bounds = dateBoundsFromPresetDays(defaultDays)
+    const bounds = dateBoundsFromPresetDays(defaultDays, timeZone)
     onChange({
       ...filters,
       ...bounds,
@@ -129,7 +130,7 @@ export function ReportFilterBar({
               defaultDays={defaultDays}
               onChange={(next) => {
                 if (typeof next === 'number') {
-                  const bounds = dateBoundsFromPresetDays(next)
+                  const bounds = dateBoundsFromPresetDays(next, timeZone)
                   onChange({
                     ...filters,
                     ...bounds,
