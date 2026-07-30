@@ -58,6 +58,11 @@ export default function DynamicListMemberSendDialog({
       name: lead.name,
       phoneNumber: lead.phoneNumber,
       email: lead.email,
+      locationID: Array.isArray(lead.locationID)
+        ? lead.locationID.map((id) => String(id?._id ?? id)).filter(Boolean)
+        : lead.locationID
+          ? [String(lead.locationID?._id ?? lead.locationID)]
+          : [],
     }))
 
     try {
