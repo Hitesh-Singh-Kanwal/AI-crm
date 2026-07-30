@@ -19,6 +19,10 @@ export default function DynamicListMemberSendDialog({
   leads = [],
   initialChannel = 'SMS',
   onSent,
+  /** Singular label used in copy, e.g. "member", "lead", "customer". */
+  entityLabel = 'member',
+  /** Optional type stamped on each payload row ("Lead" | "Customer"). */
+  recipientType = null,
 }) {
   const [channel, setChannel] = useState(initialChannel)
   const [subject, setSubject] = useState('')
@@ -53,12 +57,21 @@ export default function DynamicListMemberSendDialog({
     if (!canSend || sending) return
     setSending(true)
 
+    const typeLabel = recipientType || null
     const leadsPayload = eligibleLeads.map((lead) => ({
       _id: lead._id,
       name: lead.name,
       phoneNumber: lead.phoneNumber,
       email: lead.email,
+      ...(typeLabel ? { type: lead.type || typeLabel } : {}),
+      locationID: Array.isArray(lead.locationID)
+        ? lead.locationID.map((id) => String(id?._id ?? id)).filter(Boolean)
+        : lead.locationID
+          ? [String(lead.locationID?._id ?? lead.locationID)]
+          : [],
     }))
+
+    const entityPlural = eligibleLeads.length === 1 ? entityLabel : `${entityLabel}s`
 
     try {
       const result =
@@ -85,7 +98,7 @@ export default function DynamicListMemberSendDialog({
       }
 
       toast.success(scheduleMode === 'now' ? 'Sent' : 'Scheduled', {
-        description: `${channel} ${scheduleMode === 'now' ? 'sent' : 'scheduled'} to ${eligibleLeads.length} member${eligibleLeads.length === 1 ? '' : 's'}.`,
+        description: `${channel} ${scheduleMode === 'now' ? 'sent' : 'scheduled'} to ${eligibleLeads.length} ${entityPlural}.`,
       })
       onSent?.({ channel, leads: eligibleLeads })
       onClose?.()
@@ -97,12 +110,16 @@ export default function DynamicListMemberSendDialog({
     }
   }
 
+  const selectedPlural = leads.length === 1 ? entityLabel : `${entityLabel}s`
+  const eligiblePlural = eligibleLeads.length === 1 ? entityLabel : `${entityLabel}s`
+  const skippedPlural = skippedCount === 1 ? entityLabel : `${entityLabel}s`
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg">
       <DialogContent className="max-h-[90vh] overflow-y-auto" onClose={onClose}>
         <DialogHeader>
           <DialogTitle>
-            Send {channel === 'SMS' ? 'SMS' : 'email'} to {leads.length} member{leads.length === 1 ? '' : 's'}
+            Send {channel === 'SMS' ? 'SMS' : 'email'} to {leads.length} {selectedPlural}
           </DialogTitle>
         </DialogHeader>
 
@@ -134,13 +151,13 @@ export default function DynamicListMemberSendDialog({
 
           {skippedCount > 0 && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-200">
-              {skippedCount} selected member{skippedCount === 1 ? '' : 's'}{' '}
+              {skippedCount} selected {skippedPlural}{' '}
               {channel === 'SMS' ? 'without a phone number' : 'without an email'} will be skipped.
             </div>
           )}
 
           <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-[12px] text-muted-foreground">
-            Sending to {eligibleLeads.length} member{eligibleLeads.length === 1 ? '' : 's'}
+            Sending to {eligibleLeads.length} {eligiblePlural}
             {eligibleLeads.length > 0 && (
               <span className="text-foreground">
                 {' '}

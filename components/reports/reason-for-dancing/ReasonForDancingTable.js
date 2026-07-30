@@ -3,6 +3,7 @@
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
+import { useReportTimezone } from '@/lib/reports/ReportTimezoneContext'
 
 export const REASON_FOR_DANCING_COLUMNS = [
   { key: 'reason', label: 'Reason' },
@@ -21,6 +22,7 @@ function cellValue(row, col) {
 }
 
 export function ReasonForDancingTable({ rows, onRowClick }) {
+  const timeZone = useReportTimezone()
   if (!rows.length) {
     return <p className="py-8 text-center text-sm text-muted-foreground">No reasons found for the selected filters.</p>
   }
@@ -40,7 +42,7 @@ export function ReasonForDancingTable({ rows, onRowClick }) {
             <TableRow key={row.id || row.reason} className={reportTableRowClass} onClick={() => onRowClick?.(row)}>
               {REASON_FOR_DANCING_COLUMNS.map((col) => (
                 <TableCell key={col.key} className={reportTableCellClass}>
-                  {formatReportCellValue(cellValue(row, col), col)}
+                  {formatReportCellValue(cellValue(row, col), col, timeZone)}
                 </TableCell>
               ))}
             </TableRow>

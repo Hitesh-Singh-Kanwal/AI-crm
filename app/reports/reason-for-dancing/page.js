@@ -14,7 +14,7 @@ export default function ReasonForDancingReportPage() {
       showLeadSource={false}
       TableComponent={ReasonForDancingTable}
       drillTitle="Reason Detail"
-      renderDrill={(detail) => {
+      renderDrill={(detail, timeZone) => {
         if (Array.isArray(detail?.people)) {
           return (
             <div className="space-y-3 p-4 text-sm">
@@ -27,7 +27,7 @@ export default function ReasonForDancingReportPage() {
               <ul className="space-y-2 border-t border-border pt-3">
                 {detail.people.map((person) => (
                   <li key={person.id}>
-                    {person.studentName} · {person.type} · {formatReportCellValue(person.dateCreated)}
+                    {person.studentName} · {person.type} · {formatReportCellValue(person.dateCreated, {}, timeZone)}
                   </li>
                 ))}
               </ul>

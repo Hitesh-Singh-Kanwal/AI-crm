@@ -290,7 +290,7 @@ function ServicesTab() {
     <div className="flex flex-col gap-6">
       {/* Private / Group sub-tabs */}
       <div className="inline-flex rounded-lg border border-border bg-background p-0.5 w-fit">
-        {[{ v: 'private', label: 'Private' }, { v: 'group', label: 'Group' }].map((opt) => (
+        {[{ v: 'private', label: 'Private' }, { v: 'group', label: 'Group' }, { v: 'intro', label: 'Intro' }].map((opt) => (
           <button
             key={opt.v}
             type="button"

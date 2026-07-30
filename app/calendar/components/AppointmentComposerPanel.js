@@ -2177,7 +2177,7 @@ export default function AppointmentComposerPanel({
     return allServices
       .filter((s) => {
         if (activeTab === "Appointment")
-          return !s.type || s.type === "private";
+          return !s.type || s.type === "private" || s.type === "intro";
         return !typeFilter || s.type === typeFilter;
       })
       .map((s) => ({
@@ -2338,6 +2338,16 @@ export default function AppointmentComposerPanel({
               ? { dueDate: payload.billing?.dueDate || undefined }
               : {},
       ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
+      ...(payload.tip?.teacherID && payload.tip?.amount
+        ? {
+            tip: {
+              teacherID: payload.tip.teacherID,
+              amount: Number(payload.tip.amount),
+              method: payload.tip.method || "cash",
+              notes: payload.tip.notes,
+            },
+          }
+        : {}),
     });
     if (!addRes.success) return null;
 
@@ -2548,7 +2558,7 @@ export default function AppointmentComposerPanel({
 
   const privateServices = useMemo(
     () =>
-      allServices.filter((s) => !s.type || s.type === "private"),
+      allServices.filter((s) => !s.type || s.type === "private" || s.type === "intro"),
     [allServices],
   );
 

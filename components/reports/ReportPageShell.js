@@ -20,6 +20,7 @@ import { getActiveReportFilterChips, removeReportFilterChip } from '@/lib/report
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
 import { exportCurrentPageToPdf } from '@/lib/reports/exportPdf'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
+import { ReportTimezoneProvider } from '@/lib/reports/ReportTimezoneContext'
 import { Button } from '@/components/ui/button'
 import ReportPageSuspense from '@/components/reports/ReportPageSuspense'
 
@@ -52,8 +53,14 @@ function ReportPageShellContent({
     teachers,
     programs,
     defaultActiveWindowDays: optionsDefaultWindow,
+    timezone: activeLocationTimezone,
   } = useReportFilterOptions()
   const favorited = favorites.includes(slug)
+
+  const reportTimezone =
+    (filters.studioId && studios.find((s) => s.id === filters.studioId)?.timezone) ||
+    activeLocationTimezone ||
+    'America/New_York'
 
   const { rows, summary, totalCount, pageSize, isLoading, isValidating, error, mutate } = useReportData(
     slug,
@@ -83,6 +90,7 @@ function ReportPageShellContent({
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
   return (
+    <ReportTimezoneProvider timeZone={reportTimezone}>
     <MainLayout title={title} subtitle={subtitle}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <BackToReportsLink />
@@ -98,15 +106,15 @@ function ReportPageShellContent({
           <ReportSearchInput value={filters.search || ''} onChange={handleSearchChange} />
           <ReportActiveFiltersBar
             activeCount={activeFilterCount}
-            onOpenFilters={() => setFilterPanelOpen(true)}
             chips={activeFilterChips}
+            onOpenFilters={() => setFilterPanelOpen(true)}
             onRemoveChip={(chip) => handleFiltersChange(removeReportFilterChip(filters, chip))}
             onReset={() => handleFiltersChange({})}
           />
         </div>
         <ReportExportMenu
-          onExportCsv={() => exportCurrentPageToCsv(rows, columns, `${slug}.csv`)}
-          onExportPdf={() => exportCurrentPageToPdf(rows, columns, title, `${slug}.pdf`)}
+          onExportCsv={() => exportCurrentPageToCsv(rows, columns, `${slug}.csv`, reportTimezone)}
+          onExportPdf={() => exportCurrentPageToPdf(rows, columns, title, `${slug}.pdf`, reportTimezone)}
         />
       </div>
 
@@ -123,6 +131,7 @@ function ReportPageShellContent({
         programs={programs}
         catalogKey={slug}
         columns={columns}
+        timeZone={reportTimezone}
         defaultDateRangeDays={defaultActiveWindowDays || optionsDefaultWindow}
         savedViewsSlot={
           <ReportSavedViews
@@ -173,7 +182,7 @@ function ReportPageShellContent({
         {isLoading ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
         ) : (
-          <TableComponent rows={rows} onRowClick={(row) => setDrillId(row.id)} />
+          <TableComponent rows={rows} summary={summary} onRowClick={(row) => setDrillId(row.id)} />
         )}
       </div>
 
@@ -203,14 +212,39 @@ function ReportPageShellContent({
         filters={filters}
         renderDetail={(detail) =>
           renderDrill ? (
-            renderDrill(detail)
+            renderDrill(detail, reportTimezone)
           ) : (
             <div className="space-y-2 p-4 text-sm">
               {columns.map((col) => (
                 <p key={col.key}>
-                  <strong>{col.label}:</strong> {formatReportCellValue(detail?.[col.key], col)}
+                  <strong>{col.label}:</strong> {formatReportCellValue(detail?.[col.key], col, reportTimezone)}
                 </p>
               ))}
+              {Array.isArray(detail?.lessonsByType) && detail.lessonsByType.length > 0 && (
+                <div className="mt-4 space-y-3 border-t border-border pt-3">
+                  <p className="font-semibold">Lessons taught</p>
+                  {detail.lessonsByType.map((group) => (
+                    <div key={group.serviceType}>
+                      <p className="text-muted-foreground">
+                        {group.label}: {group.lessonsTaught ?? 0} taught · {group.customersServed ?? 0} customers
+                      </p>
+                      {group.sessions?.length ? (
+                        <ul className="mt-1 list-disc pl-5">
+                          {group.sessions.map((session, idx) => (
+                            <li key={`${session.customerID}-${idx}`}>
+                              {session.date
+                                ? formatReportCellValue(session.date, {}, reportTimezone)
+                                : '—'}{' '}
+                              {session.customerName} ({session.lessons || 1} lesson
+                              {(session.lessons || 1) === 1 ? '' : 's'})
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
               {Array.isArray(detail?.attendanceByServiceType) && detail.attendanceByServiceType.length > 0 && (
                 <div className="mt-4 space-y-3 border-t border-border pt-3">
                   <p className="font-semibold">Students attended</p>
@@ -236,6 +270,7 @@ function ReportPageShellContent({
         }
       />
     </MainLayout>
+    </ReportTimezoneProvider>
   )
 }
 

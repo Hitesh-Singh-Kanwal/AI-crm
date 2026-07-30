@@ -93,7 +93,13 @@ function buildInboxData(smsRecords, emailRecords) {
 
   for (const rec of emailRecords) {
     const lead = rec.leadID
-    const email = rec.to || rec.email || lead?.email || ''
+    const status = String(rec?.status || '').toLowerCase()
+    const isInbound = status === 'received' || status === 'inbound'
+    const email =
+      lead?.email ||
+      (isInbound ? rec.from : rec.to) ||
+      rec.email ||
+      ''
     const key = lead?._id ? `lead-${lead._id}` : `email-${String(email).replace(/\W/g, '_')}`
     if (!contactGroups[key]) {
       contactGroups[key] = {
@@ -794,7 +800,14 @@ function InboxPageContent() {
           scheduleNow,
           scheduleDate,
         })
-        const result = await api.post('/api/email/send-one', payload)
+        const preferredLocationID = payload.preferredLocationID || null
+        const result = await api.post(
+          '/api/email/send-one',
+          payload,
+          preferredLocationID
+            ? { headers: { 'x-location-id': preferredLocationID } }
+            : {},
+        )
         if (!result.success) {
           revertOptimisticMessage(convId, messageId)
           toast.error({
@@ -878,9 +891,12 @@ function InboxPageContent() {
   const filterRecordsByRecipient = (records, contactEmail) => {
     const normalized = normalizeEmailAddress(contactEmail)
     if (!normalized) return records
-    return records.filter(
-      (r) => normalizeEmailAddress(r.to || r.email || r.leadID?.email) === normalized,
-    )
+    return records.filter((r) => {
+      const to = normalizeEmailAddress(r.to || r.email || r.leadID?.email)
+      const from = normalizeEmailAddress(r.from)
+      // Outbound stores the lead in `to`; inbound replies store the lead in `from`.
+      return to === normalized || from === normalized
+    })
   }
 
   const fetchConversationEmailHistory = useCallback(async (conversationId) => {
@@ -911,7 +927,9 @@ function InboxPageContent() {
         records = filterRecordsByRecipient(allRecords, contactEmail)
       }
 
-      const emailMsgs = records.map(mapEmailHistoryRecord)
+      const emailMsgs = records.map((r) =>
+        mapEmailHistoryRecord(r, conv?.contact?.name || null),
+      )
       setThreadMessages((prev) => {
         const existing = prev[conversationId] || []
         const smsOnly = existing.filter((m) => m.channel === 'SMS')
@@ -1476,7 +1494,7 @@ function InboxPageContent() {
         onSent={handleBatchSent}
         contactType={contactFilter}
       />
-      <div className="flex flex-col lg:flex-row gap-0 h-full min-h-0 flex-1">
+      <div className="flex flex-col lg:flex-row gap-0 h-full min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* Left: Contact list — full screen on mobile until a thread is opened */}
         <div
           className={cn(
@@ -1501,7 +1519,7 @@ function InboxPageContent() {
         {/* Middle: Conversation — hidden on mobile while the list is visible */}
         <div
           className={cn(
-            'flex-col min-h-0 h-full w-full lg:flex-1',
+            'flex-col min-h-0 h-full w-full lg:flex-1 lg:min-w-0',
             showContactList ? 'hidden lg:flex' : 'flex',
           )}
         >
@@ -1528,7 +1546,7 @@ function InboxPageContent() {
 
         {/* Right: Details — desktop side panel */}
         {showDetails && selectedConvData && (
-          <div className="hidden lg:flex flex-col w-80 min-h-0 h-full">
+          <div className="hidden lg:flex flex-col w-80 shrink-0 min-w-[20rem] min-h-0 h-full overflow-hidden">
             <ContactDetails contact={selectedConvData.contact} leadData={selectedLeadData} onClose={() => setShowDetails(false)} />
           </div>
         )}

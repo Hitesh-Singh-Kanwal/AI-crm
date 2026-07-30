@@ -17,32 +17,28 @@ export function isRichEmailHtml(html) {
 }
 
 /**
- * Preview canvas width. Stay well above common email mobile breakpoints
- * (480 / 600 / 620 / 768) so desktop styles paint, then CSS-scale to fit UI.
- * Mobile and desktop previews share this canvas → identical layout.
+ * Standard email design width. Media queries are disabled in preview, so 600
+ * stays edge-to-edge (no side letterboxing from a wider canvas).
  */
-export const EMAIL_DESIGN_WIDTH = 800
+export const EMAIL_DESIGN_WIDTH = 600
 
 /**
- * Disable @media blocks in preview so mobile styles never reflow the canvas
- * (even if a template uses max-width: 900px breakpoints).
+ * Disable @media blocks in preview so mobile styles never reflow the canvas.
  */
 export function disableEmailMediaQueriesForPreview(html) {
   return String(html || '').replace(/@media[^{]+\{/gi, '@media not all {')
 }
 
-/** Keep Gmail/Apple dark-mode from rewriting template colors in preview. */
-function buildPreviewHeadGuard() {
+function buildPreviewHeadGuard(viewportWidth = EMAIL_DESIGN_WIDTH) {
   return `
 <meta charset="utf-8"/>
 <meta name="color-scheme" content="light only"/>
 <meta name="supported-color-schemes" content="light"/>
-<meta name="viewport" content="width=${EMAIL_DESIGN_WIDTH}"/>
+<meta name="viewport" content="width=${viewportWidth}"/>
 <base target="_blank"/>
 <style type="text/css" data-crm-preview-guard="1">
   :root{color-scheme:light only;}
   html,body{margin:0;padding:0;color:#111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;}
-  /* Do not force a white page — templates often set their own body/table bg. */
   img{max-width:100%;height:auto;}
   img[data-crm-img="1"]{width:100%;}
   img[data-crm-play="1"]{width:64px !important;height:64px !important;max-width:64px !important;display:inline-block !important;}
@@ -52,9 +48,9 @@ function buildPreviewHeadGuard() {
 `.trim()
 }
 
-function injectPreviewGuard(html) {
+function injectPreviewGuard(html, viewportWidth = EMAIL_DESIGN_WIDTH) {
   const source = String(html || '')
-  const guard = buildPreviewHeadGuard()
+  const guard = buildPreviewHeadGuard(viewportWidth)
   if (/data-crm-preview-guard\s*=\s*["']?1["']?/i.test(source)) {
     return disableEmailMediaQueriesForPreview(source)
   }
@@ -67,14 +63,14 @@ function injectPreviewGuard(html) {
   return disableEmailMediaQueriesForPreview(next)
 }
 
-function wrapSrcDoc(html) {
+function wrapSrcDoc(html, viewportWidth = EMAIL_DESIGN_WIDTH) {
   const body = String(html || '')
   if (/<html[\s>]/i.test(body) || /<!doctype/i.test(body)) {
-    return injectPreviewGuard(body)
+    return injectPreviewGuard(body, viewportWidth)
   }
 
   return disableEmailMediaQueriesForPreview(`<!DOCTYPE html><html><head>
-${buildPreviewHeadGuard()}
+${buildPreviewHeadGuard(viewportWidth)}
 </head><body style="margin:0;padding:0;">${body}</body></html>`)
 }
 
@@ -87,18 +83,15 @@ export default function InboxHtmlEmailFrame({
   className,
   minHeight = 120,
   maxHeight = 420,
-  /** Grow to full content height (no clamp). */
   fitContent = false,
-  /** Fixed layout width for the document (e.g. 800 for email design width). */
   layoutWidth = null,
-  /** Called whenever measured content height changes. */
   onHeightChange,
 }) {
   const iframeRef = useRef(null)
   const [height, setHeight] = useState(minHeight)
   const onHeightChangeRef = useRef(onHeightChange)
   onHeightChangeRef.current = onHeightChange
-  const srcDoc = wrapSrcDoc(html)
+  const srcDoc = wrapSrcDoc(html, layoutWidth || EMAIL_DESIGN_WIDTH)
 
   const measure = useCallback(() => {
     const iframe = iframeRef.current
@@ -188,8 +181,8 @@ export default function InboxHtmlEmailFrame({
 }
 
 /**
- * Renders email HTML at desktop design width, then CSS-scales it to the container
- * so templates stay proportionally identical (no mobile media-query reflow).
+ * Renders email at design width, then CSS-scales to the container.
+ * Contained with min-w-0 / overflow so inbox flex layout (profile panel) is not pushed.
  */
 export function ScaledInboxHtmlEmail({
   html,
@@ -197,11 +190,11 @@ export function ScaledInboxHtmlEmail({
   className,
   minHeight = 120,
   maxHeight = 340,
-  /** When set, scroll viewport uses this height instead of clamping to content. */
   viewportHeight: fixedViewportHeight = null,
+  designWidth = EMAIL_DESIGN_WIDTH,
 }) {
   const widthRef = useRef(null)
-  const [screenWidth, setScreenWidth] = useState(EMAIL_DESIGN_WIDTH)
+  const [screenWidth, setScreenWidth] = useState(designWidth)
   const [contentHeight, setContentHeight] = useState(minHeight)
 
   useEffect(() => {
@@ -211,7 +204,7 @@ export function ScaledInboxHtmlEmail({
   useEffect(() => {
     const el = widthRef.current
     if (!el) return undefined
-    const update = () => setScreenWidth(el.clientWidth || EMAIL_DESIGN_WIDTH)
+    const update = () => setScreenWidth(el.clientWidth || designWidth)
     update()
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
     ro?.observe(el)
@@ -220,9 +213,9 @@ export function ScaledInboxHtmlEmail({
       ro?.disconnect()
       window.removeEventListener('resize', update)
     }
-  }, [])
+  }, [designWidth])
 
-  const scale = Math.min(1, screenWidth / EMAIL_DESIGN_WIDTH)
+  const scale = Math.min(1, screenWidth / designWidth)
   const scaledHeight = Math.max(contentHeight * scale, minHeight)
   const viewportHeight =
     fixedViewportHeight != null
@@ -237,22 +230,35 @@ export function ScaledInboxHtmlEmail({
   )
 
   return (
-    // Outer measures width (no scrollbar). Inner scrolls — avoids scale flicker.
-    <div ref={widthRef} className={cn('w-full', className)}>
+    <div
+      ref={widthRef}
+      className={cn('w-full min-w-0 max-w-full overflow-hidden', className)}
+    >
       <div
-        className="overflow-y-auto overflow-x-hidden overscroll-contain"
+        className="min-w-0 max-w-full overflow-y-auto overflow-x-hidden overscroll-contain"
         style={{
           height: viewportHeight,
           maxHeight: fixedViewportHeight != null ? fixedViewportHeight : maxHeight,
+          width: '100%',
         }}
       >
-        <div className="relative w-full overflow-hidden" style={{ height: scaledHeight }}>
+        {/* Clip box reports only the scaled size to layout (prevents 600px flex blowout). */}
+        <div
+          className="relative overflow-hidden"
+          style={{
+            height: scaledHeight,
+            width: '100%',
+            maxWidth: '100%',
+          }}
+        >
           <div
             className="origin-top-left"
             style={{
-              width: EMAIL_DESIGN_WIDTH,
+              width: designWidth,
               transform: `scale(${scale})`,
               transformOrigin: 'top left',
+              // After scale, layout space still "wants" designWidth — contain via parent clip.
+              willChange: 'transform',
             }}
           >
             <InboxHtmlEmailFrame
@@ -260,7 +266,7 @@ export function ScaledInboxHtmlEmail({
               title={title}
               minHeight={minHeight}
               fitContent
-              layoutWidth={EMAIL_DESIGN_WIDTH}
+              layoutWidth={designWidth}
               onHeightChange={handleHeight}
             />
           </div>

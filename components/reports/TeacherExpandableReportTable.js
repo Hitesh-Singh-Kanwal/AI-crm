@@ -9,6 +9,7 @@ import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 import { buildReportQuery, parseReportFiltersFromSearchParams } from '@/lib/reports/reportFilters'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useReportTimezone } from '@/lib/reports/ReportTimezoneContext'
 
 function formatAttendedDate(value) {
   if (!value) return '—'
@@ -17,7 +18,17 @@ function formatAttendedDate(value) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function AttendancePanel({ groups, isLoading, error }) {
+function attendanceBadge(group) {
+  if (group.serviceType === 'group') {
+    const classes = group.sessionCount ?? 0
+    const attendances = group.attendanceCount ?? 0
+    return `${classes} class${classes === 1 ? '' : 'es'} · ${attendances} attendance${attendances === 1 ? '' : 's'}`
+  }
+  const lessons = group.attendanceCount ?? group.sessionCount ?? group.studentCount ?? 0
+  return `${group.studentCount} student${group.studentCount === 1 ? '' : 's'} · ${lessons} lesson${lessons === 1 ? '' : 's'}`
+}
+
+function AttendancePanel({ groups, isLoading, error, summary }) {
   if (isLoading) {
     return <p className="px-4 py-3 text-[13px] text-muted-foreground">Loading students…</p>
   }
@@ -30,6 +41,23 @@ function AttendancePanel({ groups, isLoading, error }) {
 
   return (
     <div className="space-y-4 px-4 py-3">
+      {summary ? (
+        <div className="flex flex-wrap gap-2 text-[12px]">
+          <span className="rounded-md border border-border/70 bg-background px-2.5 py-1 text-muted-foreground">
+            Private <span className="font-semibold text-foreground">{summary.privateLessons ?? 0}</span>
+          </span>
+          <span className="rounded-md border border-border/70 bg-background px-2.5 py-1 text-muted-foreground">
+            Intro <span className="font-semibold text-foreground">{summary.introLessons ?? 0}</span>
+          </span>
+          <span className="rounded-md border border-border/70 bg-background px-2.5 py-1 text-muted-foreground">
+            Group classes <span className="font-semibold text-foreground">{summary.groupClasses ?? 0}</span>
+          </span>
+          <span className="rounded-md border border-border/70 bg-background px-2.5 py-1 text-muted-foreground">
+            Group attendances <span className="font-semibold text-foreground">{summary.groupAttendances ?? 0}</span>
+            <span className="ml-1 text-[11px]">(pay basis)</span>
+          </span>
+        </div>
+      ) : null}
       {groups.map((group) => (
         <div key={group.serviceType}>
           <div className="mb-2 flex items-center gap-2">
@@ -37,7 +65,7 @@ function AttendancePanel({ groups, isLoading, error }) {
               {group.label}
             </span>
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              {group.studentCount} student{group.studentCount === 1 ? '' : 's'}
+              {attendanceBadge(group)}
             </span>
           </div>
           <div className="overflow-hidden rounded-lg border border-border/70">
@@ -76,6 +104,7 @@ export function TeacherExpandableReportTable({
   const searchParams = useSearchParams()
   const filterQuery = searchParams?.toString() || ''
   const filters = parseReportFiltersFromSearchParams(searchParams)
+  const timeZone = useReportTimezone()
   const [expandedId, setExpandedId] = useState(null)
   const [cache, setCache] = useState({})
 
@@ -111,6 +140,12 @@ export function TeacherExpandableReportTable({
           loading: false,
           error: null,
           groups: res.data?.attendanceByServiceType || [],
+          summary: {
+            privateLessons: res.data?.privateLessons ?? 0,
+            introLessons: res.data?.introLessons ?? 0,
+            groupClasses: res.data?.groupClasses ?? 0,
+            groupAttendances: res.data?.groupAttendances ?? 0,
+          },
         },
       }))
     })
@@ -160,7 +195,7 @@ export function TeacherExpandableReportTable({
                   </TableCell>
                   {columns.map((col) => (
                     <TableCell key={col.key} className={reportTableCellClass}>
-                      {formatReportCellValue(row[col.key], col)}
+                      {formatReportCellValue(row[col.key], col, timeZone)}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -169,6 +204,7 @@ export function TeacherExpandableReportTable({
                     <TableCell colSpan={columns.length + 1} className="bg-muted/20 p-0">
                       <AttendancePanel
                         groups={entry?.groups}
+                        summary={entry?.summary}
                         isLoading={Boolean(entry?.loading) || !entry?.loaded}
                         error={entry?.error}
                       />
