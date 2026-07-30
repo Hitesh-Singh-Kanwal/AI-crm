@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import EmailTemplateThumbnail from '@/app/marketing/email-builder/components/EmailTemplateThumbnail'
-import InboxHtmlEmailFrame from '@/app/inbox/components/InboxHtmlEmailFrame'
+import { ScaledInboxHtmlEmail } from '@/app/inbox/components/InboxHtmlEmailFrame'
 import {
   extractCategoriesList,
   extractEmailTemplatesPayload,
@@ -435,7 +435,7 @@ export default function WorkflowEmailTemplatePickerDialog({
               <div className="py-8 text-center text-[12px] text-muted-foreground">Loading preview…</div>
             ) : (
               <div className="overflow-hidden rounded-lg border border-border bg-white">
-                <InboxHtmlEmailFrame
+                <ScaledInboxHtmlEmail
                   html={previewHtml}
                   title={previewSubject || 'Template preview'}
                   minHeight={160}

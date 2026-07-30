@@ -16,7 +16,7 @@ import api from '@/lib/api'
 import { htmlToPlainText, plainTextToHtml, toScheduleIsoOrNull, getScheduleMinLocalDatetime } from '@/lib/emailSend'
 import { fetchInboxContacts, INBOX_CONTACT_PAGE_SIZE } from '@/lib/inbox-contact-search'
 import InboxContactPagination from '@/app/inbox/components/InboxContactPagination'
-import InboxHtmlEmailFrame from '@/app/inbox/components/InboxHtmlEmailFrame'
+import { ScaledInboxHtmlEmail } from '@/app/inbox/components/InboxHtmlEmailFrame'
 import WorkflowEmailTemplatePickerDialog from '@/components/workflow/WorkflowEmailTemplatePickerDialog'
 import WorkflowSmsTemplatePickerDialog from '@/components/workflow/WorkflowSmsTemplatePickerDialog'
 
@@ -528,15 +528,13 @@ export default function BatchSendDialog({
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="bg-slate-100/80 p-2">
-                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                    <InboxHtmlEmailFrame
-                      html={contentHtml}
-                      title="Selected email template"
-                      minHeight={140}
-                      maxHeight={260}
-                    />
-                  </div>
+                <div className="min-w-0 w-full overflow-hidden bg-white">
+                  <ScaledInboxHtmlEmail
+                    html={contentHtml}
+                    title="Selected email template"
+                    minHeight={140}
+                    maxHeight={280}
+                  />
                 </div>
               </div>
             ) : (

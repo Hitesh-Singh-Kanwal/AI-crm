@@ -178,6 +178,7 @@ function escapeHtmlAttr(str) {
   return String(str || '')
     .replaceAll('&', '&amp;')
     .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
 }
@@ -224,10 +225,28 @@ export function extractVimeoId(url) {
 }
 
 /**
- * Email-safe video block: clickable thumbnail + text link (clients strip <video>).
+ * Absolute URL for the shared video play icon used in outbound email HTML.
+ * Must be publicly reachable (no auth) so Gmail/Apple Mail can load it.
+ */
+export function getEmailPlayButtonUrl() {
+  const base = String(getApiBaseUrl() || '')
+    .trim()
+    .replace(/\/$/, '')
+  if (!base) return ''
+  return `${base}/public/email-assets/play-button.png`
+}
+
+/**
+ * Email-safe video block: fluid full-width thumbnail with a simple PNG play icon
+ * centered on the poster (no emoji / unicode glyphs — those render poorly in Gmail).
  */
 export function buildVideoEmailHtml(videoUrl, posterUrl = '', style = '') {
-  const href = normalizeExternalMediaUrl(videoUrl) || String(videoUrl || '').trim()
+  const href = normalizeExternalMediaUrl(videoUrl)
+  const styleAttr = style ? ` style="${escapeHtmlAttr(style)}"` : ' style="text-align:center;margin:16px 0;"'
+  if (!href) {
+    return `<div${styleAttr}><p style="margin:0;color:#64748b;font-size:14px;text-align:center;">[Invalid video URL]</p></div>`
+  }
+
   const yt = extractYoutubeId(href)
   const vimeo = extractVimeoId(href)
   const poster =
@@ -236,11 +255,73 @@ export function buildVideoEmailHtml(videoUrl, posterUrl = '', style = '') {
     (vimeo ? `https://vumbnail.com/${vimeo}.jpg` : '')
   const safeHref = escapeHtmlAttr(href)
   const safePoster = escapeHtmlAttr(poster)
-  const styleAttr = style ? ` style="${escapeHtmlAttr(style)}"` : ' style="text-align:center;margin:16px 0;"'
+  const playIconUrl = getEmailPlayButtonUrl()
+  const safePlayIcon = escapeHtmlAttr(playIconUrl)
 
-  if (safePoster) {
-    return `<div${styleAttr}><a href="${safeHref}" target="_blank" rel="noopener noreferrer"><img src="${safePoster}" alt="Watch video" width="560" style="max-width:100%;height:auto;border:0;border-radius:8px;display:block;margin:0 auto;" /></a><p style="margin:8px 0 0;font-size:14px;"><a href="${safeHref}" target="_blank" rel="noopener noreferrer">▶ Watch video</a></p></div>`
-  }
+  // Simple centered PNG icon — reliable across Gmail / Apple Mail / Outlook.
+  const playButton = safePlayIcon
+    ? `<img src="${safePlayIcon}" width="64" height="64" alt="Play" data-crm-play="1" style="display:inline-block;width:64px;height:64px;border:0;outline:none;text-decoration:none;max-width:64px;" />`
+    : ''
 
-  return `<div${styleAttr}><a href="${safeHref}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 20px;background:#0f172a;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">▶ Watch video</a></div>`
+  // %-padding keeps ~16:9 as the column width changes; bgcolor + background-color
+  // lock the tile so dark-mode clients don't invert the video shell to white/grey.
+  const cellStyle = safePoster
+    ? `width:100%;max-width:100%;background-image:url(&quot;${safePoster}&quot;);background-repeat:no-repeat;background-position:center center;background-size:cover;background-color:#0f172a;border-radius:8px;padding:28% 16px;text-align:center;vertical-align:middle;`
+    : 'width:100%;max-width:100%;background-color:#0f172a;border-radius:8px;padding:28% 16px;text-align:center;vertical-align:middle;'
+  const bgAttr = safePoster ? ` background="${safePoster}"` : ''
+
+  return [
+    `<div data-crm-video="1"${styleAttr}>`,
+    `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:#ffffff;display:block;width:100%;max-width:100%;">`,
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;width:100%;max-width:100%;">',
+    '<tr>',
+    `<td${bgAttr} bgcolor="#0f172a" width="100%" align="center" valign="middle" style="${cellStyle}">`,
+    playButton,
+    '</td>',
+    '</tr>',
+    '</table>',
+    '</a>',
+    '</div>',
+  ].join('')
+}
+
+/**
+ * Normalize image/video shells in stored template HTML for mobile clients.
+ * Kept in sync with backend ensureFluidMediaInHtml.
+ */
+export function ensureFluidEmailMedia(html) {
+  let out = String(html || '')
+  if (!out.trim()) return out
+
+  out = out.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
+    if (/\bwidth\s*=\s*["']?1["']?/i.test(attrs) && /\bheight\s*=\s*["']?1["']?/i.test(attrs)) {
+      return full
+    }
+    if (/\bdata-crm-play\b/i.test(attrs) || /email-assets\/play-button/i.test(attrs)) {
+      return full
+    }
+    let a = String(attrs || '').replace(/\s*\/\s*$/, '')
+    const forceFull = /\bdata-crm-img\s*=\s*(["']?)1\1(?=[\s/>]|$)/i.test(a)
+
+    const mergeStyle = (style) => {
+      let s = String(style || '').trim().replace(/;?\s*$/, '')
+      if (!/max-width\s*:/i.test(s)) s = s ? `${s};max-width:100%` : 'max-width:100%'
+      if (!/height\s*:\s*auto/i.test(s)) s += ';height:auto'
+      if (!/display\s*:/i.test(s)) s += ';display:block'
+      if (!/border\s*:/i.test(s)) s += ';border:0'
+      if (forceFull && !/(^|;)\s*width\s*:\s*100%\s*(;|$)/i.test(s)) s += ';width:100%'
+      return s
+    }
+
+    if (/style\s*=\s*(["'])([\s\S]*?)\1/i.test(a)) {
+      a = a.replace(/style\s*=\s*(["'])([\s\S]*?)\1/i, (_, q, style) => `style=${q}${mergeStyle(style)}${q}`)
+    } else {
+      a += ` style="${mergeStyle('')}"`
+    }
+    if (forceFull && !/\bwidth\s*=/i.test(a)) a += ' width="600"'
+    return `<img${a}>`
+  })
+
+  out = out.replace(/max-width:\s*560px/gi, 'max-width:100%')
+  return out
 }
