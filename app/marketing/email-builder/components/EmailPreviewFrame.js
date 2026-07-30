@@ -1,12 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Monitor, Smartphone, Mail, Signal, Wifi, BatteryFull } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import InboxHtmlEmailFrame from '@/app/inbox/components/InboxHtmlEmailFrame'
-
-/** Standard email design width — scaled down to fit the phone screen. */
-const EMAIL_DESIGN_WIDTH = 600
+import { ScaledInboxHtmlEmail } from '@/app/inbox/components/InboxHtmlEmailFrame'
 
 function MobileStatusBar() {
   return (
@@ -33,71 +30,6 @@ function MobileInboxChrome({ subject, sourceLabel }) {
       <p className="mt-0.5 truncate text-[11px] text-slate-500">
         From <span className="font-medium text-slate-700">Your studio</span>
       </p>
-    </div>
-  )
-}
-
-/**
- * Renders email at full design width, then scales it down so the whole template
- * fits the phone screen width (nothing clipped on the sides).
- */
-function ScaledMobileEmail({ html, subject, screenHeight }) {
-  const widthRef = useRef(null)
-  const [screenWidth, setScreenWidth] = useState(EMAIL_DESIGN_WIDTH)
-  const [contentHeight, setContentHeight] = useState(320)
-
-  useEffect(() => {
-    setContentHeight(320)
-  }, [html])
-
-  useEffect(() => {
-    const el = widthRef.current
-    if (!el) return undefined
-    const update = () => setScreenWidth(el.clientWidth || EMAIL_DESIGN_WIDTH)
-    update()
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
-    ro?.observe(el)
-    window.addEventListener('resize', update)
-    return () => {
-      ro?.disconnect()
-      window.removeEventListener('resize', update)
-    }
-  }, [])
-
-  const scale = Math.min(1, screenWidth / EMAIL_DESIGN_WIDTH)
-  const scaledHeight = Math.max(contentHeight * scale, 120)
-
-  const handleHeight = useCallback((h) => {
-    setContentHeight(Math.max(120, Number(h) || 120))
-  }, [])
-
-  return (
-    // Outer measures width (no scrollbar). Inner scrolls — avoids scale flicker.
-    <div ref={widthRef} className="w-full bg-white">
-      <div
-        className="overflow-y-scroll overflow-x-hidden overscroll-contain"
-        style={{ height: screenHeight }}
-      >
-        <div className="relative w-full overflow-hidden" style={{ height: scaledHeight }}>
-          <div
-            className="origin-top-left"
-            style={{
-              width: EMAIL_DESIGN_WIDTH,
-              transform: `scale(${scale})`,
-              transformOrigin: 'top left',
-            }}
-          >
-            <InboxHtmlEmailFrame
-              html={html}
-              title={subject || 'Mobile email preview'}
-              minHeight={200}
-              fitContent
-              layoutWidth={EMAIL_DESIGN_WIDTH}
-              onHeightChange={handleHeight}
-            />
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
@@ -147,8 +79,20 @@ export default function EmailPreviewFrame({
     </div>
   )
 
+  // Identical canvas for both modes — only the chrome + scale factor change.
+  const emailBody = hasHtml ? (
+    <ScaledInboxHtmlEmail
+      key={`preview-${device}`}
+      html={html}
+      title={subject || 'Email preview'}
+      minHeight={compact ? 160 : 220}
+      maxHeight={isMobile ? phoneScreenHeight : 900}
+      viewportHeight={isMobile ? phoneScreenHeight : null}
+    />
+  ) : null
+
   const desktopPreview = (
-    <div className="mx-auto w-full max-w-[680px] transition-all duration-200">
+    <div className="mx-auto w-full max-w-[800px] transition-all duration-200">
       <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md">
         <div className="space-y-1 border-b border-slate-100 bg-slate-50/95 px-3 py-2">
           <div className="flex items-center gap-3">
@@ -177,18 +121,7 @@ export default function EmailPreviewFrame({
           ) : null}
         </div>
 
-        {hasHtml ? (
-          <div className={cn('w-full bg-white', compact ? 'p-2' : 'p-3 md:p-4')}>
-            <InboxHtmlEmailFrame
-              html={html}
-              title={subject || 'Email preview'}
-              minHeight={compact ? 160 : 220}
-              maxHeight={900}
-            />
-          </div>
-        ) : (
-          emptyState
-        )}
+        {hasHtml ? <div className="w-full bg-white">{emailBody}</div> : emptyState}
       </div>
     </div>
   )
@@ -207,15 +140,7 @@ export default function EmailPreviewFrame({
           <MobileStatusBar />
           <MobileInboxChrome subject={subject} sourceLabel={sourceLabel} />
 
-          {hasHtml ? (
-            <ScaledMobileEmail
-              html={html}
-              subject={subject}
-              screenHeight={phoneScreenHeight}
-            />
-          ) : (
-            <div style={{ height: phoneScreenHeight }}>{emptyState}</div>
-          )}
+          {hasHtml ? emailBody : <div style={{ height: phoneScreenHeight }}>{emptyState}</div>}
 
           <div className="flex justify-center bg-white py-2">
             <span className="h-1 w-28 rounded-full bg-slate-900/80" />
@@ -223,7 +148,7 @@ export default function EmailPreviewFrame({
         </div>
       </div>
       <p className="mt-3 text-center text-[11px] text-slate-500">
-        Scaled to fit phone width · scroll inside to read the full email
+        Same desktop layout, scaled to phone · scroll inside to read
       </p>
     </div>
   )

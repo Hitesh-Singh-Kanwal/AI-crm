@@ -263,14 +263,15 @@ export function buildVideoEmailHtml(videoUrl, posterUrl = '', style = '') {
     ? `<img src="${safePlayIcon}" width="64" height="64" alt="Play" data-crm-play="1" style="display:inline-block;width:64px;height:64px;border:0;outline:none;text-decoration:none;max-width:64px;" />`
     : ''
 
-  // %-padding is relative to width, so the block keeps ~16:9 as it shrinks on mobile.
+  // %-padding keeps ~16:9 as the column width changes; bgcolor + background-color
+  // lock the tile so dark-mode clients don't invert the video shell to white/grey.
   const cellStyle = safePoster
     ? `width:100%;max-width:100%;background-image:url(&quot;${safePoster}&quot;);background-repeat:no-repeat;background-position:center center;background-size:cover;background-color:#0f172a;border-radius:8px;padding:28% 16px;text-align:center;vertical-align:middle;`
     : 'width:100%;max-width:100%;background-color:#0f172a;border-radius:8px;padding:28% 16px;text-align:center;vertical-align:middle;'
   const bgAttr = safePoster ? ` background="${safePoster}"` : ''
 
   return [
-    `<div${styleAttr}>`,
+    `<div data-crm-video="1"${styleAttr}>`,
     `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:#ffffff;display:block;width:100%;max-width:100%;">`,
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;width:100%;max-width:100%;">',
     '<tr>',

@@ -16,21 +16,66 @@ export function isRichEmailHtml(html) {
   return blockTags.length >= 2
 }
 
+/**
+ * Preview canvas width. Stay well above common email mobile breakpoints
+ * (480 / 600 / 620 / 768) so desktop styles paint, then CSS-scale to fit UI.
+ * Mobile and desktop previews share this canvas → identical layout.
+ */
+export const EMAIL_DESIGN_WIDTH = 800
+
+/**
+ * Disable @media blocks in preview so mobile styles never reflow the canvas
+ * (even if a template uses max-width: 900px breakpoints).
+ */
+export function disableEmailMediaQueriesForPreview(html) {
+  return String(html || '').replace(/@media[^{]+\{/gi, '@media not all {')
+}
+
+/** Keep Gmail/Apple dark-mode from rewriting template colors in preview. */
+function buildPreviewHeadGuard() {
+  return `
+<meta charset="utf-8"/>
+<meta name="color-scheme" content="light only"/>
+<meta name="supported-color-schemes" content="light"/>
+<meta name="viewport" content="width=${EMAIL_DESIGN_WIDTH}"/>
+<base target="_blank"/>
+<style type="text/css" data-crm-preview-guard="1">
+  :root{color-scheme:light only;}
+  html,body{margin:0;padding:0;color:#111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;}
+  /* Do not force a white page — templates often set their own body/table bg. */
+  img{max-width:100%;height:auto;}
+  img[data-crm-img="1"]{width:100%;}
+  img[data-crm-play="1"]{width:64px !important;height:64px !important;max-width:64px !important;display:inline-block !important;}
+  a{color:#2563eb;}
+  table{border-collapse:collapse;}
+</style>
+`.trim()
+}
+
+function injectPreviewGuard(html) {
+  const source = String(html || '')
+  const guard = buildPreviewHeadGuard()
+  if (/data-crm-preview-guard\s*=\s*["']?1["']?/i.test(source)) {
+    return disableEmailMediaQueriesForPreview(source)
+  }
+  let next = source
+  if (/<\/head>/i.test(next)) {
+    next = next.replace(/<\/head>/i, `${guard}</head>`)
+  } else if (/<body[\s>]/i.test(next)) {
+    next = next.replace(/<body([\s>])/i, `<head>${guard}</head><body$1`)
+  }
+  return disableEmailMediaQueriesForPreview(next)
+}
+
 function wrapSrcDoc(html) {
   const body = String(html || '')
   if (/<html[\s>]/i.test(body) || /<!doctype/i.test(body)) {
-    return body
+    return injectPreviewGuard(body)
   }
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><base target="_blank"/><style>
-    html,body{margin:0;padding:0;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;}
-    img{max-width:100%!important;height:auto!important;display:block;}
-    img[data-crm-img="1"]{width:100%!important;}
-    img[data-crm-play="1"]{max-width:64px!important;width:64px!important;height:64px!important;}
-    a{color:#2563eb;}
-    table{max-width:100%;border-collapse:collapse;}
-    table[width="100%"]{width:100%;}
-  </style></head><body>${body}</body></html>`
+  return disableEmailMediaQueriesForPreview(`<!DOCTYPE html><html><head>
+${buildPreviewHeadGuard()}
+</head><body style="margin:0;padding:0;">${body}</body></html>`)
 }
 
 /**
@@ -44,7 +89,7 @@ export default function InboxHtmlEmailFrame({
   maxHeight = 420,
   /** Grow to full content height (no clamp). */
   fitContent = false,
-  /** Fixed layout width for the document (e.g. 600 for email design width). */
+  /** Fixed layout width for the document (e.g. 800 for email design width). */
   layoutWidth = null,
   /** Called whenever measured content height changes. */
   onHeightChange,
@@ -114,7 +159,6 @@ export default function InboxHtmlEmailFrame({
       bindDocObservers()
     }
     iframe?.addEventListener('load', onLoad)
-    // srcDoc may already be loaded
     bindDocObservers()
 
     return () => {
@@ -132,7 +176,7 @@ export default function InboxHtmlEmailFrame({
       srcDoc={srcDoc}
       onLoad={measure}
       sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-      className={cn('border-0 bg-white block', layoutWidth ? '' : 'w-full', className)}
+      className={cn('border-0 bg-transparent block', layoutWidth ? '' : 'w-full', className)}
       style={{
         height,
         overflow: fitContent ? 'hidden' : 'auto',
@@ -143,12 +187,9 @@ export default function InboxHtmlEmailFrame({
   )
 }
 
-/** Standard email design width — scaled down to fit narrow inbox cards. */
-export const EMAIL_DESIGN_WIDTH = 600
-
 /**
- * Renders email HTML at full design width, then CSS-scales it to the container
- * so templates stay proportionally readable in inbox / composer previews.
+ * Renders email HTML at desktop design width, then CSS-scales it to the container
+ * so templates stay proportionally identical (no mobile media-query reflow).
  */
 export function ScaledInboxHtmlEmail({
   html,
@@ -156,6 +197,8 @@ export function ScaledInboxHtmlEmail({
   className,
   minHeight = 120,
   maxHeight = 340,
+  /** When set, scroll viewport uses this height instead of clamping to content. */
+  viewportHeight: fixedViewportHeight = null,
 }) {
   const widthRef = useRef(null)
   const [screenWidth, setScreenWidth] = useState(EMAIL_DESIGN_WIDTH)
@@ -181,7 +224,10 @@ export function ScaledInboxHtmlEmail({
 
   const scale = Math.min(1, screenWidth / EMAIL_DESIGN_WIDTH)
   const scaledHeight = Math.max(contentHeight * scale, minHeight)
-  const viewportHeight = Math.min(scaledHeight, maxHeight)
+  const viewportHeight =
+    fixedViewportHeight != null
+      ? fixedViewportHeight
+      : Math.min(scaledHeight, maxHeight)
 
   const handleHeight = useCallback(
     (h) => {
@@ -192,10 +238,13 @@ export function ScaledInboxHtmlEmail({
 
   return (
     // Outer measures width (no scrollbar). Inner scrolls — avoids scale flicker.
-    <div ref={widthRef} className={cn('w-full bg-white', className)}>
+    <div ref={widthRef} className={cn('w-full', className)}>
       <div
         className="overflow-y-auto overflow-x-hidden overscroll-contain"
-        style={{ height: viewportHeight, maxHeight }}
+        style={{
+          height: viewportHeight,
+          maxHeight: fixedViewportHeight != null ? fixedViewportHeight : maxHeight,
+        }}
       >
         <div className="relative w-full overflow-hidden" style={{ height: scaledHeight }}>
           <div
