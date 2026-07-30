@@ -10,7 +10,7 @@ import EmailMessageInput from './EmailMessageInput'
 import CallMessageInput from './CallMessageInput'
 import CallLogList from './CallLogList'
 import ConversationChannelTabs from './ConversationChannelTabs'
-import InboxHtmlEmailFrame, { isRichEmailHtml } from './InboxHtmlEmailFrame'
+import { isRichEmailHtml, ScaledInboxHtmlEmail } from './InboxHtmlEmailFrame'
 import { htmlToPlainText } from '@/lib/emailSend'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
@@ -292,7 +292,7 @@ export default function ConversationView({
                         {message.channel === 'Email' ? (
                           <div
                             className={cn(
-                              'overflow-hidden rounded-2xl border bg-card shadow-sm w-[min(100%,460px)]',
+                              'overflow-hidden rounded-2xl border bg-card shadow-sm w-[min(100%,520px)]',
                               isInbound
                                 ? 'border-border rounded-tl-md'
                                 : 'border-[color:var(--studio-primary)]/25 rounded-tr-md',
@@ -334,11 +334,11 @@ export default function ConversationView({
                             </div>
 
                             {isRichEmailHtml(message.contentHtml) ? (
-                              <InboxHtmlEmailFrame
+                              <ScaledInboxHtmlEmail
                                 html={message.contentHtml}
                                 title={message.subject || 'Email message'}
                                 minHeight={120}
-                                maxHeight={340}
+                                maxHeight={380}
                               />
                             ) : (
                               <div className="px-3.5 py-3 text-sm text-foreground">

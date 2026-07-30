@@ -36,17 +36,17 @@ const IMAGE_ALIGNS = [
   {
     id: 'left',
     label: 'Left',
-    style: 'display:block;max-width:100%;height:auto;margin:12px 0;',
+    style: 'display:block;width:auto;max-width:100%;height:auto;border:0;margin:12px 0;',
   },
   {
     id: 'center',
     label: 'Center',
-    style: 'display:block;max-width:100%;height:auto;margin:12px auto;',
+    style: 'display:block;width:auto;max-width:100%;height:auto;border:0;margin:12px auto;',
   },
   {
     id: 'full',
     label: 'Full',
-    style: 'display:block;width:100%;max-width:100%;height:auto;margin:12px 0;',
+    style: 'display:block;width:100%;max-width:100%;height:auto;border:0;margin:12px 0;',
   },
 ]
 
@@ -76,7 +76,11 @@ function Divider() {
 function buildImgHtml(url, alignId = 'center') {
   const align = IMAGE_ALIGNS.find((a) => a.id === alignId) || IMAGE_ALIGNS[1]
   const safeUrl = String(url).replaceAll('"', '%22')
-  return `<img src="${safeUrl}" alt="Image" data-crm-img="1" style="${align.style}" />`
+  // Only "Full" is stamped as full-bleed so fluid rewriter won't stretch logos.
+  if (alignId === 'full') {
+    return `<img src="${safeUrl}" alt="Image" width="600" data-crm-img="1" style="${align.style}" />`
+  }
+  return `<img src="${safeUrl}" alt="Image" data-crm-img="auto" style="${align.style}" />`
 }
 
 /**
@@ -114,7 +118,23 @@ export default function EmailVisualHtmlEditor({
   const emitHtml = useCallback(() => {
     const doc = getDoc()
     if (!doc?.body) return
-    const next = doc.body.innerHTML || ''
+    // Clone so editor selection chrome (outline / data-crm-selected) never lands in saved HTML.
+    const clone = doc.body.cloneNode(true)
+    clone.querySelectorAll('img[data-crm-selected="1"]').forEach((el) => {
+      el.removeAttribute('data-crm-selected')
+      if (el.style) {
+        el.style.outline = ''
+        el.style.outlineOffset = ''
+        const cleaned = String(el.getAttribute('style') || '')
+          .replace(/outline[^;]*;?/gi, '')
+          .replace(/outline-offset[^;]*;?/gi, '')
+          .replace(/;;+/g, ';')
+          .trim()
+        if (cleaned) el.setAttribute('style', cleaned)
+        else el.removeAttribute('style')
+      }
+    })
+    const next = clone.innerHTML || ''
     if (next === lastWritten.current) return
     lastWritten.current = next
     onChange?.(next)
@@ -144,8 +164,6 @@ export default function EmailVisualHtmlEditor({
     const doc = getDoc()
     doc?.querySelectorAll('img[data-crm-selected="1"]').forEach((el) => {
       el.removeAttribute('data-crm-selected')
-      el.style.outline = ''
-      el.style.outlineOffset = ''
     })
     setSelectedImg(null)
   }
@@ -175,8 +193,7 @@ export default function EmailVisualHtmlEditor({
         e.preventDefault()
         clearImageSelection()
         target.setAttribute('data-crm-selected', '1')
-        target.style.outline = '2px solid #6366f1'
-        target.style.outlineOffset = '3px'
+        // Outline comes from iframe CSS for [data-crm-selected] — do not write into style.
         setSelectedImg(target)
         return
       }
@@ -203,6 +220,8 @@ export default function EmailVisualHtmlEditor({
     html, body { margin: 0; padding: 24px; font-family: Arial, Helvetica, sans-serif; line-height: 1.55; color: #0f172a; background: #fff; }
     body { min-height: 420px; outline: none; max-width: 640px; margin: 0 auto; }
     img { max-width: 100%; height: auto; cursor: pointer; }
+    img[data-crm-img="1"] { width: 100%; }
+    table { max-width: 100%; }
     img[data-crm-selected="1"] { outline: 2px solid #6366f1; outline-offset: 3px; }
     a { color: #2563eb; }
     ::selection { background: #c7d2fe; }
@@ -351,9 +370,16 @@ export default function EmailVisualHtmlEditor({
     if (!selectedImg) return
     const align = IMAGE_ALIGNS.find((a) => a.id === alignId) || IMAGE_ALIGNS[1]
     selectedImg.setAttribute('style', align.style)
+    // Keep selection marker in DOM only — CSS rule draws outline; never bake into style.
     selectedImg.setAttribute('data-crm-selected', '1')
-    selectedImg.style.outline = '2px solid #6366f1'
-    selectedImg.style.outlineOffset = '3px'
+    if (alignId === 'full') {
+      selectedImg.setAttribute('data-crm-img', '1')
+      selectedImg.setAttribute('width', '600')
+    } else {
+      selectedImg.setAttribute('data-crm-img', 'auto')
+      selectedImg.removeAttribute('width')
+    }
+    setImageAlign(alignId)
     emitHtml()
   }
 

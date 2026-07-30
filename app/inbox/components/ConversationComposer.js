@@ -12,7 +12,7 @@ import {
 } from '@/lib/emailSend'
 import WorkflowEmailTemplatePickerDialog from '@/components/workflow/WorkflowEmailTemplatePickerDialog'
 import WorkflowSmsTemplatePickerDialog from '@/components/workflow/WorkflowSmsTemplatePickerDialog'
-import EmailTemplateThumbnail from '@/app/marketing/email-builder/components/EmailTemplateThumbnail'
+import { ScaledInboxHtmlEmail } from '@/app/inbox/components/InboxHtmlEmailFrame'
 
 const TEXTAREA_MIN_H = 52
 const TEXTAREA_MAX_H = 168
@@ -170,35 +170,44 @@ function EmailComposer({
         )}
       >
         {usingHtmlTemplate ? (
-          <div className="flex items-center gap-2.5 px-3 py-2">
-            <div className="h-10 w-14 shrink-0 overflow-hidden rounded-md border border-border">
-              <EmailTemplateThumbnail html={contentHtml} className="h-10 rounded-md" />
+          <div>
+            <div className="flex items-center gap-2.5 border-b border-border/80 bg-[color:var(--studio-primary-light)]/40 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-[color:var(--studio-primary)]">
+                  HTML template
+                </p>
+                <p className="truncate text-xs font-semibold text-foreground">
+                  {selectedTemplate?.name || 'Selected template'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTemplatePickerOpen(true)}
+                disabled={isBusy}
+                className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+              >
+                Change
+              </button>
+              <button
+                type="button"
+                onClick={clearTemplate}
+                disabled={isBusy}
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-50"
+                aria-label="Remove template"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-[color:var(--studio-primary)]">
-                HTML template
-              </p>
-              <p className="truncate text-xs font-semibold text-foreground">
-                {selectedTemplate?.name || 'Selected template'}
-              </p>
+            <div className="bg-slate-100/70 p-1.5">
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <ScaledInboxHtmlEmail
+                  html={contentHtml}
+                  title={selectedTemplate?.name || 'Selected email template'}
+                  minHeight={120}
+                  maxHeight={240}
+                />
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setTemplatePickerOpen(true)}
-              disabled={isBusy}
-              className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-            >
-              Change
-            </button>
-            <button
-              type="button"
-              onClick={clearTemplate}
-              disabled={isBusy}
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-50"
-              aria-label="Remove template"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
           </div>
         ) : (
           <textarea
