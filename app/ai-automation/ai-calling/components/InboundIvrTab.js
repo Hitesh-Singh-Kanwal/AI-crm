@@ -41,6 +41,51 @@ import {
 
 const DIGIT_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
 
+/** Mirrors backend buildIvrOptionsSpokenText — keypad options only. */
+function buildIvrOptionsSpokenText(routes = []) {
+  const enabled = (Array.isArray(routes) ? routes : []).filter((r) => r && r.enabled !== false)
+  if (!enabled.length) return ''
+
+  const clauses = enabled.map((r, i) => {
+    const digit = String(r.digit ?? '')
+    const prompt = String(r.menuPrompt || '').trim().replace(/\s+/g, ' ')
+    let reason = prompt
+      .replace(new RegExp(`^\\s*press\\s*${digit}\\s*(for\\s+)?`, 'i'), '')
+      .replace(new RegExp(`\\s*,?\\s*press\\s*${digit}\\.?$`, 'i'), '')
+      .replace(/^if you are (an |and )?/, "if you're ")
+      .replace(/^for /i, 'for ')
+      .trim()
+    if (!reason) reason = String(r.label || `option ${digit}`)
+    reason = reason.replace(/[.]+$/g, '').trim()
+    if (i > 0) reason = reason.charAt(0).toLowerCase() + reason.slice(1)
+    return `${reason}, press ${digit}`
+  })
+
+  if (clauses.length === 1) return `${clauses[0]}.`
+  const last = clauses[clauses.length - 1]
+  const head = clauses.slice(0, -1).join('; ')
+  return `${head}; or ${last}.`
+}
+
+/**
+ * Mirrors backend buildIvrMenuSpokenText — full spoken menu
+ * (custom greeting + options, or auto greeting with options).
+ */
+function buildSpokenIvrMenu(routes = [], customFirstMessage = '') {
+  const enabled = (Array.isArray(routes) ? routes : []).filter((r) => r && r.enabled !== false)
+  const custom = String(customFirstMessage || '').trim()
+  const options = buildIvrOptionsSpokenText(enabled)
+
+  if (custom) {
+    if (!options) return custom
+    const greeting = custom.replace(/[.!?]+$/, '').trim()
+    return `${greeting}. ${options.charAt(0).toUpperCase()}${options.slice(1)}`
+  }
+
+  if (!enabled.length) return ''
+  return `Thanks for calling — ${options}`
+}
+
 function extractList(result) {
   const payload = result?.data
   return Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
@@ -101,7 +146,6 @@ export default function InboundIvrTab() {
   const toast = useToast()
   const [routes, setRoutes] = useState([])
   const [assistants, setAssistants] = useState([])
-  const [menuPreview, setMenuPreview] = useState('')
   const [setupInfo, setSetupInfo] = useState(null)
   const [voiceSetup, setVoiceSetup] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -120,6 +164,7 @@ export default function InboundIvrTab() {
   const [receptionistPersonaId, setReceptionistPersonaId] = useState('')
   /** Cached label/meta when selected persona is missing from the list (location filter). */
   const [receptionistPersonaMeta, setReceptionistPersonaMeta] = useState(null)
+  const [receptionistFirstMessage, setReceptionistFirstMessage] = useState('')
   const [personas, setPersonas] = useState([])
   const [savingSettings, setSavingSettings] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -207,7 +252,6 @@ export default function InboundIvrTab() {
 
       if (previewResult.success) {
         const p = previewResult.data || {}
-        setMenuPreview(p.menuPrompt || '')
         setSetupInfo(p.setup || null)
       }
       if (voiceSetupResult.success) setVoiceSetup(voiceSetupResult.data || null)
@@ -226,6 +270,9 @@ export default function InboundIvrTab() {
         const { id: personaId, meta } = parsePersonaRef(s.receptionistPersonaId)
         setReceptionistPersonaId(personaId)
         setReceptionistPersonaMeta(meta)
+        setReceptionistFirstMessage(
+          typeof s.receptionistFirstMessage === 'string' ? s.receptionistFirstMessage : '',
+        )
         if (meta) {
           setPersonas((prev) => (
             prev.some((p) => String(p._id) === personaId) ? prev : [...prev, meta]
@@ -263,6 +310,7 @@ export default function InboundIvrTab() {
         mode: newMode,
         directAssistantId: directAssistantId || null,
         receptionistPersonaId: receptionistPersonaId || null,
+        receptionistFirstMessage: receptionistFirstMessage.trim() || null,
         ...toLocationPayload(workingLocationID),
       })
       if (!result.success) {
@@ -295,6 +343,7 @@ export default function InboundIvrTab() {
         mode: 'direct',
         directAssistantId: assistant._id,
         receptionistPersonaId: receptionistPersonaId || null,
+        receptionistFirstMessage: receptionistFirstMessage.trim() || null,
         ...toLocationPayload(workingLocationID),
       })
       if (!result.success) {
@@ -331,6 +380,7 @@ export default function InboundIvrTab() {
         mode: 'ivr',
         directAssistantId: directAssistantId || null,
         receptionistPersonaId: nextId || null,
+        receptionistFirstMessage: receptionistFirstMessage.trim() || null,
         ...toLocationPayload(workingLocationID),
       })
       if (!result.success) {
@@ -363,6 +413,46 @@ export default function InboundIvrTab() {
       setReceptionistPersonaId(prevId)
       setReceptionistPersonaMeta(prevMeta)
       toast.error({ title: 'Error', message: 'Could not update receptionist persona.' })
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
+  const handleSaveReceptionistFirstMessage = async () => {
+    if (savingSettings) return
+    if (!requireWorkingLocation()) return
+    settingsLoadGen.current += 1
+    setSavingSettings(true)
+    try {
+      const result = await api.patch('/api/inbound-routes/settings', {
+        mode: 'ivr',
+        directAssistantId: directAssistantId || null,
+        receptionistPersonaId: receptionistPersonaId || null,
+        receptionistFirstMessage: receptionistFirstMessage.trim() || null,
+        ...toLocationPayload(workingLocationID),
+      })
+      if (!result.success) {
+        toast.error({
+          title: 'Failed to save',
+          message: result.error || 'Could not update AI menu greeting.',
+        })
+        return
+      }
+      const saved = result.data || {}
+      setReceptionistFirstMessage(
+        typeof saved.receptionistFirstMessage === 'string'
+          ? saved.receptionistFirstMessage
+          : '',
+      )
+      toast.success({
+        title: 'Greeting saved',
+        message: receptionistFirstMessage.trim()
+          ? 'Custom AI menu greeting will be used for this studio.'
+          : 'AI menu will use the auto-built greeting from your options.',
+      })
+    } catch (e) {
+      console.error(e)
+      toast.error({ title: 'Error', message: 'Could not update AI menu greeting.' })
     } finally {
       setSavingSettings(false)
     }
@@ -489,6 +579,12 @@ export default function InboundIvrTab() {
     personas.find((p) => String(p._id) === String(receptionistPersonaId || ''))
     || receptionistPersonaMeta
     || null
+
+  /** Full spoken menu callers hear (greeting + IVR options). */
+  const firstMessagePreview = useMemo(
+    () => buildSpokenIvrMenu(routes, receptionistFirstMessage),
+    [receptionistFirstMessage, routes],
+  )
 
   const webhookReady = Boolean(setupInfo?.ivrWebhookUrl)
   const twimlReady = Boolean(voiceSetup?.twimlAppVoiceUrl)
@@ -631,11 +727,11 @@ export default function InboundIvrTab() {
 
           {/* Summary + checklist row */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            {/* Menu preview */}
+            {/* Spoken menu preview (greeting + options) */}
             <Card className="xl:col-span-2">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold">Live menu preview</CardTitle>
+                  <CardTitle className="text-sm font-semibold">Spoken menu preview</CardTitle>
                   <Badge
                     variant={allReady ? 'default' : 'outline'}
                     className={allReady ? 'bg-emerald-500 text-white border-0' : ''}
@@ -643,17 +739,25 @@ export default function InboundIvrTab() {
                     {readyCount}/{enabledCount} ready
                   </Badge>
                 </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  What the AI menu persona says: first message, then keypad options.
+                </p>
               </CardHeader>
               <CardContent>
-                {menuPreview ? (
+                {firstMessagePreview ? (
                   <div className="rounded-lg bg-muted/50 border border-border px-4 py-3">
-                    <p className="text-xs font-mono text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                      {menuPreview}
+                    <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                      {firstMessagePreview}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-2">
+                      {String(receptionistFirstMessage || '').trim()
+                        ? 'Custom greeting + IVR options'
+                        : 'Auto greeting from IVR options'}
                     </p>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground italic">
-                    No enabled IVR options yet. Add some below.
+                    No menu yet. Add IVR options below, or set a custom greeting in Settings.
                   </p>
                 )}
               </CardContent>
@@ -1084,6 +1188,38 @@ export default function InboundIvrTab() {
                       : ''}
                   </p>
                 )}
+
+                <div className="space-y-2 pt-4">
+                  <h3 className="text-sm font-semibold text-foreground">AI menu first message</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Optional greeting only. Keypad options (Press 1 for…) are always spoken after this.
+                    Leave blank to use the auto greeting built from your IVR options.
+                  </p>
+                  <Textarea
+                    value={receptionistFirstMessage}
+                    onChange={(e) => setReceptionistFirstMessage(e.target.value)}
+                    disabled={savingSettings}
+                    rows={4}
+                    maxLength={2000}
+                    placeholder="Thanks for calling Dance With Me!"
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] text-muted-foreground">
+                      {receptionistFirstMessage.trim().length}/2000
+                      {!receptionistFirstMessage.trim()
+                        ? ' · using auto greeting + options'
+                        : ' · options are appended after this'}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSaveReceptionistFirstMessage}
+                      disabled={savingSettings}
+                    >
+                      Save greeting
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1181,7 +1317,7 @@ export default function InboundIvrTab() {
             <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5">
               <div>
                 <p className="text-sm font-medium">Active</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Inactive options are hidden from the live menu.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Inactive options are hidden from the first message and keypad menu.</p>
               </div>
               <Switch checked={enabled} onCheckedChange={setEnabled} />
             </div>

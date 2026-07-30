@@ -17,6 +17,7 @@ import {
   Trash2,
   Type,
   Video,
+  Play,
   X,
   ArrowLeft,
 } from 'lucide-react'
@@ -40,6 +41,8 @@ import { EmailImageMediaFields, EmailVideoMediaFields } from './EmailMediaFields
 import {
   extractCategoriesList,
   buildVideoEmailHtml,
+  extractYoutubeId,
+  extractVimeoId,
 } from '../emailBuilderApi'
 
 import {
@@ -121,7 +124,7 @@ function blockToHtml(block) {
       const src = String(block.content || '').trim()
       const safeSrc = src ? escapeHtml(src) : ''
       return safeSrc
-        ? `<img alt="Image" src="${safeSrc}" style="${style || 'max-width:100%;height:auto;'}"/>`
+        ? `<img alt="Image" src="${safeSrc}" width="600" data-crm-img="1" style="${style || 'display:block;width:100%;max-width:100%;height:auto;border:0;'}"/>`
         : `<div style="${style}">[Image]</div>`
     }
     case 'video': {
@@ -203,16 +206,10 @@ function SortableEmailBlock({ block, isSelected, onSelect, onRemove, onDuplicate
         const url = String(block.href || block.content || '').trim()
         let poster = String(block.poster || '').trim()
         if (!poster && url) {
-          try {
-            // Lightweight YouTube thumb preview without importing helpers into the canvas renderer
-            const u = new URL(url)
-            let yt = null
-            if (u.hostname.includes('youtu.be')) yt = u.pathname.replace(/^\//, '').split('/')[0]
-            else if (u.hostname.includes('youtube.com') && u.searchParams.get('v')) yt = u.searchParams.get('v')
-            if (yt) poster = `https://img.youtube.com/vi/${yt}/hqdefault.jpg`
-          } catch {
-            /* ignore */
-          }
+          const yt = extractYoutubeId(url)
+          const vimeo = extractVimeoId(url)
+          if (yt) poster = `https://img.youtube.com/vi/${yt}/hqdefault.jpg`
+          else if (vimeo) poster = `https://vumbnail.com/${vimeo}.jpg`
         }
         return (
           <div style={baseStyle} className="text-center space-y-2">
@@ -226,19 +223,17 @@ function SortableEmailBlock({ block, isSelected, onSelect, onRemove, onDuplicate
                     className="max-w-full h-auto max-h-48 mx-auto rounded-lg border border-slate-200 object-cover"
                   />
                 ) : (
-                  <div className="w-64 h-36 bg-slate-900 rounded-lg flex items-center justify-center mx-auto">
-                    <Video className="h-10 w-10 text-white/80" />
-                  </div>
+                  <div className="w-64 h-36 bg-slate-900 rounded-lg flex items-center justify-center mx-auto" />
                 )}
                 <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <span className="h-12 w-12 rounded-full bg-white/90 flex items-center justify-center shadow">
-                    <Video className="h-5 w-5 text-slate-800" />
+                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-900/85 ring-2 ring-white/90 shadow-lg pl-0.5">
+                    <Play className="h-7 w-7 fill-white text-white" strokeWidth={0} />
                   </span>
                 </span>
               </div>
             ) : (
               <div className="w-full h-40 bg-slate-100 rounded-lg flex flex-col items-center justify-center border border-slate-200 gap-2">
-                <Video className="h-10 w-10 text-slate-400" />
+                <Play className="h-10 w-10 text-slate-400" />
                 <span className="text-slate-500 text-xs">Video link</span>
               </div>
             )}
