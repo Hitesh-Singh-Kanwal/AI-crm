@@ -794,7 +794,14 @@ function InboxPageContent() {
           scheduleNow,
           scheduleDate,
         })
-        const result = await api.post('/api/email/send-one', payload)
+        const preferredLocationID = payload.preferredLocationID || null
+        const result = await api.post(
+          '/api/email/send-one',
+          payload,
+          preferredLocationID
+            ? { headers: { 'x-location-id': preferredLocationID } }
+            : {},
+        )
         if (!result.success) {
           revertOptimisticMessage(convId, messageId)
           toast.error({

@@ -787,12 +787,29 @@ export default function MiniStudentPanel({
         return;
       }
       setIsSendingMsg(true);
-      const result = await api.post("/api/email/send-one", {
-        lead: { _id: leadId, email: customer.email, name: customer.name },
-        subject: emailSubject.trim(),
-        body: emailBody.trim(),
-        scheduleNow: true,
-      });
+      const locationIDs = Array.isArray(customer.locationID)
+        ? customer.locationID.map((id) => String(id?._id ?? id)).filter(Boolean)
+        : customer.locationID
+          ? [String(customer.locationID?._id ?? customer.locationID)]
+          : [];
+      const preferredLocationID = locationIDs[0] || null;
+      const result = await api.post(
+        "/api/email/send-one",
+        {
+          lead: {
+            _id: leadId,
+            email: customer.email,
+            name: customer.name,
+            ...(locationIDs.length ? { locationID: locationIDs } : {}),
+          },
+          subject: emailSubject.trim(),
+          body: emailBody.trim(),
+          scheduleNow: true,
+        },
+        preferredLocationID
+          ? { headers: { "x-location-id": preferredLocationID } }
+          : {},
+      );
       if (result.success) {
         setMsgSuccess("Email sent.");
         setEmailSubject("");
