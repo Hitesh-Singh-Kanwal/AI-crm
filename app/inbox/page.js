@@ -93,7 +93,13 @@ function buildInboxData(smsRecords, emailRecords) {
 
   for (const rec of emailRecords) {
     const lead = rec.leadID
-    const email = rec.to || rec.email || lead?.email || ''
+    const status = String(rec?.status || '').toLowerCase()
+    const isInbound = status === 'received' || status === 'inbound'
+    const email =
+      lead?.email ||
+      (isInbound ? rec.from : rec.to) ||
+      rec.email ||
+      ''
     const key = lead?._id ? `lead-${lead._id}` : `email-${String(email).replace(/\W/g, '_')}`
     if (!contactGroups[key]) {
       contactGroups[key] = {
@@ -885,9 +891,12 @@ function InboxPageContent() {
   const filterRecordsByRecipient = (records, contactEmail) => {
     const normalized = normalizeEmailAddress(contactEmail)
     if (!normalized) return records
-    return records.filter(
-      (r) => normalizeEmailAddress(r.to || r.email || r.leadID?.email) === normalized,
-    )
+    return records.filter((r) => {
+      const to = normalizeEmailAddress(r.to || r.email || r.leadID?.email)
+      const from = normalizeEmailAddress(r.from)
+      // Outbound stores the lead in `to`; inbound replies store the lead in `from`.
+      return to === normalized || from === normalized
+    })
   }
 
   const fetchConversationEmailHistory = useCallback(async (conversationId) => {
@@ -918,7 +927,9 @@ function InboxPageContent() {
         records = filterRecordsByRecipient(allRecords, contactEmail)
       }
 
-      const emailMsgs = records.map(mapEmailHistoryRecord)
+      const emailMsgs = records.map((r) =>
+        mapEmailHistoryRecord(r, conv?.contact?.name || null),
+      )
       setThreadMessages((prev) => {
         const existing = prev[conversationId] || []
         const smsOnly = existing.filter((m) => m.channel === 'SMS')
