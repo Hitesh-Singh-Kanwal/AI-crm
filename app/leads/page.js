@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Plus, Phone, Mail, MessageSquare, MoreHorizontal, UserCheck } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,8 @@ import BulkCreateLeadsDialog from './components/BulkCreateLeadsDialog'
 import LeadsQuickBar from '@/components/leads/LeadsQuickBar'
 import LeadsFilterPanel from '@/components/leads/LeadsFilterPanel'
 import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
+import DynamicListMemberSendDialog from '@/components/dynamic-list/DynamicListMemberSendDialog'
+import BulkSendActionBar from '@/components/shared/BulkSendActionBar'
 import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
@@ -54,8 +56,24 @@ const BOOKING_STATUS_STYLES = {
 
 const ROWS_PER_PAGE = 10
 
+function toRecipientLead(lead) {
+  if (!lead?._id) return null
+  return {
+    _id: lead._id,
+    name: lead.name,
+    email: lead.email,
+    phoneNumber: lead.phoneNumber,
+    locationID: lead.locationID,
+    type: 'Lead',
+  }
+}
+
 export default function LeadsPage() {
   const [selectedIds, setSelectedIds] = useState([])
+  const [selectedLeadsData, setSelectedLeadsData] = useState([])
+  const [selectingAll, setSelectingAll] = useState(false)
+  const [sendDialogOpen, setSendDialogOpen] = useState(false)
+  const [sendChannel, setSendChannel] = useState('SMS')
   const [currentPage, setCurrentPage] = useState(1)
   const [leads, setLeads] = useState([])
   const [totalCount, setTotalCount] = useState(0)
@@ -75,6 +93,15 @@ export default function LeadsPage() {
   const [convertingId, setConvertingId] = useState(null)
 
   const totalPages = Math.max(1, Math.ceil((totalCount || 0) / ROWS_PER_PAGE))
+  const pageLeadIds = useMemo(() => leads.map((l) => l._id).filter(Boolean), [leads])
+  const allOnPageSelected =
+    pageLeadIds.length > 0 && pageLeadIds.every((id) => selectedIds.includes(id))
+  const selectedLeads = selectedLeadsData
+
+  const clearSelection = () => {
+    setSelectedIds([])
+    setSelectedLeadsData([])
+  }
 
   const loadLeads = useCallback(async (page, nextFilters) => {
     setLoading(true)
@@ -88,9 +115,9 @@ export default function LeadsPage() {
 
       const result = await api.get(`/api/lead?${params.toString()}`)
       if (result.success) {
-        let data = result.data || []
-        const pagination = result.data?.pagination ?? result.pagination
-        const total = pagination?.total || (result.data ? result.data.length : 0)
+        const data = Array.isArray(result.data) ? result.data : result.data?.leads || []
+        const pagination = result.pagination ?? result.data?.pagination
+        const total = pagination?.total ?? data.length
         const nextTotalPages = Math.max(1, Math.ceil((total || 0) / ROWS_PER_PAGE))
         if (page > nextTotalPages) {
           setCurrentPage(nextTotalPages)
@@ -107,7 +134,6 @@ export default function LeadsPage() {
       toast.error('Error', { description: 'Unable to load leads' })
     } finally {
       setLoading(false)
-      setSelectedIds([])
     }
   }, [])
 
@@ -137,6 +163,7 @@ export default function LeadsPage() {
   }, [currentPage, filters, loadLeads])
 
   const applyFilters = (next) => {
+    clearSelection()
     setFilters(sanitizeLeadFilters(next))
     setCurrentPage(1)
     setFilterPanelOpen(false)
@@ -170,13 +197,64 @@ export default function LeadsPage() {
     )
   }
 
-  const toggleOne = (id) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  const toggleOne = (lead) => {
+    if (!lead?._id) return
+    const isSelected = selectedIds.includes(lead._id)
+    if (isSelected) {
+      setSelectedIds((prev) => prev.filter((id) => id !== lead._id))
+      setSelectedLeadsData((prev) => prev.filter((item) => item._id !== lead._id))
+      return
+    }
+    const recipient = toRecipientLead(lead)
+    setSelectedIds((prev) => [...prev, lead._id])
+    setSelectedLeadsData((prev) => [...prev.filter((item) => item._id !== lead._id), recipient])
   }
 
   const toggleAll = () => {
-    if (selectedIds.length === leads.length) setSelectedIds([])
-    else setSelectedIds(leads.map((l) => l._id))
+    if (allOnPageSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !pageLeadIds.includes(id)))
+      setSelectedLeadsData((prev) => prev.filter((lead) => !pageLeadIds.includes(lead._id)))
+      return
+    }
+    const toAdd = leads.map(toRecipientLead).filter(Boolean).filter((lead) => !selectedIds.includes(lead._id))
+    setSelectedIds((prev) => [...new Set([...prev, ...toAdd.map((lead) => lead._id)])])
+    setSelectedLeadsData((prev) => {
+      const existingIds = new Set(prev.map((lead) => lead._id))
+      return [...prev, ...toAdd.filter((lead) => !existingIds.has(lead._id))]
+    })
+  }
+
+  const selectAllMatching = async () => {
+    if (selectingAll || totalCount <= leads.length) return
+    setSelectingAll(true)
+    try {
+      const sanitized = sanitizeLeadFilters(filters)
+      const params = buildLeadQueryParams({
+        page: 1,
+        limit: totalCount,
+        filters: sanitized,
+      })
+      const result = await api.get(`/api/lead?${params.toString()}`)
+      if (!result.success) {
+        toast.error('Failed to select all', { description: result.error || 'Could not load all leads.' })
+        return
+      }
+      const data = Array.isArray(result.data) ? result.data : result.data?.leads || []
+      const allLeads = data.map(toRecipientLead).filter(Boolean)
+      setSelectedIds(allLeads.map((lead) => lead._id))
+      setSelectedLeadsData(allLeads)
+    } catch (e) {
+      console.error(e)
+      toast.error('Error', { description: 'Could not select all leads.' })
+    } finally {
+      setSelectingAll(false)
+    }
+  }
+
+  const openSendDialog = (channel) => {
+    if (!selectedLeads.length) return
+    setSendChannel(channel)
+    setSendDialogOpen(true)
   }
 
   const openCreateDialog = () => {
@@ -230,6 +308,8 @@ export default function LeadsPage() {
       const result = await api.delete(`/api/lead/${id}`)
       if (result.success) {
         toast.success('Deleted', { description: 'Lead deleted successfully' })
+        setSelectedIds((prev) => prev.filter((x) => x !== id))
+        setSelectedLeadsData((prev) => prev.filter((item) => item._id !== id))
         refreshLeads()
       } else {
         toast.error('Delete failed', { description: result.error || 'Unable to delete lead' })
@@ -269,6 +349,7 @@ export default function LeadsPage() {
         <LeadsQuickBar
           filters={filters}
           onChange={(next) => {
+            clearSelection()
             setFilters(sanitizeLeadFilters(next))
             setCurrentPage(1)
           }}
@@ -281,6 +362,21 @@ export default function LeadsPage() {
           leadReasons={leadReasons}
         />
 
+        <div className="mt-4">
+          <BulkSendActionBar
+            selectedCount={selectedLeads.length}
+            entityLabel="lead"
+            onSendSms={() => openSendDialog('SMS')}
+            onSendEmail={() => openSendDialog('Email')}
+            onClear={clearSelection}
+            showSelectAll={allOnPageSelected}
+            selectAllTotal={totalCount}
+            pageCount={leads.length}
+            onSelectAll={selectAllMatching}
+            selectingAll={selectingAll}
+          />
+        </div>
+
         <div className="mt-6 rounded-xl border border-border bg-card overflow-hidden min-h-[560px] flex flex-col">
           <div className="flex-1">
           <Table>
@@ -288,7 +384,7 @@ export default function LeadsPage() {
               <TableRow className="border-b border-border hover:bg-transparent bg-muted/30">
                 <TableHead className="w-12 py-3 pl-4 pr-0">
                   <Checkbox
-                    checked={selectedIds.length === leads.length && leads.length > 0}
+                    checked={allOnPageSelected}
                     onClick={toggleAll}
                     className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
                   />
@@ -321,14 +417,14 @@ export default function LeadsPage() {
                   <TableCell className="py-3 pl-4 pr-0" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedIds.includes(lead._id)}
-                      onClick={() => toggleOne(lead._id)}
+                      onClick={() => toggleOne(lead)}
                       className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
                     />
                   </TableCell>
                   <TableCell className="py-3 px-4">
                     <div className="flex items-center gap-3">
                       <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground shrink-0">
-                        {lead.name.charAt(0)}
+                        {lead.name?.charAt(0) || '?'}
                       </div>
                       <div>
                         <p className="text-sm font-normal text-foreground leading-tight">{lead.name}</p>
@@ -485,6 +581,16 @@ export default function LeadsPage() {
           open={bulkDialogOpen}
           onClose={() => setBulkDialogOpen(false)}
           onRefresh={refreshLeads}
+        />
+
+        <DynamicListMemberSendDialog
+          open={sendDialogOpen}
+          onClose={() => setSendDialogOpen(false)}
+          leads={selectedLeads}
+          initialChannel={sendChannel}
+          entityLabel="lead"
+          recipientType="Lead"
+          onSent={clearSelection}
         />
       </div>
     </MainLayout>

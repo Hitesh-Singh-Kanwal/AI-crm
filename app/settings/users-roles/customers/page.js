@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink, SlidersHorizontal, X, Users, MapPin, Wallet, ListPlus } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -8,9 +8,12 @@ import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import CustomersFilterPanel from '@/components/customers/CustomersFilterPanel'
 import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
+import DynamicListMemberSendDialog from '@/components/dynamic-list/DynamicListMemberSendDialog'
+import BulkSendActionBar from '@/components/shared/BulkSendActionBar'
 import {
   EMPTY_CUSTOMER_FILTERS,
   sanitizeCustomerFilters,
@@ -366,9 +369,36 @@ export default function CustomersPage() {
   const [listDialogOpen, setListDialogOpen] = useState(false)
   const [prefillList, setPrefillList] = useState(null)
 
+  const [selectedIds, setSelectedIds] = useState([])
+  const [selectedCustomersData, setSelectedCustomersData] = useState([])
+  const [selectingAll, setSelectingAll] = useState(false)
+  const [sendDialogOpen, setSendDialogOpen] = useState(false)
+  const [sendChannel, setSendChannel] = useState('SMS')
+
   const toast = useToast()
 
   const isFiltered = hasActiveCustomerFilters({ ...filters, search: debouncedSearch, teacherID: teacherFilter })
+  const pageCustomerIds = useMemo(() => customers.map((c) => c._id).filter(Boolean), [customers])
+  const allOnPageSelected =
+    pageCustomerIds.length > 0 && pageCustomerIds.every((id) => selectedIds.includes(id))
+  const selectedCustomers = selectedCustomersData
+
+  const clearSelection = () => {
+    setSelectedIds([])
+    setSelectedCustomersData([])
+  }
+
+  const toRecipientCustomer = (customer) => {
+    if (!customer?._id) return null
+    return {
+      _id: customer._id,
+      name: customer.name,
+      email: customer.email,
+      phoneNumber: customer.phoneNumber,
+      locationID: customer.locationID,
+      type: 'Customer',
+    }
+  }
 
   useEffect(() => {
     api.get('/api/location?limit=200').then((res) => {
@@ -393,7 +423,10 @@ export default function CustomersPage() {
     return () => clearTimeout(timer)
   }, [search])
 
-  useEffect(() => { setCurrentPage(1) }, [debouncedSearch, teacherFilter, filters])
+  useEffect(() => {
+    clearSelection()
+    setCurrentPage(1)
+  }, [debouncedSearch, teacherFilter, filters])
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true)
@@ -401,7 +434,7 @@ export default function CustomersPage() {
     const params = buildCustomerQueryParams({ page: currentPage, limit, filters: sanitized })
     const result = await api.get(`/api/customer?${params}`)
     if (result.success) {
-      setCustomers(result.data || [])
+      setCustomers(Array.isArray(result.data) ? result.data : [])
       const t = result.pagination?.total ?? result.total ?? 0
       setTotal(t)
       setTotalPages(Math.max(1, Math.ceil(t / limit)))
@@ -411,12 +444,73 @@ export default function CustomersPage() {
 
   useEffect(() => { fetchCustomers() }, [fetchCustomers])
 
+  const toggleOne = (customer) => {
+    if (!customer?._id) return
+    const isSelected = selectedIds.includes(customer._id)
+    if (isSelected) {
+      setSelectedIds((prev) => prev.filter((id) => id !== customer._id))
+      setSelectedCustomersData((prev) => prev.filter((item) => item._id !== customer._id))
+      return
+    }
+    const recipient = toRecipientCustomer(customer)
+    setSelectedIds((prev) => [...prev, customer._id])
+    setSelectedCustomersData((prev) => [...prev.filter((item) => item._id !== customer._id), recipient])
+  }
+
+  const toggleAllOnPage = () => {
+    if (allOnPageSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !pageCustomerIds.includes(id)))
+      setSelectedCustomersData((prev) => prev.filter((c) => !pageCustomerIds.includes(c._id)))
+      return
+    }
+    const toAdd = customers
+      .map(toRecipientCustomer)
+      .filter(Boolean)
+      .filter((c) => !selectedIds.includes(c._id))
+    setSelectedIds((prev) => [...new Set([...prev, ...toAdd.map((c) => c._id)])])
+    setSelectedCustomersData((prev) => {
+      const existingIds = new Set(prev.map((c) => c._id))
+      return [...prev, ...toAdd.filter((c) => !existingIds.has(c._id))]
+    })
+  }
+
+  const selectAllMatching = async () => {
+    if (selectingAll || total <= customers.length) return
+    setSelectingAll(true)
+    try {
+      const sanitized = sanitizeCustomerFilters({ ...filters, search: debouncedSearch, teacherID: teacherFilter })
+      const params = buildCustomerQueryParams({ page: 1, limit: total, filters: sanitized })
+      const result = await api.get(`/api/customer?${params}`)
+      if (!result.success) {
+        toast.error(result.error || 'Could not load all customers.')
+        return
+      }
+      const data = Array.isArray(result.data) ? result.data : []
+      const allCustomers = data.map(toRecipientCustomer).filter(Boolean)
+      setSelectedIds(allCustomers.map((c) => c._id))
+      setSelectedCustomersData(allCustomers)
+    } catch (e) {
+      console.error(e)
+      toast.error('Could not select all customers.')
+    } finally {
+      setSelectingAll(false)
+    }
+  }
+
+  const openSendDialog = (channel) => {
+    if (!selectedCustomers.length) return
+    setSendChannel(channel)
+    setSendDialogOpen(true)
+  }
+
   const handleDelete = async () => {
     if (!deleteTarget) return
     setDeleting(true)
     const result = await api.delete(`/api/customer/${deleteTarget._id}`)
     if (result.success) {
       toast.success('Customer deleted.')
+      setSelectedIds((prev) => prev.filter((id) => id !== deleteTarget._id))
+      setSelectedCustomersData((prev) => prev.filter((item) => item._id !== deleteTarget._id))
       setDeleteTarget(null)
       fetchCustomers()
     } else {
@@ -516,7 +610,10 @@ export default function CustomersPage() {
               variant="ghost"
               size="sm"
               className="h-9"
-              onClick={() => setFilters(EMPTY_CUSTOMER_FILTERS)}
+              onClick={() => {
+                clearSelection()
+                setFilters(EMPTY_CUSTOMER_FILTERS)
+              }}
             >
               Clear filters
             </Button>
@@ -528,6 +625,7 @@ export default function CustomersPage() {
           appliedFilters={filters}
           onClose={() => setFilterPanelOpen(false)}
           onApply={(next) => {
+            clearSelection()
             setFilters(next)
             setFilterPanelOpen(false)
           }}
@@ -549,11 +647,32 @@ export default function CustomersPage() {
           onSaved={() => toast.success('Customer list created')}
         />
 
+        <BulkSendActionBar
+          selectedCount={selectedCustomers.length}
+          entityLabel="customer"
+          onSendSms={() => openSendDialog('SMS')}
+          onSendEmail={() => openSendDialog('Email')}
+          onClear={clearSelection}
+          showSelectAll={allOnPageSelected}
+          selectAllTotal={total}
+          pageCount={customers.length}
+          onSelectAll={selectAllMatching}
+          selectingAll={selectingAll}
+        />
+
         {/* Table */}
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40">
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={allOnPageSelected}
+                    onClick={toggleAllOnPage}
+                    disabled={customers.length === 0}
+                    className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
+                  />
+                </TableHead>
                 <TableHead className="text-[12px] font-semibold">Customer</TableHead>
                 <TableHead className="text-[12px] font-semibold">Contact</TableHead>
                 <TableHead className="text-[12px] font-semibold">Location</TableHead>
@@ -565,13 +684,13 @@ export default function CustomersPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-12 text-center">
+                  <TableCell colSpan={7} className="py-12 text-center">
                     <LoadingSpinner />
                   </TableCell>
                 </TableRow>
               ) : customers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-14 text-center">
+                  <TableCell colSpan={7} className="py-14 text-center">
                     <div className="mx-auto flex max-w-xs flex-col items-center gap-3">
                       <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
                         <Users className="h-5 w-5 text-primary" />
@@ -602,6 +721,13 @@ export default function CustomersPage() {
                     className="hover:bg-muted/20 cursor-pointer"
                     onClick={() => router.push(`/settings/users-roles/customers/${customer._id}`)}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.includes(customer._id)}
+                        onClick={() => toggleOne(customer)}
+                        className="rounded border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
+                      />
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
@@ -704,6 +830,16 @@ export default function CustomersPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <DynamicListMemberSendDialog
+        open={sendDialogOpen}
+        onClose={() => setSendDialogOpen(false)}
+        leads={selectedCustomers}
+        initialChannel={sendChannel}
+        entityLabel="customer"
+        recipientType="Customer"
+        onSent={clearSelection}
+      />
     </MainLayout>
   )
 }
