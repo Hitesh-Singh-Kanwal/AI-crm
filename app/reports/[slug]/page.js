@@ -4,6 +4,7 @@ import { notFound, useParams } from 'next/navigation'
 import ReportPageShell from '@/components/reports/ReportPageShell'
 import { GenericReportTable } from '@/components/reports/GenericReportTable'
 import { TeacherExpandableReportTable } from '@/components/reports/TeacherExpandableReportTable'
+import { TeacherLessonsTaughtReport } from '@/components/reports/TeacherLessonsTaughtReport'
 import { getReportBySlug } from '@/lib/reports/reportCatalog'
 import { getReportColumns } from '@/lib/reports/reportColumns'
 
@@ -21,8 +22,6 @@ const DEDICATED_SLUGS = new Set([
   'callbacks',
 ])
 
-const TEACHER_EXPANDABLE_SLUGS = new Set(['teacher-performance', 'teacher-lesson-count'])
-
 export default function DynamicReportPage() {
   const params = useParams()
   const slug = params?.slug
@@ -34,6 +33,28 @@ export default function DynamicReportPage() {
     notFound()
   }
 
+  const TableComponent = (props) => {
+    if (slug === 'teacher-performance') {
+      return (
+        <TeacherLessonsTaughtReport
+          {...props}
+          emptyLabel={`No teachers found for ${meta.title}.`}
+        />
+      )
+    }
+    if (slug === 'teacher-lesson-count') {
+      return (
+        <TeacherExpandableReportTable
+          {...props}
+          slug={slug}
+          columns={columns}
+          emptyLabel={`No rows for ${meta.title}.`}
+        />
+      )
+    }
+    return <GenericReportTable {...props} columns={columns} emptyLabel={`No rows for ${meta.title}.`} />
+  }
+
   return (
     <ReportPageShell
       slug={slug}
@@ -43,18 +64,7 @@ export default function DynamicReportPage() {
       showLeadSource={meta.filters?.includes('leadSource')}
       showComparison={Boolean(meta.hasComparison)}
       showActiveWindow={Boolean(meta.hasActiveWindow)}
-      TableComponent={(props) =>
-        TEACHER_EXPANDABLE_SLUGS.has(slug) ? (
-          <TeacherExpandableReportTable
-            {...props}
-            slug={slug}
-            columns={columns}
-            emptyLabel={`No rows for ${meta.title}.`}
-          />
-        ) : (
-          <GenericReportTable {...props} columns={columns} emptyLabel={`No rows for ${meta.title}.`} />
-        )
-      }
+      TableComponent={TableComponent}
     />
   )
 }

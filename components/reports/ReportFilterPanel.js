@@ -23,6 +23,7 @@ export function ReportFilterPanel({
   catalogKey,
   columns = [],
   defaultDateRangeDays = 30,
+  timeZone,
   savedViewsSlot = null,
 }) {
   const [draft, setDraft] = useState(appliedFilters)
@@ -44,7 +45,7 @@ export function ReportFilterPanel({
       : defaultDateRangeDays
 
   function resetDraft() {
-    const bounds = dateBoundsFromPresetDays(defaultDateRangeDays || 30)
+    const bounds = dateBoundsFromPresetDays(defaultDateRangeDays || 30, timeZone)
     setDraft({
       ...draft,
       ...bounds,
@@ -94,7 +95,7 @@ export function ReportFilterPanel({
               defaultDays={defaultDateRangeDays}
               onChange={(next) => {
                 if (typeof next === 'number') {
-                  const bounds = dateBoundsFromPresetDays(next)
+                  const bounds = dateBoundsFromPresetDays(next, timeZone)
                   setDraft((d) => ({ ...d, ...bounds, datePreset: String(next) }))
                   return
                 }

@@ -20,6 +20,7 @@ import LocationSelector from "@/components/shared/LocationSelector";
 const SERVICE_TYPES = [
   { value: "private", label: "Private" },
   { value: "group", label: "Group" },
+  { value: "intro", label: "Intro" },
   { value: "todo", label: "Todo" },
 ];
 

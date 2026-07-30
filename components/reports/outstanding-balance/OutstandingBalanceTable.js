@@ -3,6 +3,7 @@
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
+import { useReportTimezone } from '@/lib/reports/ReportTimezoneContext'
 
 export const OUTSTANDING_BALANCE_COLUMNS = [
   { key: 'studentName', label: 'Student Name' },
@@ -17,6 +18,7 @@ export const OUTSTANDING_BALANCE_COLUMNS = [
 ]
 
 export function OutstandingBalanceTable({ rows, onRowClick }) {
+  const timeZone = useReportTimezone()
   if (!rows.length) {
     return <p className="py-8 text-center text-sm text-muted-foreground">No outstanding balances found for the selected filters.</p>
   }
@@ -35,7 +37,7 @@ export function OutstandingBalanceTable({ rows, onRowClick }) {
           {rows.map((row) => (
             <TableRow key={row.id} className={reportTableRowClass} onClick={() => onRowClick(row)}>
               {OUTSTANDING_BALANCE_COLUMNS.map((col) => (
-                <TableCell key={col.key} className={reportTableCellClass}>{formatReportCellValue(row[col.key], col)}</TableCell>
+                <TableCell key={col.key} className={reportTableCellClass}>{formatReportCellValue(row[col.key], col, timeZone)}</TableCell>
               ))}
             </TableRow>
           ))}
