@@ -1,18 +1,19 @@
 'use client'
 
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 import { useReportTimezone } from '@/lib/reports/ReportTimezoneContext'
+import { computeColumnTotals, formatColumnTotal } from '@/lib/reports/reportTotals'
 
 export const PAYMENT_PLAN_COLUMNS = [
   { key: 'studentName', label: 'Student Name' },
   { key: 'studioName', label: 'Studio' },
   { key: 'teacherName', label: 'Teacher' },
   { key: 'programName', label: 'Program' },
-  { key: 'planTotal', label: 'Plan Total' },
-  { key: 'installmentsPaid', label: 'Installments Paid' },
-  { key: 'installmentsRemaining', label: 'Installments Remaining' },
+  { key: 'planTotal', label: 'Plan Total', total: true },
+  { key: 'installmentsPaid', label: 'Installments Paid', total: true },
+  { key: 'installmentsRemaining', label: 'Installments Remaining', total: true },
   { key: 'nextDueDate', label: 'Next Due Date' },
   { key: 'paymentStatus', label: 'Payment Status' },
 ]
@@ -22,6 +23,8 @@ export function PaymentPlanTable({ rows, onRowClick }) {
   if (!rows.length) {
     return <p className="py-8 text-center text-sm text-muted-foreground">No payment plans found for the selected filters.</p>
   }
+
+  const totals = computeColumnTotals(rows, PAYMENT_PLAN_COLUMNS)
 
   return (
     <ReportTableShell>
@@ -42,6 +45,15 @@ export function PaymentPlanTable({ rows, onRowClick }) {
             </TableRow>
           ))}
         </TableBody>
+        <TableFooter>
+          <TableRow className="hover:bg-transparent">
+            {PAYMENT_PLAN_COLUMNS.map((col, idx) => (
+              <TableCell key={col.key} className={reportTableCellClass}>
+                {idx === 0 ? 'Page Total' : col.key in totals ? formatColumnTotal(totals[col.key]) : ''}
+              </TableCell>
+            ))}
+          </TableRow>
+        </TableFooter>
       </Table>
     </ReportTableShell>
   )

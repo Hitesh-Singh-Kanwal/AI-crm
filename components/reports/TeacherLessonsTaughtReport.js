@@ -193,10 +193,10 @@ function StudioOverviewByService({ byService }) {
                 <TypeBadge serviceType={row.serviceType} />
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums text-foreground">
-                {row.lessons ?? 0}
-                {row.serviceType === 'group' && (row.sessionCount ?? 0) > 0 ? (
+                {row.serviceType === 'group' ? row.sessionCount ?? 0 : row.lessons ?? 0}
+                {row.serviceType === 'group' && (row.lessons ?? 0) > 0 ? (
                   <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                    {row.sessionCount} class{row.sessionCount === 1 ? '' : 'es'}
+                    {row.lessons} attendance{row.lessons === 1 ? '' : 's'}
                   </span>
                 ) : null}
               </td>
