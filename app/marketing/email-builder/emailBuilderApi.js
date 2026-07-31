@@ -263,12 +263,16 @@ export function buildVideoEmailHtml(videoUrl, posterUrl = '', style = '') {
     ? `<img src="${safePlayIcon}" width="64" height="64" alt="Play" data-crm-play="1" style="display:inline-block;width:64px;height:64px;border:0;outline:none;text-decoration:none;max-width:64px;" />`
     : ''
 
-  // %-padding keeps ~16:9 as the column width changes; bgcolor + background-color
-  // lock the tile so dark-mode clients don't invert the video shell to white/grey.
-  const cellStyle = safePoster
-    ? `width:100%;max-width:100%;background-image:url(&quot;${safePoster}&quot;);background-repeat:no-repeat;background-position:center center;background-size:cover;background-color:#0f172a;border-radius:8px;padding:28% 16px;text-align:center;vertical-align:middle;`
-    : 'width:100%;max-width:100%;background-color:#0f172a;border-radius:8px;padding:28% 16px;text-align:center;vertical-align:middle;'
+  // The poster is used as a CSS background-image on the <td> (via bgAttr + cellStyle).
+  // No separate <img> for the poster — that caused it to render twice (once as a plain
+  // image, once as the video tile background). The <table width="100%"> and <td width="100%">
+  // HTML attributes are sufficient to force full width in Gmail Android without a width-driver.
+  // Fixed pixel padding (100px) avoids Gmail stripping %-based padding.
+  // poster is auto-populated from YouTube/Vimeo when no custom thumbnail is uploaded.
   const bgAttr = safePoster ? ` background="${safePoster}"` : ''
+  const cellStyle = safePoster
+    ? `width:100%;max-width:100%;background-image:url(&quot;${safePoster}&quot;);background-repeat:no-repeat;background-position:center center;background-size:cover;background-color:#0f172a;border-radius:8px;`
+    : 'width:100%;max-width:100%;background-color:#0f172a;border-radius:8px;'
 
   return [
     `<div data-crm-video="1"${styleAttr}>`,
@@ -276,7 +280,9 @@ export function buildVideoEmailHtml(videoUrl, posterUrl = '', style = '') {
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;width:100%;max-width:100%;">',
     '<tr>',
     `<td${bgAttr} bgcolor="#0f172a" width="100%" align="center" valign="middle" style="${cellStyle}">`,
-    playButton,
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;width:100%;"><tr>',
+    `<td align="center" valign="middle" style="padding:100px 16px;">${playButton}</td>`,
+    '</tr></table>',
     '</td>',
     '</tr>',
     '</table>',
@@ -298,6 +304,9 @@ export function ensureFluidEmailMedia(html) {
       return full
     }
     if (/\bdata-crm-play\b/i.test(attrs) || /email-assets\/play-button/i.test(attrs)) {
+      return full
+    }
+    if (/\bdata-crm-spacer\b/i.test(attrs)) {
       return full
     }
     let a = String(attrs || '').replace(/\s*\/\s*$/, '')

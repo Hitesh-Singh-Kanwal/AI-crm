@@ -43,6 +43,7 @@ import {
   buildVideoEmailHtml,
   extractYoutubeId,
   extractVimeoId,
+  deleteEmailMedia,
 } from '../emailBuilderApi'
 
 import {
@@ -214,16 +215,16 @@ function SortableEmailBlock({ block, isSelected, onSelect, onRemove, onDuplicate
         return (
           <div style={baseStyle} className="text-center space-y-2">
             {poster || /^https?:\/\//i.test(url) ? (
-              <div className="relative inline-block max-w-full">
+              <div className="relative w-full block">
                 {poster ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={poster}
                     alt=""
-                    className="max-w-full h-auto max-h-48 mx-auto rounded-lg border border-slate-200 object-cover"
+                    className="w-full h-auto max-h-48 rounded-lg border border-slate-200 object-cover"
                   />
                 ) : (
-                  <div className="w-64 h-36 bg-slate-900 rounded-lg flex items-center justify-center mx-auto" />
+                  <div className="w-full h-36 bg-slate-900 rounded-lg flex items-center justify-center" />
                 )}
                 <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-900/85 ring-2 ring-white/90 shadow-lg pl-0.5">
@@ -482,7 +483,13 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
   }
 
   const removeBlock = (id) => {
-    setEmailBlocks((prev) => prev.filter((b) => b.id !== id))
+    setEmailBlocks((prev) => {
+      const block = prev.find((b) => b.id === id)
+      if (block?.type === 'video' && String(block.poster || '').includes('/email-media/')) {
+        deleteEmailMedia(block.poster).catch(() => {})
+      }
+      return prev.filter((b) => b.id !== id)
+    })
     if (selectedBlock === id) setSelectedBlock(null)
   }
 
@@ -493,6 +500,11 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
       ...block,
       id: `${Date.now()}`,
       styles: { ...(block.styles || {}) },
+      // Clear custom S3 poster on the copy — two blocks sharing one S3 key
+      // would break when either is removed.
+      ...(block.type === 'video' && String(block.poster || '').includes('/email-media/')
+        ? { poster: '' }
+        : {}),
     }
     setEmailBlocks((prev) => {
       const idx = prev.findIndex((b) => b.id === id)
@@ -588,7 +600,19 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
     const id = patch?.id || selectedBlock
     if (!id) return
     setEmailBlocks((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, ...patch, id: b.id } : b)),
+      prev.map((b) => {
+        if (b.id !== id) return b
+        // When poster is replaced with a different URL, delete the old S3 file.
+        if (
+          'poster' in patch &&
+          b.type === 'video' &&
+          String(b.poster || '').includes('/email-media/') &&
+          patch.poster !== b.poster
+        ) {
+          deleteEmailMedia(b.poster).catch(() => {})
+        }
+        return { ...b, ...patch, id: b.id }
+      }),
     )
   }
 
