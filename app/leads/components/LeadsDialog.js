@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { UserPlus, CalendarClock, Trash2, StickyNote } from 'lucide-react'
+import { UserPlus, CalendarClock, Trash2, StickyNote, Send } from 'lucide-react'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
@@ -50,8 +50,40 @@ export default function LeadsDialog({
   const [mode, setMode] = useState('create')
   const [savingCallbackDate, setSavingCallbackDate] = useState(false)
   const [savedCallbackDate, setSavedCallbackDate] = useState('')
+  const [sendingPaymentLink, setSendingPaymentLink] = useState(false)
+  const [paymentLinkForm, setPaymentLinkForm] = useState({ amount: '', description: 'Intro Lesson', channel: 'sms', showForm: false })
   const toast = useToast()
   const { stages: stageOptions } = useLeadStages()
+
+  const PAYMENT_LINK_STAGES = new Set(['engaged', 're_engaged', 'pending_payment'])
+
+  async function handleSendPaymentLink() {
+    if (!editingLead?._id) return
+    const { amount, description, channel } = paymentLinkForm
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      toast.error({ title: 'Validation', message: 'Enter a valid amount' })
+      return
+    }
+    if (!description) {
+      toast.error({ title: 'Validation', message: 'Enter a description' })
+      return
+    }
+    setSendingPaymentLink(true)
+    const result = await api.post('/api/payment-request/lead', {
+      leadID: editingLead._id,
+      amount: Number(amount),
+      description,
+      channel,
+    })
+    setSendingPaymentLink(false)
+    if (result.success) {
+      toast.success({ title: 'Payment link sent', message: `$${Number(amount).toFixed(2)} link sent via ${channel.toUpperCase()}` })
+      setPaymentLinkForm((p) => ({ ...p, showForm: false }))
+      onRefresh?.()
+    } else {
+      toast.error({ title: 'Failed to send', message: result.error || 'Unable to send the payment link' })
+    }
+  }
 
   useEffect(() => {
     if (!open) {
@@ -273,6 +305,72 @@ export default function LeadsDialog({
                 ))}
               </select>
             </div>
+            {/* Send Payment Link — shown for engaged/re_engaged leads in view mode */}
+            {viewOnly && editingLead?._id && PAYMENT_LINK_STAGES.has(editingLead.stage) && (
+              <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <Send className="h-3.5 w-3.5 text-muted-foreground" />
+                    Send Payment Link
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentLinkForm((p) => ({ ...p, showForm: !p.showForm }))}
+                    className="text-xs text-brand hover:underline"
+                  >
+                    {paymentLinkForm.showForm ? 'Hide' : 'Set up'}
+                  </button>
+                </div>
+                {paymentLinkForm.showForm && (
+                  <div className="space-y-2 pt-1">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-muted-foreground">Amount ($)</label>
+                        <Input
+                          type="number"
+                          min="1"
+                          step="0.01"
+                          value={paymentLinkForm.amount}
+                          onChange={(e) => setPaymentLinkForm((p) => ({ ...p, amount: e.target.value }))}
+                          placeholder="75.00"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-muted-foreground">Send via</label>
+                        <select
+                          value={paymentLinkForm.channel}
+                          onChange={(e) => setPaymentLinkForm((p) => ({ ...p, channel: e.target.value }))}
+                          className="h-8 w-full rounded-md border border-border bg-background text-sm px-2"
+                        >
+                          <option value="sms">SMS</option>
+                          <option value="email">Email</option>
+                          <option value="both">Both</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-muted-foreground">Description</label>
+                      <Input
+                        value={paymentLinkForm.description}
+                        onChange={(e) => setPaymentLinkForm((p) => ({ ...p, description: e.target.value }))}
+                        placeholder="Intro Lesson"
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSendPaymentLink}
+                      disabled={sendingPaymentLink}
+                      className="w-full"
+                    >
+                      {sendingPaymentLink ? 'Sending…' : 'Send Payment Link'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium mb-1">Booking Status</label>
               <select

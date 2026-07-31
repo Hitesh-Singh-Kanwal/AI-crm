@@ -34,6 +34,7 @@ const emptyLocation = () => ({
   email: '',
   status: 'active',
   timezone: DEFAULT_LOCATION_TIMEZONE,
+  emailConversationEnabled: false,
 })
 
 export default function LocationsDialog({ open, onClose, locations = [], onRefresh, initialLocationId = null }) {
@@ -98,6 +99,7 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
         email: editingLocation.email,
         status: editingLocation.status || 'active',
         timezone: editingLocation.timezone || DEFAULT_LOCATION_TIMEZONE,
+        emailConversationEnabled: Boolean(editingLocation.emailConversationEnabled),
       }
 
       const result = editingLocation._id
@@ -247,6 +249,44 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                     ? ` Selected: ${formatTimezoneLabel(editingLocation.timezone)}`
                     : ''}
                 </p>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-border">
+              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">AI Agent Settings</h3>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Email Conversations</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    When off (recommended), email is used for outbound workflows, payment links, and
+                    confirmations only — inbound emails are logged but the AI does not reply.
+                    Turn on to enable full back-and-forth email conversation.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(editingLocation.emailConversationEnabled)}
+                  onClick={() =>
+                    setEditingLocation((p) => ({
+                      ...p,
+                      emailConversationEnabled: !p.emailConversationEnabled,
+                    }))
+                  }
+                  className={[
+                    'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                    editingLocation.emailConversationEnabled
+                      ? 'bg-brand'
+                      : 'bg-muted',
+                  ].join(' ')}
+                >
+                  <span
+                    className={[
+                      'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform',
+                      editingLocation.emailConversationEnabled ? 'translate-x-5' : 'translate-x-0',
+                    ].join(' ')}
+                  />
+                </button>
               </div>
             </div>
 
