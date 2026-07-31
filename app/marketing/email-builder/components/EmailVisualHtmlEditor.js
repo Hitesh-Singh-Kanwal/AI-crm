@@ -95,9 +95,12 @@ export default function EmailVisualHtmlEditor({
   const toast = useToast()
   const iframeRef = useRef(null)
   const fileInputRef = useRef(null)
+  const posterFileInputRef = useRef(null)
   const savedRangeRef = useRef(null)
   const [ready, setReady] = useState(false)
   const [videoUrl, setVideoUrl] = useState('')
+  const [videoPoster, setVideoPoster] = useState('')
+  const [videoPosterUploading, setVideoPosterUploading] = useState(false)
   const [videoOpen, setVideoOpen] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkUrl, setLinkUrl] = useState('https://')
@@ -405,14 +408,48 @@ export default function EmailVisualHtmlEditor({
     setLinkOpen(false)
   }
 
+  const handleUploadVideoPoster = async (file) => {
+    if (!file) return
+    setVideoPosterUploading(true)
+    try {
+      const previous = String(videoPoster || '').trim()
+      const result = await uploadEmailMedia(file, {
+        replaceUrl: previous.includes('/email-media/') ? previous : undefined,
+      })
+      if (!result.success || !result.url) {
+        toast.error({ title: 'Upload failed', message: result.error || 'Could not upload thumbnail.' })
+        return
+      }
+      setVideoPoster(result.url)
+    } catch (e) {
+      console.error(e)
+      toast.error({ title: 'Upload failed', message: 'Could not upload thumbnail.' })
+    } finally {
+      setVideoPosterUploading(false)
+      if (posterFileInputRef.current) posterFileInputRef.current.value = ''
+    }
+  }
+
+  const closeVideoDialog = () => {
+    // Delete an uploaded-but-not-inserted poster from S3 to avoid orphans.
+    const pending = String(videoPoster || '').trim()
+    if (pending.includes('/email-media/')) {
+      deleteEmailMedia(pending).catch(() => {})
+    }
+    setVideoOpen(false)
+    setVideoUrl('')
+    setVideoPoster('')
+  }
+
   const applyVideo = () => {
     const url = normalizeExternalMediaUrl(videoUrl)
     if (!url) {
       toast.error({ title: 'Invalid URL', message: 'Paste a valid YouTube, Vimeo, or video https link.' })
       return
     }
-    insertHtml(buildVideoEmailHtml(url), 'cursor')
+    insertHtml(buildVideoEmailHtml(url, videoPoster), 'cursor')
     setVideoUrl('')
+    setVideoPoster('')
     setVideoOpen(false)
     toast.success({ title: 'Video added', message: 'Email-safe thumbnail link inserted.' })
   }
@@ -502,6 +539,8 @@ export default function EmailVisualHtmlEditor({
             disabled={!hasHtml}
             onClick={() => {
               saveSelection()
+              setVideoUrl('')
+              setVideoPoster('')
               setVideoOpen(true)
             }}
           />
@@ -658,12 +697,12 @@ export default function EmailVisualHtmlEditor({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={videoOpen} onClose={() => setVideoOpen(false)} maxWidth="lg">
-        <DialogContent onClose={() => setVideoOpen(false)}>
+      <Dialog open={videoOpen} onClose={closeVideoDialog} maxWidth="lg">
+        <DialogContent onClose={closeVideoDialog}>
           <DialogHeader>
             <DialogTitle>Insert video</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 pt-2">
+          <div className="space-y-4 pt-2">
             <p className="text-xs text-slate-500">
               Emails show a thumbnail that opens this link — inline playback is not supported by most clients.
             </p>
@@ -675,11 +714,62 @@ export default function EmailVisualHtmlEditor({
                 placeholder="https://youtube.com/watch?v=…"
               />
             </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Custom thumbnail (optional)</Label>
+              <p className="text-[10px] text-slate-400 -mt-1">
+                Leave empty to auto-use the YouTube / Vimeo thumbnail.
+              </p>
+              <input
+                ref={posterFileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                className="hidden"
+                onChange={(e) => handleUploadVideoPoster(e.target.files?.[0])}
+              />
+              {videoPoster && /^https?:\/\//i.test(videoPoster) ? (
+                <div className="relative rounded-lg border border-slate-200 overflow-hidden bg-slate-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={videoPoster} alt="Thumbnail preview" className="w-full max-h-28 object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (videoPoster.includes('/email-media/')) {
+                        deleteEmailMedia(videoPoster).catch(() => {})
+                      }
+                      setVideoPoster('')
+                    }}
+                    className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors text-xs font-bold"
+                    title="Remove thumbnail"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full h-10"
+                disabled={videoPosterUploading}
+                onClick={() => posterFileInputRef.current?.click()}
+              >
+                <ImagePlus className="h-4 w-4 mr-2" />
+                {videoPosterUploading ? 'Uploading…' : videoPoster ? 'Replace thumbnail' : 'Upload thumbnail'}
+              </Button>
+              <div className="space-y-1">
+                <Label className="text-xs text-slate-500">Or paste thumbnail URL</Label>
+                <Input
+                  value={videoPoster}
+                  onChange={(e) => setVideoPoster(e.target.value)}
+                  placeholder="https://…"
+                  className="text-sm"
+                />
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setVideoOpen(false)}>
+              <Button variant="outline" size="sm" onClick={closeVideoDialog}>
                 Cancel
               </Button>
-              <Button variant="gradient" size="sm" onClick={applyVideo}>
+              <Button variant="gradient" size="sm" onClick={applyVideo} disabled={!videoUrl}>
                 Insert
               </Button>
             </div>
