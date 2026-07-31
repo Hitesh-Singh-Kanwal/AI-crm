@@ -3,13 +3,14 @@
 import { Fragment, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 import { buildReportQuery, parseReportFiltersFromSearchParams } from '@/lib/reports/reportFilters'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useReportTimezone } from '@/lib/reports/ReportTimezoneContext'
+import { computeColumnTotals, hasColumnTotals, formatColumnTotal } from '@/lib/reports/reportTotals'
 
 function formatAttendedDate(value) {
   if (!value) return '—'
@@ -163,6 +164,9 @@ export function TeacherExpandableReportTable({
     return <p className="py-8 text-center text-sm text-muted-foreground">{emptyLabel}</p>
   }
 
+  const showTotals = hasColumnTotals(columns)
+  const totals = showTotals ? computeColumnTotals(rows, columns) : null
+
   return (
     <ReportTableShell>
       <Table>
@@ -215,6 +219,18 @@ export function TeacherExpandableReportTable({
             )
           })}
         </TableBody>
+        {showTotals && (
+          <TableFooter>
+            <TableRow className="hover:bg-transparent">
+              <TableCell className={reportTableCellClass} />
+              {columns.map((col, idx) => (
+                <TableCell key={col.key} className={reportTableCellClass}>
+                  {idx === 0 ? 'Page Total' : col.key in totals ? formatColumnTotal(totals[col.key]) : ''}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableFooter>
+        )}
       </Table>
     </ReportTableShell>
   )

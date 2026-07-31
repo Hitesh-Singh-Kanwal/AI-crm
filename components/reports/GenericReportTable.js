@@ -1,9 +1,10 @@
 'use client'
 
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 import { useReportTimezone } from '@/lib/reports/ReportTimezoneContext'
+import { computeColumnTotals, hasColumnTotals, formatColumnTotal } from '@/lib/reports/reportTotals'
 
 export function GenericReportTable({ rows, columns, onRowClick, emptyLabel = 'No rows found for the selected filters.' }) {
   const timeZone = useReportTimezone()
@@ -11,6 +12,9 @@ export function GenericReportTable({ rows, columns, onRowClick, emptyLabel = 'No
   if (!rows.length) {
     return <p className="py-8 text-center text-sm text-muted-foreground">{emptyLabel}</p>
   }
+
+  const showTotals = hasColumnTotals(columns)
+  const totals = showTotals ? computeColumnTotals(rows, columns) : null
 
   return (
     <ReportTableShell>
@@ -37,6 +41,17 @@ export function GenericReportTable({ rows, columns, onRowClick, emptyLabel = 'No
             </TableRow>
           ))}
         </TableBody>
+        {showTotals && (
+          <TableFooter>
+            <TableRow className="hover:bg-transparent">
+              {columns.map((col, idx) => (
+                <TableCell key={col.key} className={reportTableCellClass}>
+                  {idx === 0 ? 'Page Total' : col.key in totals ? formatColumnTotal(totals[col.key]) : ''}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableFooter>
+        )}
       </Table>
     </ReportTableShell>
   )
