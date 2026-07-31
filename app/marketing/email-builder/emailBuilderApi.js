@@ -263,19 +263,16 @@ export function buildVideoEmailHtml(videoUrl, posterUrl = '', style = '') {
     ? `<img src="${safePlayIcon}" width="64" height="64" alt="Play" data-crm-play="1" style="display:inline-block;width:64px;height:64px;border:0;outline:none;text-decoration:none;max-width:64px;" />`
     : ''
 
-  // Gmail Android silently strips percentage padding from <td> — the tile would collapse to ~0px tall.
-  // Fix: use a 1px-tall width-driver <img> to lock the column width, then a nested <td> with fixed
-  // pixel padding (100px top/bottom) to size the play-button area reliably.
+  // The poster is used as a CSS background-image on the <td> (via bgAttr + cellStyle).
+  // No separate <img> for the poster — that caused it to render twice (once as a plain
+  // image, once as the video tile background). The <table width="100%"> and <td width="100%">
+  // HTML attributes are sufficient to force full width in Gmail Android without a width-driver.
+  // Fixed pixel padding (100px) avoids Gmail stripping %-based padding.
   // poster is auto-populated from YouTube/Vimeo when no custom thumbnail is uploaded.
   const bgAttr = safePoster ? ` background="${safePoster}"` : ''
   const cellStyle = safePoster
     ? `width:100%;max-width:100%;background-image:url(&quot;${safePoster}&quot;);background-repeat:no-repeat;background-position:center center;background-size:cover;background-color:#0f172a;border-radius:8px;`
     : 'width:100%;max-width:100%;background-color:#0f172a;border-radius:8px;'
-  // data-crm-spacer="1" tells ensureFluidMediaInHtml (and FLUID_HEAD CSS) to keep
-  // this image at exactly 1px tall — it must never get height:auto applied to it.
-  const widthDriver = safePoster
-    ? `<img src="${safePoster}" width="600" height="1" alt="" data-crm-spacer="1" style="display:block;width:100%;max-width:100%;height:1px;border:0;line-height:1px;font-size:1px;" />`
-    : ''
 
   return [
     `<div data-crm-video="1"${styleAttr}>`,
@@ -283,7 +280,6 @@ export function buildVideoEmailHtml(videoUrl, posterUrl = '', style = '') {
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;width:100%;max-width:100%;">',
     '<tr>',
     `<td${bgAttr} bgcolor="#0f172a" width="100%" align="center" valign="middle" style="${cellStyle}">`,
-    widthDriver,
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;width:100%;"><tr>',
     `<td align="center" valign="middle" style="padding:100px 16px;">${playButton}</td>`,
     '</tr></table>',
