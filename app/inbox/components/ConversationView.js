@@ -10,8 +10,8 @@ import EmailMessageInput from './EmailMessageInput'
 import CallMessageInput from './CallMessageInput'
 import CallLogList from './CallLogList'
 import ConversationChannelTabs from './ConversationChannelTabs'
-import { isRichEmailHtml, ScaledInboxHtmlEmail } from './InboxHtmlEmailFrame'
-import { htmlToPlainText } from '@/lib/emailSend'
+import { ScaledInboxHtmlEmail, shouldRenderEmailAsRichHtml } from './InboxHtmlEmailFrame'
+import { htmlToPlainText, emailBodyToPlainText } from '@/lib/emailSend'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -341,7 +341,7 @@ export default function ConversationView({
                               </div>
                             </div>
 
-                            {isRichEmailHtml(message.contentHtml) ? (
+                            {shouldRenderEmailAsRichHtml(message.contentHtml) ? (
                               <div className="min-w-0 w-full overflow-hidden bg-card">
                                 <ScaledInboxHtmlEmail
                                   html={message.contentHtml}
@@ -351,18 +351,25 @@ export default function ConversationView({
                                 />
                               </div>
                             ) : (
-                              <div className="bg-card px-3.5 py-3 text-sm text-foreground">
-                                <div className="prose prose-sm max-w-none">
-                                  <ReactMarkdown
-                                    remarkPlugins={[remarkGfm, remarkBreaks]}
-                                    components={{
-                                      a: ({ node, ...props }) => (
-                                        <a {...props} target="_blank" rel="noreferrer noopener" />
-                                      ),
-                                    }}
-                                  >
-                                    {String(message.content || htmlToPlainText(message.contentHtml) || '')}
-                                  </ReactMarkdown>
+                              <div className="bg-card px-4 py-3.5 sm:px-5 sm:py-4">
+                                <div className="rounded-xl border border-border/70 bg-muted/30 px-3.5 py-3 text-[14px] leading-relaxed text-foreground">
+                                  <div className="prose prose-sm max-w-none prose-p:my-0 prose-p:leading-relaxed prose-a:text-[color:var(--studio-primary)]">
+                                    <ReactMarkdown
+                                      remarkPlugins={[remarkGfm, remarkBreaks]}
+                                      components={{
+                                        a: ({ node, ...props }) => (
+                                          <a {...props} target="_blank" rel="noreferrer noopener" />
+                                        ),
+                                      }}
+                                    >
+                                      {String(
+                                        emailBodyToPlainText(message.contentHtml) ||
+                                          message.content ||
+                                          htmlToPlainText(message.contentHtml) ||
+                                          '',
+                                      )}
+                                    </ReactMarkdown>
+                                  </div>
                                 </div>
                               </div>
                             )}
