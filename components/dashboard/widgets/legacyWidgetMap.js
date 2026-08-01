@@ -2,6 +2,7 @@
 export const LEGACY_WIDGET_MAP = {
   'pipeline-activity': ['pipeline', 'weekly-activity', 'conversion-funnel'],
   'booking-trend-follow-up': ['booking-trend', 'follow-up-effectiveness'],
+  'payment-rate-trend': ['booking-trend'],
   'leads-and-studio-breakdown': ['leads-by-source', 'studio-breakdown'],
   'response-rate': ['response-rate-day', 'response-rate-time'],
 }

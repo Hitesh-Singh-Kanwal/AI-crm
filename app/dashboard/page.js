@@ -51,21 +51,16 @@ export default function Dashboard() {
 
   if (admin) {
     return (
-      <MainLayout title="Dashboard" subtitle="Welcome back! Here's what's happening today.">
+      <MainLayout title="Dashboard" subtitle="Welcome back">
         {canSeeOwnerOverview && (
-          <div className="animate-fade-in mb-10">
+          <div className="animate-fade-in mb-6">
             <DashboardBuilder
               page="owner-dashboard"
               widgets={visibleWidgets}
               sharedProps={{ defaultRange: range }}
               dataLoading={ownerWarmingUp}
               toolbarExtra={
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-foreground/55">
-                    Period
-                  </span>
-                  <DateRangePresets value={range} onChange={setRange} />
-                </div>
+                <DateRangePresets value={range} onChange={setRange} />
               }
             />
           </div>
@@ -78,7 +73,7 @@ export default function Dashboard() {
   const dataLoading = (isLoading && !overview) || ownerWarmingUp
 
   return (
-    <MainLayout title="Dashboard" subtitle="Track performance and gain insights">
+    <MainLayout title="Dashboard">
       {error && !overview && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3">
           <p className="text-sm text-foreground">
@@ -98,16 +93,11 @@ export default function Dashboard() {
           sharedProps={{ ...(overview || {}), defaultRange: range }}
           dataLoading={dataLoading}
           toolbarExtra={
-            <div className="flex items-end gap-3">
+            <div className="flex items-center gap-2">
               {isValidating && overview && (
-                <span className="mb-2 text-[11px] text-muted-foreground">Updating…</span>
+                <span className="text-[11px] text-muted-foreground">Updating…</span>
               )}
-              <div className="flex flex-col gap-1">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-foreground/55">
-                  Period
-                </span>
-                <DateRangePresets value={range} onChange={setRange} />
-              </div>
+              <DateRangePresets value={range} onChange={setRange} />
             </div>
           }
         />

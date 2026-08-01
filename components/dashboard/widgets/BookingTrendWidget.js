@@ -13,7 +13,9 @@ const DETAIL_COLUMNS = [
   { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
 ]
 
-export default function BookingTrendWidget({ bookingRateTrend = [], defaultRange }) {
+export default function BookingTrendWidget({ bookingRateTrend, paymentRateTrend, defaultRange }) {
+  const trend = bookingRateTrend?.length ? bookingRateTrend : paymentRateTrend || []
+
   return (
     <Card>
       <WidgetTitleRow
@@ -27,10 +29,10 @@ export default function BookingTrendWidget({ bookingRateTrend = [], defaultRange
           />
         }
       />
-      {bookingRateTrend.length > 0 ? (
+      {trend.length > 0 ? (
         <div className="mt-4 h-[240px]">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={bookingRateTrend} margin={{ top: 8, right: 20, left: 0, bottom: 0 }}>
+            <AreaChart data={trend} margin={{ top: 8, right: 20, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="bookingFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="var(--side-gradient-end)" stopOpacity={0.45} />

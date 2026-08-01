@@ -439,23 +439,24 @@ export default function DashboardBuilder({
   const activeEntry = activeId ? registryById.get(activeId) : null
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-end gap-2">
-        {editing && (
-          <span className="mr-auto self-center text-[11px] text-muted-foreground">
-            Drag · resize · remove
-            {saveState === 'saving' && <span className="ml-1.5">· Saving…</span>}
-            {saveState === 'saved' && (
-              <span className="ml-1.5 inline-flex items-center gap-0.5 text-emerald-600">
-                <Check className="h-3 w-3" /> Saved
-              </span>
-            )}
-          </span>
-        )}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {toolbarExtra}
+          {editing && (
+            <span className="text-[11px] text-muted-foreground">
+              Drag · resize · remove
+              {saveState === 'saving' && <span className="ml-1.5">· Saving…</span>}
+              {saveState === 'saved' && (
+                <span className="ml-1.5 inline-flex items-center gap-0.5 text-emerald-600">
+                  <Check className="h-3 w-3" /> Saved
+                </span>
+              )}
+            </span>
+          )}
+        </div>
 
-        {toolbarExtra}
-
-        <div className="flex items-center gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
           {(editing || hiddenWidgets.length > 0) && (
             <Button variant="outline" size="sm" className="h-9 px-2.5 text-[13px]" onClick={() => setCatalogOpen(true)}>
               <Plus className="mr-1 h-3.5 w-3.5" />

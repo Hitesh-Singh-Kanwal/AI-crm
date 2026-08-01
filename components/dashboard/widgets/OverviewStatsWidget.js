@@ -15,25 +15,29 @@ const DETAIL_COLUMNS = [
 export default function OverviewStatsWidget({ overviewStats, defaultRange }) {
   const stats = overviewStats || {}
   const totalLeads = stats.totalLeads || { value: 0, trendPct: 0, trendType: 'up' }
-  const totalBookings = stats.totalBookings || { value: 0, trendPct: 0, trendType: 'up' }
-  const bookingRate = stats.bookingRate || { value: 0, trendPct: 0, trendType: 'up' }
+  const totalBookings =
+    stats.totalBookings || stats.paymentProgress || { value: 0, trendPct: 0, trendType: 'up' }
+  const bookingRate =
+    stats.bookingRate || stats.paymentRate || { value: 0, trendPct: 0, trendType: 'up' }
+
+  const num = (v) => Number(v) || 0
 
   const cards = [
     {
       title: 'Total Leads',
-      value: totalLeads.value.toLocaleString(),
+      value: num(totalLeads.value).toLocaleString(),
       trend: `${(totalLeads.trendPct ?? 0).toFixed(1)}% from last period`,
       trendType: totalLeads.trendType,
     },
     {
       title: 'Total Bookings',
-      value: totalBookings.value.toLocaleString(),
+      value: num(totalBookings.value).toLocaleString(),
       trend: `${(totalBookings.trendPct ?? 0).toFixed(1)}% from last period`,
       trendType: totalBookings.trendType,
     },
     {
       title: 'Booking Rate',
-      value: `${bookingRate.value}%`,
+      value: `${Math.round(num(bookingRate.value))}%`,
       trend: `${(bookingRate.trendPct ?? 0).toFixed(1)}% from last period`,
       trendType: bookingRate.trendType,
     },

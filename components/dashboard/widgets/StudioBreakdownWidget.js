@@ -18,7 +18,7 @@ export default function StudioBreakdownWidget({ perStudioBreakdown = [], default
   const data = perStudioBreakdown.map((r) => ({
     name: r.location,
     value: r.totalLeads,
-    rate: r.bookingRatePct ?? (parseInt(r.bookingRate, 10) || 0),
+    rate: r.bookingRatePct ?? r.paymentRatePct ?? (parseInt(r.bookingRate || r.paymentRate, 10) || 0),
   }))
 
   return (
