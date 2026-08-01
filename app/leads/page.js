@@ -37,17 +37,7 @@ import {
 } from '@/lib/lead-page-filters'
 import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
 import { normalizeConditionsForForm } from '@/lib/dynamic-list-normalize'
-
-const STAGE_STYLES = {
-  new: 'bg-slate-200 text-slate-800',
-  engaged: 'bg-blue-100 text-blue-800',
-  bookingInProgress: 'bg-amber-100 text-amber-800',
-  cold: 'bg-slate-300 text-slate-800',
-  booked: 'bg-emerald-100 text-emerald-800',
-  disqualified: 'bg-rose-100 text-rose-800',
-  qualified: 'bg-violet-100 text-violet-800',
-  lost: 'bg-slate-400 text-slate-900',
-}
+import { formatLeadStageLabel, getLeadStageBadgeClass } from '@/lib/lead-stages'
 
 const BOOKING_STATUS_STYLES = {
   'Not Booked': 'bg-amber-100 text-amber-800',
@@ -444,10 +434,10 @@ export default function LeadsPage() {
                     <span
                       className={cn(
                         'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                        STAGE_STYLES[stageKey] ?? 'bg-slate-200 text-slate-700'
+                        getLeadStageBadgeClass(stageKey)
                       )}
                     >
-                      {lead.stage || 'new'}
+                      {formatLeadStageLabel(lead.stage) || 'New'}
                     </span>
                   </TableCell>
                   <TableCell className="py-3 px-4">

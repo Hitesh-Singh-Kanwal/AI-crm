@@ -23,7 +23,7 @@ const queueTabs = [
   { key: 'all', label: 'All (2)', variant: 'neutral' },
   { key: 'dropped', label: 'Dropped (8)', variant: 'danger' },
   { key: 'escalated', label: 'Escalated (3)', variant: 'warning' },
-  { key: 'booked', label: 'Booked (5)', variant: 'success' },
+  { key: 'converted', label: 'Converted (5)', variant: 'success' },
 ]
 
 const queueItems = [

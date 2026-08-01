@@ -127,8 +127,8 @@ export default function BulkCreateLeadsDialog({ open, onClose, onRefresh }) {
     const sampleCSV = `name,email,phonenumber,location,stage,bookingstatus,assignedhumanagent,assignedaiagent,isescalated
 John Doe,john.doe@example.com,+1234567890,New York,new,Not Booked,agent1@studio.com,ai-agent-001,false
 Jane Smith,jane.smith@example.com,+1987654321,Los Angeles,engaged,Not Booked,agent2@studio.com,ai-agent-002,false
-Bob Johnson,bob.johnson@example.com,+1555555555,Chicago,qualified,Booked,agent1@studio.com,,true
-Alice Williams,alice.williams@example.com,+1444444444,Miami,bookingInProgress,Not Booked,,ai-agent-003,false
+Bob Johnson,bob.johnson@example.com,+1555555555,Chicago,pending_payment,Booked,agent1@studio.com,,true
+Alice Williams,alice.williams@example.com,+1444444444,Miami,re_engaged,Not Booked,,ai-agent-003,false
 Charlie Brown,charlie.brown@example.com,+1333333333,Seattle,cold,Not Booked,agent3@studio.com,ai-agent-001,false`
 
     const blob = new Blob([sampleCSV], { type: 'text/csv;charset=utf-8;' })

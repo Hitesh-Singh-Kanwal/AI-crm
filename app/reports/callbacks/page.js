@@ -17,18 +17,7 @@ import LeadsDialog from '@/app/leads/components/LeadsDialog'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import api from '@/lib/api'
 import { cn, formatDate } from '@/lib/utils'
-import { getLeadStageOptions, formatLeadStageLabel } from '@/lib/lead-stages'
-
-const stageOptions = getLeadStageOptions()
-
-const STAGE_STYLES = {
-  new: 'bg-slate-200 text-slate-800',
-  engaged: 'bg-blue-100 text-blue-800',
-  cold: 'bg-slate-300 text-slate-800',
-  booked: 'bg-emerald-100 text-emerald-800',
-  disqualified: 'bg-rose-100 text-rose-800',
-  qualified: 'bg-violet-100 text-violet-800',
-}
+import { useLeadStages, formatLeadStageLabel, getLeadStageBadgeClass } from '@/lib/lead-stages'
 
 const ROWS_PER_PAGE = 10
 
@@ -85,6 +74,7 @@ function SummaryCard({ label, value, icon: Icon, accent }) {
 
 export default function CallbackReportPage() {
   const router = useRouter()
+  const { stages: stageOptions } = useLeadStages()
   const [tab, setTab] = useState('leads')
 
   const [search, setSearch] = useState('')
@@ -420,10 +410,10 @@ export default function CallbackReportPage() {
                         <span
                           className={cn(
                             'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                            STAGE_STYLES[(row.stage || 'new').toLowerCase()] ?? 'bg-slate-200 text-slate-700'
+                            getLeadStageBadgeClass(row.stage)
                           )}
                         >
-                          {formatLeadStageLabel(row.stage) || 'New'}
+                          {formatLeadStageLabel(row.stage, stageOptions) || 'New'}
                         </span>
                       </TableCell>
                     )}

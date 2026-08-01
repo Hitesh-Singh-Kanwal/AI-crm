@@ -9,7 +9,6 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { formatLeadStageLabel } from '@/lib/lead-stages'
 import EmailHtmlPanel from './EmailHtmlPanel'
 import EmailPreviewFrame from './EmailPreviewFrame'
 
@@ -108,11 +107,6 @@ export default function EmailTemplatePreviewDialog({
                   {email.code ? (
                     <Badge variant="outline" className="font-mono text-[10px] shrink-0">
                       {String(email.code)}
-                    </Badge>
-                  ) : null}
-                  {email.leadStage ? (
-                    <Badge variant="secondary" className="text-[10px] shrink-0 hidden lg:inline-flex">
-                      {formatLeadStageLabel(email.leadStage)}
                     </Badge>
                   ) : null}
                 </>

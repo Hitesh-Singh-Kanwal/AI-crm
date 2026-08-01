@@ -65,7 +65,7 @@ export const dashboardWidgetRegistry = [
   {
     id: 'conversion-funnel',
     title: 'Conversion Funnel',
-    description: 'Lead → engaged → booked → converted',
+    description: 'Lead → engaged → pending payment → converted',
     category: 'Pipeline',
     permission: PERMISSION.leadConversion,
     component: ConversionFunnelWidget,
