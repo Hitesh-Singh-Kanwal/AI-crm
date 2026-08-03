@@ -23,15 +23,12 @@ function NodeSummary({ paletteType, config }) {
     )
   }
   if (paletteType === 'exit_logic') {
-    const goalCount = Array.isArray(config?.successGoalStages) ? config.successGoalStages.length : 0
-    const exitCount = Array.isArray(config?.exitRuleStages) ? config.exitRuleStages.length : 0
-    if (!goalCount && !exitCount) {
-      return <p className="mt-1 truncate text-[11px] text-muted-foreground">Set goal & exit stages</p>
+    const exitStages = Array.isArray(config?.exitRuleStages) ? config.exitRuleStages : []
+    const stage = exitStages[0]
+    if (!stage) {
+      return <p className="mt-1 truncate text-[11px] text-muted-foreground">Select exit stage</p>
     }
-    const parts = []
-    if (goalCount) parts.push(`Goal ${goalCount}`)
-    if (exitCount) parts.push(`Exit ${exitCount}`)
-    return <p className="mt-1 truncate text-[11px] text-muted-foreground">{parts.join(' · ')}</p>
+    return <p className="mt-1 truncate text-[11px] text-muted-foreground">Exit · {stage}</p>
   }
   if (paletteType === 'contact' || paletteType === 'contact_created' || paletteType === 'form_submitted') {
     if (config?.listName) {

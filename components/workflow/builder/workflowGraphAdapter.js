@@ -52,26 +52,24 @@ function waitToMinutes(config = {}) {
 
 function normalizeExitLogicForPayload(exitLogic) {
   if (!exitLogic || typeof exitLogic !== 'object') return null
-  const successGoalStages = Array.isArray(exitLogic.successGoalStages)
-    ? exitLogic.successGoalStages.map((s) => String(s || '').trim()).filter(Boolean)
-    : []
+  // Success goal removed from builder — always clear. Exit rule is single-select.
   const exitRuleStages = Array.isArray(exitLogic.exitRuleStages)
-    ? exitLogic.exitRuleStages.map((s) => String(s || '').trim()).filter(Boolean)
+    ? exitLogic.exitRuleStages.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 1)
     : []
 
-  if (!successGoalStages.length && !exitRuleStages.length) {
+  if (!exitRuleStages.length) {
     return null
   }
 
   return {
-    successGoalStages,
+    successGoalStages: [],
     exitRuleStages,
   }
 }
 
 function buildExitLogicFromNode(config = {}) {
   return normalizeExitLogicForPayload({
-    successGoalStages: config.successGoalStages,
+    successGoalStages: [],
     exitRuleStages: config.exitRuleStages,
   })
 }
@@ -524,10 +522,10 @@ export function workflowToGraph(apiWorkflow) {
   if (exitLogic) {
     connect(
       makeNodeBase(`node-exit-${Math.random().toString(36).slice(2, 6)}`, 'exit_logic', y, {
-        successGoalStages: Array.isArray(exitLogic.successGoalStages)
-          ? exitLogic.successGoalStages
+        successGoalStages: [],
+        exitRuleStages: Array.isArray(exitLogic.exitRuleStages)
+          ? exitLogic.exitRuleStages.slice(0, 1)
           : [],
-        exitRuleStages: Array.isArray(exitLogic.exitRuleStages) ? exitLogic.exitRuleStages : [],
       })
     )
   }

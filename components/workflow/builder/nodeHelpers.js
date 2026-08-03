@@ -17,12 +17,8 @@ function waitSummary(config) {
 }
 
 function exitSummary(config) {
-  const goalCount = Array.isArray(config.successGoalStages) ? config.successGoalStages.length : 0
-  const exitCount = Array.isArray(config.exitRuleStages) ? config.exitRuleStages.length : 0
-  const parts = []
-  if (goalCount) parts.push(`Goal · ${goalCount} stage${goalCount === 1 ? '' : 's'}`)
-  if (exitCount) parts.push(`Exit · ${exitCount} stage${exitCount === 1 ? '' : 's'}`)
-  return parts.length ? parts.join(' · ') : 'Set success goal and exit stages'
+  const stage = Array.isArray(config.exitRuleStages) ? config.exitRuleStages[0] : null
+  return stage ? `Exit · ${stage}` : 'Select exit stage'
 }
 
 export function getNodeSummary(paletteType, config = {}) {

@@ -138,44 +138,34 @@ function TriggerFields({ config, onChange }) {
 }
 
 function ExitLogicFields({ config, onChange }) {
-  const successGoalStages = Array.isArray(config.successGoalStages) ? config.successGoalStages : []
-  const exitRuleStages = Array.isArray(config.exitRuleStages) ? config.exitRuleStages : []
+  const exitRuleStages = Array.isArray(config.exitRuleStages)
+    ? config.exitRuleStages.slice(0, 1)
+    : []
 
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
-        Step 3 · Exit logic — set a success goal and/or workflow exit stages. Each uses its own stage
-        list.
-      </div>
-
-      <div className="space-y-3 rounded-xl border border-border bg-background p-3">
-        <div>
-          <div className="text-[13px] font-semibold text-foreground">Success goal</div>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Mark the workflow successful when the contact reaches any of these stages.
-          </p>
-        </div>
-        <Field label="Stages" hint="multi-select">
-          <WorkflowStageMultiSelect
-            values={successGoalStages}
-            onChange={(next) => onChange({ successGoalStages: next })}
-            placeholder="Select success goal stages…"
-          />
-        </Field>
+        Step 3 · Exit logic — choose one stage. When the contact reaches it, they leave this workflow.
       </div>
 
       <div className="space-y-3 rounded-xl border border-border bg-background p-3">
         <div>
           <div className="text-[13px] font-semibold text-foreground">Workflow exit rule</div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Remove the contact from this workflow when they reach any of these stages.
+            Remove the contact from this workflow when they reach this stage.
           </p>
         </div>
-        <Field label="Stages" hint="multi-select">
+        <Field label="Stage" hint="select one">
           <WorkflowStageMultiSelect
+            single
             values={exitRuleStages}
-            onChange={(next) => onChange({ exitRuleStages: next })}
-            placeholder="Select exit rule stages…"
+            onChange={(next) =>
+              onChange({
+                successGoalStages: [],
+                exitRuleStages: Array.isArray(next) && next[0] ? [String(next[0])] : [],
+              })
+            }
+            placeholder="Select exit stage…"
           />
         </Field>
       </div>

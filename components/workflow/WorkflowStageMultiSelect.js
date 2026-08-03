@@ -12,6 +12,8 @@ export default function WorkflowStageMultiSelect({
   placeholder = 'Select stages…',
   searchPlaceholder = 'Search stages…',
   compact = true,
+  /** When true, only one stage can be selected. */
+  single = false,
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -31,9 +33,13 @@ export default function WorkflowStageMultiSelect({
     }
   })
 
-  const selected = new Set((Array.isArray(values) ? values : []).map(String))
+  const rawValues = Array.isArray(values) ? values.map(String) : []
+  const effectiveValues = single ? rawValues.slice(0, 1) : rawValues
+  const selected = new Set(effectiveValues)
   const selectedOptions = normalizedOptions.filter((o) => selected.has(o.value))
-  const available = normalizedOptions.filter((o) => !selected.has(o.value))
+  const available = single
+    ? normalizedOptions.filter((o) => !selected.has(o.value))
+    : normalizedOptions.filter((o) => !selected.has(o.value))
   const filtered = query.trim()
     ? available.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
     : available
@@ -56,6 +62,21 @@ export default function WorkflowStageMultiSelect({
 
   const minHeight = compact ? 'min-h-[44px]' : 'min-h-[56px]'
 
+  const selectOption = (value) => {
+    if (single) {
+      onChange?.([value])
+      setOpen(false)
+      setQuery('')
+      return
+    }
+    onChange?.([...(Array.isArray(values) ? values : []), value])
+    setQuery('')
+  }
+
+  const clearSelection = () => {
+    onChange?.([])
+  }
+
   return (
     <div
       ref={containerRef}
@@ -74,7 +95,11 @@ export default function WorkflowStageMultiSelect({
               {opt.label}
               <button
                 type="button"
-                onClick={() => onChange?.(values.filter((v) => String(v) !== opt.value))}
+                onClick={() =>
+                  single
+                    ? clearSelection()
+                    : onChange?.(values.filter((v) => String(v) !== opt.value))
+                }
                 className="rounded-full p-0.5 hover:bg-primary/20"
                 aria-label={`Remove ${opt.label}`}
               >
@@ -117,17 +142,18 @@ export default function WorkflowStageMultiSelect({
           <div className="max-h-52 overflow-y-auto">
             {filtered.length === 0 ? (
               <p className="px-3 py-3 text-[12px] text-muted-foreground">
-                {available.length === 0 ? 'All stages selected' : 'No matching stages'}
+                {available.length === 0
+                  ? single
+                    ? 'A stage is already selected — clear it to choose another'
+                    : 'All stages selected'
+                  : 'No matching stages'}
               </p>
             ) : (
               filtered.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => {
-                    onChange?.([...(Array.isArray(values) ? values : []), opt.value])
-                    setQuery('')
-                  }}
+                  onClick={() => selectOption(opt.value)}
                   className="flex w-full items-center px-3 py-2.5 text-left text-[13px] text-foreground hover:bg-muted/50"
                 >
                   {opt.label}
