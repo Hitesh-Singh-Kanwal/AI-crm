@@ -45,7 +45,7 @@ const TABS = [
 
 function BoolBadge({ value }) {
   return value
-    ? <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-600">Yes</span>
+    ? <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-success/10 text-success">Yes</span>
     : <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">No</span>
 }
 
@@ -112,7 +112,7 @@ function SortableServiceRow({ service, selectedIds, toggleOne, onEdit, onDelete,
         />
       </TableCell>
       <TableCell className="py-3 px-4">
-        <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', service.isActive ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'].join(' ')}>
+        <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', service.isActive ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'].join(' ')}>
           {service.isActive ? 'Active' : 'Inactive'}
         </span>
       </TableCell>
@@ -124,7 +124,7 @@ function SortableServiceRow({ service, selectedIds, toggleOne, onEdit, onDelete,
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onEdit(service)}>Edit</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onToggleStatus(service)}>{service.isActive ? 'Deactivate' : 'Activate'}</DropdownMenuItem>
-            <DropdownMenuItem className="text-red-600" onClick={() => onDelete(service)}>Delete</DropdownMenuItem>
+            <DropdownMenuItem className="text-destructive" onClick={() => onDelete(service)}>Delete</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>
@@ -165,7 +165,7 @@ function SortablePackageRow({ pkg, selectedIds, toggleOne, onDelete, onToggleSta
         </span>
       </TableCell>
       <TableCell className="py-3 px-4">
-        <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', pkg.isActive ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'].join(' ')}>
+        <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', pkg.isActive ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'].join(' ')}>
           {pkg.isActive ? 'Active' : 'Inactive'}
         </span>
       </TableCell>
@@ -177,7 +177,7 @@ function SortablePackageRow({ pkg, selectedIds, toggleOne, onDelete, onToggleSta
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => router.push(`/calendar/packages/${pkg._id}`)}>Edit</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onToggleStatus(pkg)}>{pkg.isActive ? 'Deactivate' : 'Activate'}</DropdownMenuItem>
-            <DropdownMenuItem className="text-red-600" onClick={() => onDelete(pkg)}>Delete</DropdownMenuItem>
+            <DropdownMenuItem className="text-destructive" onClick={() => onDelete(pkg)}>Delete</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>
@@ -507,7 +507,7 @@ function LessonsTab() {
                     ) : <span className="text-sm text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', isActiveLesson(lesson) ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'].join(' ')}>
+                    <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', isActiveLesson(lesson) ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'].join(' ')}>
                       {isActiveLesson(lesson) ? 'Active' : 'Inactive'}
                     </span>
                   </TableCell>
@@ -518,7 +518,7 @@ function LessonsTab() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => { setEditingLesson(lesson); setDialogOpen(true) }}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(lesson)}>Delete</DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(lesson)}>Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -728,7 +728,7 @@ function SortableMembershipRow({ membership, selectedIds, toggleOne, onDelete, o
         </span>
       </TableCell>
       <TableCell className="py-3 px-4">
-        <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', membership.isActive ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'].join(' ')}>
+        <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', membership.isActive ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'].join(' ')}>
           {membership.isActive ? 'Active' : 'Inactive'}
         </span>
       </TableCell>
@@ -740,7 +740,7 @@ function SortableMembershipRow({ membership, selectedIds, toggleOne, onDelete, o
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => router.push(`/calendar/memberships/${membership._id}`)}>Edit</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onToggleStatus(membership)}>{membership.isActive ? 'Deactivate' : 'Activate'}</DropdownMenuItem>
-            <DropdownMenuItem className="text-red-600" onClick={() => onDelete(membership)}>Delete</DropdownMenuItem>
+            <DropdownMenuItem className="text-destructive" onClick={() => onDelete(membership)}>Delete</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>
@@ -1017,7 +1017,7 @@ function ToDosTab() {
                     ) : <span className="text-sm text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', todo.isActive ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'].join(' ')}>
+                    <span className={['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', todo.isActive ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'].join(' ')}>
                       {todo.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </TableCell>
@@ -1029,7 +1029,7 @@ function ToDosTab() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => { setEditingTodo(todo); setDialogOpen(true) }}>Edit</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleToggleStatus(todo)}>{todo.isActive ? 'Deactivate' : 'Activate'}</DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(todo)}>Delete</DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(todo)}>Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

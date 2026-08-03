@@ -4,10 +4,12 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import PhoneInput from 'react-phone-input-2'
 import { registerOrganization } from '@/lib/auth'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import { BrandLockup } from '@/components/shared/BrandLogo'
 import 'react-phone-input-2/lib/style.css'
 
 export default function RegisterPage() {
@@ -20,13 +22,12 @@ export default function RegisterPage() {
   const [country, setCountry] = useState('')
   const [orgEmail, setOrgEmail] = useState('')
   const [orgPhone, setOrgPhone] = useState('')
-  const [logo, setLogo] = useState('')
-  const [establishedDate, setEstablishedDate] = useState('')
 
   const [userName, setUserName] = useState('')
   const [userEmail, setUserEmail] = useState('')
   const [userPhone, setUserPhone] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
@@ -36,6 +37,13 @@ export default function RegisterPage() {
     e.preventDefault()
     setError('')
     setSuccessMessage('')
+
+    const userErr = validateUserStep()
+    if (userErr) {
+      setError(userErr)
+      return
+    }
+
     setLoading(true)
 
     const organisationInfo = {
@@ -46,8 +54,6 @@ export default function RegisterPage() {
       country,
       email: orgEmail,
       phone: orgPhone,
-      logo,
-      establishedDate,
     }
 
     const userInfo = {
@@ -74,9 +80,20 @@ export default function RegisterPage() {
     if (!orgEmail.trim()) return 'Organization email is required'
     if (!address.trim()) return 'Organization address is required'
     if (!orgPhone.trim()) return 'Organization phone is required'
-    if (!establishedDate) return 'Established date is required'
     return null
   }
+
+  // These credentials become the sign-in for this account, so a typo in either
+  // password field would create an account nobody can log into.
+  const validateUserStep = () => {
+    if (!userName.trim()) return 'First name is required'
+    if (!userEmail.trim()) return 'Email address is required'
+    if (password.length < 8) return 'Password must be at least 8 characters'
+    if (password !== confirmPassword) return 'Passwords do not match'
+    return null
+  }
+
+  const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword
 
   const handleNext = () => {
     const err = validateOrgStep()
@@ -169,17 +186,8 @@ export default function RegisterPage() {
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-[var(--studio-primary)]/10 rounded-full blur-3xl" />
         
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 rounded-xl bg-[var(--studio-primary)] flex items-center justify-center shadow-lg">
-              <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 8C18.5 8 17 9 17 11V15C17 16 17.5 17 18.5 17.5L20 18.5L21.5 17.5C22.5 17 23 16 23 15V11C23 9 21.5 8 20 8Z" fill="white" opacity="0.9"/>
-                <path d="M13 14C11.5 14 10 15 10 17V25C10 27 11.5 28 13 28C14.5 28 16 27 16 25V17C16 15 14.5 14 13 14Z" fill="white" opacity="0.7"/>
-                <path d="M27 14C25.5 14 24 15 24 17V25C24 27 25.5 28 27 28C28.5 28 30 27 30 25V17C30 15 28.5 14 27 14Z" fill="white" opacity="0.7"/>
-                <path d="M20 22L18 28H22L20 22Z" fill="white"/>
-                <circle cx="20" cy="32" r="2" fill="white"/>
-              </svg>
-            </div>
-            <span className="text-white text-2xl font-display font-semibold">Dance Academy</span>
+          <div className="mb-12">
+            <BrandLockup size={64} className="items-start text-left" />
           </div>
 
           <div className="space-y-6 mt-12">
@@ -232,7 +240,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="relative z-10">
-          <p className="text-white/60 text-sm font-body">© 2026 Dance Academy CRM. All rights reserved.</p>
+          <p className="text-white/60 text-sm font-body">© 2026 CADANCE AI. All rights reserved.</p>
         </div>
       </div>
 
@@ -240,15 +248,8 @@ export default function RegisterPage() {
       <div className="w-full lg:w-1/2 flex items-center justify-center py-6 px-4 bg-background">
         <div className="w-full max-w-lg">
           {/* Mobile Logo */}
-          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-[var(--studio-primary)] flex items-center justify-center shadow-lg">
-              <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 8C18.5 8 17 9 17 11V15C17 16 17.5 17 18.5 17.5L20 18.5L21.5 17.5C22.5 17 23 16 23 15V11C23 9 21.5 8 20 8Z" fill="white" opacity="0.9"/>
-                <path d="M13 14C11.5 14 10 15 10 17V25C10 27 11.5 28 13 28C14.5 28 16 27 16 25V17C16 15 14.5 14 13 14Z" fill="white" opacity="0.7"/>
-                <path d="M27 14C25.5 14 24 15 24 17V25C24 27 25.5 28 27 28C28.5 28 30 27 30 25V17C30 15 28.5 14 27 14Z" fill="white" opacity="0.7"/>
-              </svg>
-            </div>
-            <span className="text-foreground text-2xl font-display font-semibold">Dance Academy</span>
+          <div className="lg:hidden mb-8">
+            <BrandLockup size={64} tone="default" />
           </div>
 
           <div className="mb-6">
@@ -277,7 +278,7 @@ export default function RegisterPage() {
                 <div className="space-y-3">
                   <div>
                     <Label htmlFor="orgName" className="text-foreground font-medium font-body text-sm mb-1.5 block">
-                      Organization Name <span className="text-red-500">*</span>
+                      Organization Name <span className="text-destructive">*</span>
                     </Label>
                     <Input 
                       id="orgName" 
@@ -291,7 +292,7 @@ export default function RegisterPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="orgEmail" className="text-foreground font-medium font-body text-sm mb-1.5 block">
-                        Organization Email <span className="text-red-500">*</span>
+                        Organization Email <span className="text-destructive">*</span>
                       </Label>
                       <Input 
                         id="orgEmail" 
@@ -305,7 +306,7 @@ export default function RegisterPage() {
 
                     <div>
                       <Label htmlFor="orgPhone" className="text-foreground font-medium font-body text-sm mb-1.5 block">
-                        Phone Number <span className="text-red-500">*</span>
+                        Phone Number <span className="text-destructive">*</span>
                       </Label>
                       <PhoneInput
                         country="us"
@@ -322,37 +323,9 @@ export default function RegisterPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="establishedDate" className="text-foreground font-medium font-body text-sm mb-1.5 block">
-                        Established Date <span className="text-red-500">*</span>
-                      </Label>
-                      <Input 
-                        id="establishedDate" 
-                        type="date" 
-                        value={establishedDate} 
-                        onChange={(e) => setEstablishedDate(e.target.value)}
-                        className="h-10 border-border focus:border-[var(--studio-primary)] focus:ring-[var(--studio-primary)] font-body"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="logo" className="text-foreground font-medium font-body text-sm mb-1.5 block">
-                        Logo URL <span className="text-muted-foreground">(Optional)</span>
-                      </Label>
-                      <Input 
-                        id="logo" 
-                        value={logo} 
-                        onChange={(e) => setLogo(e.target.value)}
-                        className="h-10 border-border focus:border-[var(--studio-primary)] focus:ring-[var(--studio-primary)] font-body"
-                        placeholder="https://..."
-                      />
-                    </div>
-                  </div>
-
                   <div>
                     <Label htmlFor="address" className="text-foreground font-medium font-body text-sm mb-1.5 block">
-                      Street Address <span className="text-red-500">*</span>
+                      Street Address <span className="text-destructive">*</span>
                     </Label>
                     <Input 
                       id="address" 
@@ -424,7 +397,7 @@ export default function RegisterPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="userName" className="text-foreground font-medium font-body text-sm mb-1.5 block">
-                        First Name <span className="text-red-500">*</span>
+                        First Name <span className="text-destructive">*</span>
                       </Label>
                       <Input 
                         id="userName" 
@@ -457,7 +430,7 @@ export default function RegisterPage() {
 
                   <div>
                     <Label htmlFor="userEmail" className="text-foreground font-medium font-body text-sm mb-1.5 block">
-                      Email address <span className="text-red-500">*</span>
+                      Email address <span className="text-destructive">*</span>
                     </Label>
                     <Input 
                       id="userEmail" 
@@ -473,7 +446,7 @@ export default function RegisterPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="password" className="text-foreground font-medium font-body text-sm mb-1.5 block">
-                        Password <span className="text-red-500">*</span>
+                        Password <span className="text-destructive">*</span>
                       </Label>
                       <Input 
                         id="password" 
@@ -488,14 +461,29 @@ export default function RegisterPage() {
 
                     <div>
                       <Label htmlFor="confirmPassword" className="text-foreground font-medium font-body text-sm mb-1.5 block">
-                        Confirm Password <span className="text-red-500">*</span>
+                        Confirm Password <span className="text-destructive">*</span>
                       </Label>
-                      <Input 
-                        id="confirmPassword" 
-                        type="password" 
-                        className="h-10 border-border focus:border-[var(--studio-primary)] focus:ring-[var(--studio-primary)] font-body"
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                        aria-invalid={passwordsMismatch}
+                        aria-describedby={passwordsMismatch ? 'confirmPassword-error' : undefined}
+                        className={cn(
+                          'h-10 font-body',
+                          passwordsMismatch
+                            ? 'border-destructive focus:border-destructive focus:ring-destructive'
+                            : 'border-border focus:border-[var(--studio-primary)] focus:ring-[var(--studio-primary)]',
+                        )}
                         placeholder="Confirm password"
                       />
+                      {passwordsMismatch && (
+                        <p id="confirmPassword-error" className="mt-1.5 text-xs text-destructive font-body">
+                          Passwords do not match
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -536,7 +524,7 @@ export default function RegisterPage() {
             )}
 
             {error && (
-              <div className="p-3.5 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg flex items-start font-body">
+              <div className="p-3.5 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg flex items-start font-body">
                 <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
@@ -545,7 +533,7 @@ export default function RegisterPage() {
             )}
 
             {successMessage && (
-              <div className="p-3.5 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg flex items-start font-body">
+              <div className="p-3.5 text-sm text-success bg-success/10 border border-success/20 rounded-lg flex items-start font-body">
                 <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>

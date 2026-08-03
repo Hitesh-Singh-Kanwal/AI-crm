@@ -111,9 +111,9 @@ const ROUTE_COLORS = [
   'bg-pink-100 text-pink-700 dark:bg-pink-500/20 dark:text-pink-300 border-pink-200 dark:border-pink-500/30',
   'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 border-violet-200 dark:border-violet-500/30',
   'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300 border-cyan-200 dark:border-cyan-500/30',
-  'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 border-amber-200 dark:border-amber-500/30',
-  'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30',
-  'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border-blue-200 dark:border-blue-500/30',
+  'bg-warning/10 text-warning border-warning/20',
+  'bg-success/10 text-success border-success/20',
+  'bg-info/10 text-info border-info/20',
 ]
 
 function routeColorClass(index) {
@@ -615,7 +615,7 @@ export default function InboundIvrTab() {
           placeholder="Select a studio…"
         />
         {!hasLocationSelection(workingLocationID) && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">
+          <p className="text-xs text-warning">
             Select a studio to manage inbound IVR for that branch.
           </p>
         )}
@@ -664,15 +664,15 @@ export default function InboundIvrTab() {
             <div className="flex items-center gap-2">
               {directAssistantId && directAssistantDoc ? (
                 <>
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                  <span className="text-xs text-emerald-600 dark:text-emerald-400 truncate">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
+                  <span className="text-xs text-success truncate">
                     All calls → <span className="font-semibold">{directAssistantDoc.name}</span>
                   </span>
                 </>
               ) : (
                 <>
-                  <XCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                  <XCircle className="h-3.5 w-3.5 text-warning shrink-0" />
+                  <span className="text-xs text-warning">
                     No assistant selected
                   </span>
                 </>
@@ -734,7 +734,7 @@ export default function InboundIvrTab() {
                   <CardTitle className="text-sm font-semibold">Spoken menu preview</CardTitle>
                   <Badge
                     variant={allReady ? 'default' : 'outline'}
-                    className={allReady ? 'bg-emerald-500 text-white border-0' : ''}
+                    className={allReady ? 'bg-success text-white border-0' : ''}
                   >
                     {readyCount}/{enabledCount} ready
                   </Badge>
@@ -792,14 +792,14 @@ export default function InboundIvrTab() {
                   <div key={label} className="flex gap-2.5">
                     <div className="mt-0.5 shrink-0">
                       {done ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                        <CheckCircle2 className="h-4 w-4 text-success" />
                       ) : (
                         <Circle className="h-4 w-4 text-muted-foreground/40" />
                       )}
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-foreground leading-tight">{label}</p>
-                      <p className={cn('text-xs mt-0.5 break-all leading-snug', done ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400')}>
+                      <p className={cn('text-xs mt-0.5 break-all leading-snug', done ? 'text-muted-foreground' : 'text-warning')}>
                         {value || placeholder}
                       </p>
                     </div>
@@ -860,11 +860,11 @@ export default function InboundIvrTab() {
                         <div className="flex flex-col items-end gap-1">
                           {route.enabled ? (
                             ready ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                              <span className="inline-flex items-center gap-1 text-xs text-success font-medium">
                                 <CheckCircle2 className="h-3 w-3" /> Live
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                              <span className="inline-flex items-center gap-1 text-xs text-warning font-medium">
                                 <Circle className="h-3 w-3" /> Needs assistant
                               </span>
                             )

@@ -43,19 +43,19 @@ export default function EmailTemplateDetailsForm({
 
   return (
     <div className={cn('space-y-4', className)}>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
         <div className="flex items-center gap-2.5 min-w-0">
           <div
             className={cn(
               'h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0',
               canContinue
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-white text-slate-600 border border-slate-200',
+                ? 'bg-success/10 text-success'
+                : 'bg-card text-muted-foreground border border-border',
             )}
           >
             {doneCount}/3
           </div>
-          <p className="text-sm text-slate-600 truncate">
+          <p className="text-sm text-muted-foreground truncate">
             {canContinue
               ? 'Ready — continue to design your email'
               : 'Studio, category, and name are required'}
@@ -77,16 +77,16 @@ export default function EmailTemplateDetailsForm({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="space-y-1.5 lg:col-span-1">
-          <Label className="text-xs font-medium text-slate-700 inline-flex items-center gap-1.5">
+          <Label className="text-xs font-medium text-foreground inline-flex items-center gap-1.5">
             <span
               className={cn(
                 'h-5 w-5 rounded flex items-center justify-center',
-                checks.location ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400',
+                checks.location ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground',
               )}
             >
               {checks.location ? <Check className="h-3 w-3" /> : <MapPin className="h-3 w-3" />}
             </span>
-            Studio location <span className="text-red-500">*</span>
+            Studio location <span className="text-destructive">*</span>
           </Label>
           <LocationSelector
             value={locationID}
@@ -99,16 +99,16 @@ export default function EmailTemplateDetailsForm({
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs font-medium text-slate-700 inline-flex items-center gap-1.5">
+          <Label className="text-xs font-medium text-foreground inline-flex items-center gap-1.5">
             <span
               className={cn(
                 'h-5 w-5 rounded flex items-center justify-center',
-                checks.category ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400',
+                checks.category ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground',
               )}
             >
               {checks.category ? <Check className="h-3 w-3" /> : <FolderOpen className="h-3 w-3" />}
             </span>
-            Category <span className="text-red-500">*</span>
+            Category <span className="text-destructive">*</span>
           </Label>
           <select
             value={categoryId}
@@ -123,21 +123,21 @@ export default function EmailTemplateDetailsForm({
             ))}
           </select>
           {categories.length === 0 ? (
-            <p className="text-[10px] text-amber-700">Create a category under Templates first.</p>
+            <p className="text-[10px] text-warning">Create a category under Templates first.</p>
           ) : null}
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs font-medium text-slate-700 inline-flex items-center gap-1.5">
+          <Label className="text-xs font-medium text-foreground inline-flex items-center gap-1.5">
             <span
               className={cn(
                 'h-5 w-5 rounded flex items-center justify-center',
-                checks.name ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400',
+                checks.name ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground',
               )}
             >
               {checks.name ? <Check className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
             </span>
-            Template name <span className="text-red-500">*</span>
+            Template name <span className="text-destructive">*</span>
           </Label>
           <Input
             value={templateName}
@@ -149,8 +149,8 @@ export default function EmailTemplateDetailsForm({
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-xs font-medium text-slate-700">
-          Description <span className="text-slate-400 font-normal">(optional)</span>
+        <Label className="text-xs font-medium text-foreground">
+          Description <span className="text-muted-foreground font-normal">(optional)</span>
         </Label>
         <Input
           value={templateDescription}

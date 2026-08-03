@@ -140,11 +140,11 @@ function formatEndedReason(reason) {
 function getStatusStyle(status) {
   const s = String(status || '').toLowerCase()
   if (['ended', 'completed', 'done'].includes(s))
-    return { color: 'text-emerald-700 bg-emerald-50 border-emerald-200', dot: 'bg-emerald-500' }
+    return { color: 'text-success bg-success/10 border-success/20', dot: 'bg-success' }
   if (['in-progress', 'ringing', 'queued'].includes(s))
-    return { color: 'text-amber-700 bg-amber-50 border-amber-200', dot: 'bg-amber-500' }
+    return { color: 'text-warning bg-warning/10 border-warning/20', dot: 'bg-warning' }
   if (['failed', 'canceled', 'cancelled', 'error'].includes(s))
-    return { color: 'text-red-700 bg-red-50 border-red-200', dot: 'bg-red-500' }
+    return { color: 'text-destructive bg-destructive/10 border-destructive/20', dot: 'bg-destructive' }
   return { color: 'text-muted-foreground bg-muted border-border', dot: 'bg-muted-foreground' }
 }
 
@@ -747,7 +747,7 @@ export default function AiCallDetailPage() {
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className={`h-7 w-7 ${isPending ? 'text-amber-500 hover:bg-amber-50' : 'text-muted-foreground hover:bg-muted/60'}`}
+                              className={`h-7 w-7 ${isPending ? 'text-warning hover:bg-warning/10' : 'text-muted-foreground hover:bg-muted/60'}`}
                               onClick={(e) => handleSync(e, call)}
                               disabled={syncingId === call._id}
                               title="Sync latest data from Vapi"
@@ -760,7 +760,7 @@ export default function AiCallDetailPage() {
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                              className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                               onClick={(e) => { e.stopPropagation(); handleDelete(call._id) }}
                               disabled={deletingId === call._id}
                               aria-label="Delete call"
@@ -1015,7 +1015,7 @@ export default function AiCallDetailPage() {
                                     isSystem
                                       ? 'bg-muted text-foreground'
                                       : isAI
-                                      ? 'bg-indigo-500/10 text-foreground'
+                                      ? 'bg-info/10 text-foreground'
                                       : 'bg-card text-foreground border border-border'
                                   } ${isUser ? 'rounded-br-sm' : isAI ? 'rounded-bl-sm' : ''}`}
                                 >

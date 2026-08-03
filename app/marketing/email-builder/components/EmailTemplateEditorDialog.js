@@ -123,8 +123,8 @@ export default function EmailTemplateEditorDialog({
 
   return (
     <div className="h-[calc(100vh-148px)] flex flex-col min-h-0">
-      <Card className="flex flex-col flex-1 min-h-0 border-slate-200/80 shadow-sm overflow-hidden">
-        <CardHeader className="flex-shrink-0 border-b py-2 px-3 bg-white">
+      <Card className="flex flex-col flex-1 min-h-0 border-border/80 shadow-sm overflow-hidden">
+        <CardHeader className="flex-shrink-0 border-b py-2 px-3 bg-card">
           <div className="flex items-center gap-2 sm:gap-3">
             <Button
               type="button"
@@ -139,7 +139,7 @@ export default function EmailTemplateEditorDialog({
             </Button>
 
             <Tabs value={editTab} onValueChange={setEditTab} className="min-w-0">
-              <TabsList className="h-9 p-0.5 grid grid-cols-4 gap-0.5 bg-slate-100/90 rounded-lg">
+              <TabsList className="h-9 p-0.5 grid grid-cols-4 gap-0.5 bg-muted/90 rounded-lg">
                 {[
                   { value: 'description', label: 'Details', icon: AlignLeft },
                   { value: 'visual', label: 'Design', icon: Layout },
@@ -150,8 +150,8 @@ export default function EmailTemplateEditorDialog({
                     key={value}
                     value={value}
                     className={cn(
-                      'h-8 px-2.5 sm:px-3 rounded-md text-slate-600 gap-1.5',
-                      'data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm',
+                      'h-8 px-2.5 sm:px-3 rounded-md text-muted-foreground gap-1.5',
+                      'data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm',
                     )}
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -162,7 +162,7 @@ export default function EmailTemplateEditorDialog({
             </Tabs>
 
             <div className="min-w-0 flex-1 hidden md:block">
-              <p className="text-sm font-medium text-slate-800 truncate">
+              <p className="text-sm font-medium text-foreground truncate">
                 {subject.trim() || 'Untitled template'}
               </p>
             </div>
@@ -181,7 +181,7 @@ export default function EmailTemplateEditorDialog({
         </CardHeader>
 
         <CardContent
-          className="flex-1 min-h-0 flex flex-col px-3 pt-2 pb-3 overflow-hidden bg-slate-50/40"
+          className="flex-1 min-h-0 flex flex-col px-3 pt-2 pb-3 overflow-hidden bg-muted/40"
           style={{ overscrollBehavior: 'contain' }}
         >
           {loading && (
@@ -202,10 +202,10 @@ export default function EmailTemplateEditorDialog({
           {!loading && !error && (
             <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden">
               {editTab === 'description' && (
-                <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-4 md:p-5 space-y-4">
+                <div className="mx-auto max-w-2xl rounded-xl border border-border bg-card p-4 md:p-5 space-y-4">
                   <div className="space-y-2">
                     <Label className="text-xs">
-                      Template name <span className="text-red-500">*</span>
+                      Template name <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       value={subject}
@@ -215,7 +215,7 @@ export default function EmailTemplateEditorDialog({
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs">
-                      Category <span className="text-red-500">*</span>
+                      Category <span className="text-destructive">*</span>
                     </Label>
                     <select
                       value={categoryId}
@@ -239,7 +239,7 @@ export default function EmailTemplateEditorDialog({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-xs">
-                        Description <span className="text-slate-400 font-normal">(optional)</span>
+                        Description <span className="text-muted-foreground font-normal">(optional)</span>
                       </Label>
                       <span className="text-[10px] text-muted-foreground tabular-nums">
                         {meta.bodyChars} chars

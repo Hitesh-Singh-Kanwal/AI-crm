@@ -802,18 +802,18 @@ const EVENT_TYPE_LABEL = {
 };
 
 const STATUS_STYLES = {
-  scheduled:          { bg: "bg-blue-100 dark:bg-blue-950/60",    text: "text-blue-700 dark:text-blue-300",    label: "Scheduled" },
-  completed:          { bg: "bg-emerald-100 dark:bg-emerald-950/60", text: "text-emerald-700 dark:text-emerald-300", label: "Completed" },
-  cancelled_no_charge:{ bg: "bg-zinc-100 dark:bg-zinc-800/60",    text: "text-zinc-500 dark:text-zinc-400",    label: "Cancelled" },
-  cancelled_charged:  { bg: "bg-red-100 dark:bg-red-950/60",      text: "text-red-700 dark:text-red-300",      label: "Cancelled – Charged" },
-  no_show_no_charge:  { bg: "bg-orange-100 dark:bg-orange-950/60",text: "text-orange-600 dark:text-orange-400",label: "No Show" },
-  no_show_charged:    { bg: "bg-orange-100 dark:bg-orange-950/60",text: "text-orange-700 dark:text-orange-300",label: "No Show – Charged" },
+  scheduled: { bg: "bg-info/10", text: "text-info", label: "Scheduled" },
+  completed: { bg: "bg-success/10", text: "text-success", label: "Completed" },
+  cancelled_no_charge:{ bg: "bg-muted", text: "text-muted-foreground", label: "Cancelled" },
+  cancelled_charged: { bg: "bg-destructive/10", text: "text-destructive", label: "Cancelled – Charged" },
+  no_show_no_charge:  { bg: "bg-warning/10", text: "text-warning", label: "No Show" },
+  no_show_charged:    { bg: "bg-warning/20", text: "text-warning", label: "No Show – Charged" },
 };
 
 function PaymentStatusBadge({ collected }) {
   const cfg = {
-    paid:   { cls: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400", label: "Paid" },
-    unpaid: { cls: "bg-red-500/15 text-red-600 dark:text-red-400",             label: "Unpaid" },
+    paid: { cls: "bg-success/20 text-success", label: "Paid" },
+    unpaid: { cls: "bg-destructive/10 text-destructive", label: "Unpaid" },
   };
   const { cls, label } = cfg[collected] ?? cfg.unpaid;
   return (
@@ -1627,7 +1627,7 @@ function renderEventContent(info) {
     >
       {completed && (
         <span
-          className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shrink-0"
+          className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-success flex items-center justify-center z-10 shrink-0"
           title="Completed"
         >
           <svg viewBox="0 0 10 10" className="h-2 w-2 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1863,7 +1863,7 @@ function TimedCalendarEventCard({
     >
       {isCompletedEvent && (
         <span
-          className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shrink-0"
+          className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-success flex items-center justify-center z-10 shrink-0"
           title="Completed"
         >
           <svg
@@ -2412,7 +2412,7 @@ function TutorDayCalendar({
                     )}
                     {isCompletedEvent && (
                       <span
-                        className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 flex items-center justify-center z-10 shrink-0"
+                        className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-success flex items-center justify-center z-10 shrink-0"
                         title="Completed"
                       >
                         <svg viewBox="0 0 10 10" className="h-2 w-2 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2950,12 +2950,12 @@ const STATUS_FILTER_OPTIONS = [
 ];
 
 const STATUS_DOT = {
-  scheduled:           "bg-blue-400",
-  completed:           "bg-emerald-400",
-  cancelled_no_charge: "bg-zinc-400",
-  cancelled_charged:   "bg-red-400",
-  no_show_no_charge:   "bg-orange-300",
-  no_show_charged:     "bg-orange-500",
+  scheduled:           "bg-info",
+  completed:           "bg-success",
+  cancelled_no_charge: "bg-muted-foreground",
+  cancelled_charged:   "bg-destructive",
+  no_show_no_charge:   "bg-warning/60",
+  no_show_charged:     "bg-warning",
 };
 
 function StatusFilterDropdown({ value, onChange, compact = false }) {

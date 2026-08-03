@@ -59,8 +59,8 @@ export default function EmailTemplatePreviewDialog({
 
   return (
     <div className="h-[calc(100vh-148px)] flex flex-col min-h-0">
-      <Card className="flex flex-col flex-1 min-h-0 border-slate-200/80 shadow-sm overflow-hidden">
-        <CardHeader className="flex-shrink-0 border-b py-2 px-3 bg-white">
+      <Card className="flex flex-col flex-1 min-h-0 border-border/80 shadow-sm overflow-hidden">
+        <CardHeader className="flex-shrink-0 border-b py-2 px-3 bg-card">
           <div className="flex items-center gap-2 sm:gap-3">
             <Button
               type="button"
@@ -74,12 +74,12 @@ export default function EmailTemplatePreviewDialog({
             </Button>
 
             <Tabs value={viewTab} onValueChange={setViewTab} className="min-w-0">
-              <TabsList className="h-9 p-0.5 grid grid-cols-2 gap-0.5 bg-slate-100/90 rounded-lg">
+              <TabsList className="h-9 p-0.5 grid grid-cols-2 gap-0.5 bg-muted/90 rounded-lg">
                 <TabsTrigger
                   value="preview"
                   className={cn(
-                    'h-8 px-3 rounded-md text-slate-600 gap-1.5',
-                    'data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm',
+                    'h-8 px-3 rounded-md text-muted-foreground gap-1.5',
+                    'data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm',
                   )}
                 >
                   <Eye className="h-3.5 w-3.5 shrink-0" />
@@ -88,8 +88,8 @@ export default function EmailTemplatePreviewDialog({
                 <TabsTrigger
                   value="html"
                   className={cn(
-                    'h-8 px-3 rounded-md text-slate-600 gap-1.5',
-                    'data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm',
+                    'h-8 px-3 rounded-md text-muted-foreground gap-1.5',
+                    'data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm',
                   )}
                 >
                   <Code2 className="h-3.5 w-3.5 shrink-0" />
@@ -101,7 +101,7 @@ export default function EmailTemplatePreviewDialog({
             <div className="min-w-0 flex-1 hidden md:flex items-center gap-2">
               {!loading && !error && email ? (
                 <>
-                  <p className="text-sm font-medium text-slate-800 truncate">
+                  <p className="text-sm font-medium text-foreground truncate">
                     {email.subject || 'Untitled template'}
                   </p>
                   {email.code ? (
@@ -130,7 +130,7 @@ export default function EmailTemplatePreviewDialog({
         </CardHeader>
 
         <CardContent
-          className="flex-1 min-h-0 flex flex-col px-3 pt-2 pb-3 overflow-hidden bg-slate-50/40"
+          className="flex-1 min-h-0 flex flex-col px-3 pt-2 pb-3 overflow-hidden bg-muted/40"
           style={{ overscrollBehavior: 'contain' }}
         >
           {loading && (

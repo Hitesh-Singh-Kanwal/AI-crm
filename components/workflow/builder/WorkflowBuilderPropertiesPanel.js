@@ -366,7 +366,7 @@ function WaitFields({ config, onChange }) {
 
 function UnsupportedNote() {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-[12px] leading-relaxed text-warning">
       <Info className="mt-0.5 h-4 w-4 shrink-0" />
       <span>This step is visual only. The current backend can’t store it, so it’s skipped when you save.</span>
     </div>
@@ -406,7 +406,7 @@ function CollapsedRail({ selectedNode, onExpand }) {
         onClick={onExpand}
         title="Open step settings"
         className={cn(
-          'flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-muted-foreground shadow-sm hover:border-primary/40 hover:text-primary dark:border-border dark:bg-background',
+          'flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm hover:border-primary/40 hover:text-primary',
           selectedNode && 'border-[var(--studio-primary)]/40 text-[var(--studio-primary)]'
         )}
       >
@@ -447,11 +447,11 @@ export default function WorkflowBuilderPropertiesPanel() {
   return (
     <aside
       className={cn(
-        'relative flex shrink-0 flex-col border-l border-slate-200/80 bg-slate-50/60 transition-all duration-200 dark:border-border dark:bg-muted/10',
+        'relative flex shrink-0 flex-col border-l border-border/80 bg-muted/40 transition-all duration-200',
         propertiesPanelCollapsed ? 'w-14' : 'w-[360px]'
       )}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 bg-white/70 px-3 py-3 backdrop-blur dark:border-border dark:bg-card/40">
+      <div className="flex items-center justify-between gap-2 border-b border-border/80 bg-white/70 px-3 py-3 backdrop-blur">
         {!propertiesPanelCollapsed && (
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--studio-primary)]/10 text-[var(--studio-primary)]">
@@ -538,7 +538,7 @@ export default function WorkflowBuilderPropertiesPanel() {
 
                     {!supported && <UnsupportedNote />}
 
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-border dark:bg-background">
+                    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
                       <div className="mb-4 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
                         <Sparkles className="h-3.5 w-3.5" />
                         Configuration
@@ -557,7 +557,7 @@ export default function WorkflowBuilderPropertiesPanel() {
             })()}
           </div>
 
-          <div className="border-t border-slate-100 bg-white/70 p-3 backdrop-blur dark:border-border dark:bg-card/40">
+          <div className="border-t border-border bg-white/70 p-3 backdrop-blur">
             <Button
               type="button"
               variant="outline"

@@ -5,12 +5,15 @@ import { Mail, Phone, Calendar, FileText, CheckCircle } from 'lucide-react'
 // Figma 304-32738 – My To-Do List (exact specs from get_figma_data)
 const SECTION_TITLE = 'My To-Do List'
 
+/** Icon tint per activity type — colours come from the chart ramp / status tokens. */
+const tint = (color) => `color-mix(in srgb, ${color} 12%, transparent)`
+
 const ICON_TYPES = {
-  mail: { Icon: Mail, bg: '#E6FAFC', color: '#00CBDD' },
-  call: { Icon: Phone, bg: '#F1E6FB', color: '#7704D3' },
-  meeting: { Icon: Calendar, bg: '#FEF2E6', color: '#F47E00' },
-  note: { Icon: FileText, bg: '#FAEBFC', color: '#CE32E0' },
-  tick: { Icon: CheckCircle, bg: '#EBF8EF', color: '#00AA34' },
+  mail: { Icon: Mail, bg: tint('var(--chart-7)'), color: 'var(--chart-7)' },
+  call: { Icon: Phone, bg: tint('var(--studio-gradient)'), color: 'var(--studio-gradient)' },
+  meeting: { Icon: Calendar, bg: tint('hsl(var(--warning))'), color: 'hsl(var(--warning))' },
+  note: { Icon: FileText, bg: tint('var(--chart-3)'), color: 'var(--chart-3)' },
+  tick: { Icon: CheckCircle, bg: tint('hsl(var(--success))'), color: 'hsl(var(--success))' },
 }
 
 const mockPastDue = [
@@ -98,7 +101,7 @@ function TodoSection({ title, count, items, completed }) {
           fontWeight: 500,
           fontSize: 14,
           lineHeight: 1.43,
-          color: completed ? '#00AA34' : 'hsl(var(--muted-foreground))',
+          color: completed ? 'hsl(var(--success))' : 'hsl(var(--muted-foreground))',
         }}
       >
         {title} ({count})

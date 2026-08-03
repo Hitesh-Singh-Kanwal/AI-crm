@@ -61,8 +61,8 @@ import {
 function statusColor(status) {
   return (
     {
-      active: "bg-emerald-500/10 text-emerald-600",
-      expired: "bg-amber-500/10 text-amber-600",
+      active: "bg-success/10 text-success",
+      expired: "bg-warning/10 text-warning",
       exhausted: "bg-rose-500/10 text-rose-600",
       cancelled: "bg-muted text-muted-foreground",
     }[status] ?? "bg-muted text-muted-foreground"
@@ -72,10 +72,10 @@ function statusColor(status) {
 function paymentStatusColor(ps) {
   return (
     {
-      paid: "bg-emerald-500/10 text-emerald-600",
-      partial: "bg-amber-500/10 text-amber-600",
+      paid: "bg-success/10 text-success",
+      partial: "bg-warning/10 text-warning",
       unpaid: "bg-rose-500/10 text-rose-600",
-      payment_pending: "bg-amber-500/10 text-amber-600",
+      payment_pending: "bg-warning/10 text-warning",
     }[ps] ?? "bg-muted text-muted-foreground"
   );
 }
@@ -89,7 +89,7 @@ function paymentTypeBadge(type) {
     {
       package_purchase: {
         label: "Package Sale",
-        cls: "bg-blue-500/10 text-blue-600",
+        cls: "bg-info text-info",
       },
       credit_topup: {
         label: "Credit Top-up",
@@ -603,7 +603,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
           {
             label: `Sessions Completed (${sessionStats.completedCount ?? 0})`,
             value: `$${(sessionStats.completedValue ?? 0).toFixed(2)}`,
-            accent: "text-blue-500",
+            accent: "text-info",
           },
           {
             label: "Scheduled Events",
@@ -629,7 +629,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
             Remaining Sessions
           </p>
           <div className="flex items-baseline gap-1.5">
-            <p className="text-[15px] font-semibold text-emerald-500">
+            <p className="text-[15px] font-semibold text-success">
               {sessionStats.remainingCount}
             </p>
             <p className="text-[12px] text-muted-foreground">
@@ -638,7 +638,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
           </div>
           <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
             <div
-              className="h-full rounded-full bg-emerald-500 transition-all"
+              className="h-full rounded-full bg-success transition-all"
               style={{
                 width:
                   sessionStats.totalCount > 0
@@ -651,7 +651,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
             <p className="text-[10px] text-muted-foreground">
               {sessionStats.usedCount} used
             </p>
-            <p className="text-[13px] font-semibold text-emerald-500">
+            <p className="text-[13px] font-semibold text-success">
               ${sessionStats.remainingValue.toFixed(2)}
             </p>
           </div>
@@ -1114,7 +1114,7 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
           <span
             className={`normal-case font-normal inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
               plan.status === "completed"
-                ? "bg-emerald-500/10 text-emerald-600"
+                ? "bg-success/10 text-success"
                 : plan.status === "cancelled"
                   ? "bg-muted text-muted-foreground"
                   : "bg-violet-500/10 text-violet-600"
@@ -1135,17 +1135,17 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
               return (
                 <div
                   key={idx}
-                  className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${inst.status === "paid" ? "bg-emerald-500/5" : ""}`}
+                  className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${inst.status === "paid" ? "bg-success/5" : ""}`}
                 >
                   <div className="flex items-center gap-2.5">
                     <div
                       className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
                         inst.status === "paid"
-                          ? "bg-emerald-600 text-white"
+                          ? "bg-success text-white"
                           : inst.status === "failed"
                             ? "bg-rose-600 text-white"
                             : inst.status === "payment_pending"
-                              ? "bg-amber-500 text-white"
+                              ? "bg-warning text-white"
                               : "bg-muted text-muted-foreground"
                       }`}
                     >
@@ -1155,7 +1155,7 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
                       <p className="text-[12px] text-foreground font-medium">
                         Payment {idx + 1}
                         {inst.status === "paid" && (
-                          <span className="ml-1.5 text-[11px] font-normal text-emerald-600">
+                          <span className="ml-1.5 text-[11px] font-normal text-success">
                             Paid
                           </span>
                         )}
@@ -1165,7 +1165,7 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
                           </span>
                         )}
                         {inst.status === "payment_pending" && (
-                          <span className="ml-1.5 text-[11px] font-normal text-amber-600">
+                          <span className="ml-1.5 text-[11px] font-normal text-warning">
                             Payment pending
                           </span>
                         )}
@@ -1209,7 +1209,7 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
                           )}
                           <Button
                             size="sm"
-                            className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                            className="h-7 px-2.5 text-[11px] bg-success hover:bg-success text-white"
                             onClick={() =>
                               onPayInstallment({ plan, index: idx, billingType })
                             }
@@ -1339,8 +1339,8 @@ function PaymentTimeline({ customerID, enrollmentID }) {
                         p.status === "failed"
                           ? "bg-rose-500"
                           : isRefund
-                            ? "bg-amber-500"
-                            : "bg-emerald-500"
+                            ? "bg-warning"
+                            : "bg-success"
                       }`}
                     />
 
@@ -1361,7 +1361,7 @@ function PaymentTimeline({ customerID, enrollmentID }) {
                               </span>
                             )}
                             {p.enrollmentID?.package?.packageName && (
-                              <span className="text-[10px] font-medium bg-blue-500/10 text-blue-600 px-1.5 py-0.5 rounded border border-blue-200">
+                              <span className="text-[10px] font-medium bg-info text-info px-1.5 py-0.5 rounded border border-info/20">
                                 {p.enrollmentID.package.packageName}
                               </span>
                             )}
@@ -1389,10 +1389,10 @@ function PaymentTimeline({ customerID, enrollmentID }) {
                           <span
                             className={`text-[14px] font-semibold ${
                               isRefund
-                                ? "text-amber-600"
+                                ? "text-warning"
                                 : p.status === "failed"
                                   ? "text-rose-600"
-                                  : "text-emerald-600"
+                                  : "text-success"
                             }`}
                           >
                             {isRefund ? "−" : "+"}${Number(p.amount).toFixed(2)}
@@ -1406,7 +1406,7 @@ function PaymentTimeline({ customerID, enrollmentID }) {
                                 className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
                                   p.status === "failed"
                                     ? "bg-rose-500/10 text-rose-600"
-                                    : "bg-amber-500/10 text-amber-600"
+                                    : "bg-warning/10 text-warning"
                                 }`}
                               >
                                 {p.status}
@@ -1623,7 +1623,7 @@ function PayInstallmentDialog({
               type="submit"
               size="sm"
               disabled={saving || cloverNotConnected}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-success hover:bg-success text-white"
             >
               {saving
                 ? "Recording…"
@@ -2230,7 +2230,7 @@ function PackagesTab({ customerID, locationID }) {
                     {
                       label: "Collected",
                       value: `$${Number(collected).toFixed(2)}`,
-                      cls: "text-emerald-600",
+                      cls: "text-success",
                     },
                     {
                       label: "Outstanding",
@@ -2245,7 +2245,7 @@ function PackagesTab({ customerID, locationID }) {
                       value: `$${Number(refunded).toFixed(2)}`,
                       cls:
                         refunded > 0
-                          ? "text-amber-600"
+                          ? "text-warning"
                           : "text-muted-foreground",
                     },
                   ].map(({ label, value, cls }) => (
@@ -2330,7 +2330,7 @@ function PackagesTab({ customerID, locationID }) {
                                 {
                                   label: "Completed",
                                   value: sessUsed,
-                                  cls: sessUsed > 0 ? "text-blue-600" : "",
+                                  cls: sessUsed > 0 ? "text-info" : "",
                                 },
                                 {
                                   label: "Scheduled",
@@ -2342,7 +2342,7 @@ function PackagesTab({ customerID, locationID }) {
                                   value: sessRemaining,
                                   cls:
                                     sessRemaining > 0
-                                      ? "text-emerald-600"
+                                      ? "text-success"
                                       : "text-muted-foreground",
                                 },
                               ].map(({ label, value, cls }) => (
@@ -2386,7 +2386,7 @@ function PackagesTab({ customerID, locationID }) {
                             <span
                               className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                 plan.status === "completed"
-                                  ? "bg-emerald-500/10 text-emerald-600"
+                                  ? "bg-success/10 text-success"
                                   : plan.status === "cancelled"
                                     ? "bg-muted text-muted-foreground"
                                     : "bg-violet-500/10 text-violet-600"
@@ -2409,7 +2409,7 @@ function PackagesTab({ customerID, locationID }) {
                                 key={idx}
                                 className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${
                                   inst.status === "paid"
-                                    ? "bg-emerald-500/5"
+                                    ? "bg-success/5"
                                     : ""
                                 }`}
                               >
@@ -2417,11 +2417,11 @@ function PackagesTab({ customerID, locationID }) {
                                   <div
                                     className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
                                       inst.status === "paid"
-                                        ? "bg-emerald-600 text-white"
+                                        ? "bg-success text-white"
                                         : inst.status === "failed"
                                           ? "bg-rose-600 text-white"
                                           : inst.status === "payment_pending"
-                                            ? "bg-amber-500 text-white"
+                                            ? "bg-warning text-white"
                                             : "bg-muted text-muted-foreground"
                                     }`}
                                   >
@@ -2431,7 +2431,7 @@ function PackagesTab({ customerID, locationID }) {
                                     <p className="text-[12px] text-foreground font-medium">
                                       Payment {idx + 1}
                                       {inst.status === "paid" && (
-                                        <span className="ml-1.5 text-[11px] font-normal text-emerald-600">
+                                        <span className="ml-1.5 text-[11px] font-normal text-success">
                                           Paid
                                         </span>
                                       )}
@@ -2441,7 +2441,7 @@ function PackagesTab({ customerID, locationID }) {
                                         </span>
                                       )}
                                       {inst.status === "payment_pending" && (
-                                        <span className="ml-1.5 text-[11px] font-normal text-amber-600">
+                                        <span className="ml-1.5 text-[11px] font-normal text-warning">
                                           Payment pending
                                         </span>
                                       )}
@@ -2471,7 +2471,7 @@ function PackagesTab({ customerID, locationID }) {
                                     ${Number(inst.amount).toFixed(2)}
                                   </p>
                                   {hasDiscount && (
-                                    <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                                    <span className="text-[10px] font-medium text-warning bg-warning/10 px-1.5 py-0.5 rounded-full">
                                       discount
                                     </span>
                                   )}
@@ -2505,7 +2505,7 @@ function PackagesTab({ customerID, locationID }) {
                                         )}
                                         <Button
                                           size="sm"
-                                          className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                          className="h-7 px-2.5 text-[11px] bg-success hover:bg-success text-white"
                                           onClick={() =>
                                             setPayInstallTarget({
                                               plan,
@@ -2695,7 +2695,7 @@ function PackagesTab({ customerID, locationID }) {
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 </div>
                 {enrollments.filter((e) => !e.package).length === 0 && (
-                  <p className="text-[11px] text-amber-600 mt-1">
+                  <p className="text-[11px] text-warning mt-1">
                     No active enrollments without a package. Create an
                     enrollment first in the Enrollments tab.
                   </p>
@@ -2887,7 +2887,7 @@ function PackagesTab({ customerID, locationID }) {
                         >
                           Discount
                         </td>
-                        <td className="px-3 py-2 text-[11px] font-medium text-amber-600">
+                        <td className="px-3 py-2 text-[11px] font-medium text-warning">
                           -${totalDiscount.toFixed(2)}
                         </td>
                       </tr>
@@ -3079,7 +3079,7 @@ function PackagesTab({ customerID, locationID }) {
                           Schedule Preview
                         </p>
                         {totalDiscount > 0 && (
-                          <span className="text-[11px] text-amber-600">
+                          <span className="text-[11px] text-warning">
                             ${totalDiscount.toFixed(2)} discount spread across payments
                           </span>
                         )}
@@ -3862,7 +3862,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                         {
                           label: "Collected",
                           value: `$${Number(collected).toFixed(2)}`,
-                          cls: "text-emerald-600",
+                          cls: "text-success",
                         },
                         {
                           label: "Outstanding",
@@ -3877,7 +3877,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                           value: `$${Number(refunded).toFixed(2)}`,
                           cls:
                             refunded > 0
-                              ? "text-amber-500"
+                              ? "text-warning"
                               : "text-muted-foreground",
                         },
                       ].map(({ label, value, cls }) => (
@@ -4065,7 +4065,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                               {svc.serviceName}
                                             </span>
                                             {isFree && (
-                                              <span className="shrink-0 inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+                                              <span className="shrink-0 inline-flex items-center rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
                                                 {svc.isChargeable === false ? "Non-chargeable" : "Free"}
                                               </span>
                                             )}
@@ -4081,7 +4081,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                           {sessTotal}
                                         </span>
                                         <span
-                                          className={`text-[13px] font-semibold text-right ${sessUsed > 0 ? "text-blue-600" : "text-muted-foreground"}`}
+                                          className={`text-[13px] font-semibold text-right ${sessUsed > 0 ? "text-info" : "text-muted-foreground"}`}
                                         >
                                           {sessUsed}
                                         </span>
@@ -4096,7 +4096,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                           {sessRemaining}
                                         </span>
                                         <span
-                                          className={`text-[13px] font-semibold text-right ${svcCreditSessions > 0 ? "text-emerald-600" : "text-muted-foreground"}`}
+                                          className={`text-[13px] font-semibold text-right ${svcCreditSessions > 0 ? "text-success" : "text-muted-foreground"}`}
                                         >
                                           {isDeferred
                                             ? svcCreditSessions
@@ -4116,7 +4116,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                                     <span className="text-[11px] text-muted-foreground line-through block">
                                                       ${svcTotal.toFixed(2)}
                                                     </span>
-                                                    <span className="text-emerald-600">
+                                                    <span className="text-success">
                                                       ${svcNet.toFixed(2)}
                                                     </span>
                                                   </>
@@ -4216,14 +4216,14 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                                       className={`inline-flex w-fit max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase leading-tight whitespace-normal text-center ${
                                                         ev.status ===
                                                         "completed"
-                                                          ? "bg-blue-500/10 text-blue-500"
+                                                          ? "bg-info text-info"
                                                           : ev.status?.startsWith(
                                                                 "cancelled",
                                                               )
-                                                            ? "bg-red-500/10 text-red-400"
+                                                            ? "bg-destructive/10 text-destructive"
                                                             : ev.status ===
                                                                 "no_show"
-                                                              ? "bg-orange-500/10 text-orange-500"
+                                                              ? "bg-warning/10 text-warning"
                                                               : "bg-violet-500/10 text-violet-500"
                                                       }`}
                                                     >
@@ -4603,7 +4603,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                             >
                               Discount
                             </td>
-                            <td className="px-3 py-1.5 text-[11px] font-medium text-amber-600">
+                            <td className="px-3 py-1.5 text-[11px] font-medium text-warning">
                               -${enrTotalDiscount.toFixed(2)}
                             </td>
                             <td />
@@ -4853,7 +4853,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                   Schedule Preview
                                 </p>
                                 {enrTotalDiscount > 0 && (
-                                  <span className="text-[11px] text-amber-600">
+                                  <span className="text-[11px] text-warning">
                                     ${enrTotalDiscount.toFixed(2)} discount spread across payments
                                   </span>
                                 )}
@@ -5039,7 +5039,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                               </span>
                                             )}
                                             <span
-                                              className={`text-[11px] font-semibold ${isDiscounted ? "text-amber-600" : "text-foreground"}`}
+                                              className={`text-[11px] font-semibold ${isDiscounted ? "text-warning" : "text-foreground"}`}
                                             >
                                               ${amount.toFixed(2)}
                                             </span>
@@ -5201,7 +5201,7 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
 
   return (
     <div
-      className={`rounded-xl border ${isOverdue ? "border-rose-300 bg-rose-50/40 dark:bg-rose-900/10" : "border-amber-200 bg-amber-50/40 dark:bg-amber-900/10"} p-4 space-y-3`}
+      className={`rounded-xl border ${isOverdue ? "border-rose-300 bg-rose-50/40 dark:bg-rose-900/10" : "border-warning/20 bg-warning/10"} p-4 space-y-3`}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
@@ -5249,7 +5249,7 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
           <div className="flex items-center gap-2 shrink-0">
             <Button
               size="sm"
-              className="h-7 px-3 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="h-7 px-3 text-[11px] bg-success hover:bg-success text-white"
               onClick={() => setMode("pay")}
             >
               Pay Now
@@ -5492,9 +5492,9 @@ function PaymentsTab({ customerID }) {
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                             p.status === "completed"
-                              ? "bg-emerald-500/10 text-emerald-600"
+                              ? "bg-success/10 text-success"
                               : p.status === "pending"
-                                ? "bg-amber-500/10 text-amber-600"
+                                ? "bg-warning/10 text-warning"
                                 : "bg-rose-500/10 text-rose-600"
                           }`}
                         >
@@ -5573,11 +5573,11 @@ function deriveEventStatus(ev) {
 
 function eventStatusBadge(status) {
   const map = {
-    scheduled: "bg-blue-500/10 text-blue-600",
-    completed: "bg-emerald-500/10 text-emerald-600",
+    scheduled: "bg-info text-info",
+    completed: "bg-success/10 text-success",
     cancelled: "bg-muted text-muted-foreground",
     cancelled_no_charge: "bg-muted text-muted-foreground",
-    cancelled_charged: "bg-amber-500/10 text-amber-600",
+    cancelled_charged: "bg-warning/10 text-warning",
     no_show: "bg-rose-500/10 text-rose-600",
   };
   return map[status] ?? "bg-muted text-muted-foreground";
@@ -5815,7 +5815,7 @@ function LessonsTab({ customer }) {
             const paymentClass = isCancelledNoCharge
               ? "bg-muted text-muted-foreground"
               : isPaid
-                ? "bg-emerald-500/10 text-emerald-600"
+                ? "bg-success/10 text-success"
                 : "bg-rose-500/10 text-rose-600";
             return (
               <div
@@ -5853,7 +5853,7 @@ function LessonsTab({ customer }) {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {isPersonalNoShow && (
-                    <span className="rounded-full px-2.5 py-0.5 text-[11px] font-medium bg-orange-500/10 text-orange-500">
+                    <span className="rounded-full px-2.5 py-0.5 text-[11px] font-medium bg-warning/10 text-warning">
                       No Show
                     </span>
                   )}
@@ -6475,11 +6475,11 @@ function MembersTab({ customer, onUpdated }) {
 // ─── Contracts Tab ─────────────────────────────────────────────────────────────
 
 const CONTRACT_STATUS_STYLES = {
-  draft: "bg-slate-100 text-slate-700",
-  sent: "bg-blue-100 text-blue-700",
-  signed: "bg-emerald-100 text-emerald-700",
-  expired: "bg-amber-100 text-amber-700",
-  revoked: "bg-red-100 text-red-700",
+  draft: "bg-muted text-foreground",
+  sent: "bg-info/10 text-info",
+  signed: "bg-success/10 text-success",
+  expired: "bg-warning/10 text-warning",
+  revoked: "bg-destructive/10 text-destructive",
 };
 
 function ContractFormSheet({ open, onClose, customerId, contract, onSaved }) {
@@ -6702,7 +6702,7 @@ function ContractsTab({ customerID }) {
                     </span>
                   </div>
                   {c.signedByName && (
-                    <p className="text-[12px] text-emerald-600">
+                    <p className="text-[12px] text-success">
                       Signed by {c.signedByName} · {formatDate(c.signedAt)}
                     </p>
                   )}
@@ -6737,7 +6737,7 @@ function ContractsTab({ customerID }) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-blue-600 hover:text-blue-700"
+                        className="h-7 w-7 text-info hover:text-info"
                         title="Send for signing"
                         disabled={sendingId === c._id}
                         onClick={() => handleSend(c)}
@@ -6759,7 +6759,7 @@ function ContractsTab({ customerID }) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 text-amber-600 hover:text-amber-700"
+                      className="h-7 w-7 text-warning hover:text-warning"
                       title="Revoke"
                       onClick={() => handleRevoke(c)}
                     >
@@ -6806,7 +6806,7 @@ function ContractsTab({ customerID }) {
                 {viewingContract.content}
               </div>
               {viewingContract.signedByName && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-[12px] text-emerald-800 space-y-0.5">
+                <div className="rounded-lg border border-success/20 bg-success/10 p-3 text-[12px] text-success space-y-0.5">
                   <p className="font-semibold">Signature Record</p>
                   <p>Signed by: {viewingContract.signedByName}</p>
                   <p>

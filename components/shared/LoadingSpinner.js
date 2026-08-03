@@ -50,7 +50,7 @@ export function DotSpinner({
         />
       </div>
       {text && (
-        <p className="mt-4 text-sm text-slate-500">{text}</p>
+        <p className="mt-4 text-sm text-muted-foreground">{text}</p>
       )}
     </div>
   )

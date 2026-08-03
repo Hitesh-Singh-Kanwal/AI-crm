@@ -13,7 +13,7 @@ const defaultStats = {
   waitingOver1Hour: 3,
 }
 
-const RED_ERROR = '#DC2626'
+const RED_ERROR = 'hsl(var(--destructive))'
 
 export default function UrgentInterventionBanner({ stats = defaultStats }) {
   const { leadsWaiting, avgWaitMins, waitingOver1Hour } = stats

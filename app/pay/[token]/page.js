@@ -52,7 +52,7 @@ function Shell({ children }) {
   return (
     <div
       style={{ colorScheme: 'light' }}
-      className="min-h-screen bg-slate-50 px-4 py-10 sm:py-16 flex justify-center"
+      className="min-h-screen bg-muted/40 px-4 py-10 sm:py-16 flex justify-center"
     >
       <main className="w-full max-w-[26rem]">{children}</main>
     </div>
@@ -61,21 +61,21 @@ function Shell({ children }) {
 
 function Skeleton() {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
       <div className="motion-safe:animate-pulse space-y-6">
         <div className="flex items-center gap-3">
-          <div className="h-11 w-11 rounded-xl bg-slate-200" />
+          <div className="h-11 w-11 rounded-xl bg-muted" />
           <div className="space-y-2">
-            <div className="h-3 w-32 rounded bg-slate-200" />
-            <div className="h-2.5 w-20 rounded bg-slate-100" />
+            <div className="h-3 w-32 rounded bg-muted" />
+            <div className="h-2.5 w-20 rounded bg-muted" />
           </div>
         </div>
         <div className="space-y-3 pt-2">
-          <div className="h-2.5 w-24 rounded bg-slate-100" />
-          <div className="h-10 w-40 rounded bg-slate-200" />
-          <div className="h-3 w-48 rounded bg-slate-100" />
+          <div className="h-2.5 w-24 rounded bg-muted" />
+          <div className="h-10 w-40 rounded bg-muted" />
+          <div className="h-3 w-48 rounded bg-muted" />
         </div>
-        <div className="h-12 w-full rounded-xl bg-slate-200" />
+        <div className="h-12 w-full rounded-xl bg-muted" />
       </div>
       <span className="sr-only">Loading your payment request…</span>
     </div>
@@ -94,8 +94,8 @@ function StudioMark({ name }) {
         {initial}
       </div>
       <div className="min-w-0">
-        <h1 className="truncate text-[15px] font-semibold text-slate-900">{name}</h1>
-        <p className="text-[13px] text-slate-500">Payment request</p>
+        <h1 className="truncate text-[15px] font-semibold text-foreground">{name}</h1>
+        <p className="text-[13px] text-muted-foreground">Payment request</p>
       </div>
     </div>
   )
@@ -166,10 +166,10 @@ export default function PayPage() {
   if (state === 'invalid') {
     return (
       <Shell>
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-          <AlertCircle aria-hidden="true" className="mx-auto h-8 w-8 text-slate-400" />
-          <h1 className="mt-4 text-[15px] font-semibold text-slate-900">This link isn’t valid</h1>
-          <p className="mx-auto mt-1.5 max-w-[30ch] text-[13px] leading-relaxed text-slate-600">
+        <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+          <AlertCircle aria-hidden="true" className="mx-auto h-8 w-8 text-muted-foreground" />
+          <h1 className="mt-4 text-[15px] font-semibold text-foreground">This link isn’t valid</h1>
+          <p className="mx-auto mt-1.5 max-w-[30ch] text-[13px] leading-relaxed text-muted-foreground">
             Open the most recent link your studio sent you, or ask them for a new one.
           </p>
         </div>
@@ -182,24 +182,24 @@ export default function PayPage() {
     const good = closed.tone === 'good'
     return (
       <Shell>
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
           <StudioMark name={request.studioName} />
-          <div className="mt-6 flex flex-col items-center border-t border-slate-100 pt-6 text-center">
+          <div className="mt-6 flex flex-col items-center border-t border-border pt-6 text-center">
             <div
               aria-hidden="true"
               className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                good ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                good ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
               }`}
             >
               {good ? <Check className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
             </div>
-            <h2 className="mt-3 text-[15px] font-semibold text-slate-900">{closed.title}</h2>
-            <p className="mx-auto mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-slate-600">
+            <h2 className="mt-3 text-[15px] font-semibold text-foreground">{closed.title}</h2>
+            <p className="mx-auto mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-muted-foreground">
               {closed.body}
             </p>
             {good && (
-              <p className="mt-4 text-[13px] text-slate-500">
-                <span className="font-medium text-slate-700">{money(request.amount)}</span> ·{' '}
+              <p className="mt-4 text-[13px] text-muted-foreground">
+                <span className="font-medium text-foreground">{money(request.amount)}</span> ·{' '}
                 {request.description}
               </p>
             )}
@@ -211,21 +211,21 @@ export default function PayPage() {
 
   return (
     <Shell>
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <StudioMark name={request.studioName} />
 
-        <div className="mt-6 border-t border-slate-100 pt-6">
-          <p className="text-[13px] font-medium text-slate-500">Amount due</p>
-          <p className="mt-1 text-[2.75rem] font-semibold leading-none tracking-tight text-slate-900 tabular-nums">
+        <div className="mt-6 border-t border-border pt-6">
+          <p className="text-[13px] font-medium text-muted-foreground">Amount due</p>
+          <p className="mt-1 text-[2.75rem] font-semibold leading-none tracking-tight text-foreground tabular-nums">
             {money(request.amount)}
           </p>
-          <p className="mt-3 text-[14px] leading-relaxed text-slate-600">{request.description}</p>
+          <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">{request.description}</p>
         </div>
 
         {error && (
           <p
             role="alert"
-            className="mt-5 rounded-lg bg-red-50 px-3 py-2.5 text-[13px] leading-relaxed text-red-700"
+            className="mt-5 rounded-lg bg-destructive/10 px-3 py-2.5 text-[13px] leading-relaxed text-destructive"
           >
             {error}
           </p>
@@ -251,7 +251,7 @@ export default function PayPage() {
 
         {/* Said before they leave, not after: an unexplained jump to a third-party domain
             is the moment a legitimate payment starts to feel like a scam. */}
-        <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed text-slate-500">
+        <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed text-muted-foreground">
           <Lock aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>
             You’ll be taken to Clover to enter your card. {request.studioName} never sees your card

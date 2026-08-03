@@ -134,28 +134,28 @@ export default function HumanInterventionWidget({
           value={totalCount}
           hint="Queue items this period"
           icon={Headphones}
-          accent="#C81D77"
+          accent="var(--chart-4)"
         />
         <KpiTile
           label="Resolved"
           value={resolvedCount}
           hint={`${resolveRate}% of total`}
           icon={CheckCircle2}
-          accent="#10b981"
+          accent="hsl(var(--success))"
         />
         <KpiTile
           label="In progress"
           value={inProgressCount}
           hint="Waiting or claimed"
           icon={Clock3}
-          accent="#F72585"
+          accent="var(--chart-1)"
         />
         <KpiTile
           label="Abandoned"
           value={abandonedCount}
           hint="Left without resolution"
           icon={UserX}
-          accent="#f43f5e"
+          accent="hsl(var(--destructive))"
         />
       </div>
 
@@ -186,7 +186,7 @@ export default function HumanInterventionWidget({
                 {statusData.map((row) => {
                   const pct = totalCount ? Math.round((row.value / totalCount) * 100) : 0
                   const color =
-                    row.name === 'Resolved' ? '#10b981' : row.name === 'Abandoned' ? '#f43f5e' : '#F72585'
+                    row.name === 'Resolved' ? 'hsl(var(--success))' : row.name === 'Abandoned' ? 'hsl(var(--destructive))' : 'var(--chart-1)'
                   return (
                     <div key={row.name} className="space-y-1.5">
                       <div className="flex items-center justify-between gap-3 text-[13px]">

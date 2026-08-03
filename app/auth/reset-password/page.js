@@ -101,13 +101,13 @@ function ResetPasswordContent() {
           </div>
 
           {error && (
-            <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
+            <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg">
               {error}
             </div>
           )}
 
           {message && (
-            <div className="p-3 text-sm text-emerald-700 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-lg">
+            <div className="p-3 text-sm text-success bg-success/10 border border-success/20 rounded-lg">
               {message}
             </div>
           )}

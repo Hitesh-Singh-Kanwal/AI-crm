@@ -20,16 +20,16 @@ import { fetchWalletBalance } from '@/lib/wallet'
 const ANNUAL_FREEZE_CAP_DAYS = 60
 
 const STATUS_COLORS = {
-  active: 'bg-emerald-500/10 text-emerald-600',
+  active: 'bg-success/10 text-success',
   expired: 'bg-muted text-muted-foreground',
-  cancelled: 'bg-red-500/10 text-red-600',
+  cancelled: 'bg-destructive/10 text-destructive',
   frozen: 'bg-sky-500/10 text-sky-600',
 }
 const PAYMENT_STATUS_COLORS = {
-  paid: 'bg-emerald-500/10 text-emerald-600',
-  partial: 'bg-amber-500/10 text-amber-600',
-  unpaid: 'bg-red-500/10 text-red-600',
-  payment_pending: 'bg-amber-500/10 text-amber-600',
+  paid: 'bg-success/10 text-success',
+  partial: 'bg-warning/10 text-warning',
+  unpaid: 'bg-destructive/10 text-destructive',
+  payment_pending: 'bg-warning/10 text-warning',
 }
 
 function fmtDate(iso) {
@@ -114,11 +114,11 @@ function PayInstallmentDialog({ target, onClose, onPaid, locationID }) {
           onShortfallMethodChange={setShortfallMethod}
         />
         {cloverNotConnected && (
-          <p className="mt-2 text-[11px] text-amber-600">Finish Clover setup in Settings → Integrations to charge a card.</p>
+          <p className="mt-2 text-[11px] text-warning">Finish Clover setup in Settings → Integrations to charge a card.</p>
         )}
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" size="sm" onClick={onClose} disabled={paying}>Cancel</Button>
-          <Button size="sm" onClick={handlePay} disabled={paying || cloverNotConnected} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <Button size="sm" onClick={handlePay} disabled={paying || cloverNotConnected} className="bg-success hover:bg-success text-white">
             {paying ? 'Saving…' : payWithClover ? 'Pay with Clover' : `Pay $${Number(inst.amount).toFixed(2)}`}
           </Button>
         </div>
@@ -288,11 +288,11 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
                 </div>
                 <div className="rounded-lg bg-muted/30 px-3 py-2">
                   <p className="text-muted-foreground">Collected</p>
-                  <p className="text-sm font-semibold text-emerald-600">${collected.toFixed(2)}</p>
+                  <p className="text-sm font-semibold text-success">${collected.toFixed(2)}</p>
                 </div>
                 <div className="rounded-lg bg-muted/30 px-3 py-2">
                   <p className="text-muted-foreground">Outstanding</p>
-                  <p className="text-sm font-semibold text-red-600">${outstanding.toFixed(2)}</p>
+                  <p className="text-sm font-semibold text-destructive">${outstanding.toFixed(2)}</p>
                 </div>
                 <div className="rounded-lg bg-muted/30 px-3 py-2">
                   <p className="text-muted-foreground">Billing</p>
@@ -355,9 +355,9 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
                                   </span>
                                   <span className="text-[11px] text-muted-foreground truncate">{ev.teacherID?.name || '—'}</span>
                                   <span className={`inline-flex w-fit max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase leading-tight whitespace-normal text-center ${
-                                    ev.status === 'completed' ? 'bg-blue-500/10 text-blue-500'
-                                      : ev.status?.startsWith('cancelled') ? 'bg-red-500/10 text-red-400'
-                                        : ev.status === 'no_show' ? 'bg-orange-500/10 text-orange-500'
+                                    ev.status === 'completed' ? 'bg-info/10 text-info'
+                                      : ev.status?.startsWith('cancelled') ? 'bg-destructive/10 text-destructive'
+                                        : ev.status === 'no_show' ? 'bg-warning/10 text-warning'
                                           : 'bg-violet-500/10 text-violet-500'}`}>
                                     {(ev.status || 'scheduled').replace(/_/g, ' ')}
                                   </span>
@@ -379,7 +379,7 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
                     <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Payment Schedule</p>
                     <div className="flex items-center gap-2">
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        plan.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600'
+                        plan.status === 'completed' ? 'bg-success/10 text-success'
                           : plan.status === 'cancelled' ? 'bg-muted text-muted-foreground'
                             : 'bg-violet-500/10 text-violet-600'}`}>
                         {plan.status}
@@ -393,21 +393,21 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
                     {plan.installments.map((inst, idx) => (
                       <div
                         key={idx}
-                        className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? 'border-t border-border' : ''} ${inst.status === 'paid' ? 'bg-emerald-500/5' : ''}`}
+                        className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? 'border-t border-border' : ''} ${inst.status === 'paid' ? 'bg-success/5' : ''}`}
                       >
                         <div className="flex items-center gap-2.5">
                           <div className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
-                            inst.status === 'paid' ? 'bg-emerald-600 text-white'
+                            inst.status === 'paid' ? 'bg-success text-white'
                               : inst.status === 'failed' ? 'bg-rose-600 text-white'
-                                : inst.status === 'payment_pending' ? 'bg-amber-500 text-white'
+                                : inst.status === 'payment_pending' ? 'bg-warning text-white'
                                   : 'bg-muted text-muted-foreground'}`}>
                             {inst.status === 'paid' ? '✓' : inst.status === 'payment_pending' ? '⋯' : idx + 1}
                           </div>
                           <div>
                             <p className="text-[12px] text-foreground font-medium">
                               Payment {idx + 1}
-                              {inst.status === 'paid' && <span className="ml-1.5 text-[11px] font-normal text-emerald-600">Paid</span>}
-                              {inst.status === 'payment_pending' && <span className="ml-1.5 text-[11px] font-normal text-amber-600">Payment pending</span>}
+                              {inst.status === 'paid' && <span className="ml-1.5 text-[11px] font-normal text-success">Paid</span>}
+                              {inst.status === 'payment_pending' && <span className="ml-1.5 text-[11px] font-normal text-warning">Payment pending</span>}
                             </p>
                             <p className="text-[11px] text-muted-foreground">Due {fmtDate(inst.dueDate)}</p>
                           </div>
@@ -425,7 +425,7 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
                               )}
                               <Button
                                 size="sm"
-                                className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                className="h-7 px-2.5 text-[11px] bg-success hover:bg-success text-white"
                                 onClick={() => setPayTarget({ plan, index: idx })}
                               >
                                 Pay
@@ -499,7 +499,7 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
                       size="sm"
                       disabled={busyId === m._id}
                       onClick={() => setCancelTarget({ _id: m._id, membershipName: m.membershipName, maxRefundable: Math.max(0, collected - Number(m.totalRefunded ?? 0)) })}
-                      className="h-8 gap-1.5 text-xs text-red-600 hover:text-red-700"
+                      className="h-8 gap-1.5 text-xs text-destructive hover:text-destructive"
                     >
                       <X className="h-3.5 w-3.5" />
                       Cancel

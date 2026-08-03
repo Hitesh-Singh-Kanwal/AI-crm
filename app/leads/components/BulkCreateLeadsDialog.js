@@ -158,15 +158,15 @@ Charlie Brown,charlie.brown@example.com,+1333333333,Seattle,cold,Not Booked,agen
         <div className="space-y-4 py-4">
           <div>
             <label className="block text-sm font-medium mb-2">CSV Format</label>
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs font-mono">
-              <div className="text-slate-600 mb-2">Required columns: name, email, phonenumber, location</div>
-              <div className="text-slate-500">Optional columns: stage, bookingstatus, assignedhumanagent, assignedaiagent, isescalated</div>
+            <div className="bg-muted/40 border border-border rounded-lg p-3 text-xs font-mono">
+              <div className="text-muted-foreground mb-2">Required columns: name, email, phonenumber, location</div>
+              <div className="text-muted-foreground">Optional columns: stage, bookingstatus, assignedhumanagent, assignedaiagent, isescalated</div>
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-2">Example CSV</label>
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap">
+            <div className="bg-muted/40 border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap">
 {`name,email,phonenumber,location,stage,bookingstatus
 John Doe,john@example.com,+1234567890,New York,new,Not Booked
 Jane Smith,jane@example.com,+1987654321,Los Angeles,engaged,Booked`}
@@ -178,7 +178,7 @@ Jane Smith,jane@example.com,+1987654321,Los Angeles,engaged,Booked`}
               Upload CSV File
             </label>
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50">
+              <label className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg cursor-pointer hover:bg-muted/40">
                 <Upload className="h-4 w-4" />
                 <span className="text-sm">Choose File</span>
                 <input
@@ -209,7 +209,7 @@ Jane Smith,jane@example.com,+1987654321,Los Angeles,engaged,Booked`}
               value={csvText}
               onChange={(e) => setCsvText(e.target.value)}
               placeholder="Paste CSV data here or upload a file..."
-              className="w-full h-64 px-3 py-2 border border-slate-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full h-64 px-3 py-2 border border-border rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-info"
             />
             {csvText && (
               <div className="mt-2 text-xs text-muted-foreground">

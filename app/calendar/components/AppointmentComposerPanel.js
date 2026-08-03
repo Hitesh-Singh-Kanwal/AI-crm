@@ -250,7 +250,7 @@ function Toggle({ checked, onChange }) {
     >
       <span
         className={[
-          "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200",
+          "pointer-events-none inline-block h-4 w-4 rounded-full bg-card shadow transform transition-transform duration-200",
           checked ? "translate-x-4" : "translate-x-0",
         ].join(" ")}
       />
@@ -547,8 +547,8 @@ function EnrollmentServiceSelector({
 
   if (activeEnrollments.length === 0) {
     return (
-      <div className="rounded-xl border border-amber-200/60 bg-amber-50/50 dark:bg-amber-900/10 p-3 text-center">
-        <p className="text-[11px] text-amber-600">
+      <div className="rounded-xl border border-warning/20 bg-warning/10 p-3 text-center">
+        <p className="text-[11px] text-warning">
           No active enrollments with a package. Add a package to an enrollment
           first.
         </p>
@@ -1066,14 +1066,14 @@ function GroupWhoSection({
           className={[
             "rounded-xl border px-3 py-2.5 transition-colors",
             form.group_sell_package
-              ? "border-emerald-500/30 bg-emerald-500/5"
+              ? "border-success/20 bg-success/5"
               : "border-border bg-muted/20",
           ].join(" ")}
         >
           <div className="flex items-center justify-between">
             <div>
               <p
-                className={`text-[12px] font-semibold ${form.group_sell_package ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}
+                className={`text-[12px] font-semibold ${form.group_sell_package ? "text-success" : "text-foreground"}`}
               >
                 {form.group_sell_package
                   ? "Selling package at booking"
@@ -1799,10 +1799,10 @@ function AppointmentFields({
         <SectionDivider label="Notes & Payment" />
         <NotesBlock form={form} setField={setField} />
         {showSessionPayment && (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 space-y-2.5">
+          <div className="rounded-xl border border-success/20 bg-success/5 px-3 py-2.5 space-y-2.5">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-400">
+                <p className="text-[12px] font-semibold text-success">
                   Session Payment
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -1816,7 +1816,7 @@ function AppointmentFields({
                       ${rawPricePerSession.toFixed(2)}
                     </p>
                   )}
-                  <p className="text-[15px] font-bold text-emerald-700 dark:text-emerald-400">
+                  <p className="text-[15px] font-bold text-success">
                     ${thisSessionCharge.toFixed(2)}
                   </p>
                   {hasDiscount && thisSessionCharge === rawPricePerSession && (
@@ -1833,7 +1833,7 @@ function AppointmentFields({
                 <select
                   value={form.session_payment_method}
                   onChange={(e) => setField("session_payment_method", e.target.value)}
-                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-emerald-500 transition-colors"
+                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-success/20 transition-colors"
                 >
                   <option value="">Select method…</option>
                   {PAYMENT_METHODS.map((m) => (
@@ -1914,8 +1914,8 @@ function GroupClassFields({
         <SectionDivider label="Notes" />
         <NotesBlock form={form} setField={setField} />
       </div>
-      <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2.5">
-        <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+      <div className="rounded-xl border border-info/20 bg-info/5 px-3 py-2.5">
+        <p className="text-[11px] font-medium text-info">
           Students are added after the event is created — click the event on the calendar to enroll students.
         </p>
       </div>

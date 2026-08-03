@@ -265,7 +265,7 @@ export default function WorkflowBuilderClient() {
   )
 
   return (
-    <div className="flex h-[calc(100vh-5.5rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)] dark:border-border dark:bg-background md:h-[calc(100vh-6rem)]">
+    <div className="flex h-[calc(100vh-5.5rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-[0_8px_30px_rgba(15,23,42,0.06)] md:h-[calc(100vh-6rem)]">
       <WorkflowBuilderHeader onSave={handleSave} onPublish={handlePublishClick} saving={saving} />
       <PublishWorkflowDialog
         open={publishOpen}
@@ -292,7 +292,7 @@ export default function WorkflowBuilderClient() {
 
       <div className="relative flex min-h-0 flex-1">
         {loading && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 backdrop-blur-sm dark:bg-background/60">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 backdrop-blur-sm">
             <span className="inline-flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading workflow…

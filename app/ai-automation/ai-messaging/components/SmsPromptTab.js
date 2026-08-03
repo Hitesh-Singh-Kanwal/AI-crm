@@ -167,7 +167,7 @@ function ViewDialog({ open, onClose, prompt }) {
       <DialogContent onClose={onClose} className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {prompt.isLocked && <Lock className="h-4 w-4 text-amber-500" />}
+            {prompt.isLocked && <Lock className="h-4 w-4 text-warning" />}
             {prompt.name}
           </DialogTitle>
           <DialogDescription>System prompt configuration</DialogDescription>
@@ -203,28 +203,28 @@ const SMS_MODELS = [
     value: 'gpt-4o',
     label: 'GPT-4o',
     badge: 'Recommended',
-    badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300',
+    badgeClass: 'bg-success/10 text-success',
     description: 'Best reasoning and context understanding. Handles budget constraints, timelines, and complex scenarios naturally.',
     icon: Brain,
-    iconClass: 'text-emerald-600 dark:text-emerald-400',
+    iconClass: 'text-success',
   },
   {
     value: 'gpt-4o-mini',
     label: 'GPT-4o Mini',
     badge: 'Balanced',
-    badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300',
+    badgeClass: 'bg-info/10 text-info',
     description: 'Faster and cheaper than GPT-4o. Good for straightforward conversations with clear prompts.',
     icon: Zap,
-    iconClass: 'text-blue-600 dark:text-blue-400',
+    iconClass: 'text-info',
   },
   {
     value: 'gpt-3.5-turbo',
     label: 'GPT-3.5 Turbo',
     badge: 'Budget',
-    badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
+    badgeClass: 'bg-warning/10 text-warning',
     description: 'Most affordable option. Works for simple Q&A but may miss context in nuanced conversations.',
     icon: DollarSign,
-    iconClass: 'text-amber-600 dark:text-amber-400',
+    iconClass: 'text-warning',
   },
 ]
 
@@ -504,7 +504,7 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold text-foreground">{p.name}</span>
                       {p.isLocked && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
                           <Lock className="h-3 w-3" /> Locked
                         </span>
                       )}
@@ -592,7 +592,7 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
                       variant="outline"
                       size="sm"
                       title="Delete"
-                      className="h-8 w-8 p-0 text-red-500 hover:border-red-300 hover:text-red-600"
+                      className="h-8 w-8 p-0 text-destructive hover:border-destructive/20 hover:text-destructive"
                       onClick={() => handleDelete(p)}
                       disabled={deletingId === p._id}
                     >

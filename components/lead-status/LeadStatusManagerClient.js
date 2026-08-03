@@ -31,7 +31,7 @@ function lifecycleBadge(status) {
     case 'inactive':
       return 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
     case 'archived':
-      return 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300'
+      return 'bg-muted text-muted-foreground dark:bg-slate-800/60 dark:text-muted-foreground'
     case 'trial_scheduled':
       return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
     case 'trial_unscheduled':

@@ -296,7 +296,7 @@ export default function LeadsDialog({
                 value={editingLead.stage || 'new'}
                 onChange={(e) => setEditingLead({ ...editingLead, stage: e.target.value })}
                 disabled={viewOnly}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info"
               >
                 {stageOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -377,7 +377,7 @@ export default function LeadsDialog({
                 value={editingLead.bookingStatus || 'Not Booked'}
                 onChange={(e) => setEditingLead({ ...editingLead, bookingStatus: e.target.value })}
                 disabled={viewOnly}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info"
               >
                 {bookingStatusOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -484,7 +484,7 @@ export default function LeadsDialog({
                   disabled={viewOnly}
                   rows={3}
                   placeholder="Add an initial note (optional). You'll be able to add more once the lead is created."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                  className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info disabled:opacity-60"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Notes carry over to the customer when this lead is converted
@@ -552,7 +552,7 @@ function LeadNotesSection({ leadId, notes, onChanged }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Add a note…"
-          className="flex-1 h-9 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 h-9 px-3 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info"
         />
         <Button type="submit" size="sm" disabled={adding || !text.trim()}>
           {adding ? 'Adding…' : 'Add'}
@@ -560,13 +560,13 @@ function LeadNotesSection({ leadId, notes, onChanged }) {
       </form>
 
       {sortedNotes.length === 0 ? (
-        <div className="rounded-md border border-dashed border-gray-300 py-6 text-center text-sm text-muted-foreground">
+        <div className="rounded-md border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
           No notes yet.
         </div>
       ) : (
         <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
           {sortedNotes.map((note) => (
-            <div key={note._id} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5">
+            <div key={note._id} className="rounded-md border border-border bg-muted/40 px-3 py-2.5">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm text-foreground leading-relaxed flex-1 whitespace-pre-wrap">
                   {note.text}
@@ -575,7 +575,7 @@ function LeadNotesSection({ leadId, notes, onChanged }) {
                   type="button"
                   onClick={() => handleDelete(note._id)}
                   disabled={deletingId === note._id}
-                  className="shrink-0 text-muted-foreground hover:text-red-600 disabled:opacity-50"
+                  className="shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-50"
                   aria-label="Delete note"
                 >
                   <Trash2 className="h-3.5 w-3.5" />

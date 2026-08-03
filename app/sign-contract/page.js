@@ -69,60 +69,60 @@ function SignContractContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-muted/40 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">
-          <div className="h-10 w-10 rounded-xl bg-indigo-600 flex items-center justify-center">
+          <div className="h-10 w-10 rounded-xl bg-brand flex items-center justify-center">
             <FileText className="h-5 w-5 text-white" />
           </div>
           <div>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Dance Studio CRM</p>
-            <p className="text-sm font-semibold text-gray-800">Contract Signing</p>
+            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">CADANCE AI</p>
+            <p className="text-sm font-semibold text-foreground">Contract Signing</p>
           </div>
         </div>
 
         {/* Loading */}
         {step === 'loading' && (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-10 flex flex-col items-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
-            <p className="text-sm text-gray-500">Loading contract…</p>
+          <div className="bg-card rounded-2xl border border-border shadow-sm p-10 flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-brand" />
+            <p className="text-sm text-muted-foreground">Loading contract…</p>
           </div>
         )}
 
         {/* Error */}
         {step === 'error' && (
-          <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-10 flex flex-col items-center gap-4 text-center">
-            <AlertTriangle className="h-10 w-10 text-red-400" />
+          <div className="bg-card rounded-2xl border border-destructive/20 shadow-sm p-10 flex flex-col items-center gap-4 text-center">
+            <AlertTriangle className="h-10 w-10 text-destructive" />
             <div>
-              <p className="text-base font-semibold text-gray-800 mb-1">Unable to load contract</p>
-              <p className="text-sm text-gray-500">{errorMsg}</p>
+              <p className="text-base font-semibold text-foreground mb-1">Unable to load contract</p>
+              <p className="text-sm text-muted-foreground">{errorMsg}</p>
             </div>
           </div>
         )}
 
         {/* Preview */}
         {step === 'preview' && contract && (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-4">
-              <p className="text-xs text-indigo-500 font-medium uppercase tracking-wide mb-1">Please review and sign</p>
-              <h1 className="text-xl font-bold text-gray-900">{contract.title}</h1>
+          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+            <div className="bg-brand/10 border-b border-brand/20 px-6 py-4">
+              <p className="text-xs text-brand font-medium uppercase tracking-wide mb-1">Please review and sign</p>
+              <h1 className="text-xl font-bold text-foreground">{contract.title}</h1>
             </div>
 
-            <div className="px-6 py-5 max-h-[400px] overflow-y-auto border-b border-gray-100">
-              <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">{contract.content}</pre>
+            <div className="px-6 py-5 max-h-[400px] overflow-y-auto border-b border-border">
+              <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">{contract.content}</pre>
             </div>
 
             <div className="px-6 py-5 space-y-4">
-              <p className="text-sm font-semibold text-gray-800">Sign this contract</p>
+              <p className="text-sm font-semibold text-foreground">Sign this contract</p>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Your full name *</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Your full name *</label>
                 <Input
                   value={signedByName}
                   onChange={(e) => setSignedByName(e.target.value)}
                   placeholder="Type your full name exactly as it appears"
-                  className="bg-white border-gray-300"
+                  className="bg-card border-border"
                 />
               </div>
 
@@ -131,9 +131,9 @@ function SignContractContent() {
                   type="checkbox"
                   checked={agreed}
                   onChange={(e) => setAgreed(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  className="mt-0.5 h-4 w-4 rounded border-border text-brand focus:ring-brand"
                 />
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-muted-foreground">
                   I have read and understood the contract above, and I agree to its terms. I understand that typing my name constitutes my digital signature.
                 </span>
               </label>
@@ -141,7 +141,7 @@ function SignContractContent() {
               <Button
                 onClick={submitSignature}
                 disabled={!signedByName.trim() || !agreed || submitting}
-                className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl"
+                className="w-full h-11 bg-brand hover:bg-brand text-white font-medium rounded-xl"
               >
                 {submitting ? (
                   <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Submitting…</span>
@@ -150,7 +150,7 @@ function SignContractContent() {
                 )}
               </Button>
 
-              <p className="text-xs text-gray-400 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 By clicking "Sign Contract", your signature, IP address, and timestamp will be recorded.
               </p>
             </div>
@@ -159,15 +159,15 @@ function SignContractContent() {
 
         {/* Success */}
         {step === 'success' && (
-          <div className="bg-white rounded-2xl border border-emerald-200 shadow-sm p-10 flex flex-col items-center gap-4 text-center">
-            <CheckCircle className="h-12 w-12 text-emerald-500" />
+          <div className="bg-card rounded-2xl border border-success/20 shadow-sm p-10 flex flex-col items-center gap-4 text-center">
+            <CheckCircle className="h-12 w-12 text-success" />
             <div>
-              <p className="text-lg font-bold text-gray-900 mb-1">Contract Signed!</p>
-              <p className="text-sm text-gray-500">
+              <p className="text-lg font-bold text-foreground mb-1">Contract Signed!</p>
+              <p className="text-sm text-muted-foreground">
                 Thank you, <strong>{signedByName}</strong>. Your signature has been recorded and a confirmation email has been sent to you.
               </p>
             </div>
-            <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3 text-sm text-emerald-700">
+            <div className="rounded-xl bg-success/10 border border-success/20 px-4 py-3 text-sm text-success">
               Signed on {new Date().toLocaleString()}
             </div>
           </div>

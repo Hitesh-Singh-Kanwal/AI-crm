@@ -579,7 +579,7 @@ export default function MakeCallsPage() {
                   wizardStep === 1
                     ? 'bg-brand text-brand-foreground'
                     : wizardStep > 1
-                    ? 'bg-emerald-500 text-white'
+                    ? 'bg-success text-white'
                     : 'bg-muted text-muted-foreground'
                 }`}
               >
@@ -596,7 +596,7 @@ export default function MakeCallsPage() {
                   wizardStep === 2
                     ? 'bg-brand text-brand-foreground'
                     : wizardStep > 2
-                    ? 'bg-emerald-500 text-white'
+                    ? 'bg-success text-white'
                     : 'bg-muted text-muted-foreground'
                 }`}
               >
@@ -613,7 +613,7 @@ export default function MakeCallsPage() {
                   wizardStep === 3
                     ? 'bg-brand text-brand-foreground'
                     : wizardStep > 3
-                    ? 'bg-emerald-500 text-white'
+                    ? 'bg-success text-white'
                     : 'bg-muted text-muted-foreground'
                 }`}
               >
@@ -630,7 +630,7 @@ export default function MakeCallsPage() {
                   wizardStep === 4
                     ? 'bg-brand text-brand-foreground'
                     : wizardStep > 4
-                    ? 'bg-emerald-500 text-white'
+                    ? 'bg-success text-white'
                     : 'bg-muted text-muted-foreground'
                 }`}
               >
@@ -831,7 +831,7 @@ export default function MakeCallsPage() {
                     )}
 
                     {assistantsError && !assistantsLoading && (
-                      <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
+                      <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
                         {assistantsError}
                       </div>
                     )}
@@ -872,7 +872,7 @@ export default function MakeCallsPage() {
                                     </p>
                                   </div>
                                   {selected && (
-                                    <span className="text-[11px] font-medium text-emerald-600 shrink-0">
+                                    <span className="text-[11px] font-medium text-success shrink-0">
                                       Selected
                                     </span>
                                   )}
@@ -932,7 +932,7 @@ export default function MakeCallsPage() {
                     )}
 
                     {personasError && !personasLoading && (
-                      <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
+                      <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
                         {personasError}
                       </div>
                     )}
@@ -974,7 +974,7 @@ export default function MakeCallsPage() {
                                     </div>
                                   </div>
                                   {selected && (
-                                    <span className="text-[11px] font-medium text-emerald-600 shrink-0">
+                                    <span className="text-[11px] font-medium text-success shrink-0">
                                       Selected
                                     </span>
                                   )}
@@ -1070,7 +1070,7 @@ export default function MakeCallsPage() {
                 )}
 
                 {setupMode !== 'assistant' && scriptsError && !scriptsLoading && (
-                  <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
+                  <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
                     {scriptsError}
                   </div>
                 )}
@@ -1108,7 +1108,7 @@ export default function MakeCallsPage() {
                               </p>
                             </div>
                             {selected && (
-                              <span className="text-[11px] font-medium text-emerald-600 shrink-0">
+                              <span className="text-[11px] font-medium text-success shrink-0">
                                 Selected
                               </span>
                             )}
@@ -1224,7 +1224,7 @@ export default function MakeCallsPage() {
                           <p className="text-[11px] text-muted-foreground mt-1">Loading files…</p>
                         )}
                         {knowledgeFilesError && (
-                          <p className="text-[11px] text-red-600 mt-1">{knowledgeFilesError}</p>
+                          <p className="text-[11px] text-destructive mt-1">{knowledgeFilesError}</p>
                         )}
                     </div>
 
@@ -1287,7 +1287,7 @@ export default function MakeCallsPage() {
                           <p className="text-[10px] text-muted-foreground mt-1">Loading sounds…</p>
                         )}
                         {backgroundSoundsError && (
-                          <p className="text-[10px] text-red-600 mt-1">{backgroundSoundsError}</p>
+                          <p className="text-[10px] text-destructive mt-1">{backgroundSoundsError}</p>
                         )}
                         <p className="text-[10px] text-muted-foreground mt-1">
                           Custom sound volume is managed from the Background Sounds tab and reused here.
@@ -1372,7 +1372,7 @@ export default function MakeCallsPage() {
               <div className="space-y-4 text-xs">
                 <div>
                   <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle2 className="h-4 w-4 text-success" />
                     Review before launch
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -1612,7 +1612,7 @@ export default function MakeCallsPage() {
                 <Button
                   type="button"
                   size="sm"
-                  className="h-8 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs text-white"
+                  className="h-8 px-4 rounded-lg bg-success hover:bg-success text-xs text-white"
                   onClick={handleLaunchCalls}
                   disabled={launching}
                 >
