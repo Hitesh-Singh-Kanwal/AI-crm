@@ -52,16 +52,20 @@ export function Card({ children, className = '' }) {
   return <div className={`${chartCardClass} ${className}`.trim()}>{children}</div>
 }
 
-export function Trend({ type = 'up', text }) {
+/**
+ * Trend badge. `label` is the full sentence for assistive tech / tooltip when
+ * `text` is abbreviated (e.g. just "12.5%").
+ */
+export function Trend({ type = 'up', text, label, className = 'mt-1.5' }) {
   const isUp = type === 'up'
   const Icon = isUp ? TrendingUp : TrendingDown
   return (
     <div
-      className={`mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12.5px] font-semibold ${
-        isUp
-          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-          : 'bg-red-500/10 text-red-600 dark:text-red-400'
-      }`}
+      title={label}
+      aria-label={label}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12.5px] font-semibold ${
+        isUp ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
+      } ${className}`.trim()}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden />
       <span>{text}</span>

@@ -24,14 +24,16 @@ export default function StudentHealthOverviewWidget({ studentHealth, rangeDays, 
     {
       title: 'New Active — MTD',
       value: momGrowth.value.toLocaleString(),
-      trend: `${(momGrowth.trendPct ?? 0).toFixed(1)}% vs last month`,
+      trend: `${(momGrowth.trendPct ?? 0).toFixed(1)}%`,
+      trendLabel: `${(momGrowth.trendPct ?? 0).toFixed(1)}% vs last month`,
       trendType: momGrowth.trendType,
       icon: UserPlus,
     },
     {
       title: 'New Active — YTD',
       value: ytdGrowth.value.toLocaleString(),
-      trend: `${(ytdGrowth.trendPct ?? 0).toFixed(1)}% vs same period last year`,
+      trend: `${(ytdGrowth.trendPct ?? 0).toFixed(1)}%`,
+      trendLabel: `${(ytdGrowth.trendPct ?? 0).toFixed(1)}% vs same period last year`,
       trendType: ytdGrowth.trendType,
       icon: TrendingUp,
     },
@@ -51,18 +53,27 @@ export default function StudentHealthOverviewWidget({ studentHealth, rangeDays, 
       <div className="grid flex-1 grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => (
           <Card key={card.title}>
-            <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--studio-primary-light)] text-[var(--studio-primary)]">
-                <card.icon className="h-4 w-4" aria-hidden />
-              </span>
-              <p className="truncate text-[13px] font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
-                {card.title}
-              </p>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--studio-primary-light)] text-[var(--studio-primary)]">
+                  <card.icon className="h-4 w-4" aria-hidden />
+                </span>
+                <p className="truncate text-[13px] font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
+                  {card.title}
+                </p>
+              </div>
+              {card.trend && (
+                <Trend
+                  type={card.trendType}
+                  text={card.trend}
+                  label={card.trendLabel}
+                  className="shrink-0"
+                />
+              )}
             </div>
             <h3 className="mt-2.5 text-[32px] font-bold leading-[1.21] bg-gradient-to-b from-muted-foreground to-foreground bg-clip-text text-transparent">
               {card.value}
             </h3>
-            {card.trend && <Trend type={card.trendType} text={card.trend} />}
           </Card>
         ))}
       </div>

@@ -22,23 +22,31 @@ export default function OverviewStatsWidget({ overviewStats, defaultRange }) {
 
   const num = (v) => Number(v) || 0
 
+  // Badge shows the bare percentage; the full sentence stays as its tooltip /
+  // accessible name so the number keeps its meaning out of context.
+  const pct = (stat) => `${(stat.trendPct ?? 0).toFixed(1)}%`
+  const pctLabel = (stat) => `${(stat.trendPct ?? 0).toFixed(1)}% from last period`
+
   const cards = [
     {
       title: 'Total Leads',
       value: num(totalLeads.value).toLocaleString(),
-      trend: `${(totalLeads.trendPct ?? 0).toFixed(1)}% from last period`,
+      trend: pct(totalLeads),
+      trendLabel: pctLabel(totalLeads),
       trendType: totalLeads.trendType,
     },
     {
       title: 'Total Bookings',
       value: num(totalBookings.value).toLocaleString(),
-      trend: `${(totalBookings.trendPct ?? 0).toFixed(1)}% from last period`,
+      trend: pct(totalBookings),
+      trendLabel: pctLabel(totalBookings),
       trendType: totalBookings.trendType,
     },
     {
       title: 'Booking Rate',
       value: `${Math.round(num(bookingRate.value))}%`,
-      trend: `${(bookingRate.trendPct ?? 0).toFixed(1)}% from last period`,
+      trend: pct(bookingRate),
+      trendLabel: pctLabel(bookingRate),
       trendType: bookingRate.trendType,
     },
   ]
@@ -51,13 +59,20 @@ export default function OverviewStatsWidget({ overviewStats, defaultRange }) {
       <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-3">
         {cards.map((card) => (
           <Card key={card.title}>
-            <p className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
-              {card.title}
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-base font-bold uppercase tracking-[0.02em] text-[var(--studio-primary)]">
+                {card.title}
+              </p>
+              <Trend
+                type={card.trendType}
+                text={card.trend}
+                label={card.trendLabel}
+                className="shrink-0"
+              />
+            </div>
             <h3 className="mt-1 text-[38px] font-bold leading-[1.21] bg-gradient-to-b from-muted-foreground to-foreground bg-clip-text text-transparent">
               {card.value}
             </h3>
-            <Trend type={card.trendType} text={card.trend} />
           </Card>
         ))}
       </div>
