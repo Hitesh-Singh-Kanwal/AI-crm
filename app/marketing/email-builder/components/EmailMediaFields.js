@@ -15,9 +15,9 @@ function UploadDropzone({ uploading, onPick, onFile, label = 'Upload image', pre
   return (
     <div className="space-y-2">
       {previewUrl ? (
-        <div className="rounded-lg border border-slate-200 overflow-hidden bg-slate-50">
+        <div className="rounded-lg border border-border overflow-hidden bg-muted/40">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={previewUrl} alt="" className="w-full max-h-28 object-contain bg-white" />
+          <img src={previewUrl} alt="" className="w-full max-h-28 object-contain bg-card" />
         </div>
       ) : null}
       <input
@@ -51,20 +51,20 @@ function UploadDropzone({ uploading, onPick, onFile, label = 'Upload image', pre
         }}
         className={cn(
           'w-full rounded-xl border-2 border-dashed px-3 py-4 text-center transition-colors',
-          dragOver ? 'border-brand bg-brand/5' : 'border-slate-200 bg-slate-50/60 hover:border-slate-300 hover:bg-slate-50',
+          dragOver ? 'border-brand bg-brand/5' : 'border-border bg-muted/40 hover:border-border hover:bg-muted/40',
           uploading && 'opacity-60 cursor-wait',
         )}
       >
         <div className="flex flex-col items-center gap-1.5">
           {uploading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           ) : (
-            <Upload className="h-5 w-5 text-slate-400" />
+            <Upload className="h-5 w-5 text-muted-foreground" />
           )}
-          <span className="text-xs font-medium text-slate-700">
+          <span className="text-xs font-medium text-foreground">
             {uploading ? 'Uploading…' : label}
           </span>
-          <span className="text-[10px] text-slate-400">JPEG, PNG, GIF, WebP · max 8MB</span>
+          <span className="text-[10px] text-muted-foreground">JPEG, PNG, GIF, WebP · max 8MB</span>
         </div>
       </button>
     </div>
@@ -106,7 +106,7 @@ export function EmailImageMediaFields({ value, onChange }) {
         label="Drop image or click to upload"
       />
       <div className="space-y-1.5">
-        <Label className="text-xs text-slate-600">Or paste image URL</Label>
+        <Label className="text-xs text-muted-foreground">Or paste image URL</Label>
         <Input
           value={value || ''}
           onChange={(e) => onChange?.(e.target.value)}
@@ -151,7 +151,7 @@ export function EmailVideoMediaFields({ url, poster, onUrlChange, onPosterChange
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">
-        <Label className="text-xs text-slate-600">Video link</Label>
+        <Label className="text-xs text-muted-foreground">Video link</Label>
         <Input
           value={url || ''}
           onChange={(e) => onUrlChange?.(e.target.value)}
@@ -162,12 +162,12 @@ export function EmailVideoMediaFields({ url, poster, onUrlChange, onPosterChange
           placeholder="YouTube, Vimeo, or direct video URL"
           className="text-sm"
         />
-        <p className="text-[10px] text-slate-500 leading-relaxed">
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
           Recipients see a thumbnail that opens this link — email clients rarely play video inline.
         </p>
       </div>
       <div className="space-y-1.5">
-        <Label className="text-xs text-slate-600">Poster image (optional)</Label>
+        <Label className="text-xs text-muted-foreground">Poster image (optional)</Label>
         <UploadDropzone
           uploading={uploading}
           onFile={handleUploadPoster}

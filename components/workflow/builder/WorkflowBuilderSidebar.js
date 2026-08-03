@@ -91,11 +91,11 @@ export default function WorkflowBuilderSidebar() {
   return (
     <aside
       className={cn(
-        'relative flex shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/80 transition-all duration-200 dark:border-border dark:bg-muted/20',
+        'relative flex shrink-0 flex-col border-r border-border/80 bg-muted/40 transition-all duration-200',
         sidebarCollapsed ? 'w-14' : 'w-[280px]'
       )}
     >
-      <div className="flex items-center justify-between border-b border-slate-200/80 px-3 py-3 dark:border-border">
+      <div className="flex items-center justify-between border-b border-border/80 px-3 py-3">
         {!sidebarCollapsed && (
           <div>
             <h2 className="text-[14px] font-bold text-foreground">Add a step</h2>
@@ -115,14 +115,14 @@ export default function WorkflowBuilderSidebar() {
       </div>
 
       {!sidebarCollapsed && (
-        <div className="space-y-3 border-b border-slate-200/80 p-3 dark:border-border">
+        <div className="space-y-3 border-b border-border/80 p-3">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search steps…"
-              className="h-9 border-slate-200 bg-white pl-9 text-[13px] dark:border-border dark:bg-background"
+              className="h-9 border-border bg-card pl-9 text-[13px]"
             />
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -140,7 +140,7 @@ export default function WorkflowBuilderSidebar() {
                     'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors',
                     activeCategory === tab.id
                       ? 'bg-[var(--studio-primary)] text-white'
-                      : 'bg-white text-muted-foreground hover:bg-slate-100 dark:bg-background dark:hover:bg-muted'
+                      : 'bg-card text-muted-foreground hover:bg-muted dark:hover:bg-muted'
                   )}
                 >
                   {tab.id !== 'all' && !unlocked ? <Lock className="h-3 w-3" /> : null}
@@ -183,8 +183,8 @@ export default function WorkflowBuilderSidebar() {
                     className={cn(
                       'relative flex h-9 w-9 items-center justify-center rounded-lg border shadow-sm',
                       unlocked
-                        ? 'border-slate-200 bg-white text-muted-foreground hover:border-primary/40 hover:text-primary dark:border-border dark:bg-background'
-                        : 'cursor-not-allowed border-slate-200/70 bg-white/60 text-muted-foreground/40 dark:border-border/50'
+                        ? 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
+                        : 'cursor-not-allowed border-border/70 bg-white/60 text-muted-foreground/40'
                     )}
                   >
                     <Icon className="h-4 w-4" />
@@ -218,18 +218,18 @@ export default function WorkflowBuilderSidebar() {
                         draggable={category.unlocked}
                         onDragStart={(e) => onDragStart(e, item, category.id)}
                         className={cn(
-                          'group flex items-center gap-2 rounded-xl border p-2.5 shadow-sm transition-all dark:bg-card',
+                          'group flex items-center gap-2 rounded-xl border p-2.5 shadow-sm transition-all',
                           category.unlocked
-                            ? 'border-slate-200/90 bg-white hover:border-slate-300 hover:shadow-md dark:border-border'
-                            : 'cursor-not-allowed border-slate-200/70 bg-white/70 dark:border-border/50'
+                            ? 'border-border/90 bg-card hover:border-border hover:shadow-md'
+                            : 'cursor-not-allowed border-border/70 bg-white/70'
                         )}
                       >
                         <div
                           className={cn(
                             'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
                             category.unlocked
-                              ? 'bg-slate-100 text-slate-600 group-hover:bg-primary/10 group-hover:text-primary dark:bg-muted'
-                              : 'bg-slate-100/70 text-slate-400 dark:bg-muted/50'
+                              ? 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
+                              : 'bg-muted/70 text-muted-foreground'
                           )}
                         >
                           <Icon className="h-4 w-4" />
@@ -248,7 +248,7 @@ export default function WorkflowBuilderSidebar() {
                           <button
                             type="button"
                             onClick={() => handleAdd(item, category.id)}
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-muted-foreground opacity-0 transition-opacity hover:border-primary/30 hover:bg-primary/5 hover:text-primary group-hover:opacity-100 dark:border-border"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground opacity-0 transition-opacity hover:border-primary/30 hover:bg-primary/5 hover:text-primary group-hover:opacity-100"
                             title={`Add ${item.label}`}
                           >
                             <Plus className="h-4 w-4" />

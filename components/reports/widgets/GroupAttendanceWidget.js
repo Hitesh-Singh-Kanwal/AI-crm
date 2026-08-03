@@ -1,6 +1,7 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { BAR_GRADIENT_DEFS, BAR_FILL } from '@/components/charts/barGradients'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
 import { chartCardClass, DetailsLink } from './shared'
 
@@ -22,6 +23,7 @@ export default function GroupAttendanceWidget({ groupAttendanceData = { attendan
       <div className="mt-4 h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={byClass} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            {BAR_GRADIENT_DEFS}
             <CartesianGrid stroke={chartGridStroke} vertical={false} />
             <XAxis dataKey="className" tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
             <YAxis tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} allowDecimals={false} />
@@ -31,7 +33,7 @@ export default function GroupAttendanceWidget({ groupAttendanceData = { attendan
               dataKey="attended"
               name="Attended"
               stackId="a"
-              fill="var(--side-gradient-end)"
+              fill={BAR_FILL}
               onClick={(entry) => onClassClick?.(entry?.className)}
               className={onClassClick ? 'cursor-pointer' : undefined}
             />

@@ -23,28 +23,28 @@ import {
 
 const TONE_STYLES = {
   success: {
-    badge: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-800',
-    bar: 'bg-emerald-500',
-    ring: 'text-emerald-600',
-    soft: 'bg-emerald-50/70 border-emerald-200/80 dark:bg-emerald-950/30 dark:border-emerald-900/50',
+    badge: 'text-success bg-success/10 border-success/20',
+    bar: 'bg-success',
+    ring: 'text-success',
+    soft: 'bg-success/10 border-success/20',
     icon: CheckCircle2,
-    iconClass: 'text-emerald-600',
+    iconClass: 'text-success',
   },
   warning: {
-    badge: 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-800',
-    bar: 'bg-amber-500',
-    ring: 'text-amber-600',
-    soft: 'bg-amber-50/70 border-amber-200/80 dark:bg-amber-950/30 dark:border-amber-900/50',
+    badge: 'text-warning bg-warning/10 border-warning/20',
+    bar: 'bg-warning',
+    ring: 'text-warning',
+    soft: 'bg-warning/10 border-warning/20',
     icon: MinusCircle,
-    iconClass: 'text-amber-600',
+    iconClass: 'text-warning',
   },
   error: {
-    badge: 'text-red-700 bg-red-50 border-red-200 dark:text-red-300 dark:bg-red-950/40 dark:border-red-800',
-    bar: 'bg-red-500',
-    ring: 'text-red-600',
-    soft: 'bg-red-50/70 border-red-200/80 dark:bg-red-950/30 dark:border-red-900/50',
+    badge: 'text-destructive bg-destructive/10 border-destructive/20',
+    bar: 'bg-destructive',
+    ring: 'text-destructive',
+    soft: 'bg-destructive/10 border-destructive/20',
     icon: XCircle,
-    iconClass: 'text-red-600',
+    iconClass: 'text-destructive',
   },
   neutral: {
     badge: 'text-muted-foreground bg-muted border-border',
@@ -194,14 +194,14 @@ function ChecklistView({ parsed }) {
             className={cn(
               'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm',
               item.passed
-                ? 'border-emerald-200/80 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20'
+                ? 'border-success/20 bg-success/10'
                 : 'border-border bg-muted/30'
             )}
           >
             <span
               className={cn(
                 'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full',
-                item.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'
+                item.passed ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
               )}
               aria-hidden
             >
@@ -216,7 +216,7 @@ function ChecklistView({ parsed }) {
             <span
               className={cn(
                 'shrink-0 text-[10px] font-semibold uppercase tracking-wide',
-                item.passed ? 'text-emerald-700' : 'text-muted-foreground'
+                item.passed ? 'text-success' : 'text-muted-foreground'
               )}
             >
               {item.passed ? 'Yes' : 'No'}
@@ -333,14 +333,14 @@ function PassFailView({ parsed }) {
       className={cn(
         'flex items-center gap-4 rounded-xl border px-4 py-4',
         parsed.passed
-          ? 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30'
-          : 'border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/30'
+          ? 'border-success/20 bg-success/10'
+          : 'border-destructive/20 bg-destructive/10'
       )}
     >
       <div
         className={cn(
           'flex h-12 w-12 items-center justify-center rounded-full',
-          parsed.passed ? 'bg-emerald-100' : 'bg-red-100'
+          parsed.passed ? 'bg-success/10' : 'bg-destructive/10'
         )}
       >
         <Icon className={cn('h-7 w-7', styles.iconClass)} />
@@ -451,7 +451,7 @@ function StructuredView({ parsed }) {
               <span
                 className={cn(
                   'inline-flex items-center gap-1 text-sm font-semibold',
-                  passed ? 'text-emerald-700' : 'text-red-700'
+                  passed ? 'text-success' : 'text-destructive'
                 )}
               >
                 {passed ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}

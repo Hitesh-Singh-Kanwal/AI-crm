@@ -69,9 +69,9 @@ const transcript = [
 function Dot({ tone }) {
   const map = {
     rose: 'bg-rose-500',
-    amber: 'bg-amber-500',
-    emerald: 'bg-emerald-500',
-    blue: 'bg-blue-500',
+    amber: 'bg-warning',
+    emerald: 'bg-success',
+    blue: 'bg-info',
     slate: 'bg-muted-foreground',
   }
   return <span className={cn('inline-block h-2 w-2 rounded-full', map[tone] || map.slate)} />
@@ -85,7 +85,7 @@ function Stars({ value = 0 }) {
           key={i}
           className={cn(
             'text-[14px] leading-none',
-            i < value ? 'text-amber-400' : 'text-border'
+            i < value ? 'text-warning' : 'text-border'
           )}
           aria-hidden
         >
@@ -101,8 +101,8 @@ function TabPill({ variant, children }) {
   const styles = {
     neutral: 'border-border text-muted-foreground bg-card hover:bg-muted/50',
     danger: 'border-rose-500/40 text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/15',
-    warning: 'border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/15',
-    success: 'border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15',
+    warning: 'border-warning/20 text-warning bg-warning/10 hover:bg-warning/15',
+    success: 'border-success/20 text-success bg-success/10 hover:bg-success/15',
   }
   return (
     <button
@@ -128,7 +128,7 @@ function StatRow({ label, value }) {
 
 function ProgressPill({ label, tone, active }) {
   const tones = {
-    done: 'bg-emerald-500 text-white border-emerald-500',
+    done: 'bg-success text-white border-success/20',
     pending: 'bg-card text-muted-foreground border-border',
     alert: 'bg-card text-rose-600 dark:text-rose-400 border-rose-500/40',
   }
@@ -268,7 +268,7 @@ export default function TrainingPage() {
                   <div className="rounded-xl border border-border bg-muted/30 p-3">
                     <div className="text-[11px] text-muted-foreground">AI Confidence</div>
                     <div className="mt-1 text-[12px] font-semibold text-foreground">
-                      67% <span className="text-[11px] font-semibold text-amber-500">(Low)</span>
+                      67% <span className="text-[11px] font-semibold text-warning">(Low)</span>
                     </div>
                   </div>
                 </div>

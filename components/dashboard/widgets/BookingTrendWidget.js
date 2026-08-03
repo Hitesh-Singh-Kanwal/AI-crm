@@ -35,8 +35,8 @@ export default function BookingTrendWidget({ bookingRateTrend, paymentRateTrend,
             <AreaChart data={trend} margin={{ top: 8, right: 20, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="bookingFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--side-gradient-end)" stopOpacity={0.45} />
-                  <stop offset="100%" stopColor="var(--side-gradient-end)" stopOpacity={0} />
+                  <stop offset="0%" stopColor="var(--bar-gradient-start)" stopOpacity={0.45} />
+                  <stop offset="100%" stopColor="var(--bar-gradient-start)" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke={chartGridStroke} vertical={false} />
@@ -52,7 +52,7 @@ export default function BookingTrendWidget({ bookingRateTrend, paymentRateTrend,
               <Area
                 type="monotone"
                 dataKey="rate"
-                stroke="var(--side-gradient-end)"
+                stroke="var(--bar-gradient-start)"
                 strokeWidth={2}
                 fill="url(#bookingFill)"
               />

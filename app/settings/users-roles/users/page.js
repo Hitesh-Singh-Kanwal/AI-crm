@@ -494,7 +494,7 @@ export default function UsersPage() {
                               Edit
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              className="text-red-600"
+                              className="text-destructive"
                               onClick={() => handleDeleteUser(user._id || user.id)}
                             >
                               Delete
@@ -521,7 +521,7 @@ export default function UsersPage() {
 
         {/* Pagination */}
         {!loading && total > 0 && (
-          <div className="flex flex-row items-center border-t border-slate-200 pt-4 mt-auto">
+          <div className="flex flex-row items-center border-t border-border pt-4 mt-auto">
             <div className="text-sm text-muted-foreground w-52 flex-shrink-0">
               Showing page {currentPage} of {totalPages} ({total} total {total === 1 ? 'user' : 'users'})
             </div>

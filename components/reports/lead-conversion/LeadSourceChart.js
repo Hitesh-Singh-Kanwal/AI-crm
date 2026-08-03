@@ -1,6 +1,7 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { BAR_GRADIENT_DEFS, BAR_FILL, BAR_FILL_SOFT } from '@/components/charts/barGradients'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
 import { chartCardClass } from '@/components/reports/widgets/shared'
 
@@ -15,13 +16,14 @@ export function LeadSourceChart({ bySource = [] }) {
       <div className="mt-4 h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={bySource} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            {BAR_GRADIENT_DEFS}
             <CartesianGrid stroke={chartGridStroke} vertical={false} />
             <XAxis dataKey="source" tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
             <YAxis tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} allowDecimals={false} />
             <Tooltip contentStyle={rechartsTooltipContentStyle} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="leads" name="Leads" radius={[8, 8, 0, 0]} fill="var(--bar-gradient-start)" />
-            <Bar dataKey="converted" name="Converted" radius={[8, 8, 0, 0]} fill="var(--side-gradient-end)" />
+            <Bar dataKey="leads" name="Leads" radius={[8, 8, 0, 0]} fill={BAR_FILL} />
+            <Bar dataKey="converted" name="Converted" radius={[8, 8, 0, 0]} fill={BAR_FILL_SOFT} />
           </BarChart>
         </ResponsiveContainer>
       </div>

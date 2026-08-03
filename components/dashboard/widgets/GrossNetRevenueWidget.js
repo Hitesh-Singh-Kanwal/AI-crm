@@ -23,9 +23,9 @@ const DETAIL_COLUMNS = [
 export default function GrossNetRevenueWidget({ grossRevenue = 0, netRevenue = 0, apiExpenseTotal = 0, defaultRange }) {
   const expense = apiExpenseTotal || Math.max(0, Number(grossRevenue) - Number(netRevenue))
   const chartData = [
-    { name: 'Gross', value: Math.max(0, Number(grossRevenue) || 0), fill: '#F72585' },
-    { name: 'API Cost', value: Math.max(0, Number(expense) || 0), fill: '#FB9BC7' },
-    { name: 'Net', value: Number(netRevenue) || 0, fill: '#45B7DA' },
+    { name: 'Gross', value: Math.max(0, Number(grossRevenue) || 0), fill: 'var(--chart-1)' },
+    { name: 'API Cost', value: Math.max(0, Number(expense) || 0), fill: 'var(--chart-5)' },
+    { name: 'Net', value: Number(netRevenue) || 0, fill: 'var(--chart-6)' },
   ]
   const hasData = chartData.some((d) => d.value !== 0)
 

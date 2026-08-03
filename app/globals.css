@@ -16,98 +16,153 @@
    */
   :root {
     /* ── UI shell (shadcn / HSL components) ── */
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* Velvet palette — hex source of truth is in the comment beside each token. */
+    --background: 320 14% 96%;          /* Porcelain  #F6F3F5 */
+    --foreground: 300 19% 11%;          /* Ink        #221722 */
+    --card: 0 0% 100%;                  /* Surface    #FFFFFF */
+    --card-foreground: 300 19% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 330 74% 45%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 330 74% 45%;
+    --popover-foreground: 300 19% 11%;
+    --primary: 330 78% 37%;             /* Berry 600  #A8155F */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 320 18% 93%;           /* Line soft  #F1EBEF */
+    --secondary-foreground: 300 19% 11%;
+    --muted: 330 20% 98%;               /* Surface 2  #FBF9FA */
+    --muted-foreground: 296 8% 41%;     /* Ink 2      #6F6070 */
+    --accent: 320 18% 93%;
+    --accent-foreground: 300 19% 11%;
+    --destructive: 355 72% 42%;         /* Garnet     #B81E2B */
+    --destructive-foreground: 0 0% 100%;
+    --success: 150 62% 31%;             /* Green      #1E7F4F */
+    --success-foreground: 0 0% 100%;
+    --warning: 40 82% 33%;              /* Amber      #9A6B0F */
+    --warning-foreground: 0 0% 100%;
+    --info: 210 12% 40%;                /* Slate      #5A6672 */
+    --info-foreground: 0 0% 100%;
+    --border: 309 14% 90%;              /* Line       #EAE3E9 */
+    --input: 309 14% 90%;
+    --ring: 330 78% 37%;
     --radius: 0.5rem;
 
     /* ── Brand palette — Dance Studio CRM (edit RGB triplets + hex together when re-theming) ── */
-    --studio-primary-rgb: 200 29 119;
-    --studio-primary-light-rgb: 252 231 243;
+    --studio-primary-rgb: 168 21 95;         /* Berry 600 #A8155F */
+    --studio-primary-light-rgb: 252 242 248; /* Berry 50  #FCF2F8 */
     --studio-on-primary-rgb: 255 255 255;
     --studio-primary: rgb(var(--studio-primary-rgb));
     --studio-primary-light: rgb(var(--studio-primary-light-rgb));
-    --studio-primary-dark: color-mix(in srgb, var(--studio-primary), #000 28%);
-    --studio-gradient: #ce32e0;
-    --studio-gradient-css: linear-gradient(90deg, #c81d77 0%, #ce32e0 100%);
-    --sidebar-gradient-css: linear-gradient(180deg, #f72585 0%, #4cc9f0 100%);
-    --bar-gradient-css: linear-gradient(180deg, #6e1041 0%, #f72585 100%);
-    --side-gradient-css: linear-gradient(180deg, #ade6f8 0%, #45b7da 100%);
-    --bar-gradient-start: #6e1041;
-    --bar-gradient-end: #f72585;
-    --side-gradient-start: #ade6f8;
-    --side-gradient-end: #45b7da;
+    --studio-primary-dark: #8a0f4d;          /* Berry 700 */
+    --studio-gradient: #c42a77;              /* Berry 500 */
+    --studio-gradient-css: linear-gradient(135deg, #c42a77 0%, #8a0f4d 100%);
+    --sidebar-gradient-css: linear-gradient(180deg, #1c1120 0%, #1c1120 100%); /* Plum */
+    --sidebar-ink: #b9a6b8;
+    --sidebar-active-css: linear-gradient(135deg, rgb(196 42 119 / 0.92), rgb(138 15 77 / 0.92));
+    --sidebar-active-shadow: 0 6px 18px -6px rgb(196 42 119 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.18);
+    --bar-gradient-css: linear-gradient(180deg, #c42a77 0%, #8a0f4d 100%);
+    --side-gradient-css: linear-gradient(180deg, #f5ecdc 0%, #b98a2f 100%);
+    --bar-gradient-start: #c42a77;      /* Berry 500 — bar top */
+    --bar-gradient-end: #8a0f4d;        /* Berry 700 — bar bottom */
+    --bar-soft-start: #f2c3dc;          /* Berry 200 — secondary series */
+    --bar-soft-end: #f8e1ee;            /* Berry 100 */
+    --bar-glow: 0 6px 14px -6px rgb(168 21 95 / 0.5);
+    --side-gradient-start: #f5ecdc;
+    --side-gradient-end: #b98a2f;
     --calendar-palette-1: var(--studio-primary);
     --calendar-palette-2: var(--studio-gradient);
     --calendar-palette-3: var(--side-gradient-end);
     --calendar-palette-4: var(--side-gradient-start);
     --calendar-palette-5: var(--bar-gradient-end);
+
+    /* ── Categorical chart ramp (pink → cyan). Use var(--chart-N), never the hex. ── */
+    --chart-1: #a8155f;  /* Berry 600 */
+    --chart-2: #c42a77;  /* Berry 500 */
+    --chart-3: #8a0f4d;  /* Berry 700 */
+    --chart-4: #f2c3dc;  /* Berry 200 */
+    --chart-5: #b98a2f;  /* Champagne gold */
+    --chart-6: #1e7f4f;  /* Green */
+    --chart-7: #5a6672;  /* Slate */
+    --chart-8: #9a6b0f;  /* Amber */
+
+    /* ── CADANCE AI brand mark (berry tile + champagne accent) ── */
+    --brand-mark-gradient-css: linear-gradient(135deg, #c42a77 0%, #8a0f4d 100%);
+    --brand-mark-shadow: 0 6px 16px -5px rgb(196 42 119 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.28);
+    --brand-mark-ink: #ffffff;
+    --brand-gold: #b98a2f;
+    --brand-gold-bright: #e3b34e;
   }
 
-  /* Dark mode — deep zinc base, pink primary, cyan accent (dashboard reference) */
+  /* Dark mode — "Velvet After Dark": same tokens, re-valued. Berry shifts brighter
+     (#A8155F → #D8549A) to hold contrast on plum surfaces. */
   .dark {
     color-scheme: dark;
-    --background: 222 28% 8%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 7%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 8%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 330 81% 60%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 5% 12%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 5% 12%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 190 90% 48%;
-    --accent-foreground: 240 10% 6%;
-    --destructive: 0 62.8% 50%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 330 81% 60%;
+    --background: 280 33% 7%;           /* BG After Dark #140C18 */
+    --foreground: 300 23% 94%;          /* Ink dark      #F3ECF3 */
+    --card: 278 29% 11%;                /* Surface       #1E1424 */
+    --card-foreground: 300 23% 94%;
+    --popover: 277 26% 14%;             /* Surface 2     #251A2C */
+    --popover-foreground: 300 23% 94%;
+    --primary: 328 63% 59%;             /* Berry bright  #D8549A */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 277 26% 14%;
+    --secondary-foreground: 300 23% 94%;
+    --muted: 277 26% 14%;
+    --muted-foreground: 287 13% 70%;    /* Ink 2 dark    #B9AABD */
+    --accent: 277 26% 14%;
+    --accent-foreground: 300 23% 94%;
+    --destructive: 355 70% 62%;         /* Garnet bright #E25A65 */
+    --destructive-foreground: 240 10% 6%;
+    --success: 154 46% 48%;             /* #43B383 */
+    --success-foreground: 240 10% 6%;
+    --warning: 39 66% 59%;              /* #DCAC52 */
+    --warning-foreground: 240 10% 6%;
+    --info: 209 13% 66%;                /* Slate dark    #9DA9B4 */
+    --info-foreground: 240 10% 6%;
+    --border: 271 24% 20%;              /* Line dark     #342740 */
+    --input: 271 24% 20%;
+    --ring: 328 63% 59%;
 
     /* Brand tokens (Tailwind primary/brand use --studio-*-rgb) */
-    --studio-primary-rgb: 236 72 153;
-    --studio-primary-light-rgb: 48 32 44;
+    --studio-primary-rgb: 216 84 154;        /* Berry 600 bright #D8549A */
+    --studio-primary-light-rgb: 63 32 57;    /* Berry tint as a solid over #1E1424 */
     --studio-on-primary-rgb: 255 255 255;
     --studio-primary: rgb(var(--studio-primary-rgb));
     --studio-primary-light: rgb(var(--studio-primary-light-rgb));
-    --studio-primary-dark: color-mix(in srgb, rgb(var(--studio-primary-rgb)), #000 25%);
-    --studio-gradient: #e879f9;
-    --studio-gradient-css: linear-gradient(90deg, #ec4899 0%, #e879f9 100%);
-    --sidebar-gradient-css: linear-gradient(
-      180deg,
-      hsl(222 24% 6.5%) 0%,
-      hsl(222 30% 4.5%) 100%
-    );
-    --bar-gradient-css: linear-gradient(180deg, #831843 0%, #f472b6 100%);
-    --side-gradient-css: linear-gradient(180deg, #67e8f9 0%, #0ea5e9 100%);
-    --bar-gradient-start: #831843;
-    --bar-gradient-end: #f472b6;
-    --side-gradient-start: #67e8f9;
-    --side-gradient-end: #0ea5e9;
+    --studio-primary-dark: #c23d82;          /* Berry 700 dark */
+    --studio-gradient: #e473ac;              /* Berry 500 dark */
+    --studio-gradient-css: linear-gradient(135deg, #e473ac 0%, #c23d82 100%);
+    --sidebar-gradient-css: linear-gradient(180deg, #0e0812 0%, #0e0812 100%); /* Sidebar Night */
+    --sidebar-ink: #9c89a0;
+    --sidebar-active-css: linear-gradient(135deg, rgb(228 115 172 / 0.92), rgb(194 61 130 / 0.92));
+    --sidebar-active-shadow: 0 6px 18px -6px rgb(228 115 172 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.18);
+    --bar-gradient-css: linear-gradient(180deg, #e473ac 0%, #c23d82 100%);
+    --side-gradient-css: linear-gradient(180deg, #4b3a2a 0%, #dfb258 100%);
+    --bar-gradient-start: #e473ac;      /* Berry 500 dark — bar top */
+    --bar-gradient-end: #c23d82;        /* Berry 700 dark — bar bottom */
+    --bar-soft-start: #4b2542;          /* Berry 200 dark */
+    --bar-soft-end: #3a1d34;
+    --bar-glow: 0 6px 14px -6px rgb(228 115 172 / 0.4);
+    --side-gradient-start: #4b3a2a;
+    --side-gradient-end: #dfb258;
     --calendar-palette-1: var(--studio-primary);
     --calendar-palette-2: var(--studio-gradient);
     --calendar-palette-3: var(--side-gradient-end);
     --calendar-palette-4: var(--side-gradient-start);
     --calendar-palette-5: var(--bar-gradient-end);
+
+    --chart-1: #d8549a;  /* Berry 600 bright */
+    --chart-2: #e473ac;  /* Berry 500 dark */
+    --chart-3: #c23d82;  /* Berry 700 dark */
+    --chart-4: #4b2542;  /* Berry 200 dark */
+    --chart-5: #dfb258;  /* Gold bright */
+    --chart-6: #43b383;  /* Green dark */
+    --chart-7: #9da9b4;  /* Slate dark */
+    --chart-8: #dcac52;  /* Amber dark */
+
+    /* Brand mark lifts to the lighter berry pair so it reads on dark surfaces */
+    --brand-mark-gradient-css: linear-gradient(135deg, #e473ac 0%, #c23d82 100%);
+    --brand-mark-shadow: 0 6px 16px -5px rgb(228 115 172 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.28);
+    --brand-mark-ink: #ffffff;
+    --brand-gold: #dfb258;
+    --brand-gold-bright: #e3b34e;
   }
 }
 
@@ -540,26 +595,42 @@
 @layer utilities {
   /* Optional: add class on <html> to scope the same tokens for multi-tenant themes */
   .theme-dancestudio {
-    --studio-primary-rgb: 200 29 119;
-    --studio-primary-light-rgb: 252 231 243;
+    --studio-primary-rgb: 168 21 95;         /* Berry 600 #A8155F */
+    --studio-primary-light-rgb: 252 242 248; /* Berry 50  #FCF2F8 */
     --studio-on-primary-rgb: 255 255 255;
     --studio-primary: rgb(var(--studio-primary-rgb));
     --studio-primary-light: rgb(var(--studio-primary-light-rgb));
-    --studio-primary-dark: color-mix(in srgb, var(--studio-primary), #000 28%);
-    --studio-gradient: #ce32e0;
-    --studio-gradient-css: linear-gradient(90deg, #c81d77 0%, #ce32e0 100%);
-    --sidebar-gradient-css: linear-gradient(180deg, #f72585 0%, #4cc9f0 100%);
-    --bar-gradient-css: linear-gradient(180deg, #6e1041 0%, #f72585 100%);
-    --side-gradient-css: linear-gradient(180deg, #ade6f8 0%, #45b7da 100%);
-    --bar-gradient-start: #6e1041;
-    --bar-gradient-end: #f72585;
-    --side-gradient-start: #ade6f8;
-    --side-gradient-end: #45b7da;
+    --studio-primary-dark: #8a0f4d;          /* Berry 700 */
+    --studio-gradient: #c42a77;              /* Berry 500 */
+    --studio-gradient-css: linear-gradient(135deg, #c42a77 0%, #8a0f4d 100%);
+    --sidebar-gradient-css: linear-gradient(180deg, #1c1120 0%, #1c1120 100%); /* Plum */
+    --bar-gradient-css: linear-gradient(180deg, #c42a77 0%, #8a0f4d 100%);
+    --side-gradient-css: linear-gradient(180deg, #f5ecdc 0%, #b98a2f 100%);
+    --bar-gradient-start: #c42a77;      /* Berry 500 — bar top */
+    --bar-gradient-end: #8a0f4d;        /* Berry 700 — bar bottom */
+    --bar-soft-start: #f2c3dc;          /* Berry 200 — secondary series */
+    --bar-soft-end: #f8e1ee;            /* Berry 100 */
+    --bar-glow: 0 6px 14px -6px rgb(168 21 95 / 0.5);
+    --side-gradient-start: #f5ecdc;
+    --side-gradient-end: #b98a2f;
     --calendar-palette-1: var(--studio-primary);
     --calendar-palette-2: var(--studio-gradient);
     --calendar-palette-3: var(--side-gradient-end);
     --calendar-palette-4: var(--side-gradient-start);
     --calendar-palette-5: var(--bar-gradient-end);
+    --brand-mark-gradient-css: linear-gradient(135deg, #c42a77 0%, #8a0f4d 100%);
+    --brand-mark-shadow: 0 6px 16px -5px rgb(196 42 119 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.28);
+    --brand-mark-ink: #ffffff;
+    --brand-gold: #b98a2f;
+    --brand-gold-bright: #e3b34e;
+    --chart-1: #a8155f;  /* Berry 600 */
+    --chart-2: #c42a77;  /* Berry 500 */
+    --chart-3: #8a0f4d;  /* Berry 700 */
+    --chart-4: #f2c3dc;  /* Berry 200 */
+    --chart-5: #b98a2f;  /* Champagne gold */
+    --chart-6: #1e7f4f;  /* Green */
+    --chart-7: #5a6672;  /* Slate */
+    --chart-8: #9a6b0f;  /* Amber */
   }
 
   /* Background utilities */

@@ -1,6 +1,7 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { BAR_GRADIENT_DEFS, BAR_FILL } from '@/components/charts/barGradients'
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
 import { chartCardClass } from '@/components/reports/widgets/shared'
 
@@ -15,12 +16,13 @@ export function GroupAttendanceByClassChart({ byClass = [] }) {
       <div className="mt-4 h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={byClass} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            {BAR_GRADIENT_DEFS}
             <CartesianGrid stroke={chartGridStroke} vertical={false} />
             <XAxis dataKey="className" tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
             <YAxis tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} allowDecimals={false} />
             <Tooltip contentStyle={rechartsTooltipContentStyle} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="attended" name="Attended" stackId="a" radius={[0, 0, 0, 0]} fill="var(--side-gradient-end)" />
+            <Bar dataKey="attended" name="Attended" stackId="a" radius={[0, 0, 0, 0]} fill={BAR_FILL} />
             <Bar dataKey="absent" name="Absent" stackId="a" radius={[8, 8, 0, 0]} fill="hsl(var(--muted-foreground))" />
           </BarChart>
         </ResponsiveContainer>

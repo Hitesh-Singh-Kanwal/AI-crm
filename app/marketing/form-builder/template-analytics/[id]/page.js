@@ -49,12 +49,12 @@ export default async function TemplateAnalyticsPage({ params }) {
             <div className="flex items-center gap-2">
               <Link
                 href="/forms?view=analytics"
-                className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                className="inline-flex items-center rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/40"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back
               </Link>
-              <span className="text-sm text-slate-500 truncate">Form ID: {String(id)}</span>
+              <span className="text-sm text-muted-foreground truncate">Form ID: {String(id)}</span>
             </div>
           </div>
         </div>
@@ -67,12 +67,12 @@ export default async function TemplateAnalyticsPage({ params }) {
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
-                <div className="text-3xl font-bold text-slate-900 tabular-nums">{submissions}</div>
+                <div className="text-3xl font-bold text-foreground tabular-nums">{submissions}</div>
                 <div className="h-10 w-10 rounded-lg bg-brand-light flex items-center justify-center">
                   <FileText className="h-5 w-5 text-brand" />
                 </div>
               </div>
-              <div className="mt-2 text-xs text-slate-500">Based on dummy views: {views}</div>
+              <div className="mt-2 text-xs text-muted-foreground">Based on dummy views: {views}</div>
             </CardContent>
           </Card>
 
@@ -83,12 +83,12 @@ export default async function TemplateAnalyticsPage({ params }) {
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
-                <div className="text-3xl font-bold text-slate-900 tabular-nums">{conversionRate.toFixed(1)}%</div>
-                <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center">
-                  <Percent className="h-5 w-5 text-slate-700" />
+                <div className="text-3xl font-bold text-foreground tabular-nums">{conversionRate.toFixed(1)}%</div>
+                <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                  <Percent className="h-5 w-5 text-foreground" />
                 </div>
               </div>
-              <div className="mt-2 text-xs text-slate-500">{submissions} submissions out of {views} views</div>
+              <div className="mt-2 text-xs text-muted-foreground">{submissions} submissions out of {views} views</div>
             </CardContent>
           </Card>
 
@@ -98,7 +98,7 @@ export default async function TemplateAnalyticsPage({ params }) {
               <CardDescription>Placeholder</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-sm text-slate-700">
+              <div className="text-sm text-foreground">
                 Real submissions + conversion tracking will appear here once backend stores submission events.
               </div>
             </CardContent>
@@ -111,23 +111,23 @@ export default async function TemplateAnalyticsPage({ params }) {
             <CardDescription>Dummy URL-wise views, submissions, and conversion rate</CardDescription>
           </CardHeader>
           <CardContent className="pt-2">
-            <div className="overflow-auto rounded-md border border-slate-200">
+            <div className="overflow-auto rounded-md border border-border">
               <table className="min-w-[760px] w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr className="text-left text-slate-600">
+                <thead className="bg-muted/40">
+                  <tr className="text-left text-muted-foreground">
                     <th className="px-4 py-3 font-medium">Path URL</th>
                     <th className="px-4 py-3 font-medium text-right">Views</th>
                     <th className="px-4 py-3 font-medium text-right">Total submissions</th>
                     <th className="px-4 py-3 font-medium text-right">Conversion rate</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white">
+                <tbody className="bg-card">
                   {urlRows.map((r) => (
-                    <tr key={r.path} className="border-t border-slate-100">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-800">{r.path}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-slate-900">{r.views}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-slate-900">{r.submissions}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-slate-900">{r.conversionRate.toFixed(1)}%</td>
+                    <tr key={r.path} className="border-t border-border">
+                      <td className="px-4 py-3 font-mono text-xs text-foreground">{r.path}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-foreground">{r.views}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-foreground">{r.submissions}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-foreground">{r.conversionRate.toFixed(1)}%</td>
                     </tr>
                   ))}
                 </tbody>

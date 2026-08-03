@@ -6,14 +6,14 @@ import { CHART_COLORS } from './shared'
 
 /** Refined brand palette — darker → lighter pinks, then cyan accents. */
 const DONUT_PALETTE = [
-  '#C81D77',
-  '#E12279',
-  '#F72585',
-  '#FA6DAD',
-  '#FB9BC7',
-  '#0EA5E9',
-  '#45B7DA',
-  '#67E8F9',
+  'var(--chart-4)',
+  'var(--chart-3)',
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-5)',
+  'var(--chart-6)',
+  'var(--chart-7)',
+  'var(--chart-8)',
 ]
 
 function CustomTooltip({ active, payload, valueFormatter, nameKey }) {

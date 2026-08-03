@@ -67,22 +67,22 @@ const TRANSFER_MODE_OPTIONS = [
 
 
 function priorityClasses(priority) {
-  if (priority === 'High') return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
-  if (priority === 'Medium') return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
-  return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+  if (priority === 'High') return 'bg-destructive/10 text-destructive'
+  if (priority === 'Medium') return 'bg-warning/10 text-warning'
+  return 'bg-success/10 text-success'
 }
 
 function waitTimeClasses(minutes) {
-  if (minutes >= 15) return 'text-red-600 dark:text-red-400'
-  if (minutes >= 8) return 'text-amber-600 dark:text-amber-400'
-  return 'text-emerald-600 dark:text-emerald-400'
+  if (minutes >= 15) return 'text-destructive'
+  if (minutes >= 8) return 'text-warning'
+  return 'text-success'
 }
 
 function statusBadgeClasses(status) {
-  if (status === 'waiting') return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
-  if (status === 'in_progress') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
-  if (status === 'claimed') return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400'
-  if (status === 'abandoned') return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+  if (status === 'waiting') return 'bg-warning/10 text-warning'
+  if (status === 'in_progress') return 'bg-success/10 text-success'
+  if (status === 'claimed') return 'bg-info/10 text-info'
+  if (status === 'abandoned') return 'bg-destructive/10 text-destructive'
   if (status === 'resolved') return 'bg-muted text-muted-foreground'
   return 'bg-muted text-muted-foreground'
 }
@@ -155,7 +155,7 @@ function Toggle({ checked, onChange, disabled }) {
     >
       <span
         className={cn(
-          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+          'inline-block h-4 w-4 transform rounded-full bg-primary-foreground shadow transition-transform',
           checked ? 'translate-x-6' : 'translate-x-1',
         )}
       />
@@ -278,7 +278,7 @@ function SettingsPanel({ onClose, canEdit }) {
                       'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-all',
                       isSelected ? 'border-[var(--studio-primary)] bg-[var(--studio-primary)]' : 'border-muted-foreground/40',
                     )}>
-                      {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                      {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
                     </span>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-foreground">{opt.label}</p>
@@ -828,7 +828,7 @@ function HumanQueuePageContent() {
         {/* ── Top bar: tabs + controls ── */}
         <section className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
           {voiceSetupReady === false && (
-            <div className="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+            <div className="rounded-xl border border-warning/20 bg-warning/10 px-4 py-3 text-sm text-warning">
               Browser pickup is not configured. Set <code>TWILIO_API_KEY_SID</code>,{' '}
               <code>TWILIO_API_KEY_SECRET</code>, and <code>TWILIO_TWIML_APP_SID</code> in backend env.
             </div>
@@ -925,8 +925,8 @@ function HumanQueuePageContent() {
             <section className="space-y-4">
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: 'Pending', value: callbackStats.pending, color: 'text-amber-600 dark:text-amber-400' },
-                  { label: 'Called', value: callbackStats.called, color: 'text-emerald-600 dark:text-emerald-400' },
+                  { label: 'Pending', value: callbackStats.pending, color: 'text-warning' },
+                  { label: 'Called', value: callbackStats.called, color: 'text-success' },
                   { label: 'Cancelled', value: callbackStats.cancelled, color: 'text-muted-foreground' },
                 ].map((stat) => (
                   <div key={stat.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm text-center">
@@ -986,9 +986,9 @@ function HumanQueuePageContent() {
                             <span className={cn(
                               'shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium',
                               cb.status === 'pending'
-                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
+                                ? 'bg-warning/10 text-warning'
                                 : cb.status === 'called'
-                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+                                  ? 'bg-success/10 text-success'
                                   : 'bg-muted text-muted-foreground',
                             )}>
                               {cb.status}
@@ -1067,8 +1067,8 @@ function HumanQueuePageContent() {
             {activeTab !== 'resolved' && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {[
-                  { label: 'Waiting', value: tabCounts.waiting || 0, icon: PhoneCall, tone: 'text-amber-600' },
-                  { label: 'Active', value: tabCounts.active || 0, icon: Headphones, tone: 'text-emerald-600' },
+                  { label: 'Waiting', value: tabCounts.waiting || 0, icon: PhoneCall, tone: 'text-warning' },
+                  { label: 'Active', value: tabCounts.active || 0, icon: Headphones, tone: 'text-success' },
                   { label: 'Online agents', value: `${onlineAgents.length}/${agents.length}`, icon: Users, tone: 'text-[var(--studio-primary)]' },
                 ].map((stat) => (
                   <div key={stat.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
@@ -1202,8 +1202,8 @@ function HumanQueuePageContent() {
                             isSelected
                               ? 'border-[var(--studio-primary)] bg-[var(--studio-primary-light)]/50'
                               : 'border-border bg-background hover:bg-muted/40',
-                            isWaiting && 'ring-1 ring-amber-300/50 dark:ring-amber-500/20',
-                            isActiveCall && 'ring-2 ring-emerald-400/60',
+                            isWaiting && 'ring-1 ring-warning/50',
+                            isActiveCall && 'ring-2 ring-success/60',
                           )}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -1220,8 +1220,8 @@ function HumanQueuePageContent() {
                                 </Avatar>
                                 {isWaiting && (
                                   <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
-                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-                                    <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-500" />
+                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" />
+                                    <span className="relative inline-flex h-3 w-3 rounded-full bg-warning" />
                                   </span>
                                 )}
                               </div>
@@ -1317,7 +1317,7 @@ function HumanQueuePageContent() {
                                 </Avatar>
                                 <span className={cn(
                                   'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card',
-                                  agent.isAvailableForCalls ? 'bg-emerald-500' : 'bg-slate-400',
+                                  agent.isAvailableForCalls ? 'bg-success' : 'bg-muted-foreground',
                                 )} />
                               </div>
                               <div className="min-w-0">
@@ -1340,7 +1340,7 @@ function HumanQueuePageContent() {
                               <span className={cn(
                                 'text-[10px] font-medium px-2 py-0.5 rounded-full',
                                 agent.isAvailableForCalls
-                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+                                  ? 'bg-success/10 text-success'
                                   : 'bg-muted text-muted-foreground',
                               )}>
                                 {agent.isAvailableForCalls ? 'Online' : 'Offline'}
@@ -1352,7 +1352,7 @@ function HumanQueuePageContent() {
                     )}
                   </div>
                   {onlineAgents.length === 0 && agents.length > 0 && (
-                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                    <p className="mt-2 text-xs text-warning">
                       No agents are online. Escalations will be converted to callbacks.
                     </p>
                   )}
@@ -1442,7 +1442,7 @@ function HumanQueuePageContent() {
                         </Button>
                       )}
                       {selectedEscalation.status === 'waiting' && isCallCenterAgent && canManageCalls && !isOnlineForCalls && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
+                        <p className="text-xs text-warning text-center">
                           Toggle yourself online in Team Availability to answer calls.
                         </p>
                       )}
@@ -1453,7 +1453,7 @@ function HumanQueuePageContent() {
                       )}
 
                       {isOnCall && (activeCall?.id || activeCall?._id) === (selectedEscalation.id || selectedEscalation._id) && (
-                        <div className="rounded-xl border border-emerald-300/50 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                        <div className="rounded-xl border border-success/20 bg-success/10 px-3 py-2 text-xs text-success">
                           You are on this call. Use the call panel for mute, hold, and hang up.
                         </div>
                       )}

@@ -7,16 +7,16 @@ import { User, Lightbulb } from 'lucide-react'
 const SECTION_TITLE = 'INTERVENTION QUE DETAILS'
 const TABS = [
   { id: 'all', label: 'All', count: 23, border: 'var(--studio-primary)', inactiveText: 'var(--studio-primary)' },
-  { id: 'urgent', label: 'Urgent', count: 2, border: '#BB2E50', inactiveText: '#EF4444' },
-  { id: 'mine', label: 'Mine', count: 8, border: '#F69833', inactiveText: '#F59E0B' },
+  { id: 'urgent', label: 'Urgent', count: 2, border: 'hsl(var(--destructive))', inactiveText: 'hsl(var(--destructive))' },
+  { id: 'mine', label: 'Mine', count: 8, border: 'hsl(var(--warning))', inactiveText: 'hsl(var(--warning))' },
 ]
 const TIP_PREFIX = 'Tip:'
 const TIP_TEXT = 'Prioritise leads waiting > 1 hour first'
 
 // Time colors from Figma: green = normal, amber = warning, red = urgent
-const TIME_COLOR_GREEN = '#00AA34'
-const TIME_COLOR_AMBER = '#F59E0B'
-const TIME_COLOR_RED = '#EF4444'
+const TIME_COLOR_GREEN = 'hsl(var(--success))'
+const TIME_COLOR_AMBER = 'hsl(var(--warning))'
+const TIME_COLOR_RED = 'hsl(var(--destructive))'
 
 const mockLeads = [
   { id: 1, name: 'Liam Jones', location: 'Miami Beach', email: 'liam.jones@example.com', phone: '512-123-4567', waitTime: '2h 1m', tag: 'Offer', timeColor: TIME_COLOR_GREEN },
@@ -65,7 +65,7 @@ export default function InterventionQueueDetails() {
                 minWidth: 113,
                 background: isActive ? 'var(--studio-primary)' : 'hsl(var(--card))',
                 border: `1px solid ${isActive ? tab.border : tab.border}`,
-                color: isActive ? '#FFFFFF' : tab.inactiveText,
+                color: isActive ? 'hsl(var(--primary-foreground))' : tab.inactiveText,
                 fontFamily: 'Inter, sans-serif',
                 fontWeight: 500,
                 fontSize: 13,
@@ -104,8 +104,8 @@ export default function InterventionQueueDetails() {
               className="absolute top-0 left-0 flex items-center justify-center"
               style={{
                 padding: '2px 12px',
-                background: '#6B7280',
-                color: '#FFFFFF',
+                background: 'hsl(var(--muted-foreground))',
+                color: 'hsl(var(--primary-foreground))',
                 fontFamily: 'Inter, sans-serif',
                 fontSize: 12,
                 lineHeight: 1.5,

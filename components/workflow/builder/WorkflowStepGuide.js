@@ -66,7 +66,7 @@ export default function WorkflowStepGuide({ activeCategory, onSelectCategory }) 
   }
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-200/80 bg-slate-50/80 px-4 py-2 dark:border-border dark:bg-muted/20">
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/80 bg-muted/40 px-4 py-2">
       <span className="mr-1 hidden text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:inline">
         Steps
       </span>
@@ -96,8 +96,8 @@ export default function WorkflowStepGuide({ activeCategory, onSelectCategory }) 
                   : unlocked
                     ? done
                       ? 'bg-[var(--studio-primary)]/10 text-[var(--studio-primary)]'
-                      : 'bg-white text-muted-foreground hover:bg-slate-100 dark:bg-background dark:hover:bg-muted'
-                    : 'cursor-not-allowed bg-white/70 text-muted-foreground/50 dark:bg-background/50'
+                      : 'bg-card text-muted-foreground hover:bg-muted dark:hover:bg-muted'
+                    : 'cursor-not-allowed bg-white/70 text-muted-foreground/50'
               )}
             >
               {!unlocked ? <Lock className="h-3 w-3" /> : null}

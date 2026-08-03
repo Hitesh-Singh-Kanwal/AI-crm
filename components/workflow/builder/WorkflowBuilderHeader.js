@@ -34,10 +34,10 @@ export default function WorkflowBuilderHeader({ onSave, onPublish, saving = fals
   const busy = saving || saveStatus === 'saving'
 
   return (
-    <header className="flex shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-4 py-2.5 dark:border-border dark:bg-card">
+    <header className="flex shrink-0 items-center gap-3 border-b border-border/80 bg-card px-4 py-2.5">
         <Link
           href="/ai-automation/workflows"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-muted-foreground hover:bg-slate-50 hover:text-foreground dark:border-border dark:hover:bg-muted"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground dark:hover:bg-muted"
           title="Back to workflows"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -52,8 +52,8 @@ export default function WorkflowBuilderHeader({ onSave, onPublish, saving = fals
           />
         </div>
 
-        <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-border dark:bg-muted/30 sm:flex">
-          <span className={cn('text-[12px] font-semibold', isActive ? 'text-emerald-600' : 'text-muted-foreground')}>
+        <div className="hidden items-center gap-2 rounded-full border border-border bg-muted/40 px-3 py-1.5 sm:flex">
+          <span className={cn('text-[12px] font-semibold', isActive ? 'text-success' : 'text-muted-foreground')}>
             {isActive ? 'Active' : 'Inactive'}
           </span>
           <Switch checked={isActive} onCheckedChange={setIsActive} />
@@ -71,16 +71,16 @@ export default function WorkflowBuilderHeader({ onSave, onPublish, saving = fals
 
         <div className="flex items-center gap-2">
           {saveStatus === 'saved' && (
-            <span className="hidden items-center gap-1 text-[11px] text-emerald-600 sm:inline-flex">
+            <span className="hidden items-center gap-1 text-[11px] text-success sm:inline-flex">
               <Check className="h-3.5 w-3.5" />
               Saved
             </span>
           )}
           {saveStatus === 'unsaved' && (
-            <span className="hidden text-[11px] text-amber-600 sm:inline">Unsaved changes</span>
+            <span className="hidden text-[11px] text-warning sm:inline">Unsaved changes</span>
           )}
           {isPublished && (
-            <span className="hidden rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 sm:inline dark:bg-emerald-500/15 dark:text-emerald-300">
+            <span className="hidden rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase text-success sm:inline">
               Live
             </span>
           )}

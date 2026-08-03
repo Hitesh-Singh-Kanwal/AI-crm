@@ -32,15 +32,15 @@ export default function EmailCanvasModeTabs({
 }) {
   return (
     <Tabs value={value} onValueChange={onChange} className={cn('w-auto', className)}>
-      <TabsList className="h-9 p-0.5 grid grid-cols-3 gap-0.5 bg-slate-100/90 rounded-lg">
+      <TabsList className="h-9 p-0.5 grid grid-cols-3 gap-0.5 bg-muted/90 rounded-lg">
         {MODES.map(({ value: mode, label, title, icon: Icon }) => (
           <TabsTrigger
             key={mode}
             value={mode}
             title={title}
             className={cn(
-              'h-8 px-3 rounded-md text-slate-600 gap-1.5',
-              'data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm',
+              'h-8 px-3 rounded-md text-muted-foreground gap-1.5',
+              'data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm',
             )}
           >
             <Icon className="h-3.5 w-3.5 shrink-0" />

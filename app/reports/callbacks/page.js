@@ -39,16 +39,16 @@ function daysUntil(dateStr) {
 function CallbackBadge({ date }) {
   const diff = daysUntil(date)
   if (diff === null) return <span className="text-sm text-muted-foreground">—</span>
-  let style = 'bg-slate-200 text-slate-800'
+  let style = 'bg-muted text-foreground'
   let label = formatDate(date)
   if (diff < 0) {
     style = 'bg-rose-100 text-rose-800'
     label = `${formatDate(date)} · Overdue`
   } else if (diff === 0) {
-    style = 'bg-amber-100 text-amber-800'
+    style = 'bg-warning/10 text-warning'
     label = `${formatDate(date)} · Today`
   } else if (diff <= 3) {
-    style = 'bg-amber-100 text-amber-800'
+    style = 'bg-warning/10 text-warning'
     label = `${formatDate(date)} · in ${diff}d`
   }
   return (
@@ -255,7 +255,7 @@ export default function CallbackReportPage() {
             label="With a callback"
             value={summaryLoading ? '—' : summary.total}
             icon={PhoneCall}
-            accent="bg-slate-100 text-slate-700"
+            accent="bg-muted text-foreground"
           />
           <SummaryCard
             label="Overdue"
@@ -267,13 +267,13 @@ export default function CallbackReportPage() {
             label="Due today"
             value={summaryLoading ? '—' : summary.today}
             icon={CalendarClock}
-            accent="bg-amber-100 text-amber-700"
+            accent="bg-warning/10 text-warning"
           />
           <SummaryCard
             label="Upcoming"
             value={summaryLoading ? '—' : summary.upcoming}
             icon={CalendarCheck2}
-            accent="bg-emerald-100 text-emerald-700"
+            accent="bg-success/10 text-success"
           />
         </section>
 
@@ -315,7 +315,7 @@ export default function CallbackReportPage() {
                 <select
                   value={stage}
                   onChange={(e) => setStage(e.target.value)}
-                  className="h-9 px-3 text-[13px] border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="h-9 px-3 text-[13px] border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info"
                 >
                   <option value="">All stages</option>
                   {stageOptions.map((opt) => (
@@ -332,7 +332,7 @@ export default function CallbackReportPage() {
                 <select
                   value={studentStatus}
                   onChange={(e) => setStudentStatus(e.target.value)}
-                  className="h-9 px-3 text-[13px] border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="h-9 px-3 text-[13px] border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info"
                 >
                   <option value="">All students</option>
                   <option value="Active">Active</option>

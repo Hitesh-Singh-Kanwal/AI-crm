@@ -32,7 +32,7 @@ function CallActionButton({ icon: Icon, label, active, danger, disabled, onClick
       className={cn(
         'flex flex-col items-center justify-center gap-1.5 rounded-2xl px-3 py-3 transition-all disabled:opacity-50',
         danger
-          ? 'bg-red-500 text-white hover:bg-red-600'
+          ? 'bg-destructive/10 text-white hover:bg-destructive/10'
           : active
             ? 'bg-[var(--studio-primary)] text-white shadow-md'
             : 'bg-muted/80 text-foreground hover:bg-muted',
@@ -123,8 +123,8 @@ export default function ActiveCallPanel({
           className="flex items-center gap-3 rounded-2xl border border-[var(--studio-primary)]/30 bg-card px-4 py-3 shadow-2xl"
         >
           <span className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-success" />
           </span>
           <div className="text-left">
             <p className="text-sm font-semibold text-foreground">{callerName}</p>
@@ -150,16 +150,16 @@ export default function ActiveCallPanel({
               <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/70">
                 <span className="relative flex h-2 w-2">
                   {isConnected && (
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
                   )}
                   <span
                     className={cn(
                       'relative inline-flex h-2 w-2 rounded-full',
                       callStatus === 'connecting'
-                        ? 'bg-amber-400'
+                        ? 'bg-warning'
                         : callerOnHold
-                          ? 'bg-amber-400'
-                          : 'bg-emerald-400',
+                          ? 'bg-warning'
+                          : 'bg-success',
                     )}
                   />
                 </span>
@@ -247,7 +247,7 @@ export default function ActiveCallPanel({
                 type="button"
                 disabled={resolving}
                 onClick={() => onResolve?.()}
-                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-success text-sm font-semibold text-white hover:bg-success disabled:opacity-60"
               >
                 <CheckCircle2 className="h-4 w-4" />
                 {resolving ? 'Resolving…' : 'Resolve & close'}

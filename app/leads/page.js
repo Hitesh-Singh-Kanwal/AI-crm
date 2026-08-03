@@ -40,8 +40,8 @@ import { normalizeConditionsForForm } from '@/lib/dynamic-list-normalize'
 import { formatLeadStageLabel, getLeadStageBadgeClass } from '@/lib/lead-stages'
 
 const BOOKING_STATUS_STYLES = {
-  'Not Booked': 'bg-amber-100 text-amber-800',
-  Booked: 'bg-emerald-100 text-emerald-800',
+  'Not Booked': 'bg-warning/10 text-warning',
+  Booked: 'bg-success/10 text-success',
 }
 
 const ROWS_PER_PAGE = 10
@@ -444,7 +444,7 @@ export default function LeadsPage() {
                     <span
                       className={cn(
                         'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                        BOOKING_STATUS_STYLES[bookingStatus] ?? 'bg-slate-200 text-slate-700'
+                        BOOKING_STATUS_STYLES[bookingStatus] ?? 'bg-muted text-foreground'
                       )}
                     >
                       {bookingStatus}
@@ -495,7 +495,7 @@ export default function LeadsPage() {
                           {lead.convertedCustomerID ? 'Already a Customer' : convertingId === lead._id ? 'Converting…' : 'Convert to Customer'}
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          className="text-red-600"
+                          className="text-destructive"
                           onClick={() => handleDeleteLead(lead._id)}
                         >
                           Delete

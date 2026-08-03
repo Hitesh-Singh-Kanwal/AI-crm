@@ -39,7 +39,10 @@ export default function ConversionFunnelWidget({ conversionFunnel = [], defaultR
               <div className="h-5 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full"
-                  style={{ width: `${stage.percentage}%`, background: 'var(--side-gradient-css)' }}
+                  style={{
+                    width: `${stage.percentage}%`,
+                    background: 'linear-gradient(90deg, var(--bar-gradient-start), var(--bar-gradient-end))',
+                  }}
                 />
               </div>
             </div>

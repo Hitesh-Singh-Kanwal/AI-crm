@@ -25,7 +25,7 @@ export const LABEL = {
 /** New Leads card title – 16px bold, purple */
 export const LABEL_PRIMARY = {
   ...LABEL,
-  color: 'var(--studio-primary)', // #9224EF
+  color: 'var(--studio-primary)',
 }
 
 /** All card numbers – 45px bold, black (all 4 cards) */
@@ -43,7 +43,7 @@ export const TREND_POSITIVE = {
   fontWeight: 400,
   fontSize: 12,
   lineHeight: 1.4,
-  color: '#059669',
+  color: 'hsl(var(--success))',
 }
 
 export const TREND_NEGATIVE = {
@@ -51,8 +51,8 @@ export const TREND_NEGATIVE = {
   fontWeight: 400,
   fontSize: 12,
   lineHeight: 1.4,
-  color: '#DC2626',
+  color: 'hsl(var(--destructive))',
 }
 
-export const ICON_POSITIVE = '#059669'
-export const ICON_NEGATIVE = '#DC2626'
+export const ICON_POSITIVE = 'hsl(var(--success))'
+export const ICON_NEGATIVE = 'hsl(var(--destructive))'

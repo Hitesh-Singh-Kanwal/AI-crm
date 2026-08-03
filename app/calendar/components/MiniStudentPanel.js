@@ -64,10 +64,10 @@ function extractCollectedPayments(payResult) {
 }
 
 function statusColor(status) {
-  if (status === "completed") return "bg-green-500/10 text-green-400";
-  if (status === "cancelled") return "bg-red-500/10 text-red-400";
-  if (status === "no_show") return "bg-orange-500/10 text-orange-400";
-  return "bg-blue-500/10 text-blue-400";
+  if (status === "completed") return "bg-success/10 text-success";
+  if (status === "cancelled") return "bg-destructive/10 text-destructive";
+  if (status === "no_show") return "bg-warning/10 text-warning";
+  return "bg-info/10 text-info";
 }
 
 export default function MiniStudentPanel({
@@ -1007,18 +1007,18 @@ export default function MiniStudentPanel({
                   return visible.map((enr) => {
                   const enrStatusCls =
                     enr.status === "active"
-                      ? "bg-green-500/10 text-green-500"
+                      ? "bg-success/10 text-success"
                       : enr.status === "completed"
-                        ? "bg-blue-500/10 text-blue-400"
+                        ? "bg-info/10 text-info"
                         : "bg-muted text-muted-foreground";
                   const cp = enr.package ?? null; // embedded package (or null)
                   const pkgStatusCls =
                     cp?.status === "active"
-                      ? "bg-green-500/10 text-green-500"
+                      ? "bg-success/10 text-success"
                       : cp?.status === "exhausted"
-                        ? "bg-orange-500/10 text-orange-500"
+                        ? "bg-warning/10 text-warning"
                         : cp?.status === "expired"
-                          ? "bg-red-500/10 text-red-400"
+                          ? "bg-destructive/10 text-destructive"
                           : "bg-muted text-muted-foreground";
                   const isSellOpen = sellTargetEnrollmentId === String(enr._id);
                   const isExpanded = String(enr._id) === openId;
@@ -1124,10 +1124,10 @@ export default function MiniStudentPanel({
                                     <span
                                       className={`ml-1.5 text-[9px] font-bold uppercase ${
                                         cp.paymentStatus === "paid"
-                                          ? "text-green-500"
+                                          ? "text-success"
                                           : cp.paymentStatus === "partial"
-                                            ? "text-amber-500"
-                                            : "text-red-400"
+                                            ? "text-warning"
+                                            : "text-destructive"
                                       }`}
                                     >
                                       {cp.paymentStatus}
@@ -1182,7 +1182,7 @@ export default function MiniStudentPanel({
                                     {/* Progress bar */}
                                     <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
                                       <div
-                                        className={`h-full rounded-full transition-all ${svc.sessionsRemaining === 0 ? "bg-red-400" : "bg-primary"}`}
+                                        className={`h-full rounded-full transition-all ${svc.sessionsRemaining === 0 ? "bg-destructive" : "bg-primary"}`}
                                         style={{ width: `${100 - pct}%` }}
                                       />
                                     </div>
@@ -1194,7 +1194,7 @@ export default function MiniStudentPanel({
                                         /session
                                         {svc.discountType !== "none" &&
                                           svc.discountAmount > 0 && (
-                                            <span className="ml-1 text-emerald-500">
+                                            <span className="ml-1 text-success">
                                               -
                                               {svc.discountType === "percentage"
                                                 ? `${svc.discountAmount}%`
@@ -1511,7 +1511,7 @@ export default function MiniStudentPanel({
                 <p className="text-[11px] text-destructive">{msgError}</p>
               )}
               {msgSuccess && (
-                <p className="text-[11px] text-emerald-500">{msgSuccess}</p>
+                <p className="text-[11px] text-success">{msgSuccess}</p>
               )}
 
               <button
@@ -1557,7 +1557,7 @@ export default function MiniStudentPanel({
                   <p className="text-[9px] text-muted-foreground mb-0.5 leading-tight">
                     Collected
                   </p>
-                  <p className="text-[15px] font-bold text-emerald-500">
+                  <p className="text-[15px] font-bold text-success">
                     $
                     {enrollments
                       .filter((e) => e.package?.amountCollected > 0)
@@ -1572,7 +1572,7 @@ export default function MiniStudentPanel({
                   <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5 leading-tight">
                     Credit Balance
                   </p>
-                  <p className="text-[15px] font-bold text-emerald-500">
+                  <p className="text-[15px] font-bold text-success">
                     {totalSessionsRemaining != null
                       ? Number.isInteger(totalSessionsRemaining)
                         ? totalSessionsRemaining
@@ -1628,7 +1628,7 @@ export default function MiniStudentPanel({
                         return (
                           <div
                             key={`flex-${item.enrollmentId}`}
-                            className={`rounded-lg border ${item.isOverdue ? "border-rose-300 bg-rose-50/30 dark:bg-rose-900/10" : "border-amber-200 bg-amber-50/30 dark:bg-amber-900/10"} px-3 py-2.5 space-y-2`}
+                            className={`rounded-lg border ${item.isOverdue ? "border-rose-300 bg-rose-50/30 dark:bg-rose-900/10" : "border-warning/20 bg-warning/10"} px-3 py-2.5 space-y-2`}
                           >
                             <div className="flex items-start justify-between gap-1.5">
                               <div className="min-w-0">
@@ -1669,7 +1669,7 @@ export default function MiniStudentPanel({
                                   <button
                                     type="button"
                                     onClick={() => updateFlex({ mode: "pay" })}
-                                    className="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold px-2 py-1"
+                                    className="rounded-md bg-success hover:bg-success text-white text-[10px] font-semibold px-2 py-1"
                                   >
                                     Pay Now
                                   </button>
@@ -1880,7 +1880,7 @@ export default function MiniStudentPanel({
                                       <button
                                         type="submit"
                                         disabled={f.saving}
-                                        className="flex-1 h-7 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold disabled:opacity-50"
+                                        className="flex-1 h-7 rounded-md bg-success hover:bg-success text-white text-[10px] font-semibold disabled:opacity-50"
                                       >
                                         {f.saving
                                           ? "Saving…"
@@ -1965,7 +1965,7 @@ export default function MiniStudentPanel({
                                   <p className="text-[12px] font-semibold text-foreground truncate">
                                     {item.packageName}
                                   </p>
-                                  <span className="text-[9px] bg-blue-500/10 text-blue-600 rounded-full px-1.5 py-0.5 font-medium">
+                                  <span className="text-[9px] bg-info/10 text-info rounded-full px-1.5 py-0.5 font-medium">
                                     Payment {item.installmentNumber}/
                                     {item.totalInstallments}
                                   </span>
@@ -2005,7 +2005,7 @@ export default function MiniStudentPanel({
                                           : "",
                                       })
                                     }
-                                    className="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold px-2 py-1"
+                                    className="rounded-md bg-success hover:bg-success text-white text-[10px] font-semibold px-2 py-1"
                                   >
                                     Pay Now
                                   </button>
@@ -2197,7 +2197,7 @@ export default function MiniStudentPanel({
                                   <button
                                     type="submit"
                                     disabled={pf.saving || !pf.payAmount}
-                                    className="flex-1 h-7 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold disabled:opacity-50"
+                                    className="flex-1 h-7 rounded-md bg-success hover:bg-success text-white text-[10px] font-semibold disabled:opacity-50"
                                   >
                                     {pf.saving
                                       ? "Saving…"
@@ -2224,7 +2224,7 @@ export default function MiniStudentPanel({
                                       item.serviceName ||
                                       "Session"}
                                   </p>
-                                  <span className="text-[9px] bg-emerald-500/10 text-emerald-600 rounded-full px-1.5 py-0.5 font-medium">
+                                  <span className="text-[9px] bg-success/10 text-success rounded-full px-1.5 py-0.5 font-medium">
                                     Upcoming
                                   </span>
                                 </div>
@@ -2326,11 +2326,11 @@ export default function MiniStudentPanel({
                           },
                           credits: {
                             text: "Credits",
-                            cls: "bg-blue-500/10 text-blue-600",
+                            cls: "bg-info/10 text-info",
                           },
                           mixed: {
                             text: "Mixed",
-                            cls: "bg-orange-500/10 text-orange-600",
+                            cls: "bg-warning/10 text-warning",
                           },
                         };
                         const m = METHOD_LABEL[evt.chargeMethod] ?? {
@@ -2426,7 +2426,7 @@ export default function MiniStudentPanel({
                                   {title}
                                 </p>
                                 <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className="text-[12px] font-bold text-emerald-500">
+                                  <span className="text-[12px] font-bold text-success">
                                     ${Number(p.amount ?? 0).toFixed(2)}
                                   </span>
                                   {p.method && (

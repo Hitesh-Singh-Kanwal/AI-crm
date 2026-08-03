@@ -39,6 +39,21 @@ function lessonCount(byType, key) {
   return byType?.[key]?.lessons ?? 0
 }
 
+/**
+ * Headline count for a breakdown row. `lessonsTaught` is attendance-based for
+ * group services, so a class with 8 students would read as 8 — use the session
+ * count there so the number always means "classes/lessons this teacher taught".
+ */
+function taughtCount(row) {
+  if (!row) return 0
+  if (row.serviceType === 'group') return row.sessionCount ?? 0
+  return row.lessonsTaught ?? 0
+}
+
+function hasActivity(row) {
+  return taughtCount(row) > 0 || (row?.lessonsTaught ?? 0) > 0 || (row?.sessions?.length ?? 0) > 0
+}
+
 function customerCount(byType, key) {
   return byType?.[key]?.customers ?? 0
 }
@@ -216,7 +231,7 @@ function TypeCountPills({ types }) {
     <div className="flex flex-wrap gap-1.5">
       {TYPE_ORDER.map((key) => {
         const row = types.find((t) => t.serviceType === key)
-        const count = row?.lessonsTaught ?? 0
+        const count = taughtCount(row)
         return (
           <span
             key={key}
@@ -239,7 +254,7 @@ function TypeCountPills({ types }) {
 }
 
 function ServiceCountPills({ services }) {
-  const active = (services || []).filter((s) => (s.lessonsTaught ?? 0) > 0)
+  const active = (services || []).filter((s) => taughtCount(s) > 0)
   if (!active.length) {
     return <span className="text-[11px] text-muted-foreground/50">No services</span>
   }
@@ -250,10 +265,14 @@ function ServiceCountPills({ services }) {
         <span
           key={row.serviceID}
           className="inline-flex max-w-[180px] items-center gap-1 truncate rounded-md bg-[var(--studio-primary)]/10 px-2 py-0.5 text-[11px] font-medium tabular-nums text-[var(--studio-primary)]"
-          title={row.label}
+          title={
+            row.serviceType === 'group'
+              ? `${row.label} — ${taughtCount(row)} classes · ${row.lessonsTaught ?? 0} attendances`
+              : row.label
+          }
         >
           <span className="truncate">{row.label}</span>
-          {row.lessonsTaught ?? 0}
+          {taughtCount(row)}
         </span>
       ))}
       {active.length > 6 ? (
@@ -302,10 +321,7 @@ function SessionTable({ sessions }) {
 }
 
 function BreakdownPanels({ items, idKey = 'serviceType', emptyLabel }) {
-  const activeItems = useMemo(
-    () => (items || []).filter((t) => (t.lessonsTaught ?? 0) > 0 || (t.sessions?.length ?? 0) > 0),
-    [items],
-  )
+  const activeItems = useMemo(() => (items || []).filter(hasActivity), [items])
   const [selected, setSelected] = useState(null)
   const selectedId = selected || activeItems[0]?.[idKey]
   const current = (items || []).find((t) => t[idKey] === selectedId) || activeItems[0]
@@ -321,33 +337,35 @@ function BreakdownPanels({ items, idKey = 'serviceType', emptyLabel }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Lesson breakdown">
-        {(items || [])
-          .filter((row) => (row.lessonsTaught ?? 0) > 0 || (row.sessions?.length ?? 0) > 0)
-          .map((row) => {
-            const key = row[idKey]
-            const count = row.lessonsTaught ?? 0
-            const isActive = selectedId === key
-            return (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => setSelected(key)}
-                className={cn(
-                  'max-w-[220px] truncate rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--studio-primary)]/30 focus-visible:ring-offset-1',
-                  isActive
-                    ? 'bg-[var(--studio-primary)] text-white'
-                    : 'bg-[var(--studio-primary-light)] text-[var(--studio-primary)] hover:bg-[var(--studio-primary)]/15',
-                )}
-                title={row.label}
-              >
-                <span className="truncate">{row.label}</span>
-                <span className="ml-1.5 tabular-nums opacity-80">{count}</span>
-              </button>
-            )
-          })}
+        {(items || []).filter(hasActivity).map((row) => {
+          const key = row[idKey]
+          const count = taughtCount(row)
+          const isActive = selectedId === key
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setSelected(key)}
+              className={cn(
+                'max-w-[220px] truncate rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--studio-primary)]/30 focus-visible:ring-offset-1',
+                isActive
+                  ? 'bg-[var(--studio-primary)] text-white'
+                  : 'bg-[var(--studio-primary-light)] text-[var(--studio-primary)] hover:bg-[var(--studio-primary)]/15',
+              )}
+              title={
+                row.serviceType === 'group'
+                  ? `${row.label} — ${count} classes · ${row.lessonsTaught ?? 0} attendances`
+                  : row.label
+              }
+            >
+              <span className="truncate">{row.label}</span>
+              <span className="ml-1.5 tabular-nums opacity-80">{count}</span>
+            </button>
+          )
+        })}
       </div>
 
       {current ? (
@@ -386,10 +404,7 @@ function BreakdownPanels({ items, idKey = 'serviceType', emptyLabel }) {
 
 function TeacherTypePanels({ types }) {
   // Keep type-order tabs including zeros disabled — match prior UX
-  const activeTypes = useMemo(
-    () => (types || []).filter((t) => (t.lessonsTaught ?? 0) > 0 || (t.sessions?.length ?? 0) > 0),
-    [types],
-  )
+  const activeTypes = useMemo(() => (types || []).filter(hasActivity), [types])
   const [selected, setSelected] = useState(null)
   const selectedType = selected || activeTypes[0]?.serviceType || TYPE_ORDER[0]
   const current = (types || []).find((t) => t.serviceType === selectedType) || activeTypes[0]
@@ -407,9 +422,9 @@ function TeacherTypePanels({ types }) {
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Lesson type">
         {TYPE_ORDER.map((key) => {
           const row = (types || []).find((t) => t.serviceType === key)
-          const count = row?.lessonsTaught ?? 0
+          const count = taughtCount(row)
           const isActive = selectedType === key
-          const disabled = count === 0 && !(row?.sessions?.length)
+          const disabled = !hasActivity(row)
           return (
             <button
               key={key}
@@ -492,8 +507,8 @@ function TeacherRow({ teacher, view, defaultOpen = false }) {
   const services = teacher.lessonsByService || []
   const totalLessons =
     view === 'service'
-      ? services.reduce((sum, t) => sum + (t.lessonsTaught || 0), 0)
-      : types.reduce((sum, t) => sum + (t.lessonsTaught || 0), 0)
+      ? services.reduce((sum, t) => sum + taughtCount(t), 0)
+      : types.reduce((sum, t) => sum + taughtCount(t), 0)
 
   return (
     <article className="border-b border-border/70 last:border-b-0">

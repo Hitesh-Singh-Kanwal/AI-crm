@@ -7,6 +7,7 @@ import { getDefaultRedirect } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { BrandLockup, BrandMark } from '@/components/shared/BrandLogo'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -38,15 +39,8 @@ export default function LoginPage() {
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-[var(--studio-primary)]/10 rounded-full blur-3xl" />
 
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-14">
-            <div className="w-12 h-12 rounded-xl bg-[var(--studio-primary)] flex items-center justify-center shadow-lg">
-              <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 8C18.5 8 17 9 17 11V15C17 16 17.5 17 18.5 17.5L20 18.5L21.5 17.5C22.5 17 23 16 23 15V11C23 9 21.5 8 20 8Z" fill="white" opacity="0.9"/>
-                <path d="M13 14C11.5 14 10 15 10 17V25C10 27 11.5 28 13 28C14.5 28 16 27 16 25V17C16 15 14.5 14 13 14Z" fill="white" opacity="0.7"/>
-                <path d="M27 14C25.5 14 24 15 24 17V25C24 27 25.5 28 27 28C28.5 28 30 27 30 25V17C30 15 28.5 14 27 14Z" fill="white" opacity="0.7"/>
-              </svg>
-            </div>
-            <span className="text-white text-2xl font-display font-semibold">Dance Academy</span>
+          <div className="mb-14">
+            <BrandLockup size={64} className="items-start text-left" />
           </div>
 
           <div className="space-y-5">
@@ -75,22 +69,13 @@ export default function LoginPage() {
 
       <div className="w-full lg:w-1/2 flex items-center justify-center py-10 px-4 sm:px-6 bg-background">
         <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-[var(--studio-primary)] flex items-center justify-center shadow-lg">
-              <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 8C18.5 8 17 9 17 11V15C17 16 17.5 17 18.5 17.5L20 18.5L21.5 17.5C22.5 17 23 16 23 15V11C23 9 21.5 8 20 8Z" fill="white" opacity="0.9"/>
-                <path d="M13 14C11.5 14 10 15 10 17V25C10 27 11.5 28 13 28C14.5 28 16 27 16 25V17C16 15 14.5 14 13 14Z" fill="white" opacity="0.7"/>
-                <path d="M27 14C25.5 14 24 15 24 17V25C24 27 25.5 28 27 28C28.5 28 30 27 30 25V17C30 15 28.5 14 27 14Z" fill="white" opacity="0.7"/>
-              </svg>
-            </div>
-            <span className="text-foreground text-2xl font-display font-semibold">Dance Academy</span>
+          <div className="lg:hidden mb-8">
+            <BrandLockup size={64} tone="default" />
           </div>
 
           <div className="border border-border rounded-2xl bg-card/80 backdrop-blur-sm shadow-sm p-5 sm:p-7">
             <div className="text-center mb-6">
-              <div className="mx-auto h-10 w-10 rounded-lg bg-[var(--studio-primary)] flex items-center justify-center mb-3">
-                <span className="text-white font-medium">DA</span>
-              </div>
+              <BrandMark size={40} className="mx-auto mb-3" />
               <h2 className="text-2xl font-semibold text-foreground">Sign in to your account</h2>
               <p className="text-sm text-muted-foreground mt-1">Access your CRM workspace and continue where you left off.</p>
             </div>
@@ -133,7 +118,7 @@ export default function LoginPage() {
               </div>
 
               {error && (
-                <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
+                <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg">
                   {error}
                 </div>
               )}

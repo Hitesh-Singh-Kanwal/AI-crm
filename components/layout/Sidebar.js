@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { getCurrentUser } from '@/lib/auth'
 import { canAccessRoute } from '@/lib/permissions'
+import { BrandLockup } from '@/components/shared/BrandLogo'
 import { upcomingTasks as sidebarUpcomingTasks } from '@/data/dummyData'
 
 const navItems = [
@@ -205,7 +206,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
 
   const studioName = user.branchName || 'Dance Studio'
   const sidebarTileClass =
-    'flex flex-col justify-center items-center gap-1 rounded-lg text-white w-[104px] min-h-[64px] px-2 py-2 transition-colors'
+    'flex flex-col justify-center items-center gap-1 rounded-lg text-[color:var(--sidebar-ink)] w-[104px] min-h-[64px] px-2 py-2 transition-colors'
   const sidebarLabelClass = 'text-center whitespace-nowrap leading-tight w-full overflow-visible'
 
   return (
@@ -232,22 +233,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
       >
         {/* Welcome section */}
         <div className="flex flex-col items-center gap-5 w-[112px]">
-          <div className="flex flex-col justify-center items-center gap-1">
-            <div className="w-8 h-8 rounded-full overflow-hidden bg-[color:var(--studio-primary)]" aria-hidden>
-              <Image
-                src="/figma/sidebar/images/logo.png"
-                alt=""
-                width={32}
-                height={32}
-                className="w-full h-full object-cover"
-                unoptimized
-                priority
-              />
-            </div>
-            <div className="text-white font-medium" style={{ fontSize: 14, lineHeight: '20px' }}>
-              {studioName}
-            </div>
-          </div>
+          <BrandLockup size={46} title={studioName} />
 
           <nav className="flex flex-col items-center gap-1 rounded-r-[24px]">
             {navItems.map((item) => {
@@ -307,8 +293,9 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
                       }}
                       className={cn(
                         sidebarTileClass,
-                        'hover:bg-black/15 dark:hover:bg-white/10',
-                        isActive && 'bg-black/20 dark:bg-white/15'
+                        'hover:bg-white/5',
+                        isActive &&
+                          'bg-[image:var(--sidebar-active-css)] text-white shadow-[var(--sidebar-active-shadow)]'
                       )}
                       aria-expanded={openMenu === item.name}
                       aria-haspopup="menu"
@@ -337,8 +324,9 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
                       }}
                       className={cn(
                         sidebarTileClass,
-                        'hover:bg-black/15 dark:hover:bg-white/10',
-                        isActive && 'bg-black/20 dark:bg-white/15'
+                        'hover:bg-white/5',
+                        isActive &&
+                          'bg-[image:var(--sidebar-active-css)] text-white shadow-[var(--sidebar-active-shadow)]'
                       )}
                       aria-current={isActive ? 'page' : undefined}
                     >
@@ -360,7 +348,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
         </div>
 
         {/* Subscription section */}
-        <div className="relative group flex flex-col items-center gap-1 p-1 rounded-lg border border-white/20 bg-black/15 dark:bg-white/10 w-[112px]">
+        <div className="relative group flex flex-col items-center gap-1 p-1 rounded-lg border border-white/15 bg-white/5 w-[112px]">
           <div className="w-[62px] h-[46.5px] overflow-hidden rounded">
             <Image
               src="/figma/sidebar/upcoming-memoji.png"

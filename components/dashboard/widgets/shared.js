@@ -6,14 +6,14 @@ export const GRADIENT_COLOR = 'var(--studio-gradient)'
 
 /** Higher-contrast pink → magenta palette for pie/donut slices. */
 export const CHART_COLORS = [
-  '#F72585',
-  '#FA6DAD',
-  '#E12279',
-  '#C81D77',
-  '#FB9BC7',
-  '#45B7DA',
-  '#4CC9F0',
-  '#ADE6F8',
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+  'var(--chart-6)',
+  'var(--chart-7)',
+  'var(--chart-8)',
 ]
 
 export const SIZE_OPTIONS = [
