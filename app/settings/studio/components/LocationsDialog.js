@@ -30,8 +30,12 @@ const emptyLocation = () => ({
   city: '',
   state: '',
   country: '',
+  zip: '',
   phoneNumber: '',
+  footerPhone: '',
   email: '',
+  website: '',
+  socialMedia: '',
   status: 'active',
   timezone: DEFAULT_LOCATION_TIMEZONE,
   emailConversationEnabled: false,
@@ -92,11 +96,15 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
       const payload = {
         name: editingLocation.name,
         address: editingLocation.address,
-        city: editingLocation.city,
-        state: editingLocation.state,
-        country: editingLocation.country,
-        phoneNumber: editingLocation.phoneNumber,
+        city: editingLocation.city || null,
+        state: editingLocation.state || null,
+        country: editingLocation.country || null,
+        zip: editingLocation.zip || null,
+        phoneNumber: editingLocation.phoneNumber || null,
+        footerPhone: editingLocation.footerPhone || null,
         email: editingLocation.email,
+        website: editingLocation.website || null,
+        socialMedia: editingLocation.socialMedia || null,
         status: editingLocation.status || 'active',
         timezone: editingLocation.timezone || DEFAULT_LOCATION_TIMEZONE,
         emailConversationEnabled: Boolean(editingLocation.emailConversationEnabled),
@@ -172,9 +180,12 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                   <Input
                     value={editingLocation.name || ''}
                     onChange={(e) => setEditingLocation((p) => ({ ...p, name: e.target.value }))}
-                    placeholder="e.g., Downtown Branch"
+                    placeholder="e.g., Dance With Me Midtown"
                     required
                   />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Used as the email From display name and the first line of the footer.
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">Email *</label>
@@ -203,7 +214,7 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
 
             <div className="space-y-4 pt-4 border-t border-border">
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Address Details</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">City</label>
                   <Input
@@ -218,6 +229,14 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                     value={editingLocation.state || ''}
                     onChange={(e) => setEditingLocation((p) => ({ ...p, state: e.target.value }))}
                     placeholder="State"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">Zip / Postal code</label>
+                  <Input
+                    value={editingLocation.zip || ''}
+                    onChange={(e) => setEditingLocation((p) => ({ ...p, zip: e.target.value }))}
+                    placeholder="10018"
                   />
                 </div>
                 <div>
@@ -250,6 +269,84 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                     : ''}
                 </p>
               </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-border">
+              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+                Email footer
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Shown at the bottom of outbound emails for this studio. Blank fields are omitted
+                automatically.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Phone (email footer)
+                  </label>
+                  <Input
+                    value={editingLocation.footerPhone || ''}
+                    onChange={(e) =>
+                      setEditingLocation((p) => ({ ...p, footerPhone: e.target.value }))
+                    }
+                    placeholder="212-837-8111"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Public number shown as P: in emails. Leave blank to use the Twilio studio
+                    number.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">Website</label>
+                  <Input
+                    value={editingLocation.website || ''}
+                    onChange={(e) => setEditingLocation((p) => ({ ...p, website: e.target.value }))}
+                    placeholder="DanceWithMeUSA.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Social media handle
+                  </label>
+                  <Input
+                    value={editingLocation.socialMedia || ''}
+                    onChange={(e) =>
+                      setEditingLocation((p) => ({ ...p, socialMedia: e.target.value }))
+                    }
+                    placeholder="@DanceWithMeUSA"
+                  />
+                </div>
+              </div>
+              {(editingLocation.name ||
+                editingLocation.footerPhone ||
+                editingLocation.phoneNumber ||
+                editingLocation.address ||
+                editingLocation.website ||
+                editingLocation.socialMedia) && (
+                <div className="rounded-lg border border-border bg-muted/30 px-3.5 py-3 text-[12px] leading-relaxed text-muted-foreground">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground">
+                    Preview
+                  </p>
+                  <div className="whitespace-pre-wrap font-mono text-[12px] text-foreground">
+                    {[
+                      editingLocation.name || null,
+                      (editingLocation.footerPhone || editingLocation.phoneNumber)
+                        ? `P: ${editingLocation.footerPhone || editingLocation.phoneNumber}`
+                        : null,
+                      editingLocation.address ? `A: ${editingLocation.address}` : null,
+                      [editingLocation.city, [editingLocation.state, editingLocation.zip].filter(Boolean).join(' ')]
+                        .filter(Boolean)
+                        .join(', ') || null,
+                      editingLocation.website ? `W: ${editingLocation.website}` : null,
+                      editingLocation.socialMedia
+                        ? `Social Media: ${editingLocation.socialMedia}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join('\n')}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4 pt-4 border-t border-border">
