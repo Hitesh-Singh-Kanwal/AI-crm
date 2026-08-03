@@ -31,34 +31,26 @@ const PAYMENT_TYPE_LABEL = {
   membership_renewal: "Membership renewal",
 };
 
-// A booking is "auto-charged at booking" only when money actually moves at
-// booking time. Package lines settle at booking only for upfront billing
-// (one-time / pay-per-session) — payment_plan and flexible are paid separately
-// via installments / flexible payments, so they never auto-charge on booking.
-// Credits / direct / mixed draw at booking regardless.
+// Auto-charged = true autopay / merchant-initiated scheduled charges only.
+// Booking-time package/credits/direct settlements are normal collected payments
+// (Payment ledger), not autopay. When autopay ships, mark those charges with
+// payment.source === "autopay" (or payment.autopay === true) so they appear here.
 function isAutoChargedAtBooking(e) {
-  if (!e || e.chargeMethod === "none" || !e.chargeMethod) return false;
-  if (e.chargeMethod === "package") {
-    return (
-      e.packageBillingType === "one_time" ||
-      e.packageBillingType === "pay_per_session"
-    );
-  }
-  return (
-    ["credits", "direct", "mixed"].includes(e.chargeMethod) || e.chargeApplied
-  );
+  if (!e) return false;
+  return e.payment?.source === "autopay" || e.payment?.autopay === true || e.autoCharged === true;
 }
 
 // Collected payments come from the Payment ledger (installments, flexible,
-// session cash, memberships) — the calendar event flags only cover per-session
-// cash and miss plan installments.
+// session cash, memberships, Clover checkouts) — not calendar-event charge flags.
 function extractCollectedPayments(payResult) {
   const list =
     payResult?.success && Array.isArray(payResult.data) ? payResult.data : [];
   return list
     .filter(
       (p) =>
-        p.status !== "failed" && p.type !== "refund" && Number(p.amount) > 0,
+        p.status === "completed" &&
+        p.type !== "refund" &&
+        Number(p.amount) > 0,
     )
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
@@ -1559,12 +1551,8 @@ export default function MiniStudentPanel({
                   </p>
                   <p className="text-[15px] font-bold text-success">
                     $
-                    {enrollments
-                      .filter((e) => e.package?.amountCollected > 0)
-                      .reduce(
-                        (sum, e) => sum + (e.package?.amountCollected ?? 0),
-                        0,
-                      )
+                    {collectedPayments
+                      .reduce((sum, p) => sum + Number(p.amount ?? 0), 0)
                       .toFixed(2)}
                   </p>
                 </div>
@@ -1591,7 +1579,7 @@ export default function MiniStudentPanel({
                 className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary text-foreground"
               >
                 <option value="due">Payments Due</option>
-                <option value="auto">Auto-charged from Bookings</option>
+                <option value="auto">Auto-charged (autopay)</option>
                 <option value="collected">Collected Payments</option>
               </select>
 
@@ -2316,7 +2304,7 @@ export default function MiniStudentPanel({
                   {paymentView === "auto" && serviceCharges.length > 0 && (
                     <div className="space-y-1.5">
                       <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">
-                        Auto-charged from bookings
+                        Autopay charges
                       </p>
                       {serviceCharges.map((evt) => {
                         const METHOD_LABEL = {
@@ -2468,7 +2456,7 @@ export default function MiniStudentPanel({
                   )}
                   {paymentView === "auto" && serviceCharges.length === 0 && (
                     <p className="text-[12px] text-muted-foreground">
-                      No auto-charged bookings.
+                      No autopay charges yet.
                     </p>
                   )}
                   {paymentView === "collected" &&
