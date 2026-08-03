@@ -573,7 +573,14 @@ export default function LocationsPage() {
           open={locationsDialogOpen} 
           onClose={closeLocationsDialog} 
           locations={locationsList} 
-          onRefresh={loadLocations} 
+          onRefresh={() => {
+            loadLocations()
+            if (locationsDialogInitialId) {
+              loadLocationDetails(locationsDialogInitialId)
+            } else if (selectedLocationId) {
+              loadLocationDetails(selectedLocationId)
+            }
+          }} 
           initialLocationId={locationsDialogInitialId} 
         />
       </div>

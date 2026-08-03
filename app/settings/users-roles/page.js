@@ -1,6 +1,6 @@
 import MainLayout from '@/components/layout/MainLayout'
 import Link from 'next/link'
-import { Users, Shield, ChevronRight } from 'lucide-react'
+import { Users, Shield, ChevronRight, ListOrdered } from 'lucide-react'
 
 const cards = [
   {
@@ -15,6 +15,13 @@ const cards = [
     title: 'Users',
     description: 'Invite team members, assign them a role, and manage locations.',
     icon: Users,
+  },
+  {
+    href: '/settings/users-roles/ai-booking-priority',
+    title: 'AI Booking Priority',
+    description:
+      'Choose which calendar staff the agent can book and in what order when assigning intro lessons.',
+    icon: ListOrdered,
   },
 ]
 

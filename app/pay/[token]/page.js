@@ -28,8 +28,6 @@ const API_BASE = (
 const money = (amount) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount) || 0)
 
-// What a customer is told when a link cannot be paid. Each one says what happened and
-// what to do about it — a dead end with no next step is what makes people call the studio.
 const CLOSED = {
   paid: {
     tone: 'good',
@@ -44,7 +42,7 @@ const CLOSED = {
   expired: {
     tone: 'plain',
     title: 'This payment link has expired',
-    body: 'Links are only good for a few days. Ask the studio to send you a new one.',
+    body: 'Links are only good for 24 hours. Ask the studio to send you a new one.',
   },
 }
 
@@ -101,36 +99,63 @@ function StudioMark({ name }) {
   )
 }
 
+function formatPreferred(slot) {
+  if (!slot?.start) return null
+  try {
+    return new Date(slot.start).toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+  } catch {
+    return null
+  }
+}
+
 export default function PayPage() {
   const { token } = useParams()
 
-  const [state, setState] = useState('loading') // loading | ready | closed | invalid
+  const [state, setState] = useState('loading') // loading | ready | closed | pick-slot | invalid
   const [request, setRequest] = useState(null)
   const [opening, setOpening] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [selected, setSelected] = useState(null)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    let cancelled = false
-
-    fetch(`${API_BASE}/api/pay/${encodeURIComponent(token)}`)
+  const load = useCallback(() => {
+    return fetch(`${API_BASE}/api/pay/${encodeURIComponent(token)}`)
       .then(async (res) => {
         if (!res.ok) throw new Error('invalid')
         return res.json()
       })
       .then((body) => {
-        if (cancelled) return
         if (!body?.success) throw new Error('invalid')
         setRequest(body.data)
-        setState(body.data.status === 'sent' ? 'ready' : 'closed')
+        if (body.data.status === 'sent') {
+          setState('ready')
+        } else if (body.data.status === 'paid' && body.data.slotSelectionRequired) {
+          setState('pick-slot')
+          const preferred = body.data.preferredSlot?.start
+          const match = (body.data.availableSlots || []).find((s) => s.start === preferred)
+          setSelected(match || body.data.availableSlots?.[0] || null)
+        } else {
+          setState('closed')
+        }
       })
-      .catch(() => {
-        if (!cancelled) setState('invalid')
-      })
+  }, [token])
 
+  useEffect(() => {
+    let cancelled = false
+    load().catch(() => {
+      if (!cancelled) setState('invalid')
+    })
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [load])
 
   const pay = useCallback(async () => {
     setOpening(true)
@@ -142,8 +167,6 @@ export default function PayPage() {
       const body = await res.json()
 
       if (body?.success && body.data?.checkoutUrl) {
-        // The redirect is imminent, so the button deliberately stays in its busy state —
-        // flicking back to "Pay" for the instant before the page unloads reads as a failure.
         window.location.href = body.data.checkoutUrl
         return
       }
@@ -154,6 +177,30 @@ export default function PayPage() {
     setOpening(false)
   }, [token])
 
+  const confirmSlot = useCallback(async () => {
+    if (!selected?.start || !selected?.end) return
+    setConfirming(true)
+    setError('')
+    try {
+      const res = await fetch(`${API_BASE}/api/pay/${encodeURIComponent(token)}/confirm-slot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start: selected.start, end: selected.end }),
+      })
+      const body = await res.json()
+      if (body?.success) {
+        setRequest((r) => ({ ...r, slotSelectionRequired: false, status: 'paid' }))
+        setState('closed')
+        return
+      }
+      setError(body?.message || 'That time is no longer available. Pick another.')
+      await load().catch(() => {})
+    } catch {
+      setError('We could not confirm that time. Please try again.')
+    }
+    setConfirming(false)
+  }, [token, selected, load])
+
   if (state === 'loading') {
     return (
       <Shell>
@@ -162,7 +209,6 @@ export default function PayPage() {
     )
   }
 
-  // A bad token says only that it is bad. It must not confirm whether it ever existed.
   if (state === 'invalid') {
     return (
       <Shell>
@@ -177,9 +223,84 @@ export default function PayPage() {
     )
   }
 
+  if (state === 'pick-slot') {
+    const slots = request.availableSlots || []
+    const preferredLabel = formatPreferred(request.preferredSlot)
+    return (
+      <Shell>
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+          <StudioMark name={request.studioName} />
+          <div className="mt-6 border-t border-border pt-6">
+            <div className="flex items-center gap-2 text-success">
+              <Check className="h-4 w-4" />
+              <p className="text-[13px] font-medium">Payment received</p>
+            </div>
+            <h2 className="mt-3 text-[15px] font-semibold text-foreground">Choose your lesson time</h2>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+              {preferredLabel
+                ? `Your preferred time (${preferredLabel}) is no longer available. Pick another open slot below.`
+                : 'Pick an available time for your lesson.'}
+            </p>
+          </div>
+
+          {error && (
+            <p role="alert" className="mt-4 rounded-lg bg-destructive/10 px-3 py-2.5 text-[13px] text-destructive">
+              {error}
+            </p>
+          )}
+
+          <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
+            {slots.length === 0 ? (
+              <p className="text-[13px] text-muted-foreground">
+                No open times right now. Contact the studio to schedule.
+              </p>
+            ) : (
+              slots.map((s) => {
+                const active = selected?.start === s.start
+                return (
+                  <button
+                    key={s.start}
+                    type="button"
+                    onClick={() => setSelected(s)}
+                    className={[
+                      'w-full rounded-xl border px-3 py-2.5 text-left text-[13px] transition-colors',
+                      active
+                        ? 'border-[hsl(330_74%_45%)] bg-[hsl(330_74%_45%/0.08)] font-medium text-foreground'
+                        : 'border-border bg-background text-foreground hover:bg-muted/40',
+                    ].join(' ')}
+                  >
+                    {s.label}
+                  </button>
+                )
+              })
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={confirmSlot}
+            disabled={confirming || !selected}
+            aria-busy={confirming}
+            style={{ backgroundColor: BRAND }}
+            className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[15px] font-semibold text-white disabled:opacity-70"
+          >
+            {confirming ? (
+              <>
+                <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
+                Confirming…
+              </>
+            ) : (
+              'Confirm this time'
+            )}
+          </button>
+        </div>
+      </Shell>
+    )
+  }
+
   if (state === 'closed') {
     const closed = CLOSED[request.status] ?? CLOSED.cancelled
-    const good = closed.tone === 'good'
+    const good = closed.tone === 'good' || request.status === 'paid'
     return (
       <Shell>
         <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -193,9 +314,13 @@ export default function PayPage() {
             >
               {good ? <Check className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
             </div>
-            <h2 className="mt-3 text-[15px] font-semibold text-foreground">{closed.title}</h2>
+            <h2 className="mt-3 text-[15px] font-semibold text-foreground">
+              {request.status === 'paid' ? 'You’re all set' : closed.title}
+            </h2>
             <p className="mx-auto mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-muted-foreground">
-              {closed.body}
+              {request.status === 'paid'
+                ? 'Thanks for your payment. Your lesson booking is confirmed.'
+                : closed.body}
             </p>
             {good && (
               <p className="mt-4 text-[13px] text-muted-foreground">
@@ -209,6 +334,8 @@ export default function PayPage() {
     )
   }
 
+  const preferredLabel = formatPreferred(request.preferredSlot)
+
   return (
     <Shell>
       <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -220,6 +347,14 @@ export default function PayPage() {
             {money(request.amount)}
           </p>
           <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">{request.description}</p>
+          {preferredLabel && (
+            <p className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-[13px] leading-relaxed text-foreground">
+              Preferred time: <span className="font-medium">{preferredLabel}</span>
+              {request.holdActive
+                ? ' — held for you while this link is open (up to 2 hours from when it was sent).'
+                : ' — if this time is taken when you pay, you’ll choose another available slot.'}
+            </p>
+          )}
         </div>
 
         {error && (
@@ -249,13 +384,11 @@ export default function PayPage() {
           )}
         </button>
 
-        {/* Said before they leave, not after: an unexplained jump to a third-party domain
-            is the moment a legitimate payment starts to feel like a scam. */}
         <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed text-muted-foreground">
           <Lock aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>
             You’ll be taken to Clover to enter your card. {request.studioName} never sees your card
-            details.
+            details. This link works for 24 hours.
           </span>
         </p>
       </div>
