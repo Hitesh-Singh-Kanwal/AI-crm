@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { extractCrmEmailInnerHtml } from '@/lib/emailSend'
+
+export { extractCrmEmailInnerHtml }
 
 /** True when HTML looks like a designed email (not plain-text wrapped in &lt;p&gt;/&lt;br&gt;). */
 export function isRichEmailHtml(html) {
@@ -17,21 +20,9 @@ export function isRichEmailHtml(html) {
 }
 
 /**
- * Extract the body fragment from CRM's outbound wrapper (crm-email-pad), if present.
- */
-export function extractCrmEmailInnerHtml(html) {
-  const raw = String(html || '')
-  const match = raw.match(
-    /class=["']crm-email-pad["'][^>]*>([\s\S]*?)<\/td>\s*<\/tr>\s*<\/table>/i,
-  )
-  if (match?.[1] != null) return match[1].trim()
-  return null
-}
-
-/**
- * Plain / lightly marked-up text emails — including ones wrapped in the CRM
- * outbound HTML chrome with zero padding. These should render as a padded
- * text card in the inbox, not a flush scaled iframe.
+ * Plain / lightly marked-up text emails — including CRM outbound HTML chrome
+ * and studio footers with inline styles. These should render as a padded text
+ * card in the inbox, not a scaled 600px template iframe.
  */
 export function isPlainTextEmailHtml(html) {
   const raw = String(html || '').trim()
@@ -41,18 +32,20 @@ export function isPlainTextEmailHtml(html) {
   const body = String(inner != null ? inner : raw)
     .replace(/<img[^>]*crm-email-open-pixel[^>]*>/gi, '')
     .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<head[\s\S]*?<\/head>/gi, '')
     .trim()
 
   if (!body) return true
   if (/<(?:img|h[1-6]|ul|ol|li|section|header|footer|style|link|center)\b/i.test(body)) {
     return false
   }
-  // Nested layout tables mean a designed template (ignore a single wrapper left over).
+  // Nested layout tables mean a designed template.
   if (/<table\b/i.test(body)) return false
-  if (/style\s*=/i.test(body)) return false
-  if (/class\s*=/i.test(body) && !/class=["'][^"']*crm-/i.test(body)) return false
+  // Designer templates often use classes; CRM plain compose / footer does not.
+  if (/\bclass\s*=/i.test(body) && !/class=["'][^"']*crm-/i.test(body)) return false
 
-  // Only simple text tags remain.
+  // Inline styles are OK on simple tags (footer spacing / link color).
   const leftovers = body
     .replace(/<\/?(?:p|br|a|span|b|i|strong|em|u|div)\b[^>]*>/gi, '')
     .replace(/&nbsp;/gi, ' ')
