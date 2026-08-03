@@ -2,14 +2,15 @@
 
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck, Image, Volume2, Calculator, EyeOff } from 'lucide-react'
+import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck, Image, Volume2, Calculator, EyeOff, Link2, Code2, ExternalLink } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import api from '@/lib/api'
+import api, { getApiBaseUrl } from '@/lib/api'
+import { buildFormEmbedCode, buildFormShareLink } from '@/lib/form-embed'
 import { useToast } from '@/components/ui/toast'
 import Switch from '@/components/ui/switch'
 import { formatDate, cn } from '@/lib/utils'
@@ -1275,6 +1276,9 @@ function FormsPageInner() {
   const [showPreview, setShowPreview] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const [exportedHTML, setExportedHTML] = useState('')
+  const [embedCode, setEmbedCode] = useState('')
+  const [shareLink, setShareLink] = useState('')
+  const [exportTab, setExportTab] = useState('embed') // 'embed' | 'share' | 'html'
   const [submitButton, setSubmitButton] = useState({
     id: 'submit-button',
     type: 'submit',
@@ -2696,22 +2700,44 @@ ${getFormPhoneExportRuntimeScript()}
 
     const htmlContent = generateExportedHTML()
     setExportedHTML(htmlContent)
+
+    if (!editingFormId) {
+      toast.info({
+        title: 'Save the form first',
+        message: 'Embed code and share link need a saved form. Save first, or download the full HTML.',
+      })
+      setEmbedCode('')
+      setShareLink('')
+      setExportTab('html')
+    } else {
+      const apiBase = getApiBaseUrl()
+      setEmbedCode(buildFormEmbedCode(editingFormId, { apiBase }))
+      setShareLink(buildFormShareLink(editingFormId, { apiBase }))
+      setExportTab('embed')
+    }
     setShowExport(true)
   }
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(exportedHTML).then(() => {
-      alert('HTML code copied to clipboard!')
+  const copyExportValue = (value) => {
+    const text = String(value || '')
+    if (!text) return
+    navigator.clipboard.writeText(text).then(() => {
+      toast.success({ title: 'Copied', message: 'Copied to clipboard.' })
     }).catch(() => {
-      // Fallback for older browsers
       const textArea = document.createElement('textarea')
-      textArea.value = exportedHTML
+      textArea.value = text
       document.body.appendChild(textArea)
       textArea.select()
       document.execCommand('copy')
       document.body.removeChild(textArea)
-      alert('HTML code copied to clipboard!')
+      toast.success({ title: 'Copied', message: 'Copied to clipboard.' })
     })
+  }
+
+  const copyToClipboard = () => {
+    if (exportTab === 'embed' && embedCode) return copyExportValue(embedCode)
+    if (exportTab === 'share' && shareLink) return copyExportValue(shareLink)
+    return copyExportValue(exportedHTML)
   }
 
   const downloadHTML = () => {
@@ -4122,36 +4148,121 @@ ${getFormPhoneExportRuntimeScript()}
         </DialogContent>
       </Dialog>
 
-      {/* Export Modal */}
+      {/* Export Modal — HubSpot-style Embed code / Share link */}
       <Dialog open={showExport} onClose={() => setShowExport(false)} maxWidth="2xl">
         <DialogContent onClose={() => setShowExport(false)} className="max-h-[90vh] overflow-hidden flex flex-col border-2 border-slate-200 shadow-2xl bg-white">
           <DialogHeader className="border-b border-slate-200 pb-4 mb-4 flex-shrink-0">
-            <DialogTitle className="text-xl font-bold text-slate-900">Export Form as HTML</DialogTitle>
-            <p className="text-sm text-slate-500 mt-1">Copy or download the HTML code to embed in your website</p>
+            <DialogTitle className="text-xl font-bold text-slate-900">Embed your form</DialogTitle>
+            <p className="text-sm text-slate-500 mt-1">
+              Copy a short embed snippet or share a public link
+            </p>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-            <div className="bg-slate-900 rounded-lg p-4 overflow-auto flex-1 min-h-0 border border-slate-700">
-              <pre className="text-sm text-slate-100 font-mono whitespace-pre-wrap break-words">
-                <code>{exportedHTML}</code>
-              </pre>
+
+          {(embedCode || shareLink) && (
+            <div className="mb-4 flex gap-1 border-b border-border flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setExportTab('embed')}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+                  exportTab === 'embed'
+                    ? 'border-[var(--studio-primary)] text-[var(--studio-primary)]'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Code2 className="h-3.5 w-3.5" />
+                Embed code
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportTab('share')}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+                  exportTab === 'share'
+                    ? 'border-[var(--studio-primary)] text-[var(--studio-primary)]'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Share link
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportTab('html')}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+                  exportTab === 'html'
+                    ? 'border-[var(--studio-primary)] text-[var(--studio-primary)]'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                Full HTML
+              </button>
             </div>
+          )}
+
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+            {exportTab === 'embed' && embedCode ? (
+              <>
+                <p className="text-[13px] text-muted-foreground mb-3 flex-shrink-0">
+                  Paste this into your website HTML. Wrap it in your own section for styling.
+                </p>
+                <div className="bg-slate-900 rounded-lg p-4 overflow-auto flex-1 min-h-0 border border-slate-700">
+                  <pre className="text-sm text-slate-100 font-mono whitespace-pre-wrap break-words">
+                    <code>{embedCode}</code>
+                  </pre>
+                </div>
+              </>
+            ) : exportTab === 'share' && shareLink ? (
+              <>
+                <p className="text-[13px] text-muted-foreground mb-3 flex-shrink-0">
+                  Anyone with this link can open the hosted form (like HubSpot share links).
+                </p>
+                <div className="rounded-lg border border-border bg-muted/30 px-4 py-4 flex-1 min-h-0">
+                  <a
+                    href={shareLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[14px] font-medium text-[var(--studio-primary)] break-all hover:underline inline-flex items-start gap-2"
+                  >
+                    <ExternalLink className="h-4 w-4 mt-0.5 shrink-0" />
+                    {shareLink}
+                  </a>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-[13px] text-muted-foreground mb-3 flex-shrink-0">
+                  Full standalone HTML document (longer). Prefer Embed code for websites.
+                </p>
+                <div className="bg-slate-900 rounded-lg p-4 overflow-auto flex-1 min-h-0 border border-slate-700">
+                  <pre className="text-sm text-slate-100 font-mono whitespace-pre-wrap break-words">
+                    <code>{exportedHTML}</code>
+                  </pre>
+                </div>
+              </>
+            )}
+
             <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-200 flex-shrink-0">
-              <Button 
-                variant="outline" 
-                className="flex-1" 
-                onClick={copyToClipboard}
-              >
+              <Button variant="outline" className="flex-1" onClick={copyToClipboard}>
                 <Copy className="h-4 w-4 mr-2" />
-                Copy Code
+                Copy
               </Button>
-              <Button 
-                variant="gradient" 
-                className="flex-1" 
-                onClick={downloadHTML}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download HTML
-              </Button>
+              {exportTab === 'share' && shareLink ? (
+                <Button
+                  variant="gradient"
+                  className="flex-1"
+                  onClick={() => window.open(shareLink, '_blank', 'noopener,noreferrer')}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open link
+                </Button>
+              ) : (
+                <Button variant="gradient" className="flex-1" onClick={downloadHTML}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download HTML
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
