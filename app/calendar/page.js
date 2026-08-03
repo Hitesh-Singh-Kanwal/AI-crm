@@ -106,6 +106,29 @@ function isSameDate(a, b) {
   );
 }
 
+/**
+ * Convert a UTC Date to a "fake-local" Date whose .getFullYear/.getMonth/.getDate/.getHours/.getMinutes
+ * return the studio-local (IANA tz) equivalents. This makes isSameDate and hour-slot
+ * calculations work correctly regardless of the browser's timezone.
+ * Falls back to the original Date when tz is falsy.
+ */
+function toStudioLocalDate(date, tz) {
+  if (!tz) return date;
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hour12: false,
+    }).formatToParts(date);
+    const p = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+    // Treat the studio-local wall-clock time as UTC so browser-local getters return studio values.
+    return new Date(`${p.year}-${p.month}-${p.day}T${p.hour === "24" ? "00" : p.hour}:${p.minute}:${p.second}Z`);
+  } catch {
+    return date;
+  }
+}
+
 function startOfWeekSunday(date) {
   const base = new Date(date);
   base.setDate(base.getDate() - base.getDay());
@@ -229,7 +252,7 @@ function deriveEffectiveStatus(appt) {
   return explicit || "scheduled";
 }
 
-function transformAppointments(appointments, colorMap, memberSelections = {}, membershipCoverageSet = new Set()) {
+function transformAppointments(appointments, colorMap, memberSelections = {}, membershipCoverageSet = new Set(), studioTz = null) {
   // Track session order per (customerID + enrollmentID) for all package billing types.
   // Key: `${customerId}::${enrollmentId}`, value: sorted array of appointment IDs by date.
   // Used to figure out each session's chronological position so we can decide which
@@ -276,8 +299,12 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
       appt.lessonID?.color ||
       CALENDAR_PALETTE[0];
 
-    const start = new Date(appt.startDateTime);
-    const end = new Date(appt.endDateTime);
+    const start = studioTz
+      ? toStudioLocalDate(new Date(appt.startDateTime), studioTz)
+      : new Date(appt.startDateTime);
+    const end = studioTz
+      ? toStudioLocalDate(new Date(appt.endDateTime), studioTz)
+      : new Date(appt.endDateTime);
     const isAllDay = Boolean(appt.allDay);
     const effectiveStatus = deriveEffectiveStatus(appt);
     const isCancelled = effectiveStatus === "cancelled";
@@ -459,6 +486,9 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
       title: appt.title || "Event",
       start,
       end,
+      _utcStart: appt.startDateTime,
+      _utcEnd: appt.endDateTime,
+      _studioTz: studioTz || null,
       allDay: isAllDay,
       backgroundColor: isAllDay ? "var(--studio-primary)" : "transparent",
       borderColor: "transparent",
@@ -484,6 +514,8 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
         paymentCollected,
         coveredByMembership,
         studentCount: Array.isArray(appt.customerIDs) ? appt.customerIDs.length : 0,
+        // Studio timezone for correct time display regardless of browser timezone.
+        _studioTz: studioTz || null,
         // Inject effectiveStatus into raw so EventDetailPanel sees the correct status
         raw: { ...appt, effectiveStatus },
       },
@@ -862,17 +894,22 @@ function ListEventRow({ event, onEventClick }) {
   const typeLabel     = EVENT_TYPE_LABEL[eventType] ?? eventType ?? "";
   const statusStyle   = STATUS_STYLES[status];
 
+  const studioTz = event._studioTz || event.extendedProps?._studioTz || null;
+  const utcStart = event._utcStart || raw?.startDateTime || null;
+  const utcEnd   = event._utcEnd   || raw?.endDateTime   || null;
+
   const fmt = (d) =>
     d
       ? new Date(d).toLocaleTimeString("en-US", {
+          ...(studioTz ? { timeZone: studioTz } : {}),
           hour: "numeric",
           minute: "2-digit",
           hour12: true,
         })
       : "";
 
-  const startLabel = fmt(event.start);
-  const endLabel   = fmt(event.end);
+  const startLabel = fmt(utcStart || event.start);
+  const endLabel   = fmt(utcEnd   || event.end);
   const durationMins =
     event.end && event.start
       ? (new Date(event.end) - new Date(event.start)) / 60000
@@ -1224,6 +1261,7 @@ function showTodoTooltip(e, props, raw) {
   const fmt = (d) =>
     d
       ? new Date(d).toLocaleTimeString("en-US", {
+          ...(props._studioTz ? { timeZone: props._studioTz } : {}),
           hour: "numeric",
           minute: "2-digit",
           hour12: true,
@@ -1480,17 +1518,24 @@ function AppointmentTimedEventRows({ event, compact = false }) {
   const isGroupClass = eventType === "lesson";
   const durationMins = getEventDurationMins(event) || 0;
 
+  // _studioTz and _utcStart/_utcEnd may be on the top-level event (custom view)
+  // or only in extendedProps (FullCalendar's info.event strips custom top-level props).
+  const studioTz = event._studioTz || ep._studioTz || null;
+  const utcStart = event._utcStart || ep.raw?.startDateTime || null;
+  const utcEnd   = event._utcEnd   || ep.raw?.endDateTime   || null;
+
   const fmt = (d) =>
     d
       ? new Date(d).toLocaleTimeString("en-US", {
+          ...(studioTz ? { timeZone: studioTz } : {}),
           hour: "numeric",
           minute: "2-digit",
           hour12: true,
         })
       : "";
 
-  const startLabel = fmt(event.start);
-  const endLabel = fmt(event.end);
+  const startLabel = fmt(utcStart || event.start);
+  const endLabel = fmt(utcEnd || event.end);
   const timeRange =
     startLabel && endLabel ? `${startLabel} – ${endLabel}` : startLabel;
 
@@ -3224,6 +3269,7 @@ export default function CalendarPage() {
   const memberSelectionsRef = useRef({});
   const membershipCoverageRef = useRef(new Set()); // "customerID::serviceCode" for active memberships // appointmentId -> memberIds[]
   const allTeachersRef = useRef([]);
+  const studioTzRef = useRef(null); // IANA timezone from first studio location
   const [allServices, setAllServices] = useState([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -3300,7 +3346,7 @@ export default function CalendarPage() {
         merged = derived;
       }
       const colorMap = buildColorMap(merged);
-      setEvents(transformAppointments(result.data, colorMap, memberSelectionsRef.current, membershipCoverageRef.current));
+      setEvents(transformAppointments(result.data, colorMap, memberSelectionsRef.current, membershipCoverageRef.current, studioTzRef.current));
       setInstructors(merged.length > 0 ? merged : derived);
     }
     setIsLoadingEvents(false);
@@ -3326,6 +3372,11 @@ export default function CalendarPage() {
       });
       membershipCoverageRef.current = set;
     });
+    // Fetch studio timezone for correct date display across all browser timezones.
+    api.get("/api/location?limit=1").then((res) => {
+      const tz = res?.data?.[0]?.timezone;
+      if (tz) studioTzRef.current = tz;
+    }).catch(() => {});
   }, []);
 
   // Fetch all teachers once so every teacher shows as a column even with no events
@@ -3921,6 +3972,7 @@ export default function CalendarPage() {
               <EventDetailPanel
                 open={Boolean(selectedEvent) && !isAppointmentPanelOpen}
                 event={selectedEvent ?? {}}
+                studioTz={studioTzRef.current}
                 onClose={() => setSelectedEvent(null)}
                 onUpdated={() => {
                   fetchCalendarEvents();

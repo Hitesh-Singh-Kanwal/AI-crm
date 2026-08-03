@@ -154,9 +154,10 @@ function formatDisplayDate(iso) {
   });
 }
 
-function formatDisplayTime(iso) {
+function formatDisplayTime(iso, tz) {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("en-US", {
+    ...(tz ? { timeZone: tz } : {}),
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -1452,6 +1453,7 @@ export default function EventDetailPanel({
   onDeleted,
   onRosterChanged,
   onPaymentSuccess,
+  studioTz,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -1766,12 +1768,12 @@ export default function EventDetailPanel({
                     </Field>
                     <Field label="Start">
                       <ReadValue>
-                        {formatDisplayTime(event.startDateTime)}
+                        {formatDisplayTime(event.startDateTime, studioTz)}
                       </ReadValue>
                     </Field>
                     <Field label="End">
                       <ReadValue>
-                        {formatDisplayTime(event.endDateTime)}
+                        {formatDisplayTime(event.endDateTime, studioTz)}
                       </ReadValue>
                     </Field>
                   </div>
