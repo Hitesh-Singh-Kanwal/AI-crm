@@ -7,6 +7,7 @@ import { getToken } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import SuccessEvaluationDisplay from '@/components/ai-calling/SuccessEvaluationDisplay'
+import AiCallRecordingPlayer from '@/components/ai-calling/AiCallRecordingPlayer'
 import { cn, formatDateTime, getInitials } from '@/lib/utils'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
@@ -360,26 +361,23 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
                 {(recordingUrl || stereoUrl) && (
                   <div className="space-y-3">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">AI call recording</p>
-                    {recordingUrl && (
-                      <audio controls className="w-full" src={recordingUrl} />
+                    {recordingUrl && call?._id && (
+                      <AiCallRecordingPlayer
+                        key={`${call._id}-mono`}
+                        callDetailId={call._id}
+                        channel="mono"
+                        autoStart
+                        className="w-full"
+                      />
                     )}
-                    <div className="flex flex-wrap gap-3 text-xs text-[var(--studio-primary)]">
-                      {recordingUrl && (
-                        <a href={recordingUrl} target="_blank" rel="noreferrer" className="hover:underline">
-                          Open mono recording
-                        </a>
-                      )}
-                      {stereoUrl && (
-                        <a href={stereoUrl} target="_blank" rel="noreferrer" className="hover:underline">
-                          Open stereo recording
-                        </a>
-                      )}
-                      {call.logUrl && (
-                        <a href={call.logUrl} target="_blank" rel="noreferrer" className="hover:underline">
-                          View raw call log
-                        </a>
-                      )}
-                    </div>
+                    {stereoUrl && call?._id && (
+                      <AiCallRecordingPlayer
+                        key={`${call._id}-stereo`}
+                        callDetailId={call._id}
+                        channel="stereo"
+                        className="w-full"
+                      />
+                    )}
                   </div>
                 )}
 

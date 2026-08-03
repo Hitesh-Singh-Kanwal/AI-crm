@@ -225,7 +225,13 @@ function mapAiCallToMessage(call) {
     status,
     phoneNumber: call.customer?.number || call.phoneNumber || '',
     assistantName: call.assistantName || '',
-    recordingUrl: call.recordingUrl || call.stereoRecordingUrl || '',
+    callDetailId: call._id || null,
+    recordingUrl:
+      call.recordingUrl ||
+      call.artifact?.recordingUrl ||
+      call.stereoRecordingUrl ||
+      call.artifact?.stereoRecordingUrl ||
+      '',
     endedReason: call.endedReason || '',
   }
 }
@@ -263,6 +269,15 @@ function InboxPageContent() {
   const callHistoryLoadedRef = useRef(new Set())
   const callHistoryInFlightRef = useRef(null)
   const callHistoryRequestIdRef = useRef({})
+
+  const invalidateCallHistoryCache = useCallback((conversationId) => {
+    if (!conversationId) return
+    for (const key of [...callHistoryLoadedRef.current]) {
+      if (key === conversationId || key.startsWith(`${conversationId}::`)) {
+        callHistoryLoadedRef.current.delete(key)
+      }
+    }
+  }, [])
   const emailHistoryLoadedRef = useRef(new Set())
   const smsPageInFlightRef = useRef(new Set()) // `${convId}:${page}`
   const callLogRefreshTimersRef = useRef(new Map())
@@ -521,7 +536,9 @@ function InboxPageContent() {
                   contact: {
                     ...c.contact,
                     email: lead.email || c.contact.email,
-                    phoneNumber: lead.phoneNumber || c.contact.phoneNumber,
+                    // Trust the lead profile phone (including empty) so email-only
+                    // leads don't keep a stale SMS/other number on the contact.
+                    phoneNumber: lead.phoneNumber || '',
                     stage: lead.stage || c.contact.stage,
                     name: lead.name || c.contact.name,
                     type: resolveContactType(lead),
@@ -947,33 +964,61 @@ function InboxPageContent() {
 
   const fetchConversationCallHistory = useCallback(async (conversationId, { force = false } = {}) => {
     if (!conversationId) return
+
+    const conv =
+      conversations.find((c) => c.id === conversationId) ||
+      null
+    // Only real lead threads get a leadID filter — never pass email/sms contact ids
+    // (invalid ObjectIds used to fall through and return org-wide call history).
+    const leadID = conversationId.startsWith('lead-')
+      ? conversationId.replace('lead-', '')
+      : null
+    const phoneNumber = String(
+      conv?.contact?.phoneNumber ||
+      (conversationId.startsWith('lead-') && selectedLeadData?._id &&
+        String(selectedLeadData._id) === String(leadID)
+        ? selectedLeadData.phoneNumber
+        : '') ||
+      '',
+    ).trim()
+    const cacheKey = `${conversationId}::${phoneNumber || 'nophone'}`
+
+    // Call logs are phone-based. Email-only contacts must not show anyone else's history.
+    if (!phoneNumber) {
+      setThreadMessages((prev) => {
+        const existing = prev[conversationId] || []
+        if (!existing.some((m) => m.channel === 'Call')) return prev
+        return {
+          ...prev,
+          [conversationId]: existing.filter((m) => m.channel !== 'Call'),
+        }
+      })
+      callHistoryLoadedRef.current.add(cacheKey)
+      callHistoryInFlightRef.current = null
+      setCallLogsLoading(false)
+      return
+    }
+
     if (!force) {
       if (callHistoryInFlightRef.current === conversationId) return
-      if (callHistoryLoadedRef.current.has(conversationId)) return
+      if (callHistoryLoadedRef.current.has(cacheKey)) return
     }
 
     const requestId = (callHistoryRequestIdRef.current[conversationId] || 0) + 1
     callHistoryRequestIdRef.current[conversationId] = requestId
 
-    const conv =
-      conversations.find((c) => c.id === conversationId) ||
-      null
-    const leadID = conversationId.startsWith('lead-')
-      ? conversationId.replace('lead-', '')
-      : conv?.contact?.id || selectedLeadData?._id || null
-    const phoneNumber = conv?.contact?.phoneNumber || selectedLeadData?.phoneNumber || ''
-
-    if (!leadID && !phoneNumber) return
-
     callHistoryInFlightRef.current = conversationId
     setCallLogsLoading(true)
     try {
-      const params = new URLSearchParams({ limit: '100' })
-      if (leadID) params.set('leadID', String(leadID))
-      else if (phoneNumber) params.set('phoneNumber', String(phoneNumber))
+      // Phone gate above already ensures this contact is dialable. Prefer leadID
+      // for lead threads so number-format mismatches don't hide real history;
+      // fall back to phone for sms-/orphan threads.
+      const humanParams = new URLSearchParams({ limit: '100' })
+      if (leadID) humanParams.set('leadID', String(leadID))
+      else humanParams.set('phoneNumber', phoneNumber)
 
       const [humanRes, aiRes] = await Promise.all([
-        api.get(`/api/human-call/history?${params.toString()}`),
+        api.get(`/api/human-call/history?${humanParams.toString()}`),
         leadID
           ? api.get(`/api/ai-calling?leadID=${encodeURIComponent(leadID)}&limit=100`)
           : Promise.resolve({ success: false, data: [] }),
@@ -1020,10 +1065,10 @@ function InboxPageContent() {
           [conversationId]: mergeThreadByTimestamp(smsOnly, emailOnly, mergedCalls),
         }
       })
-      callHistoryLoadedRef.current.add(conversationId)
+      callHistoryLoadedRef.current.add(cacheKey)
     } catch (e) {
       if (callHistoryRequestIdRef.current[conversationId] === requestId) {
-        callHistoryLoadedRef.current.delete(conversationId)
+        callHistoryLoadedRef.current.delete(cacheKey)
       }
       console.error('Failed to load call history:', e)
     } finally {
@@ -1045,7 +1090,7 @@ function InboxPageContent() {
     existing.forEach((t) => clearTimeout(t))
 
     const run = () => {
-      callHistoryLoadedRef.current.delete(conversationId)
+      invalidateCallHistoryCache(conversationId)
       fetchConversationCallHistory(conversationId, { force: true })
     }
     run()
@@ -1055,7 +1100,7 @@ function InboxPageContent() {
       setTimeout(run, 6000),
       setTimeout(run, 12000),
     ])
-  }, [fetchConversationCallHistory])
+  }, [fetchConversationCallHistory, invalidateCallHistoryCache])
 
   useEffect(() => () => {
     callLogRefreshTimersRef.current.forEach((timers) => {
@@ -1270,7 +1315,7 @@ function InboxPageContent() {
             hasRecording: false,
           }
 
-      callHistoryLoadedRef.current.delete(convId)
+      invalidateCallHistoryCache(convId)
 
       setThreadMessages((prev) => {
         const existing = prev[convId] || []

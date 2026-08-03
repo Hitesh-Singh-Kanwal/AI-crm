@@ -6,6 +6,7 @@ import { cn, formatDateTime } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { getToken, getEffectiveBranch } from '@/lib/auth'
 import { getApiBaseUrl } from '@/lib/api'
+import AiCallRecordingPlayer from '@/components/ai-calling/AiCallRecordingPlayer'
 
 function statusTone(status) {
   const s = String(status || '').toLowerCase()
@@ -180,16 +181,10 @@ export default function CallLogList({ calls = [], contactName = 'Contact' }) {
                 {!isAi && call.hasRecording && call.callRecordId ? (
                   <HumanRecordingPlayer callRecordId={call.callRecordId} />
                 ) : null}
-                {isAi && call.recordingUrl ? (
-                  <a
-                    href={call.recordingUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[color:var(--studio-primary)] hover:underline"
-                  >
-                    <Phone className="h-3 w-3" />
-                    Listen to recording
-                  </a>
+                {isAi && call.callDetailId && call.recordingUrl ? (
+                  <div className="mt-2">
+                    <AiCallRecordingPlayer callDetailId={call.callDetailId} channel="mono" />
+                  </div>
                 ) : null}
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   {formatDateTime(call.timestamp)}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Search, PhoneCall, Trash2, Info, RefreshCw, Clock, User, Bot, X, SlidersHorizontal } from 'lucide-react'
 import SuccessEvaluationDisplay from '@/components/ai-calling/SuccessEvaluationDisplay'
+import AiCallRecordingPlayer from '@/components/ai-calling/AiCallRecordingPlayer'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -952,49 +953,25 @@ export default function AiCallDetailPage() {
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">
                         Recording
                       </p>
-                      <div className="space-y-2">
-                        {selectedCall.artifact?.recordingUrl || selectedCall.recordingUrl ? (
-                          <audio
-                            controls
+                      <div className="space-y-3">
+                        {(selectedCall.artifact?.recordingUrl || selectedCall.recordingUrl) && (
+                          <AiCallRecordingPlayer
+                            key={`${selectedCall._id}-mono`}
+                            callDetailId={selectedCall._id}
+                            channel="mono"
+                            autoStart
                             className="w-full"
-                            src={
-                              selectedCall.artifact?.recordingUrl ||
-                              selectedCall.recordingUrl
-                            }
                           />
-                        ) : null}
-                        <div className="flex flex-wrap gap-3 text-xs text-indigo-600 dark:text-indigo-400">
-                          {selectedCall.artifact?.recordingUrl && (
-                            <a
-                              href={selectedCall.artifact.recordingUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="hover:underline"
-                            >
-                              Open mono recording
-                            </a>
-                          )}
-                          {selectedCall.artifact?.stereoRecordingUrl && (
-                            <a
-                              href={selectedCall.artifact.stereoRecordingUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="hover:underline"
-                            >
-                              Open stereo recording
-                            </a>
-                          )}
-                          {selectedCall.logUrl && (
-                            <a
-                              href={selectedCall.logUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="hover:underline"
-                            >
-                              View raw call log
-                            </a>
-                          )}
-                        </div>
+                        )}
+                        {(selectedCall.artifact?.stereoRecordingUrl ||
+                          selectedCall.stereoRecordingUrl) && (
+                          <AiCallRecordingPlayer
+                            key={`${selectedCall._id}-stereo`}
+                            callDetailId={selectedCall._id}
+                            channel="stereo"
+                            className="w-full"
+                          />
+                        )}
                       </div>
                     </div>
                   )}
