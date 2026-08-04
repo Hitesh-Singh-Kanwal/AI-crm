@@ -56,7 +56,7 @@ export default function TeacherCommissionDetailPage() {
 
   return (
     <MainLayout>
-      <div className="mx-auto max-w-5xl space-y-6 px-6 py-6">
+      <div className="w-full space-y-6 px-6 py-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.back()}>
             <ArrowLeft className="h-4 w-4" />

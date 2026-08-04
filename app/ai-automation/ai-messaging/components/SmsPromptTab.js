@@ -411,7 +411,7 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
 
   return (
     <TabsContent value="prompt" className="mt-6 flex-1 min-h-0 flex flex-col gap-6 outline-none">
-      <div className="mx-auto flex min-h-full w-full max-w-[1204px] flex-col">
+      <div className="flex min-h-full w-full flex-col">
         {/* Header */}
         <div className="mb-6">
           <div className="mb-1 flex flex-wrap items-center gap-2">

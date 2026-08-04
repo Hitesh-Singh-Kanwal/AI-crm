@@ -34,6 +34,7 @@ export default function PackagesPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
 
   const totalPages = Math.max(1, Math.ceil(totalCount / ROWS_PER_PAGE))
@@ -54,6 +55,7 @@ export default function PackagesPage() {
       toast.error('Error', { description: 'Unable to load packages' })
     } finally {
       setLoading(false)
+      setInitialLoad(false)
       setSelectedIds([])
     }
   }, [])
@@ -99,7 +101,7 @@ export default function PackagesPage() {
     }
   }
 
-  if (loading && packages.length === 0) {
+  if (initialLoad) {
     return (
       <MainLayout title="Packages" subtitle="">
         <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
@@ -111,7 +113,7 @@ export default function PackagesPage() {
 
   return (
     <MainLayout title="Packages" subtitle="">
-      <div className="max-w-[1204px] mx-auto min-h-full flex flex-col">
+      <div className="min-h-full flex flex-col p-6">
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-2xl font-semibold text-foreground tracking-tight">Packages</h1>

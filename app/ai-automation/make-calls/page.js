@@ -546,7 +546,7 @@ export default function MakeCallsPage() {
       title="Make AI Calls"
       subtitle="Move through a guided 4‑step flow to schedule AI-powered outbound calls."
     >
-      <div className="max-w-[960px] mx-auto">
+      <div className="w-full">
         {/* Configure wizard */}
         <div className="rounded-xl border border-border bg-card p-4 lg:p-6 shadow-sm h-full flex flex-col">
           <div className="flex items-start justify-between gap-3 mb-4">

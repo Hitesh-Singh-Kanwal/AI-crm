@@ -33,6 +33,7 @@ export default function LessonsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingLesson, setEditingLesson] = useState(null)
@@ -62,6 +63,7 @@ export default function LessonsPage() {
       toast.error('Error', { description: 'Unable to load lessons' })
     } finally {
       setLoading(false)
+      setInitialLoad(false)
       setSelectedIds([])
     }
   }, [])
@@ -109,7 +111,7 @@ export default function LessonsPage() {
     return !end || end >= new Date()
   }
 
-  if (loading && lessons.length === 0) {
+  if (initialLoad) {
     return (
       <MainLayout title="Lessons" subtitle="">
         <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
@@ -121,7 +123,7 @@ export default function LessonsPage() {
 
   return (
     <MainLayout title="Lessons" subtitle="">
-      <div className="max-w-[1204px] mx-auto min-h-full flex flex-col">
+      <div className="min-h-full flex flex-col p-6">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">

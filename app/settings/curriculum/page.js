@@ -149,7 +149,7 @@ export default function CurriculumSettingsPage() {
 
   return (
     <MainLayout title="Curriculum" subtitle="">
-      <div className="max-w-[900px] mx-auto min-h-full flex flex-col p-6">
+      <div className="min-h-full flex flex-col p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-semibold text-foreground">Curriculum Tiers</h1>

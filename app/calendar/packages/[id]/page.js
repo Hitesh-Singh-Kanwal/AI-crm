@@ -451,7 +451,7 @@ export default function PackageEditPage() {
 
   return (
     <MainLayout title={isNew ? 'New Package' : 'Edit Package'} subtitle="">
-      <div className="max-w-[1400px] mx-auto pb-12">
+      <div className="w-full pb-12">
 
         {/* Top bar */}
         <div className="flex items-center justify-between mb-4">

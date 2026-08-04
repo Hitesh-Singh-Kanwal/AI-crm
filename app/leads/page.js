@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Plus, Phone, Mail, MessageSquare, MoreHorizontal, UserCheck } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
@@ -31,9 +31,11 @@ import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { buildLeadQueryParams, filtersToConditionsForForm } from '@/lib/lead-filter-fields'
 import {
   EMPTY_LEAD_FILTERS,
+  hasActiveLeadFilters,
   sanitizeLeadFilters,
 } from '@/lib/lead-page-filters'
 import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
@@ -75,6 +77,7 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogInitialLeadId, setDialogInitialLeadId] = useState(null)
   const [dialogViewOnly, setDialogViewOnly] = useState(false)
@@ -88,6 +91,7 @@ export default function LeadsPage() {
   const [forms, setForms] = useState([])
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [convertingId, setConvertingId] = useState(null)
+  const latestRequestRef = useRef(0)
 
   const totalPages = Math.max(1, Math.ceil((totalCount || 0) / ROWS_PER_PAGE))
   const pageLeadIds = useMemo(() => leads.map((l) => l._id).filter(Boolean), [leads])
@@ -101,6 +105,11 @@ export default function LeadsPage() {
   }
 
   const loadLeads = useCallback(async (page, nextFilters) => {
+    // Searching fires a new request per change; ignore any response that is no
+    // longer the latest so a slow early request can't overwrite newer results.
+    const requestId = ++latestRequestRef.current
+    const isStale = () => requestId !== latestRequestRef.current
+
     setLoading(true)
     try {
       const sanitized = sanitizeLeadFilters(nextFilters)
@@ -111,6 +120,8 @@ export default function LeadsPage() {
       })
 
       const result = await api.get(`/api/lead?${params.toString()}`)
+      if (isStale()) return
+
       if (result.success) {
         const data = Array.isArray(result.data) ? result.data : result.data?.leads || []
         const pagination = result.pagination ?? result.data?.pagination
@@ -127,10 +138,14 @@ export default function LeadsPage() {
         toast.error('Failed to load leads', { description: result.error })
       }
     } catch (e) {
+      if (isStale()) return
       console.error(e)
       toast.error('Error', { description: 'Unable to load leads' })
     } finally {
-      setLoading(false)
+      if (!isStale()) {
+        setLoading(false)
+        setInitialLoad(false)
+      }
     }
   }, [])
 
@@ -184,9 +199,9 @@ export default function LeadsPage() {
     setListDialogOpen(true)
   }
 
-  if (loading && leads.length === 0) {
+  if (initialLoad) {
     return (
-      <MainLayout title="Leads" subtitle="">
+      <MainLayout>
         <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
           <GlobalLoader variant="center" size="md" text="Loading leads…" />
         </div>
@@ -365,38 +380,37 @@ export default function LeadsPage() {
   }
 
   return (
-    <MainLayout title="Leads" subtitle="">
-      <div className="max-w-[1204px] mx-auto min-h-full flex flex-col">
-        <div className="mb-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-2xl font-semibold text-foreground tracking-tight">Leads</h1>
-                <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
-                  {totalCount} leads
-                </span>
-              </div>
-              <p className="text-sm font-normal text-muted-foreground">
-                Manage leads and filter by any field. Save filters as dynamic lists for automation.
-              </p>
+    <MainLayout>
+      <div className="space-y-6 p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-foreground">Leads</h1>
+              <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
+                {totalCount} leads
+              </span>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <ImportExportCsv
-                entityLabel="Lead"
-                fields={LEAD_CSV_FIELDS}
-                getExportRows={handleExportLeads}
-                onImportRows={handleImportLeads}
-                disabled={isViewingAllBranches()}
-                disabledReason="Select a specific branch to import or export leads"
-              />
-              <Button
-                className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
-                onClick={openCreateDialog}
-              >
-                <Plus className="h-4 w-4" />
-                Add Leads
-              </Button>
-            </div>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
+              Manage leads and filter by any field. Save filters as dynamic lists for automation.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <ImportExportCsv
+              entityLabel="Lead"
+              fields={LEAD_CSV_FIELDS}
+              getExportRows={handleExportLeads}
+              onImportRows={handleImportLeads}
+              disabled={isViewingAllBranches()}
+              disabledReason="Select a specific branch to import or export leads"
+            />
+            <Button
+              className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
+              onClick={openCreateDialog}
+            >
+              <Plus className="h-4 w-4" />
+              Add Leads
+            </Button>
           </div>
         </div>
 
@@ -416,23 +430,21 @@ export default function LeadsPage() {
           leadReasons={leadReasons}
         />
 
-        <div className="mt-4">
-          <BulkSendActionBar
-            selectedCount={selectedLeads.length}
-            entityLabel="lead"
-            onSendSms={() => openSendDialog('SMS')}
-            onSendEmail={() => openSendDialog('Email')}
-            onClear={clearSelection}
-            showSelectAll={allOnPageSelected}
-            selectAllTotal={totalCount}
-            pageCount={leads.length}
-            onSelectAll={selectAllMatching}
-            selectingAll={selectingAll}
-          />
-        </div>
+        <BulkSendActionBar
+          selectedCount={selectedLeads.length}
+          entityLabel="lead"
+          onSendSms={() => openSendDialog('SMS')}
+          onSendEmail={() => openSendDialog('Email')}
+          onClear={clearSelection}
+          showSelectAll={allOnPageSelected}
+          selectAllTotal={totalCount}
+          pageCount={leads.length}
+          onSelectAll={selectAllMatching}
+          selectingAll={selectingAll}
+        />
 
-        <div className="mt-6 rounded-xl border border-border bg-card overflow-hidden min-h-[560px] flex flex-col">
-          <div className="flex-1">
+        {/* Table */}
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow className="border-b border-border hover:bg-transparent bg-muted/30">
@@ -453,7 +465,22 @@ export default function LeadsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {leads.map((lead) => {
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-12 text-center">
+                    <LoadingSpinner />
+                  </TableCell>
+                </TableRow>
+              ) : leads.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-14 text-center text-sm text-muted-foreground">
+                    {hasActiveLeadFilters(filters)
+                      ? 'No leads match this view. Try a different search term or clear your filters.'
+                      : 'No leads yet.'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+              leads.map((lead) => {
                 const stageKey = (lead.stage || 'new').toLowerCase()
                 const createdAt = lead.createdAt ? new Date(lead.createdAt) : null
                 const createdLabel = createdAt ? createdAt.toLocaleDateString() : '-'
@@ -563,10 +590,10 @@ export default function LeadsPage() {
                   </TableCell>
                 </TableRow>
               )
-            })}
+            })
+              )}
             </TableBody>
           </Table>
-          </div>
 
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
             <button

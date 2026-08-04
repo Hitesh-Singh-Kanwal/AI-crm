@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SEARCH_FILTER_DEF } from '@/lib/lead-flat-filters'
@@ -54,13 +55,43 @@ export default function QuickBarSearchControl({ filters, onChange, className }) 
     onChange(updateFlatFilterValue(filters, filterKey, operatorKey, raw))
   }
 
+  // Keep typing local and only push the filter change (which refetches) after a
+  // pause. Without this every keystroke fires a request, and slow responses can
+  // land out of order and overwrite the results for what was typed last.
+  const [draft, setDraft] = useState(inputValue)
+  const syncedValueRef = useRef(inputValue)
+  const emitRef = useRef(handleInputChange)
+
+  // Always emit through the newest closure, so a timer queued before an
+  // unrelated filter change doesn't write back a stale `filters` object.
+  useEffect(() => {
+    emitRef.current = handleInputChange
+  })
+
+  // Adopt changes made elsewhere (chip removal, Clear, exclude toggle).
+  useEffect(() => {
+    if (inputValue !== syncedValueRef.current) {
+      syncedValueRef.current = inputValue
+      setDraft(inputValue)
+    }
+  }, [inputValue])
+
+  useEffect(() => {
+    if (draft === syncedValueRef.current) return
+    const timer = setTimeout(() => {
+      syncedValueRef.current = draft
+      emitRef.current(draft)
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [draft])
+
   return (
     <div className={cn('flex min-w-0 flex-1 items-center gap-2', className)}>
       <div className="relative min-w-0 flex-1">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
-          value={inputValue}
-          onChange={(e) => handleInputChange(e.target.value)}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           placeholder="Search by name, email, phone or location..."
           className={cn(inputClass, 'pl-10 pr-3')}
         />

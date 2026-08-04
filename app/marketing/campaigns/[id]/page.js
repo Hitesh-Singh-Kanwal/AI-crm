@@ -105,7 +105,7 @@ export default function CampaignDetailsPage() {
 
   return (
     <MainLayout title="Campaign" subtitle="View campaign details">
-      <div className="mx-auto w-full max-w-5xl space-y-6">
+      <div className="w-full space-y-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button

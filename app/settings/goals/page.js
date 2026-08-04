@@ -72,7 +72,7 @@ export default function GoalsSettingsPage() {
 
   return (
     <MainLayout title="Goals" subtitle="">
-      <div className="max-w-[640px] mx-auto min-h-full flex flex-col p-6">
+      <div className="min-h-full flex flex-col p-6">
         <div className="mb-6">
           <h1 className="text-xl font-semibold text-foreground">Monthly Goals</h1>
           <p className="mt-0.5 text-[13px] text-muted-foreground">

@@ -417,7 +417,7 @@ export default function AiCallDetailPage() {
       title="AI Call Details"
       subtitle="Review and manage individual AI call outcomes."
     >
-      <div className="max-w-[1204px] mx-auto min-h-full flex flex-col">
+      <div className="min-h-full flex flex-col p-6">
         <div className="flex flex-col gap-6 lg:gap-8">
           {!selectedCall && (
           <div>

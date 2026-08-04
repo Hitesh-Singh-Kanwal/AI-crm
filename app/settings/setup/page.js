@@ -1058,7 +1058,7 @@ function SetupContent() {
   })
 
   return (
-    <div className="max-w-[1204px] mx-auto min-h-full flex flex-col gap-6">
+    <div className="min-h-full flex flex-col gap-6">
       <div>
         <div className="flex items-center gap-2 mb-1">
           <h1 className="text-2xl font-semibold text-foreground tracking-tight">Setup</h1>

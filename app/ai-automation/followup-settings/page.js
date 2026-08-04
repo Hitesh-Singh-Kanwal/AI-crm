@@ -352,7 +352,7 @@ export default function FollowupSettingsPage() {
       title="Follow-up Settings"
       subtitle="Configure how the AI agent follows up with leads who haven't replied."
     >
-      <div className="mx-auto w-full max-w-3xl space-y-6 p-4 md:p-6">
+      <div className="w-full space-y-6 p-4 md:p-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Follow-up schedule</CardTitle>
