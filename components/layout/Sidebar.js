@@ -96,8 +96,11 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
   const [menuPos, setMenuPos] = useState(null) // { top:number, left:number } | null
   const dropdownRef = useRef(null)
   const sidebarRef = useRef(null)
+  const navScaleRef = useRef(null)
+  const subscriptionRef = useRef(null)
   const closeTimerRef = useRef(null)
   const menuHoverRef = useRef(false)
+  const [navBox, setNavBox] = useState({ scale: 1, height: null })
 
   const menuItemsByName = useMemo(() => {
     const map = new Map()
@@ -131,6 +134,48 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
       document.body.style.overflow = 'unset'
     }
   }, [mobileOpen])
+
+  // Scale the logo + nav block down (rather than scrolling) so it always
+  // fits between the header and the pinned "Upcoming Tasks" card, no matter
+  // how short or tall the viewport is.
+  useEffect(() => {
+    const recompute = () => {
+      const aside = sidebarRef.current
+      const wrap = navScaleRef.current
+      const sub = subscriptionRef.current
+      if (!aside || !wrap) return
+
+      // Reset to natural (unscaled) size first — measuring while our own
+      // shrink is still applied would lock in a stale, too-large scale.
+      const prevTransform = wrap.style.transform
+      const prevHeight = wrap.style.height
+      wrap.style.transform = 'none'
+      wrap.style.height = 'auto'
+
+      const asideStyles = window.getComputedStyle(aside)
+      const paddingY =
+        (parseFloat(asideStyles.paddingTop) || 0) + (parseFloat(asideStyles.paddingBottom) || 0)
+      const subHeight = sub ? sub.offsetHeight : 0
+      const available = aside.clientHeight - paddingY - subHeight
+      const natural = wrap.scrollHeight
+
+      wrap.style.transform = prevTransform
+      wrap.style.height = prevHeight
+
+      const scale = natural > 0 ? Math.min(1, available / natural) : 1
+      setNavBox({ scale, height: natural * scale })
+    }
+
+    recompute()
+    window.addEventListener('resize', recompute)
+    const ro = new ResizeObserver(recompute)
+    if (sidebarRef.current) ro.observe(sidebarRef.current)
+
+    return () => {
+      window.removeEventListener('resize', recompute)
+      ro.disconnect()
+    }
+  }, [])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -231,8 +276,16 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
         )}
         style={{ padding: '24px 12px' }}
       >
-        {/* Welcome section */}
-        <div className="flex flex-col items-center gap-5 w-[112px]">
+        {/* Welcome section — scaled (not scrolled) to fit available height */}
+        <div
+          ref={navScaleRef}
+          className="flex flex-col items-center gap-5 w-[112px]"
+          style={{
+            transform: `scale(${navBox.scale})`,
+            transformOrigin: 'top center',
+            height: navBox.height ?? undefined,
+          }}
+        >
           <BrandLockup size={46} title={studioName} />
 
           <nav className="flex flex-col items-center gap-1 rounded-r-[24px]">
@@ -348,7 +401,10 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
         </div>
 
         {/* Subscription section */}
-        <div className="relative group flex flex-col items-center gap-1 p-1 rounded-lg border border-white/15 bg-white/5 w-[112px]">
+        <div
+          ref={subscriptionRef}
+          className="relative group flex shrink-0 flex-col items-center gap-1 p-1 rounded-lg border border-white/15 bg-white/5 w-[112px]"
+        >
           <div className="w-[62px] h-[46.5px] overflow-hidden rounded">
             <Image
               src="/figma/sidebar/upcoming-memoji.png"

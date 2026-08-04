@@ -276,7 +276,7 @@ export default function CreateEnrollmentSheet({
 
   return (
     <Sheet open={open} onClose={handleClose} width={SHEET_WIDTH}>
-      <SheetContent className="flex flex-col overflow-hidden p-0">
+      <SheetContent onClose={handleClose} className="flex flex-col overflow-hidden p-0">
         <div className="shrink-0 border-b border-border bg-muted/30 px-5 pt-5 pb-3">
           <p className="text-[14px] font-bold text-foreground">
             {mode === 'membership' ? 'Assign Membership' : 'Create Enrollment'}

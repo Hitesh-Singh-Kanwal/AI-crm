@@ -89,7 +89,7 @@ function paymentTypeBadge(type) {
     {
       package_purchase: {
         label: "Package Sale",
-        cls: "bg-info text-info",
+        cls: "bg-info/10 text-info",
       },
       credit_topup: {
         label: "Credit Top-up",
@@ -1361,7 +1361,7 @@ function PaymentTimeline({ customerID, enrollmentID }) {
                               </span>
                             )}
                             {p.enrollmentID?.package?.packageName && (
-                              <span className="text-[10px] font-medium bg-info text-info px-1.5 py-0.5 rounded border border-info/20">
+                              <span className="text-[10px] font-medium bg-info/10 text-info px-1.5 py-0.5 rounded border border-info/20">
                                 {p.enrollmentID.package.packageName}
                               </span>
                             )}
@@ -4216,7 +4216,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                                       className={`inline-flex w-fit max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase leading-tight whitespace-normal text-center ${
                                                         ev.status ===
                                                         "completed"
-                                                          ? "bg-info text-info"
+                                                          ? "bg-info/10 text-info"
                                                           : ev.status?.startsWith(
                                                                 "cancelled",
                                                               )
@@ -5573,7 +5573,7 @@ function deriveEventStatus(ev) {
 
 function eventStatusBadge(status) {
   const map = {
-    scheduled: "bg-info text-info",
+    scheduled: "bg-info/10 text-info",
     completed: "bg-success/10 text-success",
     cancelled: "bg-muted text-muted-foreground",
     cancelled_no_charge: "bg-muted text-muted-foreground",

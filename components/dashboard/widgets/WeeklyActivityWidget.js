@@ -2,7 +2,7 @@
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { BAR_GRADIENT_DEFS, BAR_FILL, BAR_FILL_SOFT } from '@/components/charts/barGradients'
-import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
+import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle, rechartsTooltipCursor, rechartsTooltipItemStyle } from '@/lib/chartStyles'
 import { Card, WidgetTitleRow, EmptyChart } from './shared'
 import DetailsButton from './DetailsButton'
 
@@ -38,7 +38,11 @@ export default function WeeklyActivityWidget({ weeklyActivity = [], defaultRange
                 <CartesianGrid stroke={chartGridStroke} vertical={false} />
                 <XAxis dataKey="day" tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={rechartsTooltipContentStyle} />
+                <Tooltip
+                  contentStyle={rechartsTooltipContentStyle}
+                  cursor={rechartsTooltipCursor}
+                  itemStyle={rechartsTooltipItemStyle}
+                />
                 <Bar dataKey="calls" fill={BAR_FILL} radius={[8, 8, 4, 4]} />
                 <Bar dataKey="emails" fill={BAR_FILL_SOFT} radius={[8, 8, 4, 4]} />
                 <Bar dataKey="sms" fill="var(--chart-5)" radius={[8, 8, 4, 4]} />

@@ -2,7 +2,7 @@
 
 import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Line, ComposedChart } from 'recharts'
 import { BAR_GRADIENT_DEFS, BAR_FILL, BAR_FILL_SOFT } from '@/components/charts/barGradients'
-import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
+import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle, rechartsTooltipCursor, rechartsTooltipItemStyle } from '@/lib/chartStyles'
 import { Card, WidgetTitleRow, EmptyChart } from './shared'
 import DetailsButton from './DetailsButton'
 
@@ -54,6 +54,8 @@ export default function ResponseRateByDayWidget({ responseRateByDay = [], defaul
               />
               <Tooltip
                 contentStyle={rechartsTooltipContentStyle}
+                cursor={rechartsTooltipCursor}
+                itemStyle={rechartsTooltipItemStyle}
                 formatter={(v, name) => [name === 'ratePct' ? `${v}%` : v, name === 'ratePct' ? 'Rate' : name]}
               />
               <Legend wrapperStyle={{ fontSize: 13 }} />

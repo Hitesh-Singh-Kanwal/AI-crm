@@ -1,7 +1,7 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
+import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle, rechartsTooltipCursor, rechartsTooltipItemStyle } from '@/lib/chartStyles'
 import { Card, WidgetTitleRow, EmptyChart } from './shared'
 import DetailsButton from './DetailsButton'
 
@@ -72,6 +72,8 @@ export default function GrossNetRevenueWidget({ grossRevenue = 0, netRevenue = 0
               />
               <Tooltip
                 contentStyle={rechartsTooltipContentStyle}
+                cursor={rechartsTooltipCursor}
+                itemStyle={rechartsTooltipItemStyle}
                 formatter={(v) => [`$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}`]}
               />
               <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={36}>

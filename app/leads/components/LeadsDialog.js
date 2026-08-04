@@ -13,6 +13,7 @@ import { cn, formatDateTime } from '@/lib/utils'
 import LocationSelector from '@/components/shared/LocationSelector'
 import PhoneNumberInput from '@/components/shared/PhoneNumberInput'
 import { useLeadStages } from '@/lib/lead-stages'
+import { getLeadReasonOptions } from '@/lib/lead-filter-fields'
 
 const bookingStatusOptions = [
   { value: 'Not Booked', label: 'Not Booked' },
@@ -26,6 +27,7 @@ const emptyLead = {
   location: '',
   locationID: [],
   stage: 'new',
+  reason: '',
   bookingStatus: 'Not Booked',
   assignedAiAgent: '',
   assignedHumanAgent: '',
@@ -44,6 +46,7 @@ export default function LeadsDialog({
   onRefresh,
   initialLeadId = null,
   viewOnly = false,
+  leadReasons = [],
 }) {
   const [editingLead, setEditingLead] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -54,6 +57,7 @@ export default function LeadsDialog({
   const [paymentLinkForm, setPaymentLinkForm] = useState({ amount: '', description: 'Intro Lesson', channel: 'sms', showForm: false })
   const toast = useToast()
   const { stages: stageOptions } = useLeadStages()
+  const reasonOptions = getLeadReasonOptions(leadReasons)
 
   const PAYMENT_LINK_STAGES = new Set(['engaged', 're_engaged', 'pending_payment'])
 
@@ -160,6 +164,7 @@ export default function LeadsDialog({
           location: editingLead.location,
           locationID: selectedLocationIDs,
           stage: editingLead.stage,
+          reason: editingLead.reason || '',
           bookingStatus: editingLead.bookingStatus,
           assignedAiAgent: editingLead.assignedAiAgent || '',
           assignedHumanAgent: editingLead.assignedHumanAgent || '',
@@ -299,6 +304,22 @@ export default function LeadsDialog({
                 className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info"
               >
                 {stageOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Reason</label>
+              <select
+                value={editingLead.reason || ''}
+                onChange={(e) => setEditingLead({ ...editingLead, reason: e.target.value })}
+                disabled={viewOnly}
+                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info"
+              >
+                <option value="">None</option>
+                {reasonOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>

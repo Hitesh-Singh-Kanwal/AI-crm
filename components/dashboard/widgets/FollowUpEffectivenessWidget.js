@@ -1,7 +1,7 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
+import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle, rechartsTooltipCursor, rechartsTooltipItemStyle } from '@/lib/chartStyles'
 import { Card, WidgetTitleRow, EmptyChart } from './shared'
 import { BAR_GRADIENT_DEFS, BAR_FILL, BAR_FILL_SOFT } from '@/components/charts/barGradients'
 import DetailsButton from './DetailsButton'
@@ -37,7 +37,11 @@ export default function FollowUpEffectivenessWidget({ followUpEffectiveness = []
               <CartesianGrid stroke={chartGridStroke} vertical={false} />
               <XAxis dataKey="contacts" tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={rechartsTooltipContentStyle} />
+              <Tooltip
+                contentStyle={rechartsTooltipContentStyle}
+                cursor={rechartsTooltipCursor}
+                itemStyle={rechartsTooltipItemStyle}
+              />
               <Legend wrapperStyle={{ fontSize: 13 }} />
               <Bar dataKey="sent" name="Sent" fill={BAR_FILL_SOFT} radius={[8, 8, 4, 4]} />
               <Bar dataKey="reply" name="Reply" fill={BAR_FILL} radius={[8, 8, 4, 4]} />

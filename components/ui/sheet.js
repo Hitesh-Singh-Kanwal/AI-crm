@@ -22,10 +22,10 @@ function Sheet({ open, onClose, children, side = 'right', width }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div className="fixed inset-0 z-[150] overflow-hidden">
       <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
       <div
-        className={`fixed ${sideClasses[side]} z-50 bg-card border-border shadow-2xl ${animationClasses[side]}`}
+        className={`fixed ${sideClasses[side]} z-[150] bg-card border-border shadow-2xl ${animationClasses[side]}`}
         style={width ? { width, maxWidth: '100%' } : undefined}
       >
         {children}
