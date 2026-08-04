@@ -18,6 +18,39 @@ import {
 
 const TIMEZONE_OPTIONS = getTimezoneSelectOptions()
 
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const HOUR_OPTIONS = Array.from({ length: 25 }, (_, i) => ({
+  value: i,
+  label: i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`,
+}))
+
+const DEFAULT_OPERATING_HOURS = [
+  { day: 0, closed: true,  open: 9,  close: 20 },
+  { day: 1, closed: false, open: 9,  close: 20 },
+  { day: 2, closed: false, open: 9,  close: 20 },
+  { day: 3, closed: false, open: 9,  close: 20 },
+  { day: 4, closed: false, open: 9,  close: 20 },
+  { day: 5, closed: false, open: 9,  close: 20 },
+  { day: 6, closed: false, open: 9,  close: 17 },
+]
+
+/** Ensure we always have one entry per weekday (0–6) for the editor. */
+function normalizeOperatingHours(hours) {
+  const byDay = new Map(
+    (Array.isArray(hours) ? hours : []).map((h) => [Number(h.day), h]),
+  )
+  return DEFAULT_OPERATING_HOURS.map((def) => {
+    const h = byDay.get(def.day)
+    if (!h) return { ...def }
+    return {
+      day: def.day,
+      closed: Boolean(h.closed),
+      open: Number.isFinite(Number(h.open)) ? Number(h.open) : def.open,
+      close: Number.isFinite(Number(h.close)) ? Number(h.close) : def.close,
+    }
+  })
+}
+
 function phoneStatusBadge(status) {
   if (status === 'connected') return <Badge variant="success">Calling connected</Badge>
   if (status === 'error') return <Badge variant="error">Calling error</Badge>
@@ -39,6 +72,8 @@ const emptyLocation = () => ({
   status: 'active',
   timezone: DEFAULT_LOCATION_TIMEZONE,
   emailConversationEnabled: false,
+  defaultLessonMinutes: 60,
+  operatingHours: [...DEFAULT_OPERATING_HOURS],
 })
 
 export default function LocationsDialog({ open, onClose, locations = [], onRefresh, initialLocationId = null }) {
@@ -59,6 +94,8 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
         setEditingLocation({
           ...found,
           timezone: found.timezone || DEFAULT_LOCATION_TIMEZONE,
+          defaultLessonMinutes: found.defaultLessonMinutes ?? 60,
+          operatingHours: normalizeOperatingHours(found.operatingHours),
         })
         setMode('edit')
       }
@@ -108,6 +145,8 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
         status: editingLocation.status || 'active',
         timezone: editingLocation.timezone || DEFAULT_LOCATION_TIMEZONE,
         emailConversationEnabled: Boolean(editingLocation.emailConversationEnabled),
+        defaultLessonMinutes: Number(editingLocation.defaultLessonMinutes) || 60,
+        operatingHours: normalizeOperatingHours(editingLocation.operatingHours),
       }
 
       const result = editingLocation._id
@@ -347,6 +386,106 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-border">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Booking Settings</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  These drive AI available slots and held-event duration. Prices and service names are set in Script / KB.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Default Lesson Length (minutes)</label>
+                <input
+                  type="number"
+                  min={15}
+                  max={180}
+                  step={5}
+                  value={editingLocation.defaultLessonMinutes ?? 60}
+                  onChange={(e) =>
+                    setEditingLocation((p) => ({ ...p, defaultLessonMinutes: Number(e.target.value) }))
+                  }
+                  className="w-32 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Each booked slot and payment hold will use this duration (15–180 min).
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Operating Hours (studio local time)</label>
+                <div className="divide-y divide-border rounded-md border border-border overflow-hidden">
+                  {(editingLocation.operatingHours || DEFAULT_OPERATING_HOURS).map((h) => (
+                    <div key={h.day} className="flex items-center gap-3 px-3 py-2 bg-background">
+                      <span className="w-9 text-sm font-medium text-foreground shrink-0">{DAY_LABELS[h.day]}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditingLocation((p) => ({
+                            ...p,
+                            operatingHours: (p.operatingHours || DEFAULT_OPERATING_HOURS).map((d) =>
+                              d.day === h.day ? { ...d, closed: !d.closed } : d,
+                            ),
+                          }))
+                        }
+                        className={[
+                          'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                          h.closed ? 'bg-muted' : 'bg-brand',
+                        ].join(' ')}
+                        title={h.closed ? 'Closed — click to open' : 'Open — click to close'}
+                      >
+                        <span
+                          className={[
+                            'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow ring-0 transition-transform',
+                            h.closed ? 'translate-x-0' : 'translate-x-4',
+                          ].join(' ')}
+                        />
+                      </button>
+                      {h.closed ? (
+                        <span className="text-xs text-muted-foreground">Closed</span>
+                      ) : (
+                        <div className="flex items-center gap-2 text-sm">
+                          <select
+                            value={h.open ?? 9}
+                            onChange={(e) =>
+                              setEditingLocation((p) => ({
+                                ...p,
+                                operatingHours: (p.operatingHours || DEFAULT_OPERATING_HOURS).map((d) =>
+                                  d.day === h.day ? { ...d, open: Number(e.target.value) } : d,
+                                ),
+                              }))
+                            }
+                            className="rounded border border-input bg-background px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                          >
+                            {HOUR_OPTIONS.filter((o) => o.value < 24).map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                          <span className="text-muted-foreground">to</span>
+                          <select
+                            value={h.close ?? 20}
+                            onChange={(e) =>
+                              setEditingLocation((p) => ({
+                                ...p,
+                                operatingHours: (p.operatingHours || DEFAULT_OPERATING_HOURS).map((d) =>
+                                  d.day === h.day ? { ...d, close: Number(e.target.value) } : d,
+                                ),
+                              }))
+                            }
+                            className="rounded border border-input bg-background px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                          >
+                            {HOUR_OPTIONS.filter((o) => o.value > 0 && o.value > (h.open ?? 9)).map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="space-y-4 pt-4 border-t border-border">

@@ -13,6 +13,7 @@ import AppointmentComposerPanel from "./components/AppointmentComposerPanel";
 import EventDetailPanel from "./components/EventDetailPanel";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { toStudioLocalDate } from "@/lib/studioLocalDate";
 
 const COLORS = {
   border: "hsl(var(--border))",
@@ -104,29 +105,6 @@ function isSameDate(a, b) {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
   );
-}
-
-/**
- * Convert a UTC Date to a "fake-local" Date whose .getFullYear/.getMonth/.getDate/.getHours/.getMinutes
- * return the studio-local (IANA tz) equivalents. This makes isSameDate and hour-slot
- * calculations work correctly regardless of the browser's timezone.
- * Falls back to the original Date when tz is falsy.
- */
-function toStudioLocalDate(date, tz) {
-  if (!tz) return date;
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", second: "2-digit",
-      hour12: false,
-    }).formatToParts(date);
-    const p = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-    // Treat the studio-local wall-clock time as UTC so browser-local getters return studio values.
-    return new Date(`${p.year}-${p.month}-${p.day}T${p.hour === "24" ? "00" : p.hour}:${p.minute}:${p.second}Z`);
-  } catch {
-    return date;
-  }
 }
 
 function startOfWeekSunday(date) {
@@ -3269,7 +3247,8 @@ export default function CalendarPage() {
   const memberSelectionsRef = useRef({});
   const membershipCoverageRef = useRef(new Set()); // "customerID::serviceCode" for active memberships // appointmentId -> memberIds[]
   const allTeachersRef = useRef([]);
-  const studioTzRef = useRef(null); // IANA timezone from first studio location
+  const studioTzRef = useRef(null); // IANA timezone for the active studio location
+  const [studioTz, setStudioTz] = useState(null);
   const [allServices, setAllServices] = useState([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -3356,6 +3335,12 @@ export default function CalendarPage() {
     fetchCalendarEvents();
   }, [fetchCalendarEvents]);
 
+  // Re-place events once studio TZ is known (first fetch often races ahead of TZ load).
+  useEffect(() => {
+    if (!studioTz) return;
+    fetchCalendarEvents();
+  }, [studioTz]); // eslint-disable-line react-hooks/exhaustive-deps -- only when TZ arrives/changes
+
   useEffect(() => {
     api.get("/api/calendar-service?limit=200").then((res) => {
       if (res.success && Array.isArray(res.data)) setAllServices(res.data);
@@ -3372,10 +3357,15 @@ export default function CalendarPage() {
       });
       membershipCoverageRef.current = set;
     });
-    // Fetch studio timezone for correct date display across all browser timezones.
-    api.get("/api/location?limit=1").then((res) => {
-      const tz = res?.data?.[0]?.timezone;
-      if (tz) studioTzRef.current = tz;
+    // Active branch is sent via x-location-id; use that location's timezone so Midtown
+    // (etc.) wall-clock times render correctly even when the browser is in IST.
+    api.get("/api/location?limit=50").then((res) => {
+      const list = Array.isArray(res?.data) ? res.data : [];
+      const tz = list.find((l) => l?.timezone)?.timezone || list[0]?.timezone;
+      if (tz) {
+        studioTzRef.current = tz;
+        setStudioTz(tz);
+      }
     }).catch(() => {});
   }, []);
 
@@ -3972,7 +3962,7 @@ export default function CalendarPage() {
               <EventDetailPanel
                 open={Boolean(selectedEvent) && !isAppointmentPanelOpen}
                 event={selectedEvent ?? {}}
-                studioTz={studioTzRef.current}
+                studioTz={studioTz}
                 onClose={() => setSelectedEvent(null)}
                 onUpdated={() => {
                   fetchCalendarEvents();
