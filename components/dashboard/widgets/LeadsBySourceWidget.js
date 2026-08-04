@@ -1,7 +1,7 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
+import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle, rechartsTooltipCursor, rechartsTooltipItemStyle } from '@/lib/chartStyles'
 import { Card, WidgetTitleRow, EmptyChart } from './shared'
 import DetailsButton from './DetailsButton'
 
@@ -46,7 +46,11 @@ export default function LeadsBySourceWidget({ leadsBySourceConversion = [], defa
               <CartesianGrid stroke={chartGridStroke} vertical={false} />
               <XAxis dataKey="name" tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fill: chartAxisStroke, fontSize: 12 }} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={rechartsTooltipContentStyle} />
+              <Tooltip
+                contentStyle={rechartsTooltipContentStyle}
+                cursor={rechartsTooltipCursor}
+                itemStyle={rechartsTooltipItemStyle}
+              />
               <Bar dataKey="value" name="Leads" radius={[8, 8, 0, 0]} fill="url(#dashLeadBarGradient)" />
             </BarChart>
           </ResponsiveContainer>

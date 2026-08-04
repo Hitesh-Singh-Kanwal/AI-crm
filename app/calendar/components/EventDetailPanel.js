@@ -113,7 +113,7 @@ function Select({ value, onChange, options }) {
 }
 
 const STATUS_META = {
-  scheduled: { cls: "bg-info text-info", label: "Scheduled" },
+  scheduled: { cls: "bg-info/10 text-info", label: "Scheduled" },
   completed: { cls: "bg-success/10 text-success", label: "Completed" },
   cancelled_no_charge: {
     cls: "bg-muted-foreground/10 text-muted-foreground",

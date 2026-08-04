@@ -1,7 +1,7 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
+import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle, rechartsTooltipCursor, rechartsTooltipItemStyle } from '@/lib/chartStyles'
 import { Card, SectionLabel, Trend } from './shared'
 import DetailsButton from './DetailsButton'
 
@@ -102,6 +102,8 @@ export default function RevenueAndAiAgentWidget({
             />
             <Tooltip
               contentStyle={rechartsTooltipContentStyle}
+              cursor={rechartsTooltipCursor}
+              itemStyle={rechartsTooltipItemStyle}
               formatter={(v) => [`$${Number(v).toLocaleString()}`]}
             />
             <Bar dataKey="lastYear" fill="var(--studio-primary-light)" radius={[8, 8, 0, 0]} name="Last Year" barSize={32} />

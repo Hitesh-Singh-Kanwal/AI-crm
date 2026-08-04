@@ -39,11 +39,28 @@ import {
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LocationSelector from '@/components/shared/LocationSelector'
+import ImportExportCsv from '@/components/shared/ImportExportCsv'
 import { getInitials, formatDate, cn } from '@/lib/utils'
+import { isViewingAllBranches, getBranchQueryParam } from '@/lib/branch-filter'
 import {
   customerLifecycleBadgeClass,
   customerLifecycleLabel,
 } from '@/lib/customer-lifecycle'
+
+const CUSTOMER_CSV_FIELDS = [
+  { key: 'name', header: 'name', sample: 'Jane Smith' },
+  { key: 'email', header: 'email', sample: 'jane.smith@example.com' },
+  { key: 'phoneNumber', header: 'phonenumber', sample: '+1234567890' },
+  { key: 'dateOfBirth', header: 'dateofbirth', sample: '1990-01-01' },
+  { key: 'gender', header: 'gender', sample: 'female' },
+  { key: 'street', header: 'street', sample: '123 Main St' },
+  { key: 'city', header: 'city', sample: 'New York' },
+  { key: 'state', header: 'state', sample: 'NY' },
+  { key: 'zipCode', header: 'zipcode', sample: '10001' },
+  { key: 'country', header: 'country', sample: 'USA' },
+  { key: 'credits', header: 'credits', sample: '10' },
+  { key: 'joinedDate', header: 'joineddate', sample: '2026-01-01' },
+]
 
 const EMPTY_FORM = {
   name: '',
@@ -555,6 +572,64 @@ export default function CustomersPage() {
     setListDialogOpen(true)
   }
 
+  const handleExportCustomers = async () => {
+    const sanitized = sanitizeCustomerFilters({ ...filters, search: debouncedSearch, teacherID: teacherFilter })
+    const params = buildCustomerQueryParams({ page: 1, limit: total || 1000, filters: sanitized })
+    const result = await api.get(`/api/customer?${params}`)
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to load customers for export')
+    }
+    const data = Array.isArray(result.data) ? result.data : []
+    return data.map((c) => ({
+      name: c.name || '',
+      email: c.email || '',
+      phoneNumber: c.phoneNumber || '',
+      dateOfBirth: c.dateOfBirth ? String(c.dateOfBirth).slice(0, 10) : '',
+      gender: c.gender || '',
+      street: c.address?.street || '',
+      city: c.address?.city || '',
+      state: c.address?.state || '',
+      zipCode: c.address?.zipCode || '',
+      country: c.address?.country || '',
+      credits: c.credits ?? 0,
+      joinedDate: c.createdAt ? String(c.createdAt).slice(0, 10) : '',
+    }))
+  }
+
+  const handleImportCustomers = async (rows) => {
+    const branchId = getBranchQueryParam()
+    let successCount = 0
+    let errorCount = 0
+    let firstError = null
+    for (const row of rows) {
+      const payload = {
+        name: row.name,
+        locationID: branchId ? [branchId] : undefined,
+        email: row.email,
+        phoneNumber: row.phoneNumber,
+        dateOfBirth: row.dateOfBirth || undefined,
+        gender: row.gender || undefined,
+        credits: row.credits ? Number(row.credits) || 0 : 0,
+        address: {
+          street: row.street || '',
+          city: row.city || '',
+          state: row.state || '',
+          zipCode: row.zipCode || '',
+          country: row.country || '',
+        },
+      }
+      const result = await api.post('/api/customer', payload)
+      if (result.success) {
+        successCount += 1
+      } else {
+        errorCount += 1
+        if (!firstError) firstError = result.error || 'Unknown error'
+      }
+    }
+    if (successCount > 0) fetchCustomers()
+    return { successCount, errorCount, errorMessage: firstError }
+  }
+
   return (
     <MainLayout>
       <div className="space-y-6 p-6">
@@ -564,10 +639,20 @@ export default function CustomersPage() {
             <h1 className="text-xl font-semibold text-foreground">Customers</h1>
             <p className="mt-0.5 text-[13px] text-muted-foreground">Manage your studio's students and clients</p>
           </div>
-          <Button onClick={() => { setEditingCustomer(null); setDialogOpen(true) }}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            Add Customer
-          </Button>
+          <div className="flex items-center gap-2">
+            <ImportExportCsv
+              entityLabel="Customer"
+              fields={CUSTOMER_CSV_FIELDS}
+              getExportRows={handleExportCustomers}
+              onImportRows={handleImportCustomers}
+              disabled={isViewingAllBranches()}
+              disabledReason="Select a specific branch to import or export customers"
+            />
+            <Button onClick={() => { setEditingCustomer(null); setDialogOpen(true) }}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add Customer
+            </Button>
+          </div>
         </div>
 
         {/* Search */}

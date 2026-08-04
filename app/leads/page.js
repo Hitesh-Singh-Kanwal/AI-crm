@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import LeadsDialog from './components/LeadsDialog'
 import BulkCreateLeadsDialog from './components/BulkCreateLeadsDialog'
+import ImportExportCsv from '@/components/shared/ImportExportCsv'
 import LeadsQuickBar from '@/components/leads/LeadsQuickBar'
 import LeadsFilterPanel from '@/components/leads/LeadsFilterPanel'
 import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
@@ -38,11 +39,17 @@ import {
 import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
 import { normalizeConditionsForForm } from '@/lib/dynamic-list-normalize'
 import { formatLeadStageLabel, getLeadStageBadgeClass } from '@/lib/lead-stages'
+import { getCurrentUser } from '@/lib/auth'
+import { isViewingAllBranches, getBranchQueryParam } from '@/lib/branch-filter'
 
-const BOOKING_STATUS_STYLES = {
-  'Not Booked': 'bg-warning/10 text-warning',
-  Booked: 'bg-success/10 text-success',
-}
+const LEAD_CSV_FIELDS = [
+  { key: 'name', header: 'name', sample: 'John Doe' },
+  { key: 'email', header: 'email', sample: 'john.doe@example.com' },
+  { key: 'phoneNumber', header: 'phonenumber', sample: '+1234567890' },
+  { key: 'status', header: 'status', sample: 'new' },
+  { key: 'reason', header: 'reason', sample: '' },
+  { key: 'createdAt', header: 'createdat', sample: '2026-01-01' },
+]
 
 const ROWS_PER_PAGE = 10
 
@@ -290,6 +297,53 @@ export default function LeadsPage() {
     }
   }
 
+  const handleExportLeads = async () => {
+    const sanitized = sanitizeLeadFilters(filters)
+    const params = buildLeadQueryParams({
+      page: 1,
+      limit: totalCount || 1000,
+      filters: sanitized,
+    })
+    const result = await api.get(`/api/lead?${params.toString()}`)
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to load leads for export')
+    }
+    const data = Array.isArray(result.data) ? result.data : result.data?.leads || []
+    return data.map((lead) => ({
+      name: lead.name || '',
+      email: lead.email || '',
+      phoneNumber: lead.phoneNumber || '',
+      status: lead.stage || '',
+      reason: lead.reason || '',
+      createdAt: lead.createdAt ? String(lead.createdAt).slice(0, 10) : '',
+    }))
+  }
+
+  const handleImportLeads = async (rows) => {
+    const user = getCurrentUser()
+    if (!user?.organisationID) {
+      throw new Error('You must be logged in to an organisation to import leads')
+    }
+    const branchId = getBranchQueryParam()
+    const branchLocation = locations.find((l) => String(l._id) === String(branchId))
+    const leadsWithOrg = rows.map((row) => ({
+      name: row.name,
+      email: row.email,
+      phoneNumber: row.phoneNumber,
+      stage: row.status || 'new',
+      reason: row.reason || '',
+      location: branchLocation?.name || '',
+      locationID: branchId ? [branchId] : undefined,
+      organisationID: user.organisationID,
+    }))
+    const result = await api.post('/api/lead/bulk', leadsWithOrg)
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to import leads')
+    }
+    refreshLeads()
+    return { successCount: result.data?.length ?? leadsWithOrg.length, errorCount: 0 }
+  }
+
   const handleDeleteLead = async (id) => {
     const confirmed = window.confirm('Are you sure you want to delete this lead?')
     if (!confirmed) return
@@ -326,13 +380,23 @@ export default function LeadsPage() {
                 Manage leads and filter by any field. Save filters as dynamic lists for automation.
               </p>
             </div>
-            <Button
-              className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
-              onClick={openCreateDialog}
-            >
-              <Plus className="h-4 w-4" />
-              Add Leads
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <ImportExportCsv
+                entityLabel="Lead"
+                fields={LEAD_CSV_FIELDS}
+                getExportRows={handleExportLeads}
+                onImportRows={handleImportLeads}
+                disabled={isViewingAllBranches()}
+                disabledReason="Select a specific branch to import or export leads"
+              />
+              <Button
+                className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
+                onClick={openCreateDialog}
+              >
+                <Plus className="h-4 w-4" />
+                Add Leads
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -382,7 +446,7 @@ export default function LeadsPage() {
                 <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Name</TableHead>
                 <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Contact</TableHead>
                 <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Status</TableHead>
-                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Booking Status</TableHead>
+                <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Reason</TableHead>
                 <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Communication</TableHead>
                 <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Created</TableHead>
                 <TableHead className="w-12 py-3 pr-4 pl-0" />
@@ -391,7 +455,6 @@ export default function LeadsPage() {
             <TableBody>
               {leads.map((lead) => {
                 const stageKey = (lead.stage || 'new').toLowerCase()
-                const bookingStatus = lead.bookingStatus || 'Not Booked'
                 const createdAt = lead.createdAt ? new Date(lead.createdAt) : null
                 const createdLabel = createdAt ? createdAt.toLocaleDateString() : '-'
                 const lastActiveLabel = lead.updatedAt
@@ -430,10 +493,10 @@ export default function LeadsPage() {
                     <div className="text-sm font-normal text-foreground leading-tight">{lead.email}</div>
                     <div className="text-xs font-normal text-muted-foreground leading-tight">{lead.phoneNumber}</div>
                   </TableCell>
-                  <TableCell className="py-3 px-4">
+                  <TableCell className="py-3 px-4 whitespace-nowrap">
                     <span
                       className={cn(
-                        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+                        'inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium',
                         getLeadStageBadgeClass(stageKey)
                       )}
                     >
@@ -441,13 +504,8 @@ export default function LeadsPage() {
                     </span>
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <span
-                      className={cn(
-                        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                        BOOKING_STATUS_STYLES[bookingStatus] ?? 'bg-muted text-foreground'
-                      )}
-                    >
-                      {bookingStatus}
+                    <span className="text-sm font-normal text-foreground leading-tight">
+                      {leadReasons.find((r) => (r.reasonCode || r.name) === lead.reason)?.name || lead.reason || '—'}
                     </span>
                   </TableCell>
                   <TableCell className="py-3 px-4">
@@ -565,6 +623,7 @@ export default function LeadsPage() {
           onRefresh={refreshLeads}
           initialLeadId={dialogInitialLeadId}
           viewOnly={dialogViewOnly}
+          leadReasons={leadReasons}
         />
 
         <BulkCreateLeadsDialog

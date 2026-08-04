@@ -1,7 +1,7 @@
 'use client'
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
+import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle, rechartsTooltipItemStyle } from '@/lib/chartStyles'
 import { Card, WidgetTitleRow, EmptyChart } from './shared'
 import DetailsButton from './DetailsButton'
 
@@ -48,7 +48,11 @@ export default function BookingTrendWidget({ bookingRateTrend, paymentRateTrend,
                 tickFormatter={(v) => `${v}%`}
                 domain={[0, 100]}
               />
-              <Tooltip contentStyle={rechartsTooltipContentStyle} formatter={(v) => [`${v}%`, 'Rate']} />
+              <Tooltip
+                contentStyle={rechartsTooltipContentStyle}
+                itemStyle={rechartsTooltipItemStyle}
+                formatter={(v) => [`${v}%`, 'Rate']}
+              />
               <Area
                 type="monotone"
                 dataKey="rate"
