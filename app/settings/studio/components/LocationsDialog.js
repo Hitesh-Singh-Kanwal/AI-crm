@@ -392,7 +392,9 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
               <div>
                 <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Booking Settings</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  These drive AI available slots and held-event duration. Prices and service names are set in Script / KB.
+                  Controls when the AI may book lessons and prefer callback times. It does not silence the AI —
+                  inbound SMS/calls still get a normal conversation on closed days; the agent just won't book
+                  lessons for inactive days.
                 </p>
               </div>
 
@@ -416,6 +418,10 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Operating Hours (studio local time)</label>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Days marked closed = no AI lesson bookings (and prefer not to schedule human callbacks then).
+                  The agent still answers texts/calls on those days.
+                </p>
                 <div className="divide-y divide-border rounded-md border border-border overflow-hidden">
                   {(editingLocation.operatingHours || DEFAULT_OPERATING_HOURS).map((h) => (
                     <div key={h.day} className="flex items-center gap-3 px-3 py-2 bg-background">
