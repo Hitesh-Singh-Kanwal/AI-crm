@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import api from "@/lib/api";
+import { studioWallTimeToUtcISO } from "@/lib/studio-time";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MultiSelectCheckboxDropdown from "@/components/shared/MultiSelectCheckboxDropdown";
 import NewEnrollmentPackageInline from "@/app/calendar/components/NewEnrollmentPackageInline";
@@ -2003,6 +2004,7 @@ export default function AppointmentComposerPanel({
   initialDuration,
   initialSlotAlignMins,
   initialDayEndHour,
+  studioTz,
 }) {
   const [activeTab, setActiveTab] = useState("Appointment");
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -2511,16 +2513,13 @@ export default function AppointmentComposerPanel({
       return;
     }
 
+    // Interpret the typed time as wall-clock time in the STUDIO's timezone,
+    // not the browser's — a US-based admin typing "10am" for an India studio
+    // must create the event at 10am India time, not 10am US time converted.
     const payloads = slots.map((slot) => ({
       ...basePayload,
-      startDateTime:
-        form.date && slot.start
-          ? new Date(`${form.date}T${slot.start}`).toISOString()
-          : undefined,
-      endDateTime:
-        form.date && slot.end
-          ? new Date(`${form.date}T${slot.end}`).toISOString()
-          : undefined,
+      startDateTime: studioWallTimeToUtcISO(form.date, slot.start, studioTz),
+      endDateTime: studioWallTimeToUtcISO(form.date, slot.end, studioTz),
     }));
 
     const results = await Promise.all(

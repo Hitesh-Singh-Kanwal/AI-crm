@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import api from "@/lib/api";
+import { studioWallTimeToUtcISO } from "@/lib/studio-time";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -1554,14 +1555,10 @@ export default function EventDetailPanel({
   const handleUpdate = async () => {
     setError(null);
     setIsSaving(true);
-    const startDateTime =
-      form.date && form.start_time
-        ? new Date(`${form.date}T${form.start_time}`).toISOString()
-        : undefined;
-    const endDateTime =
-      form.date && form.end_time
-        ? new Date(`${form.date}T${form.end_time}`).toISOString()
-        : undefined;
+    // Same studio-timezone rule as creating an event: interpret the typed
+    // time as wall-clock time at the studio's location, not the browser's.
+    const startDateTime = studioWallTimeToUtcISO(form.date, form.start_time, studioTz);
+    const endDateTime = studioWallTimeToUtcISO(form.date, form.end_time, studioTz);
 
     const payload = {
       title: form.title,
