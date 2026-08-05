@@ -25,6 +25,13 @@ import {
   FileText,
   Send,
   Tag,
+  Sparkles,
+  Calendar,
+  CalendarX,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -279,6 +286,7 @@ function IssueRefundDialog({ open, onClose, payment, customerID, onSuccess }) {
 
 const TABS = [
   { id: "profile", label: "Profile", Icon: User },
+  { id: "intro", label: "Intro", Icon: Sparkles },
   {
     id: "active-enrollments",
     label: " Enrollments",
@@ -5596,6 +5604,686 @@ function eventStatusLabel(status) {
   );
 }
 
+// ─── Intro / 1st-purchase Tab ─────────────────────────────────────────────────
+
+const INTRO_STATUS_LABELS = {
+  scheduled: "Scheduled",
+  completed: "Completed",
+  cancelled_no_charge: "Cancelled",
+  cancelled_charged: "Cancelled (charged)",
+  no_show_no_charge: "No Show",
+  no_show_charged: "No Show (charged)",
+  held: "Held",
+};
+
+const INTRO_STATUS_PILL = {
+  scheduled: "bg-primary/10 text-primary",
+  completed: "bg-success/10 text-success",
+  cancelled_no_charge: "bg-muted text-muted-foreground",
+  cancelled_charged: "bg-muted text-muted-foreground",
+  no_show_no_charge: "bg-warning/10 text-warning",
+  no_show_charged: "bg-warning/10 text-warning",
+  held: "bg-muted text-muted-foreground",
+};
+
+function formatIntroDateTime(value) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function formatIntroDate(value) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatIntroTime(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function formatIntroMoney(amount) {
+  if (amount == null || Number.isNaN(Number(amount))) return "—";
+  return `$${Number(amount).toFixed(2)}`;
+}
+
+function groupIntroSlotsByDay(slots) {
+  const groups = [];
+  const map = new Map();
+  for (const slot of slots || []) {
+    const dayKey = new Date(slot.start).toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    if (!map.has(dayKey)) {
+      const g = { dayKey, slots: [] };
+      map.set(dayKey, g);
+      groups.push(g);
+    }
+    map.get(dayKey).slots.push(slot);
+  }
+  return groups;
+}
+
+function IntroMetaRow({ label, value, icon: Icon }) {
+  if (value == null || value === "" || value === "—") return null;
+  return (
+    <div className="flex items-start gap-3 py-2.5 border-b border-border/60 last:border-0">
+      {Icon ? (
+        <Icon className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+      ) : (
+        <span className="w-3.5 shrink-0" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] text-muted-foreground leading-none mb-1">{label}</p>
+        <p className="text-[13px] font-medium text-foreground break-words">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function IntroStatusStep({ done, active, label, sub }) {
+  return (
+    <div className="flex items-start gap-3 min-w-0">
+      <div
+        className={[
+          "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
+          done
+            ? "border-success bg-success text-white"
+            : active
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border bg-background text-muted-foreground",
+        ].join(" ")}
+      >
+        {done ? <CheckCircle className="h-3.5 w-3.5" /> : null}
+      </div>
+      <div className="min-w-0">
+        <p className={`text-[13px] font-medium ${active || done ? "text-foreground" : "text-muted-foreground"}`}>
+          {label}
+        </p>
+        {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+function IntroTab({ customer }) {
+  const toast = useToast();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
+  const [rescheduling, setRescheduling] = useState(false);
+  const [showRescheduleForm, setShowRescheduleForm] = useState(false);
+  const [availSlots, setAvailSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await api.get(`/api/customer/${customer._id}/intro`);
+    if (res.success) setData(res.data);
+    else toast.error(res.error || "Failed to load intro details.");
+    setLoading(false);
+  }, [customer._id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleCancel() {
+    if (!data?.upcoming) return;
+    if (!confirm("Cancel this intro lesson? No charge will apply. They can rebook free since they already paid.")) return;
+    setCancelling(true);
+    const res = await api.delete(`/api/calendar/${data.upcoming._id}`);
+    if (res.success) {
+      toast.success("Intro lesson cancelled.");
+      setShowRescheduleForm(false);
+      load();
+    } else {
+      toast.error(res.error || "Failed to cancel.");
+    }
+    setCancelling(false);
+  }
+
+  async function openReschedule() {
+    setShowRescheduleForm(true);
+    setSelectedSlot(null);
+    setSlotsLoading(true);
+    setAvailSlots([]);
+    const locationID = Array.isArray(customer.locationID)
+      ? customer.locationID[0]?._id || customer.locationID[0]
+      : customer.locationID?._id || customer.locationID;
+    if (!locationID) {
+      toast.error("Customer has no location — cannot load slots.");
+      setSlotsLoading(false);
+      return;
+    }
+    const res = await api.get(`/api/calendar/availability?locationID=${locationID}`);
+    if (res.success) setAvailSlots(res.data?.slots || res.data || []);
+    else toast.error("Failed to load available slots.");
+    setSlotsLoading(false);
+  }
+
+  async function handleReschedule() {
+    if (!selectedSlot) return;
+    setRescheduling(true);
+    const locationID = Array.isArray(customer.locationID)
+      ? customer.locationID[0]?._id || customer.locationID[0]
+      : customer.locationID?._id || customer.locationID;
+
+    if (data?.upcoming?._id) {
+      const cancelRes = await api.delete(`/api/calendar/${data.upcoming._id}`);
+      if (!cancelRes.success) {
+        toast.error(cancelRes.error || "Could not cancel the current lesson before rescheduling.");
+        setRescheduling(false);
+        return;
+      }
+    }
+
+    const res = await api.post(`/api/customer/${customer._id}/intro/reschedule`, {
+      start: selectedSlot.start,
+      end: selectedSlot.end,
+      locationID,
+    });
+    if (res.success) {
+      toast.success("Intro lesson rescheduled successfully.");
+      setShowRescheduleForm(false);
+      setSelectedSlot(null);
+      load();
+    } else {
+      toast.error(res.error || "Failed to reschedule.");
+      load();
+    }
+    setRescheduling(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  const {
+    purchase,
+    upcoming,
+    takenLesson,
+    history,
+    purchased,
+    taken,
+    status,
+    statusLabel,
+    rescheduleBlockReason,
+  } = data || {};
+
+  const introConsumed = taken || rescheduleBlockReason === "intro_consumed";
+  const showFreeReschedule = Boolean(purchased) && !introConsumed && !showRescheduleForm;
+  const originalSlot = purchase?.slot;
+  const lessonForTaken = takenLesson || null;
+  const slotGroups = groupIntroSlotsByDay(availSlots);
+
+  const stepPurchased = Boolean(purchased);
+  const stepScheduled = Boolean(upcoming) || Boolean(taken);
+  const stepTaken = Boolean(taken);
+
+  const resolvedStatus =
+    status ||
+    (!purchased
+      ? "not_purchased"
+      : taken
+        ? "taken"
+        : upcoming
+          ? "purchased_scheduled"
+          : "purchased_not_taken");
+
+  const resolvedStatusLabel =
+    statusLabel ||
+    {
+      not_purchased: "Not purchased",
+      purchased_scheduled: "Purchased — scheduled (not taken yet)",
+      purchased_not_taken: "Purchased — not taken yet (needs schedule)",
+      taken: "Purchased — already taken",
+    }[resolvedStatus];
+
+  const heroTone =
+    resolvedStatus === "taken"
+      ? "border-success/20 bg-success/5"
+      : resolvedStatus === "purchased_scheduled"
+        ? "border-primary/20 bg-primary/5"
+        : resolvedStatus === "purchased_not_taken"
+          ? "border-warning/25 bg-warning/5"
+          : "border-border bg-muted/30";
+
+  return (
+    <div className="space-y-5">
+      {/* Hero status — full width */}
+      <div className={`rounded-xl border p-5 md:p-6 ${heroTone}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+              Intro lesson
+            </p>
+            <h3 className="text-[17px] font-semibold text-foreground leading-snug">
+              {resolvedStatusLabel}
+            </h3>
+            <p className="text-[12px] text-muted-foreground mt-1 max-w-2xl">
+              {!purchased
+                ? "This customer has not purchased their first intro lesson yet."
+                : taken
+                  ? "Purchase complete and the intro lesson has been taken."
+                  : upcoming
+                    ? "Purchased and scheduled — waiting for the lesson."
+                    : "Purchased, but not scheduled yet. Free rebook is available."}
+            </p>
+          </div>
+          {purchased && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-background/80 border border-border px-2.5 py-1 text-[11px] font-medium text-foreground shrink-0">
+              <CheckCircle className="h-3 w-3 text-success" />
+              Paid {formatIntroMoney(purchase?.amount)}
+            </span>
+          )}
+        </div>
+
+        <div className="grid sm:grid-cols-3 gap-4 sm:gap-6">
+          <IntroStatusStep
+            done={stepPurchased}
+            active={!stepPurchased}
+            label="Purchased"
+            sub={purchased ? formatIntroDate(purchase?.paidAt) : "Not yet"}
+          />
+          <IntroStatusStep
+            done={stepScheduled}
+            active={purchased && !upcoming && !taken}
+            label="Scheduled"
+            sub={
+              upcoming
+                ? formatIntroDate(upcoming.startDateTime)
+                : taken
+                  ? "Was scheduled"
+                  : purchased
+                    ? "Needs a time"
+                    : "—"
+            }
+          />
+          <IntroStatusStep
+            done={stepTaken}
+            active={Boolean(upcoming)}
+            label="Taken"
+            sub={
+              taken
+                ? INTRO_STATUS_LABELS[lessonForTaken?.status] || "Completed"
+                : upcoming
+                  ? "Not yet"
+                  : "—"
+            }
+          />
+        </div>
+      </div>
+
+      {/* Purchase + Lesson — full-width two columns */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        {/* Purchase card */}
+        <div className="rounded-xl border border-border bg-card p-5 md:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+              <Receipt className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-[13px] font-semibold text-foreground">1st Purchase</p>
+              <p className="text-[11px] text-muted-foreground">Payment from AI / booking link</p>
+            </div>
+          </div>
+
+          {purchase ? (
+            <div>
+              <div className="mb-3 rounded-lg bg-muted/40 px-4 py-3.5">
+                <p className="text-[15px] font-semibold text-foreground">
+                  {purchase.description || "Intro Lesson"}
+                </p>
+                <p className="text-[22px] font-semibold tracking-tight mt-0.5">
+                  {formatIntroMoney(purchase.amount)}
+                </p>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-x-6">
+                <IntroMetaRow icon={CheckCircle} label="Payment status" value="Paid" />
+                <IntroMetaRow icon={Calendar} label="Paid on" value={formatIntroDate(purchase.paidAt)} />
+                <IntroMetaRow
+                  icon={Send}
+                  label="Booked via"
+                  value={purchase.channel ? String(purchase.channel).toUpperCase() : null}
+                />
+                <IntroMetaRow
+                  icon={BookOpen}
+                  label="Service"
+                  value={originalSlot?.serviceType || null}
+                />
+                <div className="sm:col-span-2">
+                  <IntroMetaRow
+                    icon={Clock}
+                    label="Originally booked for"
+                    value={
+                      originalSlot?.startDateTime
+                        ? formatIntroDateTime(originalSlot.startDateTime)
+                        : null
+                    }
+                  />
+                </div>
+              </div>
+              {purchase.slotSelectionRequired && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-[12px] text-foreground">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 text-warning shrink-0" />
+                  Payment cleared, but they still need to pick a new time.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
+              <Sparkles className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" />
+              <p className="text-[13px] font-medium text-foreground">Not purchased yet</p>
+              <p className="text-[12px] text-muted-foreground mt-1">
+                No intro payment on record for this customer.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Lesson card */}
+        <div className="rounded-xl border border-border bg-card p-5 md:p-6 flex flex-col">
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-[13px] font-semibold text-foreground">Lesson</p>
+                <p className="text-[11px] text-muted-foreground">Current intro booking</p>
+              </div>
+            </div>
+            {upcoming && (
+              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${INTRO_STATUS_PILL[upcoming.status] || "bg-muted text-muted-foreground"}`}>
+                {INTRO_STATUS_LABELS[upcoming.status] || upcoming.status}
+              </span>
+            )}
+            {!upcoming && taken && lessonForTaken && (
+              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${INTRO_STATUS_PILL[lessonForTaken.status] || "bg-muted text-muted-foreground"}`}>
+                {INTRO_STATUS_LABELS[lessonForTaken.status] || lessonForTaken.status}
+              </span>
+            )}
+          </div>
+
+          <div className="flex-1">
+            {upcoming ? (
+              <div>
+                <div className="rounded-lg bg-muted/40 px-4 py-3.5 mb-3">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Upcoming</p>
+                  <p className="text-[16px] font-semibold text-foreground leading-snug">
+                    {formatIntroDate(upcoming.startDateTime)}
+                  </p>
+                  <p className="text-[14px] text-foreground/80 mt-0.5">
+                    {formatIntroTime(upcoming.startDateTime)}
+                    {upcoming.endDateTime ? ` – ${formatIntroTime(upcoming.endDateTime)}` : ""}
+                  </p>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-x-6">
+                  <IntroMetaRow icon={User} label="Teacher" value={upcoming.teacherID?.name || "Not assigned"} />
+                  <IntroMetaRow
+                    icon={CheckCircle}
+                    label="Lesson payment"
+                    value={
+                      upcoming.payment?.collected
+                        ? `Collected${upcoming.payment?.amount != null ? ` (${formatIntroMoney(upcoming.payment.amount)})` : ""}`
+                        : upcoming.chargeMethod === "direct"
+                          ? "Paid (direct)"
+                          : null
+                    }
+                  />
+                  <div className="sm:col-span-2">
+                    <IntroMetaRow icon={BookOpen} label="Title" value={upcoming.title || null} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <IntroMetaRow icon={StickyNote} label="Notes" value={upcoming.notes || null} />
+                  </div>
+                </div>
+              </div>
+            ) : taken && lessonForTaken ? (
+              <div>
+                <div className="rounded-lg bg-success/5 border border-success/15 px-4 py-3.5 mb-3">
+                  <p className="text-[13px] font-medium text-foreground flex items-center gap-1.5">
+                    <CheckCircle className="h-3.5 w-3.5 text-success" />
+                    Intro already taken
+                  </p>
+                  <p className="text-[12px] text-muted-foreground mt-1">
+                    {formatIntroDateTime(lessonForTaken.startDateTime)}
+                  </p>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-x-6">
+                  <IntroMetaRow icon={User} label="Teacher" value={lessonForTaken.teacherID?.name || "—"} />
+                  <IntroMetaRow
+                    icon={CheckCircle}
+                    label="Result"
+                    value={INTRO_STATUS_LABELS[lessonForTaken.status] || lessonForTaken.status}
+                  />
+                  <div className="sm:col-span-2">
+                    <IntroMetaRow icon={BookOpen} label="Title" value={lessonForTaken.title || null} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <IntroMetaRow icon={StickyNote} label="Notes" value={lessonForTaken.notes || null} />
+                  </div>
+                </div>
+              </div>
+            ) : purchased ? (
+              <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
+                <Clock className="h-6 w-6 mx-auto mb-2 text-warning" />
+                <p className="text-[13px] font-medium text-foreground">Not scheduled yet</p>
+                <p className="text-[12px] text-muted-foreground mt-1 max-w-sm mx-auto">
+                  They already paid — book a free reschedule whenever they’re ready.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
+                <Calendar className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" />
+                <p className="text-[13px] font-medium text-foreground">No lesson yet</p>
+                <p className="text-[12px] text-muted-foreground mt-1">
+                  Details appear here after the intro is purchased.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {(upcoming || (purchased && !introConsumed)) && (
+            <div className="flex flex-wrap gap-2 pt-4 mt-auto border-t border-border">
+              {showFreeReschedule && (
+                <Button size="sm" variant={upcoming ? "outline" : "default"} onClick={openReschedule}>
+                  <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                  {upcoming ? "Reschedule" : "Book free reschedule"}
+                </Button>
+              )}
+              {upcoming && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                >
+                  <CalendarX className="h-3.5 w-3.5 mr-1.5" />
+                  {cancelling ? "Cancelling…" : "Cancel — No Charge"}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Reschedule picker — full width */}
+      {showRescheduleForm && (
+        <div className="rounded-xl border border-border bg-card p-5 md:p-6 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[13px] font-semibold text-foreground">Pick a new time</p>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                Free reschedule — payment already collected
+                {upcoming ? ". Current lesson will be cancelled first." : "."}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => { setShowRescheduleForm(false); setSelectedSlot(null); }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {slotsLoading && (
+            <div className="flex items-center gap-2 py-8 justify-center text-[13px] text-muted-foreground">
+              <LoadingSpinner />
+              Loading available slots…
+            </div>
+          )}
+
+          {!slotsLoading && !availSlots.length && (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-[13px] text-muted-foreground">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              No open slots found. Try again later.
+            </div>
+          )}
+
+          {!slotsLoading && slotGroups.length > 0 && (
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5 max-h-[360px] overflow-y-auto pr-1">
+              {slotGroups.map((group) => (
+                <div key={group.dayKey}>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                    {group.dayKey}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {group.slots.map((slot) => {
+                      const active = selectedSlot?.start === slot.start;
+                      return (
+                        <button
+                          key={slot.start}
+                          type="button"
+                          onClick={() => setSelectedSlot(slot)}
+                          className={[
+                            "rounded-lg border px-3 py-2 text-[12px] font-medium transition-colors",
+                            active
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-muted/40",
+                          ].join(" ")}
+                        >
+                          {formatIntroTime(slot.start) || slot.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {selectedSlot && (
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border">
+              <p className="text-[12px] text-muted-foreground">
+                Selected:{" "}
+                <span className="font-medium text-foreground">
+                  {formatIntroDateTime(selectedSlot.start)}
+                </span>
+              </p>
+              <div className="flex gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setSelectedSlot(null)}>
+                  Clear
+                </Button>
+                <Button size="sm" onClick={handleReschedule} disabled={rescheduling}>
+                  {rescheduling ? "Saving…" : "Confirm reschedule"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* History — full width */}
+      {history && history.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-5 md:p-6">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <p className="text-[13px] font-semibold text-foreground">Lesson history</p>
+            <p className="text-[11px] text-muted-foreground">{history.length} record{history.length === 1 ? "" : "s"}</p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-x-8 gap-y-0">
+            {history.map((ev) => {
+              const isDone = ev.status === "completed" || ev.status === "no_show_charged";
+              const isCancel = String(ev.status || "").startsWith("cancelled");
+              return (
+                <div
+                  key={ev._id}
+                  className="flex items-start justify-between gap-3 py-3 border-b border-border/60 last:border-0 md:odd:pr-2 md:even:pl-2"
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div
+                      className={[
+                        "mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border bg-card",
+                        isDone
+                          ? "border-success/40 text-success"
+                          : "border-border text-muted-foreground",
+                      ].join(" ")}
+                    >
+                      {isDone ? (
+                        <CheckCircle className="h-3 w-3" />
+                      ) : isCancel ? (
+                        <XCircle className="h-3 w-3" />
+                      ) : (
+                        <Clock className="h-3 w-3" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-foreground">
+                        {formatIntroDateTime(ev.startDateTime)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                        {[ev.teacherID?.name ? `with ${ev.teacherID.name}` : null, ev.title]
+                          .filter(Boolean)
+                          .join(" · ") || "Intro lesson"}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${INTRO_STATUS_PILL[ev.status] || "bg-muted text-muted-foreground"}`}>
+                    {INTRO_STATUS_LABELS[ev.status] || ev.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!purchased && !upcoming && (!history || !history.length) && (
+        <div className="rounded-xl border border-dashed border-border px-6 py-14 text-center">
+          <Sparkles className="h-8 w-8 mx-auto mb-3 text-muted-foreground/40" />
+          <p className="text-[14px] font-medium text-foreground">No intro activity yet</p>
+          <p className="text-[12px] text-muted-foreground mt-1 max-w-md mx-auto">
+            When this customer buys and books their first lesson through AI, the purchase and lesson details will show up here.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const LESSON_FILTERS = [
   { id: "scheduled", label: "Scheduled" },
   { id: "completed", label: "Completed" },
@@ -6114,6 +6802,9 @@ export default function CustomerDetailPage() {
               locations={locations}
               onUpdated={load}
             />
+          )}
+          {tab === "intro" && (
+            <IntroTab customer={customer} />
           )}
           {tab === "active-enrollments" && (
             <EnrollmentsTab

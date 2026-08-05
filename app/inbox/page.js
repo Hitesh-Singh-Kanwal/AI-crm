@@ -42,10 +42,25 @@ function resolveContactType(leadOrConv = {}) {
     if (explicit.startsWith('customer')) return 'Customer'
     return 'Lead'
   }
+  // Converted only after payment — pending_payment / engaged / etc. stay Leads.
   if (leadOrConv.convertedCustomerID || String(leadOrConv.stage || '').toLowerCase() === 'converted') {
     return 'Customer'
   }
   return 'Lead'
+}
+
+/** Inbox type for a lead profile refresh — never invent Teacher from phone collision. */
+function resolveLeadProfileInboxType(lead = {}) {
+  if (lead?.convertedCustomerID || String(lead?.stage || '').toLowerCase() === 'converted') {
+    return 'Customer'
+  }
+  return 'Lead'
+}
+
+function inboxFilterParamForType(contactTypeLabel) {
+  if (contactTypeLabel === 'Teachers') return 'teachers'
+  if (contactTypeLabel === 'Customers') return 'all'
+  return 'leads'
 }
 
 function buildInboxData(smsRecords, emailRecords) {
@@ -482,15 +497,50 @@ function InboxPageContent() {
     return list
   }, [filteredConversations, searchQuery, contactFilter])
 
-  // Drop selection when the active filter/search hides the current conversation
+  // Drop selection only when search hides the thread. If type tab no longer
+  // matches (e.g. lead paid → Customer), switch the tab so the thread stays open.
   useEffect(() => {
     if (!selectedConversation) return
     const stillVisible = displayedConversations.some((c) => c.id === selectedConversation)
-    if (!stillVisible) {
+    if (stillVisible) return
+
+    const hidden = conversations.find((c) => c.id === selectedConversation)
+    if (!hidden) {
       setSelectedConversation(null)
       setShowContactList(true)
+      return
     }
-  }, [displayedConversations, selectedConversation])
+
+    const matchesSearch = getContactDisplayName(hidden.contact)
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase())
+    if (!matchesSearch) {
+      setSelectedConversation(null)
+      setShowContactList(true)
+      return
+    }
+
+    const nextType = normalizeContactType(hidden.contact.type)
+    if (nextType && nextType !== contactFilter) {
+      setContactFilter(nextType)
+      const params = new URLSearchParams(searchParams?.toString() || '')
+      params.set('filter', inboxFilterParamForType(nextType))
+      router.replace(`${pathname}?${params.toString()}`)
+      return
+    }
+
+    setSelectedConversation(null)
+    setShowContactList(true)
+  }, [
+    displayedConversations,
+    selectedConversation,
+    conversations,
+    searchQuery,
+    contactFilter,
+    searchParams,
+    pathname,
+    router,
+  ])
 
   // Counts for header tabs (from current branch-filtered list)
   const inboxTypeCounts = useMemo(() => {
@@ -516,44 +566,44 @@ function InboxPageContent() {
       setSelectedLeadData(null)
       return
     }
-    const conv = conversations.find((c) => c.id === selectedConversation)
-    const leadId = conv?.contact?.id
-    if (!leadId || !selectedConversation.startsWith('lead-')) {
+    if (!selectedConversation.startsWith('lead-')) {
       setSelectedLeadData(null)
       return
     }
+    const leadId = selectedConversation.replace('lead-', '')
     let cancelled = false
     api.get(`/api/lead/${leadId}`).then((res) => {
       if (cancelled) return
       const lead = res.data || null
       setSelectedLeadData(lead)
-      if (lead?.email || lead?.phoneNumber || lead?.stage || lead?.convertedCustomerID) {
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === selectedConversation
-              ? {
-                  ...c,
-                  contact: {
-                    ...c.contact,
-                    email: lead.email || c.contact.email,
-                    // Trust the lead profile phone (including empty) so email-only
-                    // leads don't keep a stale SMS/other number on the contact.
-                    phoneNumber: lead.phoneNumber || '',
-                    stage: lead.stage || c.contact.stage,
-                    name: lead.name || c.contact.name,
-                    type: resolveContactType(lead),
-                    locationID: lead.locationID || c.contact.locationID || [],
-                  },
-                }
-              : c,
-          ),
-        )
-      }
+      if (!lead) return
+      // Update profile fields only. Do NOT depend on `conversations` here —
+      // that caused a re-fetch loop that made payment-link threads flicker/vanish.
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedConversation
+            ? {
+                ...c,
+                contact: {
+                  ...c.contact,
+                  email: lead.email || c.contact.email,
+                  phoneNumber: lead.phoneNumber || '',
+                  stage: lead.stage || c.contact.stage,
+                  name: lead.name || c.contact.name,
+                  // Pending Payment / Engaged stay Leads until payment converts them.
+                  type: resolveLeadProfileInboxType(lead),
+                  convertedCustomerID: lead.convertedCustomerID || null,
+                  locationID: lead.locationID || c.contact.locationID || [],
+                },
+              }
+            : c,
+        ),
+      )
     }).catch(() => {
       if (!cancelled) setSelectedLeadData(null)
     })
     return () => { cancelled = true }
-  }, [selectedConversation, conversations])
+  }, [selectedConversation])
 
   const selectedConvData = selectedConversation
     ? (displayedConversations.find((c) => c.id === selectedConversation) ||
@@ -867,12 +917,7 @@ function InboxPageContent() {
     selectedConversationRef.current = convId
 
     const contactTypeLabel = normalizeContactType(resolveContactType(lead)) || 'Leads'
-    const filterParam =
-      contactTypeLabel === 'Teachers'
-        ? 'teachers'
-        : contactTypeLabel === 'Customers'
-          ? 'all'
-          : 'leads'
+    const filterParam = inboxFilterParamForType(contactTypeLabel)
 
     setConversations((prev) => {
       if (prev.find((c) => c.id === convId)) return prev
