@@ -50,10 +50,13 @@ function resolveContactType(leadOrConv = {}) {
 }
 
 /** Inbox type for a lead profile refresh — never invent Teacher from phone collision. */
-function resolveLeadProfileInboxType(lead = {}) {
+function resolveLeadProfileInboxType(lead = {}, previousType = null) {
   if (lead?.convertedCustomerID || String(lead?.stage || '').toLowerCase() === 'converted') {
     return 'Customer'
   }
+  // Preserve Teacher when inbox already classified this thread that way.
+  const prev = String(previousType || '').toLowerCase()
+  if (prev.startsWith('teacher')) return 'Teacher'
   return 'Lead'
 }
 
@@ -259,7 +262,7 @@ function InboxPageContent() {
   const { setInboxCounts } = useInboxHeader()
   const toast = useToast()
   const [selectedConversation, setSelectedConversation] = useState(null)
-  const [showDetails, setShowDetails] = useState(true)
+  const [showDetails, setShowDetails] = useState(false)
   const [showContactList, setShowContactList] = useState(true)
   const [isLgUp, setIsLgUp] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -467,7 +470,7 @@ function InboxPageContent() {
       if (!matches) {
         setShowDetails(false)
       } else {
-        setShowDetails(true)
+        // Keep profile sidebar closed by default; user opens via "View profile".
         setShowContactList(true)
       }
     }
@@ -497,50 +500,17 @@ function InboxPageContent() {
     return list
   }, [filteredConversations, searchQuery, contactFilter])
 
-  // Drop selection only when search hides the thread. If type tab no longer
-  // matches (e.g. lead paid → Customer), switch the tab so the thread stays open.
+  // When the active filter/search hides the current conversation, clear selection.
+  // Do NOT force the tab back to the selected contact's type — that blocked
+  // switching between Customers / Leads / Teachers.
   useEffect(() => {
     if (!selectedConversation) return
     const stillVisible = displayedConversations.some((c) => c.id === selectedConversation)
-    if (stillVisible) return
-
-    const hidden = conversations.find((c) => c.id === selectedConversation)
-    if (!hidden) {
+    if (!stillVisible) {
       setSelectedConversation(null)
       setShowContactList(true)
-      return
     }
-
-    const matchesSearch = getContactDisplayName(hidden.contact)
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase())
-    if (!matchesSearch) {
-      setSelectedConversation(null)
-      setShowContactList(true)
-      return
-    }
-
-    const nextType = normalizeContactType(hidden.contact.type)
-    if (nextType && nextType !== contactFilter) {
-      setContactFilter(nextType)
-      const params = new URLSearchParams(searchParams?.toString() || '')
-      params.set('filter', inboxFilterParamForType(nextType))
-      router.replace(`${pathname}?${params.toString()}`)
-      return
-    }
-
-    setSelectedConversation(null)
-    setShowContactList(true)
-  }, [
-    displayedConversations,
-    selectedConversation,
-    conversations,
-    searchQuery,
-    contactFilter,
-    searchParams,
-    pathname,
-    router,
-  ])
+  }, [displayedConversations, selectedConversation])
 
   // Counts for header tabs (from current branch-filtered list)
   const inboxTypeCounts = useMemo(() => {
@@ -577,8 +547,8 @@ function InboxPageContent() {
       const lead = res.data || null
       setSelectedLeadData(lead)
       if (!lead) return
-      // Update profile fields only. Do NOT depend on `conversations` here —
-      // that caused a re-fetch loop that made payment-link threads flicker/vanish.
+      // Update profile fields only. Do NOT force-switch inbox tabs here —
+      // that fought header tab clicks (Customers / Leads / Teachers).
       setConversations((prev) =>
         prev.map((c) =>
           c.id === selectedConversation
@@ -591,7 +561,8 @@ function InboxPageContent() {
                   stage: lead.stage || c.contact.stage,
                   name: lead.name || c.contact.name,
                   // Pending Payment / Engaged stay Leads until payment converts them.
-                  type: resolveLeadProfileInboxType(lead),
+                  // Preserve Teacher if this thread was already classified that way.
+                  type: resolveLeadProfileInboxType(lead, c.contact.type),
                   convertedCustomerID: lead.convertedCustomerID || null,
                   locationID: lead.locationID || c.contact.locationID || [],
                 },

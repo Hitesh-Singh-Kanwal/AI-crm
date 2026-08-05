@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -5726,6 +5726,7 @@ function IntroStatusStep({ done, active, label, sub }) {
 function IntroTab({ customer }) {
   const toast = useToast();
   const [data, setData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
@@ -5733,30 +5734,49 @@ function IntroTab({ customer }) {
   const [availSlots, setAvailSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const rescheduleInFlightRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await api.get(`/api/customer/${customer._id}/intro`);
-    if (res.success) setData(res.data);
-    else toast.error(res.error || "Failed to load intro details.");
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const res = await api.get(`/api/customer/${customer._id}/intro`);
+      if (res.success) {
+        setData(res.data);
+      } else {
+        setData(null);
+        setLoadError(res.error || "Failed to load intro details.");
+        toast.error(res.error || "Failed to load intro details.");
+      }
+    } catch (err) {
+      setData(null);
+      setLoadError(err?.message || "Failed to load intro details.");
+      toast.error(err?.message || "Failed to load intro details.");
+    } finally {
+      setLoading(false);
+    }
   }, [customer._id]);
 
   useEffect(() => { load(); }, [load]);
 
   async function handleCancel() {
-    if (!data?.upcoming) return;
+    if (!data?.upcoming || cancelling) return;
     if (!confirm("Cancel this intro lesson? No charge will apply. They can rebook free since they already paid.")) return;
     setCancelling(true);
-    const res = await api.delete(`/api/calendar/${data.upcoming._id}`);
-    if (res.success) {
-      toast.success("Intro lesson cancelled.");
-      setShowRescheduleForm(false);
-      load();
-    } else {
-      toast.error(res.error || "Failed to cancel.");
+    try {
+      const res = await api.delete(`/api/calendar/${data.upcoming._id}`);
+      if (res.success) {
+        toast.success("Intro lesson cancelled.");
+        setShowRescheduleForm(false);
+        await load();
+      } else {
+        toast.error(res.error || "Failed to cancel.");
+      }
+    } catch (err) {
+      toast.error(err?.message || "Failed to cancel.");
+    } finally {
+      setCancelling(false);
     }
-    setCancelling(false);
   }
 
   async function openReschedule() {
@@ -5772,49 +5792,65 @@ function IntroTab({ customer }) {
       setSlotsLoading(false);
       return;
     }
-    const res = await api.get(`/api/calendar/availability?locationID=${locationID}`);
-    if (res.success) setAvailSlots(res.data?.slots || res.data || []);
-    else toast.error("Failed to load available slots.");
-    setSlotsLoading(false);
+    try {
+      const res = await api.get(
+        `/api/calendar/availability?locationID=${locationID}&days=14&maxSlots=20`,
+      );
+      if (res.success) setAvailSlots(res.data?.slots || res.data || []);
+      else toast.error("Failed to load available slots.");
+    } catch (err) {
+      toast.error(err?.message || "Failed to load available slots.");
+    } finally {
+      setSlotsLoading(false);
+    }
   }
 
   async function handleReschedule() {
-    if (!selectedSlot) return;
+    if (!selectedSlot || rescheduleInFlightRef.current) return;
+    rescheduleInFlightRef.current = true;
     setRescheduling(true);
     const locationID = Array.isArray(customer.locationID)
       ? customer.locationID[0]?._id || customer.locationID[0]
       : customer.locationID?._id || customer.locationID;
 
-    if (data?.upcoming?._id) {
-      const cancelRes = await api.delete(`/api/calendar/${data.upcoming._id}`);
-      if (!cancelRes.success) {
-        toast.error(cancelRes.error || "Could not cancel the current lesson before rescheduling.");
-        setRescheduling(false);
-        return;
+    try {
+      // Backend moves an existing upcoming lesson in place, or books a new one if none.
+      const res = await api.post(`/api/customer/${customer._id}/intro/reschedule`, {
+        start: selectedSlot.start,
+        end: selectedSlot.end,
+        locationID,
+      });
+      if (res.success) {
+        toast.success("Intro lesson rescheduled successfully.");
+        setShowRescheduleForm(false);
+        setSelectedSlot(null);
+        await load();
+      } else {
+        toast.error(res.error || "Failed to reschedule.");
+        await load();
       }
+    } catch (err) {
+      toast.error(err?.message || "Failed to reschedule.");
+      await load();
+    } finally {
+      rescheduleInFlightRef.current = false;
+      setRescheduling(false);
     }
-
-    const res = await api.post(`/api/customer/${customer._id}/intro/reschedule`, {
-      start: selectedSlot.start,
-      end: selectedSlot.end,
-      locationID,
-    });
-    if (res.success) {
-      toast.success("Intro lesson rescheduled successfully.");
-      setShowRescheduleForm(false);
-      setSelectedSlot(null);
-      load();
-    } else {
-      toast.error(res.error || "Failed to reschedule.");
-      load();
-    }
-    setRescheduling(false);
   }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
         <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (loadError && !data) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 text-center space-y-3">
+        <p className="text-sm text-muted-foreground">{loadError}</p>
+        <Button size="sm" variant="outline" onClick={load}>Retry</Button>
       </div>
     );
   }
