@@ -3944,6 +3944,7 @@ export default function CalendarPage() {
 
               <AppointmentComposerPanel
                 open={isAppointmentPanelOpen}
+                studioTz={studioTz}
                 onClose={() => {
                   setIsAppointmentPanelOpen(false);
                   setSlotSelection(null);

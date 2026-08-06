@@ -39,7 +39,7 @@ import {
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LocationSelector from '@/components/shared/LocationSelector'
-import ImportExportCsv from '@/components/shared/ImportExportCsv'
+import CustomerMigrationImportDialog from '@/components/customers/CustomerMigrationImportDialog'
 import { getInitials, formatDate, cn } from '@/lib/utils'
 import { isViewingAllBranches, getBranchQueryParam } from '@/lib/branch-filter'
 import {
@@ -640,11 +640,10 @@ export default function CustomersPage() {
             <p className="mt-0.5 text-[13px] text-muted-foreground">Manage your studio's students and clients</p>
           </div>
           <div className="flex items-center gap-2">
-            <ImportExportCsv
-              entityLabel="Customer"
-              fields={CUSTOMER_CSV_FIELDS}
+            <CustomerMigrationImportDialog
+              quickImportFields={CUSTOMER_CSV_FIELDS}
+              onQuickImportRows={handleImportCustomers}
               getExportRows={handleExportCustomers}
-              onImportRows={handleImportCustomers}
               disabled={isViewingAllBranches()}
               disabledReason="Select a specific branch to import or export customers"
             />

@@ -8,7 +8,19 @@ import { cn } from '@/lib/utils'
 import { getCurrentUser } from '@/lib/auth'
 import { canAccessRoute } from '@/lib/permissions'
 import { BrandLockup } from '@/components/shared/BrandLogo'
-import { upcomingTasks as sidebarUpcomingTasks } from '@/data/dummyData'
+import { useUpcomingTasks } from '@/lib/hooks/useUpcomingTasks'
+
+const SEEN_TASKS_STORAGE_KEY = 'crm_seen_upcoming_task_ids'
+
+const TASK_KIND_LABEL = {
+  lesson: 'Lesson',
+  service: 'Appointment',
+  membership: 'Membership',
+  todo: 'To-do',
+  'lead-callback': 'Lead Follow-up',
+  'customer-callback': 'Callback',
+  'human-intervention': 'Needs Human',
+}
 
 const navItems = [
   { name: 'Dashboard', href: '/dashboard', iconSrc: '/figma/sidebar/dashboard-selected.svg', iconSize: 24, labelStyle: 'bold' },
@@ -101,6 +113,31 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
   const closeTimerRef = useRef(null)
   const menuHoverRef = useRef(false)
   const [navBox, setNavBox] = useState({ scale: 1, height: null })
+  const { tasks: upcomingTasks, loading: upcomingTasksLoading } = useUpcomingTasks({ days: 7, limit: 20 })
+  // Red dot clears once the popover has been opened for the current task set;
+  // reappears if the list changes (e.g. a new task shows up) after that.
+  // Persisted to localStorage (client-only, no backend/AWS cost) so it
+  // survives a page reload instead of re-flagging already-seen tasks.
+  const seenTasksStorageKey = user?._id ? `${SEEN_TASKS_STORAGE_KEY}:${user._id}` : null
+  const [seenTaskIds, setSeenTaskIds] = useState(() => {
+    if (typeof window === 'undefined' || !seenTasksStorageKey) return new Set()
+    try {
+      return new Set(JSON.parse(localStorage.getItem(seenTasksStorageKey) || '[]'))
+    } catch {
+      return new Set()
+    }
+  })
+  const unseenTaskCount = upcomingTasks.filter((t) => !seenTaskIds.has(t.id)).length
+  const markTasksSeen = () => {
+    const next = new Set(upcomingTasks.map((t) => t.id))
+    setSeenTaskIds(next)
+    if (!seenTasksStorageKey) return
+    try {
+      localStorage.setItem(seenTasksStorageKey, JSON.stringify([...next]))
+    } catch {
+      // storage unavailable (private mode, quota) — in-memory state still works
+    }
+  }
 
   const menuItemsByName = useMemo(() => {
     const map = new Map()
@@ -400,12 +437,16 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
           </nav>
         </div>
 
-        {/* Subscription section */}
-        <div
+        {/* Subscription section — click opens the full Upcoming Tasks page */}
+        <Link
+          href="/dashboard/upcoming-tasks"
           ref={subscriptionRef}
           className="relative group flex shrink-0 flex-col items-center gap-1 p-1 rounded-lg border border-white/15 bg-white/5 w-[112px]"
+          onMouseEnter={markTasksSeen}
+          onFocus={markTasksSeen}
+          onClick={() => setMobileOpen(false)}
         >
-          <div className="w-[62px] h-[46.5px] overflow-hidden rounded">
+          <div className="relative w-[62px] h-[46.5px] overflow-hidden rounded">
             <Image
               src="/figma/sidebar/upcoming-memoji.png"
               alt=""
@@ -414,23 +455,46 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
               className="w-full h-full object-cover"
               unoptimized
             />
+            {!upcomingTasksLoading && unseenTaskCount > 0 && (
+              <span
+                className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-black/40"
+                aria-label={`${unseenTaskCount} new upcoming task${unseenTaskCount === 1 ? '' : 's'}`}
+              />
+            )}
           </div>
           <div className="text-white font-bold text-[10px] leading-[16px] drop-shadow-sm">Upcoming Tasks</div>
 
-          <div className="pointer-events-none absolute left-[118px] bottom-0 w-[260px] rounded-xl border border-border bg-popover text-popover-foreground p-3 opacity-0 shadow-lg transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 z-50">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Upcoming Tasks</div>
-            <div className="space-y-2">
-              {sidebarUpcomingTasks.map((task) => (
+          <div className="pointer-events-none absolute left-[118px] bottom-0 flex max-h-[70vh] w-[300px] flex-col rounded-xl border border-border bg-popover text-popover-foreground p-3 opacity-0 shadow-lg transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 z-50">
+            <div className="mb-2 shrink-0 flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <span>Upcoming Tasks</span>
+              {!upcomingTasksLoading && upcomingTasks.length > 0 && (
+                <span className="normal-case tracking-normal text-muted-foreground/80">{upcomingTasks.length}</span>
+              )}
+            </div>
+            <div className="space-y-2 overflow-y-auto pr-1">
+              {upcomingTasksLoading && (
+                <div className="text-[11px] text-muted-foreground">Loading…</div>
+              )}
+              {!upcomingTasksLoading && upcomingTasks.length === 0 && (
+                <div className="text-[11px] text-muted-foreground">Nothing scheduled this week.</div>
+              )}
+              {upcomingTasks.map((task) => (
                 <div key={task.id} className="rounded-lg border border-border px-2.5 py-2">
-                  <div className="text-xs font-medium text-foreground leading-4">{task.title}</div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">
-                    Due {taskDateFormatter.format(new Date(task.dueDate))} - {task.assignee}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-medium text-foreground leading-4 truncate">{task.title}</div>
+                    <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground">
+                      {TASK_KIND_LABEL[task.kind] || task.kind}
+                    </span>
+                  </div>
+                  <div className={cn('mt-1 text-[11px]', task.isOverdue ? 'text-destructive' : 'text-muted-foreground')}>
+                    Due {taskDateFormatter.format(new Date(task.dueDate))}
+                    {task.assignee ? ` - ${task.assignee}` : ''}
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
+        </Link>
       </aside>
 
       {/* Fixed-position dropdown so it never clips */}
