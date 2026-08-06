@@ -437,12 +437,14 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
           </nav>
         </div>
 
-        {/* Subscription section */}
-        <div
+        {/* Subscription section — click opens the full Upcoming Tasks page */}
+        <Link
+          href="/dashboard/upcoming-tasks"
           ref={subscriptionRef}
           className="relative group flex shrink-0 flex-col items-center gap-1 p-1 rounded-lg border border-white/15 bg-white/5 w-[112px]"
           onMouseEnter={markTasksSeen}
           onFocus={markTasksSeen}
+          onClick={() => setMobileOpen(false)}
         >
           <div className="relative w-[62px] h-[46.5px] overflow-hidden rounded">
             <Image
@@ -492,7 +494,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
               ))}
             </div>
           </div>
-        </div>
+        </Link>
       </aside>
 
       {/* Fixed-position dropdown so it never clips */}
