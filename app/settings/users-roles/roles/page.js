@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import api from '@/lib/api'
+import { hasPermission } from '@/lib/permissions'
 import { useToast } from '@/components/ui/toast'
 import RolesDialog from './components/RolesDialog'
 import SettingsBackHeader from '../components/SettingsBackHeader'
@@ -66,8 +67,7 @@ function getPermissionActionBadges(actions) {
   const a = actions || {}
   return [
     { key: 'read', label: 'Read', on: !!a.read },
-    { key: 'write', label: 'Write', on: !!a.write },
-    { key: 'edit', label: 'Edit', on: !!a.edit },
+    { key: 'write', label: 'Write', on: !!a.write || !!a.edit },
     { key: 'delete', label: 'Delete', on: !!a.delete },
   ]
 }
@@ -181,6 +181,13 @@ export default function RolesPage() {
   const [customLimit, setCustomLimit] = useState('')
   const [showCustomLimit, setShowCustomLimit] = useState(false)
   const toast = useToast()
+
+  // Reading this page's list already requires settings.roles read (route-gated
+  // via ROUTE_PERMISSIONS); write/delete on the roles themselves — the ability
+  // to grant or revoke access across the whole app — needs its own check, or
+  // anyone who can see the table can also edit or delete any role in it.
+  const canWriteRoles = hasPermission('settings', 'roles', 'write')
+  const canDeleteRoles = hasPermission('settings', 'roles', 'delete')
 
   useEffect(() => {
     loadPermissions()
@@ -398,10 +405,12 @@ export default function RolesPage() {
               </div>
             )}
           </div>
-          <Button variant="gradient" className="w-full sm:w-auto" onClick={openCreateRole}>
-            <Shield className="mr-2 h-4 w-4" />
-            Add Role
-          </Button>
+          {canWriteRoles && (
+            <Button variant="gradient" className="w-full sm:w-auto" onClick={openCreateRole}>
+              <Shield className="mr-2 h-4 w-4" />
+              Add Role
+            </Button>
+          )}
         </div>
 
         {/* Loading */}
@@ -506,15 +515,19 @@ export default function RolesPage() {
                               <DropdownMenuItem onClick={() => setSelectedRoleId(role._id)}>
                                 View
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openEditRole(role)}>
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-red-600"
-                                onClick={() => handleDeleteRole(role._id)}
-                              >
-                                Delete
-                              </DropdownMenuItem>
+                              {canWriteRoles && (
+                                <DropdownMenuItem onClick={() => openEditRole(role)}>
+                                  Edit
+                                </DropdownMenuItem>
+                              )}
+                              {canDeleteRoles && (
+                                <DropdownMenuItem
+                                  className="text-red-600"
+                                  onClick={() => handleDeleteRole(role._id)}
+                                >
+                                  Delete
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -585,10 +598,12 @@ export default function RolesPage() {
             <Shield className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
             <p className="text-muted-foreground">No roles found</p>
             <p className="mt-1 text-sm text-muted-foreground/80">Create your first role to get started</p>
-            <Button variant="gradient" className="mt-4" onClick={openCreateRole}>
-              <Shield className="mr-2 h-4 w-4" />
-              Add Role
-            </Button>
+            {canWriteRoles && (
+              <Button variant="gradient" className="mt-4" onClick={openCreateRole}>
+                <Shield className="mr-2 h-4 w-4" />
+                Add Role
+              </Button>
+            )}
           </div>
         )}
 
@@ -658,27 +673,33 @@ export default function RolesPage() {
                 {/* Permissions breakdown */}
                 <PermissionsTable permissions={selectedRole.permissions} />
 
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setSelectedRoleId(null)
-                      openEditRole(selectedRole)
-                    }}
-                  >
-                    <Edit className="mr-2 h-4 w-4" />
-                    Edit Role
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    className="flex-1"
-                    onClick={() => handleDeleteRole(selectedRole._id)}
-                  >
-                    <Trash className="mr-2 h-4 w-4" />
-                    Delete
-                  </Button>
-                </div>
+                {(canWriteRoles || canDeleteRoles) && (
+                  <div className="flex gap-2">
+                    {canWriteRoles && (
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          setSelectedRoleId(null)
+                          openEditRole(selectedRole)
+                        }}
+                      >
+                        <Edit className="mr-2 h-4 w-4" />
+                        Edit Role
+                      </Button>
+                    )}
+                    {canDeleteRoles && (
+                      <Button
+                        variant="destructive"
+                        className="flex-1"
+                        onClick={() => handleDeleteRole(selectedRole._id)}
+                      >
+                        <Trash className="mr-2 h-4 w-4" />
+                        Delete
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="py-12 text-center">

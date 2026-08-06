@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { createPortal } from "react-dom";
+import { useSearchParams } from "next/navigation";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -14,6 +15,8 @@ import EventDetailPanel from "./components/EventDetailPanel";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toStudioLocalDate } from "@/lib/studioLocalDate";
+import { getCurrentUserId } from "@/lib/auth";
+import { isOwnScope } from "@/lib/permissions";
 
 const COLORS = {
   border: "hsl(var(--border))",
@@ -3128,7 +3131,7 @@ function PrivateLessonSummaryBar({ viewMode, focusDate, events, allServices = []
   );
 }
 
-function TeacherFilterDropdown({ instructors, value, onChange, compact = false }) {
+function TeacherFilterDropdown({ instructors, value, onChange, compact = false, locked = false }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef(null);
@@ -3139,6 +3142,25 @@ function TeacherFilterDropdown({ instructors, value, onChange, compact = false }
     : compact
       ? "Teacher"
       : "T";
+
+  // Own-scope: the server already returns only this user's data, so there's
+  // nothing to filter between — render a static pill instead of a picker that
+  // would otherwise offer a "clear filter" path back to an empty list.
+  if (locked) {
+    return (
+      <div className="h-8 rounded-[20px] border border-border bg-muted/40 px-2.5 sm:px-3 text-[11px] font-bold text-foreground inline-flex shrink-0 items-center gap-1.5 max-w-[130px] sm:max-w-none">
+        {current && (
+          <span
+            className="h-5 w-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold text-white"
+            style={{ backgroundColor: current.color }}
+          >
+            {current.initials}
+          </span>
+        )}
+        <span className="truncate">{current?.name || triggerLabel}</span>
+      </div>
+    );
+  }
 
   const filtered = query.trim()
     ? instructors.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()))
@@ -3234,7 +3256,8 @@ function TeacherFilterDropdown({ instructors, value, onChange, compact = false }
 }
 
 
-export default function CalendarPage() {
+function CalendarPageInner() {
+  const searchParams = useSearchParams();
   const calendarRef = useRef(null);
   const [focusDate, setFocusDate] = useState(() => new Date());
   const [viewMode, setViewMode] = useState(VIEW_MODE.DAY);
@@ -3252,7 +3275,20 @@ export default function CalendarPage() {
   const [allServices, setAllServices] = useState([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedTeacherId, setSelectedTeacherId] = useState(null);
+  // Own-scope calendar.bookings means the server already returns only this
+  // user's events and /api/teacher only returns them as a teacher — locking the
+  // client filter to self too is belt-and-braces, not the real enforcement.
+  // Gated on a resolved user id so a session predating the /api/auth/me
+  // rollout (no _id yet) can't lock onto `undefined` and blank the calendar.
+  const currentUserId = useMemo(() => getCurrentUserId(), []);
+  const lockToSelf = isOwnScope("calendar", "bookings") && !!currentUserId;
+  // /settings/users-roles/teachers links here with ?teacherID=<id> to jump
+  // straight to one teacher's schedule. Own-scope wins when both apply — a
+  // locked session has nothing else to show regardless of the link.
+  const deepLinkTeacherId = searchParams?.get("teacherID") || null;
+  const [selectedTeacherId, setSelectedTeacherId] = useState(() =>
+    lockToSelf ? String(currentUserId) : deepLinkTeacherId
+  );
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [slotSelection, setSlotSelection] = useState(null);
   const [hideEmptySlots, setHideEmptySlots] = useState(false);
@@ -3386,11 +3422,14 @@ export default function CalendarPage() {
             color: CALENDAR_PALETTE[idx % CALENDAR_PALETTE.length],
           };
         });
-        allTeachersRef.current = fetched;
+        // The server already scopes this list to self under own-scope; filtering
+        // here too is a defensive backstop, not the enforcement.
+        const visible = lockToSelf ? fetched.filter((t) => t.key === String(currentUserId)) : fetched;
+        allTeachersRef.current = visible;
         // Replace instructor list with only active teachers, preserving event-derived data
         setInstructors((prev) => {
           const prevMap = new Map(prev.map((i) => [i.key, i]));
-          return fetched.map((t) => prevMap.get(t.key) ?? t);
+          return visible.map((t) => prevMap.get(t.key) ?? t);
         });
       }
     });
@@ -3671,6 +3710,7 @@ export default function CalendarPage() {
                     instructors={instructors}
                     value={selectedTeacherId}
                     onChange={setSelectedTeacherId}
+                    locked={lockToSelf}
                   />
                 )}
                 <StatusFilterDropdown value={statusFilter} onChange={setStatusFilter} />
@@ -3757,6 +3797,7 @@ export default function CalendarPage() {
                     instructors={instructors}
                     value={selectedTeacherId}
                     onChange={setSelectedTeacherId}
+                    locked={lockToSelf}
                   />
                 )}
                 <StatusFilterDropdown compact value={statusFilter} onChange={setStatusFilter} />
@@ -3994,6 +4035,17 @@ export default function CalendarPage() {
         </div>
       </div>
     </MainLayout>
+  );
+}
+
+// useSearchParams (for the ?teacherID= deep link) requires a Suspense boundary
+// around anything that reads it, or Next opts the whole page out of static
+// rendering with a build warning.
+export default function CalendarPage() {
+  return (
+    <Suspense fallback={null}>
+      <CalendarPageInner />
+    </Suspense>
   );
 }
 //

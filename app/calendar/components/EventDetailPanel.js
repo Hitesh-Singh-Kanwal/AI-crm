@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import api from "@/lib/api";
+import { hasPermission } from "@/lib/permissions";
 import { studioWallTimeToUtcISO } from "@/lib/studio-time";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
@@ -2068,53 +2069,55 @@ export default function EventDetailPanel({
                 ) : null}
 
                 {/* Delete */}
-                {confirmDelete ? (
-                  <div className="space-y-2">
-                    {isRecurring && (
-                      <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-medium">
+                {hasPermission("calendar", "bookings", "delete") && (
+                  confirmDelete ? (
+                    <div className="space-y-2">
+                      {isRecurring && (
+                        <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-medium">
+                          <button
+                            type="button"
+                            onClick={() => setDeleteScope("this")}
+                            className={`flex-1 py-1.5 transition-colors ${deleteScope === "this" ? "bg-destructive text-white" : "text-muted-foreground hover:bg-muted/40"}`}
+                          >
+                            This event only
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteScope("all")}
+                            className={`flex-1 py-1.5 transition-colors ${deleteScope === "all" ? "bg-destructive text-white" : "text-muted-foreground hover:bg-muted/40"}`}
+                          >
+                            All in series
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => setDeleteScope("this")}
-                          className={`flex-1 py-1.5 transition-colors ${deleteScope === "this" ? "bg-destructive text-white" : "text-muted-foreground hover:bg-muted/40"}`}
+                          onClick={() => setConfirmDelete(false)}
+                          className="flex-1 h-9 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40"
                         >
-                          This event only
+                          Keep
                         </button>
                         <button
                           type="button"
-                          onClick={() => setDeleteScope("all")}
-                          className={`flex-1 py-1.5 transition-colors ${deleteScope === "all" ? "bg-destructive text-white" : "text-muted-foreground hover:bg-muted/40"}`}
+                          onClick={handleDelete}
+                          disabled={isDeleting}
+                          className="flex-1 h-9 rounded-lg bg-destructive text-[12px] font-semibold text-white hover:bg-destructive/90 disabled:opacity-60"
                         >
-                          All in series
+                          {isDeleting ? "Deleting…" : "Confirm Delete"}
                         </button>
                       </div>
-                    )}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDelete(false)}
-                        className="flex-1 h-9 rounded-lg border border-border bg-background text-[12px] font-semibold text-foreground hover:bg-muted/40"
-                      >
-                        Keep
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleDelete}
-                        disabled={isDeleting}
-                        className="flex-1 h-9 rounded-lg bg-destructive text-[12px] font-semibold text-white hover:bg-destructive/90 disabled:opacity-60"
-                      >
-                        {isDeleting ? "Deleting…" : "Confirm Delete"}
-                      </button>
                     </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(true)}
-                    className="w-full h-9 rounded-lg border border-destructive/40 text-[12px] font-semibold text-destructive hover:bg-destructive/10 flex items-center justify-center gap-1.5"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete Permanently
-                  </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(true)}
+                      className="w-full h-9 rounded-lg border border-destructive/40 text-[12px] font-semibold text-destructive hover:bg-destructive/10 flex items-center justify-center gap-1.5"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete Permanently
+                    </button>
+                  )
                 )}
               </>
             )}

@@ -13,6 +13,7 @@ import LocationsDialog from './components/LocationsDialog'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { getEffectiveBranch } from '@/lib/auth'
+import { hasPermission } from '@/lib/permissions'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatTimezoneLabel } from '@/lib/timezones'
@@ -35,6 +36,9 @@ export default function LocationsPage() {
   const [customLimit, setCustomLimit] = useState('')
   const [showCustomLimit, setShowCustomLimit] = useState(false)
   const toast = useToast()
+
+  const canWriteLocations = hasPermission('settings', 'locations', 'write')
+  const canDeleteLocations = hasPermission('settings', 'locations', 'delete')
 
   // Debounce search query
   useEffect(() => {
@@ -296,10 +300,12 @@ export default function LocationsPage() {
               )}
             </div>
 
-            <Button variant="gradient" className="w-full sm:w-auto" onClick={openLocationsDialog}>
-              <Building2 className="h-4 w-4 mr-2" />
-              Add Location
-            </Button>
+            {canWriteLocations && (
+              <Button variant="gradient" className="w-full sm:w-auto" onClick={openLocationsDialog}>
+                <Building2 className="h-4 w-4 mr-2" />
+                Add Location
+              </Button>
+            )}
           </div>
         </div>
 
@@ -540,27 +546,33 @@ export default function LocationsPage() {
                   )}
                 </div>
 
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setSelectedLocationId(null)
-                      setLocationsDialogInitialId(selectedLocation._id)
-                      setLocationsDialogOpen(true)
-                    }}
-                  >
-                    <Building2 className="h-4 w-4 mr-2" />
-                    Edit Location
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    className="flex-1"
-                    onClick={() => handleDeleteLocation(selectedLocation._id)}
-                  >
-                    Delete
-                  </Button>
-                </div>
+                {(canWriteLocations || canDeleteLocations) && (
+                  <div className="flex gap-2">
+                    {canWriteLocations && (
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          setSelectedLocationId(null)
+                          setLocationsDialogInitialId(selectedLocation._id)
+                          setLocationsDialogOpen(true)
+                        }}
+                      >
+                        <Building2 className="h-4 w-4 mr-2" />
+                        Edit Location
+                      </Button>
+                    )}
+                    {canDeleteLocations && (
+                      <Button
+                        variant="destructive"
+                        className="flex-1"
+                        onClick={() => handleDeleteLocation(selectedLocation._id)}
+                      >
+                        Delete
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-12">

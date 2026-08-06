@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { Building2, Check, ChevronDown, MapPin } from 'lucide-react'
-import { getSelectedBranch, setSelectedBranch, isSuperAdmin } from '@/lib/auth'
+import { getSelectedBranch, setSelectedBranch } from '@/lib/auth'
+import { isSuperAdmin } from '@/lib/permissions'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 
