@@ -42,10 +42,28 @@ function resolveContactType(leadOrConv = {}) {
     if (explicit.startsWith('customer')) return 'Customer'
     return 'Lead'
   }
+  // Converted only after payment — pending_payment / engaged / etc. stay Leads.
   if (leadOrConv.convertedCustomerID || String(leadOrConv.stage || '').toLowerCase() === 'converted') {
     return 'Customer'
   }
   return 'Lead'
+}
+
+/** Inbox type for a lead profile refresh — never invent Teacher from phone collision. */
+function resolveLeadProfileInboxType(lead = {}, previousType = null) {
+  if (lead?.convertedCustomerID || String(lead?.stage || '').toLowerCase() === 'converted') {
+    return 'Customer'
+  }
+  // Preserve Teacher when inbox already classified this thread that way.
+  const prev = String(previousType || '').toLowerCase()
+  if (prev.startsWith('teacher')) return 'Teacher'
+  return 'Lead'
+}
+
+function inboxFilterParamForType(contactTypeLabel) {
+  if (contactTypeLabel === 'Teachers') return 'teachers'
+  if (contactTypeLabel === 'Customers') return 'all'
+  return 'leads'
 }
 
 function buildInboxData(smsRecords, emailRecords) {
@@ -244,7 +262,7 @@ function InboxPageContent() {
   const { setInboxCounts } = useInboxHeader()
   const toast = useToast()
   const [selectedConversation, setSelectedConversation] = useState(null)
-  const [showDetails, setShowDetails] = useState(true)
+  const [showDetails, setShowDetails] = useState(false)
   const [showContactList, setShowContactList] = useState(true)
   const [isLgUp, setIsLgUp] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -452,7 +470,7 @@ function InboxPageContent() {
       if (!matches) {
         setShowDetails(false)
       } else {
-        setShowDetails(true)
+        // Keep profile sidebar closed by default; user opens via "View profile".
         setShowContactList(true)
       }
     }
@@ -482,7 +500,9 @@ function InboxPageContent() {
     return list
   }, [filteredConversations, searchQuery, contactFilter])
 
-  // Drop selection when the active filter/search hides the current conversation
+  // When the active filter/search hides the current conversation, clear selection.
+  // Do NOT force the tab back to the selected contact's type — that blocked
+  // switching between Customers / Leads / Teachers.
   useEffect(() => {
     if (!selectedConversation) return
     const stillVisible = displayedConversations.some((c) => c.id === selectedConversation)
@@ -516,44 +536,45 @@ function InboxPageContent() {
       setSelectedLeadData(null)
       return
     }
-    const conv = conversations.find((c) => c.id === selectedConversation)
-    const leadId = conv?.contact?.id
-    if (!leadId || !selectedConversation.startsWith('lead-')) {
+    if (!selectedConversation.startsWith('lead-')) {
       setSelectedLeadData(null)
       return
     }
+    const leadId = selectedConversation.replace('lead-', '')
     let cancelled = false
     api.get(`/api/lead/${leadId}`).then((res) => {
       if (cancelled) return
       const lead = res.data || null
       setSelectedLeadData(lead)
-      if (lead?.email || lead?.phoneNumber || lead?.stage || lead?.convertedCustomerID) {
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === selectedConversation
-              ? {
-                  ...c,
-                  contact: {
-                    ...c.contact,
-                    email: lead.email || c.contact.email,
-                    // Trust the lead profile phone (including empty) so email-only
-                    // leads don't keep a stale SMS/other number on the contact.
-                    phoneNumber: lead.phoneNumber || '',
-                    stage: lead.stage || c.contact.stage,
-                    name: lead.name || c.contact.name,
-                    type: resolveContactType(lead),
-                    locationID: lead.locationID || c.contact.locationID || [],
-                  },
-                }
-              : c,
-          ),
-        )
-      }
+      if (!lead) return
+      // Update profile fields only. Do NOT force-switch inbox tabs here —
+      // that fought header tab clicks (Customers / Leads / Teachers).
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedConversation
+            ? {
+                ...c,
+                contact: {
+                  ...c.contact,
+                  email: lead.email || c.contact.email,
+                  phoneNumber: lead.phoneNumber || '',
+                  stage: lead.stage || c.contact.stage,
+                  name: lead.name || c.contact.name,
+                  // Pending Payment / Engaged stay Leads until payment converts them.
+                  // Preserve Teacher if this thread was already classified that way.
+                  type: resolveLeadProfileInboxType(lead, c.contact.type),
+                  convertedCustomerID: lead.convertedCustomerID || null,
+                  locationID: lead.locationID || c.contact.locationID || [],
+                },
+              }
+            : c,
+        ),
+      )
     }).catch(() => {
       if (!cancelled) setSelectedLeadData(null)
     })
     return () => { cancelled = true }
-  }, [selectedConversation, conversations])
+  }, [selectedConversation])
 
   const selectedConvData = selectedConversation
     ? (displayedConversations.find((c) => c.id === selectedConversation) ||
@@ -867,12 +888,7 @@ function InboxPageContent() {
     selectedConversationRef.current = convId
 
     const contactTypeLabel = normalizeContactType(resolveContactType(lead)) || 'Leads'
-    const filterParam =
-      contactTypeLabel === 'Teachers'
-        ? 'teachers'
-        : contactTypeLabel === 'Customers'
-          ? 'all'
-          : 'leads'
+    const filterParam = inboxFilterParamForType(contactTypeLabel)
 
     setConversations((prev) => {
       if (prev.find((c) => c.id === convId)) return prev
