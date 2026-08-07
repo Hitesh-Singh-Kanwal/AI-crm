@@ -327,10 +327,20 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
 
           <nav className="flex flex-col items-center gap-1 rounded-r-[24px]">
             {navItems.map((item) => {
-              const hasAccess = item.href ? canAccessRoute(item.href) : true
-              if (!hasAccess) return null
+              // A parent is visible if its own href passes OR any of its
+              // children do. Gating on the parent href alone hid whole sections
+              // from users who could use them — e.g. a call-center role has
+              // inbox.CallCenter but not inbox.AllMessages, and the Inbox
+              // parent points at /inbox, so the one child they could open was
+              // unreachable (the parent button preventDefaults and never
+              // navigates, so there was no way in).
+              const accessibleChildren = Array.isArray(item.children)
+                ? item.children.filter((child) => (child.href ? canAccessRoute(child.href) : true))
+                : []
+              const hasOwnAccess = item.href ? canAccessRoute(item.href) : true
+              if (!hasOwnAccess && accessibleChildren.length === 0) return null
 
-              const hasChildren = Array.isArray(item.children) && item.children.length > 0
+              const hasChildren = accessibleChildren.length > 0
               const isActive =
                 item.href === '/'
                   ? pathname === '/'

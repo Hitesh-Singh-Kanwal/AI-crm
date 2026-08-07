@@ -21,17 +21,26 @@ export default function RoleEditor({
   permissionsSchema,
   onChange,
   togglePermission,
+  toggleSubPermission,
   toggleAllPermissions,
   toggleColumnPermission,
+  setPermissionScope,
+  presets,
+  onApplyPreset,
   onSave,
   onDelete,
   onCancel,
   embedded = false,
 }) {
   const [expandedSections, setExpandedSections] = useState({})
+  const [expandedModules, setExpandedModules] = useState({})
 
   function toggleSection(key) {
     setExpandedSections((p) => ({ ...p, [key]: !p[key] }))
+  }
+
+  function toggleModule(key) {
+    setExpandedModules((p) => ({ ...p, [key]: !p[key] }))
   }
 
   const showCompactHeader = embedded
@@ -89,6 +98,33 @@ export default function RoleEditor({
 
       {(editingRole || isCreating) && (
         <div className="space-y-6">
+          {/* Starting point — only offered while creating. Applying one after
+              permissions have already been hand-tuned would be a surprising
+              way to lose that work, so it isn't offered on existing roles. */}
+          {isCreating && Array.isArray(presets) && presets.length > 0 && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-foreground">
+                Start from a template
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Optional — pick a starting point, then adjust anything below. Applying one overwrites only the modules it sets.
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {presets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => onApplyPreset?.(preset)}
+                    className="rounded-lg border border-border bg-muted/30 p-3 text-left text-sm transition-colors hover:border-brand/40 hover:bg-brand/5"
+                  >
+                    <p className="font-medium text-foreground">{preset.label}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{preset.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Role name + calendar visibility */}
           <div className="space-y-4">
             <div>
@@ -218,9 +254,9 @@ export default function RoleEditor({
             </p>
             <ul className="ml-1 space-y-1 text-xs text-muted-foreground">
               <li><span className="font-medium text-foreground">Read</span> — view the resource.</li>
-              <li><span className="font-medium text-foreground">Write</span> — create new entries.</li>
-              <li><span className="font-medium text-foreground">Edit</span> — update existing entries.</li>
+              <li><span className="font-medium text-foreground">Write</span> — create and update entries.</li>
               <li><span className="font-medium text-foreground">Delete</span> — permanently remove entries.</li>
+              <li><span className="font-medium text-foreground">Data scope</span> — where available, restrict this role to only the records assigned to them (their own classes, students, or calls) instead of everyone's.</li>
             </ul>
 
             <div className="space-y-4">
@@ -229,6 +265,10 @@ export default function RoleEditor({
                   const isExpanded = expandedSections[sectionKey] !== false
                   const perms = Object.entries(sectionVal.permissions || {})
                   const permKeys = perms.map(([permKey]) => permKey)
+                  // Only sections with at least one scopeable module get the
+                  // extra column — Settings, Marketing etc. stay their current
+                  // width rather than showing a column of dashes.
+                  const sectionHasScope = perms.some(([, permVal]) => permVal?.scopeable)
                   const columnAllOn = (action) =>
                     perms.length > 0 &&
                     perms.every(([permKey]) => {
@@ -264,7 +304,7 @@ export default function RoleEditor({
                                 <TableHead className="font-semibold text-foreground">
                                   Resource
                                 </TableHead>
-                                {['read', 'write', 'edit', 'delete'].map((action) => (
+                                {['read', 'write', 'delete'].map((action) => (
                                   <TableHead
                                     key={action}
                                     className="w-20 cursor-pointer select-none text-center text-xs font-medium text-muted-foreground hover:text-foreground"
@@ -279,6 +319,11 @@ export default function RoleEditor({
                                 <TableHead className="w-20 text-center text-xs font-medium text-muted-foreground">
                                   All
                                 </TableHead>
+                                {sectionHasScope && (
+                                  <TableHead className="w-36 text-center text-xs font-medium text-muted-foreground">
+                                    Data scope
+                                  </TableHead>
+                                )}
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -293,25 +338,43 @@ export default function RoleEditor({
                                 const isMasterRow = sectionKey === 'master' && permKey === '*'
                                 const overridden = (action) => !isMasterRow && !!masterPerms[action]
                                 const allOverridden =
-                                  overridden('read') && overridden('write') && overridden('edit') && overridden('delete')
+                                  overridden('read') && overridden('write') && overridden('delete')
                                 const allOn =
                                   (current.read || overridden('read')) &&
                                   (current.write || overridden('write')) &&
-                                  (current.edit || overridden('edit')) &&
                                   (current.delete || overridden('delete'))
+                                const subPermEntries = Object.entries(permVal.subPermissions || {})
+                                const moduleKey = `${sectionKey}.${permKey}`
+                                const moduleExpanded = !!expandedModules[moduleKey]
                                 return (
+                                  <React.Fragment key={permKey}>
                                   <TableRow
-                                    key={permKey}
                                     className="hover:bg-muted/40"
                                   >
                                     <TableCell>
-                                      <div>
-                                        <p className="font-medium text-foreground">{permVal.label || (permKey === '*' ? 'Master' : permKey)}</p>
-                                        {permVal.description && (
-                                          <p className="text-xs text-muted-foreground">
-                                            {permVal.description}
-                                          </p>
+                                      <div className="flex items-start gap-1.5">
+                                        {subPermEntries.length > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleModule(moduleKey)}
+                                            className="mt-0.5 shrink-0 text-muted-foreground/80 hover:text-foreground"
+                                            title="Show sub-permissions"
+                                          >
+                                            {moduleExpanded ? (
+                                              <ChevronDown className="h-3.5 w-3.5" />
+                                            ) : (
+                                              <ChevronRight className="h-3.5 w-3.5" />
+                                            )}
+                                          </button>
                                         )}
+                                        <div>
+                                          <p className="font-medium text-foreground">{permVal.label || (permKey === '*' ? 'Master' : permKey)}</p>
+                                          {permVal.description && (
+                                            <p className="text-xs text-muted-foreground">
+                                              {permVal.description}
+                                            </p>
+                                          )}
+                                        </div>
                                       </div>
                                     </TableCell>
                                     <TableCell className="text-center">
@@ -338,17 +401,6 @@ export default function RoleEditor({
                                     </TableCell>
                                     <TableCell className="text-center">
                                       <Switch
-                                        checked={!!current.edit || overridden('edit')}
-                                        disabled={overridden('edit')}
-                                        title={overridden('edit') ? 'Granted by All Permissions (Master)' : undefined}
-                                        className={cn(overridden('edit') && 'opacity-70 cursor-not-allowed')}
-                                        onChange={() =>
-                                          togglePermission(sectionKey, permKey, 'edit')
-                                        }
-                                      />
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                      <Switch
                                         checked={!!current.delete || overridden('delete')}
                                         disabled={overridden('delete')}
                                         title={overridden('delete') ? 'Granted by All Permissions (Master)' : undefined}
@@ -365,7 +417,7 @@ export default function RoleEditor({
                                         title={
                                           allOverridden
                                             ? 'Granted by All Permissions (Master)'
-                                            : 'Toggle read, write, edit, and delete at once'
+                                            : 'Toggle read, write, and delete at once'
                                         }
                                         className={cn(allOverridden && 'opacity-70 cursor-not-allowed')}
                                         onChange={() =>
@@ -373,7 +425,58 @@ export default function RoleEditor({
                                         }
                                       />
                                     </TableCell>
+                                    {sectionHasScope && (
+                                      <TableCell className="text-center">
+                                        {permVal.scopeable ? (
+                                          <select
+                                            className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                                            value={overridden('read') ? 'all' : current.scope === 'own' ? 'own' : 'all'}
+                                            disabled={overridden('read') || !(current.read || current.write || current.delete)}
+                                            title={
+                                              overridden('read')
+                                                ? 'Granted by All Permissions (Master) — always All'
+                                                : !(current.read || current.write || current.delete)
+                                                  ? 'Grant Read, Write or Delete first'
+                                                  : 'All: every record in the studio. Own: only records assigned to this user.'
+                                            }
+                                            onChange={(e) => setPermissionScope(sectionKey, permKey, e.target.value)}
+                                          >
+                                            <option value="all">{permVal.scopeLabels?.all || 'All'}</option>
+                                            <option value="own">{permVal.scopeLabels?.own || 'Own only'}</option>
+                                          </select>
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground/40">—</span>
+                                        )}
+                                      </TableCell>
+                                    )}
                                   </TableRow>
+                                  {moduleExpanded && subPermEntries.length > 0 && (
+                                    <TableRow className="hover:bg-transparent">
+                                      <TableCell
+                                        colSpan={4 + (sectionHasScope ? 1 : 0)}
+                                        className="bg-muted/20 py-3"
+                                      >
+                                        <div className="ml-6 flex flex-wrap gap-x-6 gap-y-2">
+                                          {subPermEntries.map(([subKey, subVal]) => (
+                                            <label
+                                              key={subKey}
+                                              className="flex items-center gap-2 text-xs text-foreground"
+                                              title={subVal.description}
+                                            >
+                                              <Switch
+                                                checked={!!current.subPermissions?.[subKey]}
+                                                onChange={() =>
+                                                  toggleSubPermission(sectionKey, permKey, subKey)
+                                                }
+                                              />
+                                              {subVal.label || subKey}
+                                            </label>
+                                          ))}
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                  </React.Fragment>
                                 )
                               })}
                             </TableBody>

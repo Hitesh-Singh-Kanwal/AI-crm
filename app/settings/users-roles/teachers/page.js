@@ -29,6 +29,7 @@ import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { getInitials, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { hasPermission } from '@/lib/permissions'
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -300,6 +301,11 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
 
 export default function TeachersPage() {
   const router = useRouter()
+  // Teachers are Users with role "teacher" — create/edit/delete go through
+  // /api/user (see teachers.routes.js), so they follow settings.users, not
+  // calendar.teachers (which only gates reading the roster).
+  const canWriteTeachers = hasPermission('settings', 'users', 'write')
+  const canDeleteTeachers = hasPermission('settings', 'users', 'delete')
   const [teachers, setTeachers] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -367,10 +373,12 @@ export default function TeachersPage() {
             <h1 className="text-xl font-semibold text-foreground">Teachers</h1>
             <p className="mt-0.5 text-[13px] text-muted-foreground">Manage your studio's teachers</p>
           </div>
-          <Button onClick={() => { setEditingTeacher(null); setDialogOpen(true) }}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            Add Teacher
-          </Button>
+          {canWriteTeachers && (
+            <Button onClick={() => { setEditingTeacher(null); setDialogOpen(true) }}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add Teacher
+            </Button>
+          )}
         </div>
 
         {/* Filters */}
@@ -496,17 +504,21 @@ export default function TeachersPage() {
                             <CalendarDays className="mr-2 h-3.5 w-3.5" />
                             View on Calendar
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { setEditingTeacher(teacher); setDialogOpen(true) }}>
-                            <Pencil className="mr-2 h-3.5 w-3.5" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeleteTarget(teacher)}
-                          >
-                            <Trash2 className="mr-2 h-3.5 w-3.5" />
-                            Delete
-                          </DropdownMenuItem>
+                          {canWriteTeachers && (
+                            <DropdownMenuItem onClick={() => { setEditingTeacher(teacher); setDialogOpen(true) }}>
+                              <Pencil className="mr-2 h-3.5 w-3.5" />
+                              Edit
+                            </DropdownMenuItem>
+                          )}
+                          {canDeleteTeachers && (
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeleteTarget(teacher)}
+                            >
+                              <Trash2 className="mr-2 h-3.5 w-3.5" />
+                              Delete
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

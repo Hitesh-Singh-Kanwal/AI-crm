@@ -42,6 +42,7 @@ import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow
 import { normalizeConditionsForForm } from '@/lib/dynamic-list-normalize'
 import { formatLeadStageLabel, getLeadStageBadgeClass } from '@/lib/lead-stages'
 import { getCurrentUser } from '@/lib/auth'
+import { hasPermission } from '@/lib/permissions'
 import { isViewingAllBranches, getBranchQueryParam } from '@/lib/branch-filter'
 
 const LEAD_CSV_FIELDS = [
@@ -68,6 +69,8 @@ function toRecipientLead(lead) {
 }
 
 export default function LeadsPage() {
+  const canWriteLeads = hasPermission('leads', 'manage', 'write')
+  const canDeleteLeads = hasPermission('leads', 'manage', 'delete')
   const [selectedIds, setSelectedIds] = useState([])
   const [selectedLeadsData, setSelectedLeadsData] = useState([])
   const [selectingAll, setSelectingAll] = useState(false)
@@ -400,17 +403,23 @@ export default function LeadsPage() {
               entityLabel="Lead"
               fields={LEAD_CSV_FIELDS}
               getExportRows={handleExportLeads}
-              onImportRows={handleImportLeads}
-              disabled={isViewingAllBranches()}
-              disabledReason="Select a specific branch to import or export leads"
+              onImportRows={canWriteLeads ? handleImportLeads : undefined}
+              disabled={isViewingAllBranches() || !canWriteLeads}
+              disabledReason={
+                !canWriteLeads
+                  ? "You don't have permission to import leads"
+                  : 'Select a specific branch to import or export leads'
+              }
             />
-            <Button
-              className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
-              onClick={openCreateDialog}
-            >
-              <Plus className="h-4 w-4" />
-              Add Leads
-            </Button>
+            {canWriteLeads && (
+              <Button
+                className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
+                onClick={openCreateDialog}
+              >
+                <Plus className="h-4 w-4" />
+                Add Leads
+              </Button>
+            )}
           </div>
         </div>
 
@@ -570,21 +579,27 @@ export default function LeadsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => openViewDialog(lead._id)}>View</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openEditDialog(lead._id)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleConvertToCustomer(lead)}
-                          disabled={!!lead.convertedCustomerID || convertingId === lead._id}
-                          className="flex items-center gap-2"
-                        >
-                          <UserCheck className="h-3.5 w-3.5" />
-                          {lead.convertedCustomerID ? 'Already a Customer' : convertingId === lead._id ? 'Converting…' : 'Convert to Customer'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleDeleteLead(lead._id)}
-                        >
-                          Delete
-                        </DropdownMenuItem>
+                        {canWriteLeads && (
+                          <DropdownMenuItem onClick={() => openEditDialog(lead._id)}>Edit</DropdownMenuItem>
+                        )}
+                        {canWriteLeads && (
+                          <DropdownMenuItem
+                            onClick={() => handleConvertToCustomer(lead)}
+                            disabled={!!lead.convertedCustomerID || convertingId === lead._id}
+                            className="flex items-center gap-2"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                            {lead.convertedCustomerID ? 'Already a Customer' : convertingId === lead._id ? 'Converting…' : 'Convert to Customer'}
+                          </DropdownMenuItem>
+                        )}
+                        {canDeleteLeads && (
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleDeleteLead(lead._id)}
+                          >
+                            Delete
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

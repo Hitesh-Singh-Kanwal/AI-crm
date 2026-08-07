@@ -18,6 +18,7 @@ import StylePanel from '@/components/forms/StylePanel'
 import GlobalStylePanel from '@/components/forms/GlobalStylePanel'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { getCurrentUser } from '@/lib/auth'
+import { hasPermission } from '@/lib/permissions'
 import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -945,6 +946,8 @@ function FormsPageInner() {
   const searchParams = useSearchParams()
   const activeTab = searchParams.get('view') || 'templates'
   const user = getCurrentUser()
+  const canWriteForms = hasPermission('marketing', 'forms', 'write')
+  const canDeleteForms = hasPermission('marketing', 'forms', 'delete')
 
   // Forms list (templates view)
   const [forms, setForms] = useState([])
@@ -2867,10 +2870,12 @@ ${getFormPhoneExportRuntimeScript()}
           <div className="space-y-6 flex-1 min-h-0 flex flex-col">
             <div className="flex items-center justify-between">
               <p className="text-slate-600">Browse and manage your forms</p>
-              <Button variant="gradient" onClick={openBuilderForNew}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create New Form
-              </Button>
+              {canWriteForms && (
+                <Button variant="gradient" onClick={openBuilderForNew}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create New Form
+                </Button>
+              )}
             </div>
 
             {/* Search */}
@@ -2982,24 +2987,26 @@ ${getFormPhoneExportRuntimeScript()}
                               variant="outline"
                               size="sm"
                               className="flex-1"
-                              disabled={isInactive || cloningFormId === form._id}
+                              disabled={isInactive || cloningFormId === form._id || !canWriteForms}
                               onClick={() => cloneForm(form)}
                             >
                               <Copy className="h-3.5 w-3.5 mr-1.5" />
                               {cloningFormId === form._id ? 'Cloning…' : 'Clone'}
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => deleteForm(form)}
-                              disabled={deletingFormId === form._id}
-                              title="Delete"
-                            >
-                              {deletingFormId === form._id
-                                ? <GlobalLoader variant="inline" size="xs" />
-                                : <Trash2 className="h-3.5 w-3.5" />}
-                            </Button>
+                            {canDeleteForms && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => deleteForm(form)}
+                                disabled={deletingFormId === form._id}
+                                title="Delete"
+                              >
+                                {deletingFormId === form._id
+                                  ? <GlobalLoader variant="inline" size="xs" />
+                                  : <Trash2 className="h-3.5 w-3.5" />}
+                              </Button>
+                            )}
                           </div>
                         </CardContent>
                       </Card>

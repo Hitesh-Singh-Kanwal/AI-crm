@@ -28,6 +28,7 @@ import {
 import UsersDialog from './components/UsersDialog'
 import SettingsBackHeader from '../components/SettingsBackHeader'
 import { getCurrentUser } from '@/lib/auth'
+import { hasPermission } from '@/lib/permissions'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { getInitials, formatDate } from '@/lib/utils'
@@ -59,6 +60,8 @@ export default function UsersPage() {
   const [limit, setLimit] = useState(10) // Items per page (default: 10)
   const [customLimit, setCustomLimit] = useState('')
   const [showCustomLimit, setShowCustomLimit] = useState(false)
+  const canWriteUsers = hasPermission('settings', 'users', 'write')
+  const canDeleteUsers = hasPermission('settings', 'users', 'delete')
   const toast = useToast()
 
   // Load available roles on mount
@@ -382,10 +385,12 @@ export default function UsersPage() {
               </div>
             )}
           </div>
-          <Button variant="gradient" className="w-full sm:w-auto" onClick={openUsersDialog}>
-            <UserCog className="h-4 w-4 mr-2" />
-            Add User
-          </Button>
+          {canWriteUsers && (
+            <Button variant="gradient" className="w-full sm:w-auto" onClick={openUsersDialog}>
+              <UserCog className="h-4 w-4 mr-2" />
+              Add User
+            </Button>
+          )}
         </div>
 
         {/* Loading State */}
@@ -485,20 +490,24 @@ export default function UsersPage() {
                             >
                               View
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setUsersDialogInitialId(user._id || user.id)
-                                setUsersDialogOpen(true)
-                              }}
-                            >
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => handleDeleteUser(user._id || user.id)}
-                            >
-                              Delete
-                            </DropdownMenuItem>
+                            {canWriteUsers && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setUsersDialogInitialId(user._id || user.id)
+                                  setUsersDialogOpen(true)
+                                }}
+                              >
+                                Edit
+                              </DropdownMenuItem>
+                            )}
+                            {canDeleteUsers && (
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => handleDeleteUser(user._id || user.id)}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -642,28 +651,33 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                <div className="flex gap-2">
-                 
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setSelectedUserId(null)
-                      setUsersDialogInitialId(selectedUser._id)
-                      setUsersDialogOpen(true)
-                    }}
-                  >
-                    <UserCog className="h-4 w-4 mr-2" />
-                    Edit User
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    className="flex-1"
-                    onClick={() => handleDeleteUser(selectedUser._id)}
-                  >
-                    Delete
-                  </Button>
-                </div>
+                {(canWriteUsers || canDeleteUsers) && (
+                  <div className="flex gap-2">
+                    {canWriteUsers && (
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          setSelectedUserId(null)
+                          setUsersDialogInitialId(selectedUser._id)
+                          setUsersDialogOpen(true)
+                        }}
+                      >
+                        <UserCog className="h-4 w-4 mr-2" />
+                        Edit User
+                      </Button>
+                    )}
+                    {canDeleteUsers && (
+                      <Button
+                        variant="destructive"
+                        className="flex-1"
+                        onClick={() => handleDeleteUser(selectedUser._id)}
+                      >
+                        Delete
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-12">

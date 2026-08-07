@@ -4,11 +4,36 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import RoleEditor from './RoleEditor'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
-import { getToken } from '@/lib/auth'
+import { getToken, getCurrentUser, refreshSession } from '@/lib/auth'
+import { isRole } from '@/lib/constants'
 import { getApiBaseUrl } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
+import { ROLE_PRESETS, applyRolePreset } from '@/lib/rolePresets'
 
 const API_BASE = getApiBaseUrl()
+
+/** A module with nothing granted. `scope` defaults to 'all' — never 'own'. */
+const emptyActions = () => ({
+  read: false,
+  write: false,
+  edit: false,
+  delete: false,
+  scope: 'all',
+  subPermissions: {},
+})
+
+/** Fill in false for any catalog subPermission key missing from saved data. */
+function normalizeSubPermissions(subPerms, catalogSubPerms) {
+  if (!catalogSubPerms) return undefined
+  const out = {}
+  for (const key of Object.keys(catalogSubPerms)) {
+    out[key] = !!subPerms?.[key]
+  }
+  return out
+}
+
+/** Only an explicit 'own' narrows; everything else is 'all'. Matches the backend. */
+const normalizeScope = (scope) => (scope === 'own' ? 'own' : 'all')
 
 function deepClonePermissions(schema) {
   if (!schema) return {}
@@ -21,6 +46,30 @@ function deepClonePermissions(schema) {
         write: !!permVal.write,
         edit: !!permVal.edit,
         delete: !!permVal.delete,
+        scope: normalizeScope(permVal.scope),
+        subPermissions: normalizeSubPermissions(undefined, permVal.subPermissions) || {},
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * Write an explicit scope onto every module of a role loaded from the API.
+ *
+ * Roles saved before scoping existed have no scope key. Normalizing on load
+ * means the next save persists 'all' explicitly and the data converges without
+ * a migration — and the editor never shows an empty scope selector.
+ */
+function normalizeLoadedPermissions(rolePermissions) {
+  const out = {}
+  for (const [sectionKey, sectionVal] of Object.entries(rolePermissions || {})) {
+    out[sectionKey] = { ...sectionVal, permissions: {} }
+    for (const [permKey, permVal] of Object.entries(sectionVal?.permissions || {})) {
+      out[sectionKey].permissions[permKey] = {
+        ...permVal,
+        scope: normalizeScope(permVal?.scope),
+        subPermissions: permVal?.subPermissions || {},
       }
     }
   }
@@ -74,8 +123,15 @@ export default function RolesDialog({
                   write: !!actions.write,
                   edit: !!actions.edit,
                   delete: !!actions.delete,
+                  scope: normalizeScope(actions.scope),
                   label: basePerm.label,
                   description: basePerm.description,
+                  // Which modules offer an All/Own selector, or sub-permissions,
+                  // is declared in the backend catalog — mirrored here so
+                  // RoleEditor can render labels without a second list to drift.
+                  scopeable: !!basePerm.scopeable,
+                  scopeLabels: basePerm.scopeLabels,
+                  subPermissions: basePerm.subPermissions,
                 }
               }
             }
@@ -86,7 +142,7 @@ export default function RolesDialog({
               role: role.role,
               showOnCalendar: !!role.showOnCalendar,
               isCallCenterAgent: !!role.isCallCenterAgent,
-              permissions: rolePermissions,
+              permissions: normalizeLoadedPermissions(rolePermissions),
               _id: role._id,
             })
           } else {
@@ -111,16 +167,39 @@ export default function RolesDialog({
     }
   }, [open, initialRoleId, permissionsSchema])
 
+  // "Edit" is no longer a separate permission in the UI — every toggle of
+  // "write" mirrors onto the legacy `edit` key too, so roles saved from here
+  // still satisfy any backend/frontend check that ORs write and edit.
+  function applyAction(actions, action, value) {
+    actions[action] = value
+    if (action === 'write') actions.edit = value
+  }
+
   function togglePermission(sectionKey, permKey, action) {
     setEditingRole((prev) => {
       if (!prev) return prev
       const next = JSON.parse(JSON.stringify(prev))
       if (!next.permissions[sectionKey]) next.permissions[sectionKey] = { permissions: {} }
       if (!next.permissions[sectionKey].permissions[permKey]) {
-        next.permissions[sectionKey].permissions[permKey] = { read: false, write: false, edit: false, delete: false }
+        next.permissions[sectionKey].permissions[permKey] = emptyActions()
       }
-      next.permissions[sectionKey].permissions[permKey][action] =
-        !next.permissions[sectionKey].permissions[permKey][action]
+      const actions = next.permissions[sectionKey].permissions[permKey]
+      applyAction(actions, action, !actions[action])
+      return next
+    })
+  }
+
+  function toggleSubPermission(sectionKey, permKey, subKey) {
+    setEditingRole((prev) => {
+      if (!prev) return prev
+      const next = JSON.parse(JSON.stringify(prev))
+      if (!next.permissions[sectionKey]) next.permissions[sectionKey] = { permissions: {} }
+      if (!next.permissions[sectionKey].permissions[permKey]) {
+        next.permissions[sectionKey].permissions[permKey] = emptyActions()
+      }
+      const mod = next.permissions[sectionKey].permissions[permKey]
+      if (!mod.subPermissions) mod.subPermissions = {}
+      mod.subPermissions[subKey] = !mod.subPermissions[subKey]
       return next
     })
   }
@@ -130,12 +209,36 @@ export default function RolesDialog({
       if (!prev) return prev
       const next = JSON.parse(JSON.stringify(prev))
       if (!next.permissions[sectionKey]) next.permissions[sectionKey] = { permissions: {} }
+      // Spread rather than replace: this used to overwrite the whole module
+      // object, which silently reset a configured scope of 'own' back to 'all'
+      // — a privilege escalation from flipping an unrelated toggle.
       next.permissions[sectionKey].permissions[permKey] = {
+        ...(next.permissions[sectionKey].permissions[permKey] || emptyActions()),
         read: enable,
         write: enable,
         edit: enable,
         delete: enable,
       }
+      return next
+    })
+  }
+
+  function applyPreset(preset) {
+    setEditingRole((prev) => {
+      if (!prev) return prev
+      return { ...prev, permissions: applyRolePreset(prev.permissions, preset) }
+    })
+  }
+
+  function setPermissionScope(sectionKey, permKey, scope) {
+    setEditingRole((prev) => {
+      if (!prev) return prev
+      const next = JSON.parse(JSON.stringify(prev))
+      if (!next.permissions[sectionKey]) next.permissions[sectionKey] = { permissions: {} }
+      if (!next.permissions[sectionKey].permissions[permKey]) {
+        next.permissions[sectionKey].permissions[permKey] = emptyActions()
+      }
+      next.permissions[sectionKey].permissions[permKey].scope = normalizeScope(scope)
       return next
     })
   }
@@ -147,9 +250,9 @@ export default function RolesDialog({
       if (!next.permissions[sectionKey]) next.permissions[sectionKey] = { permissions: {} }
       for (const permKey of permKeys) {
         if (!next.permissions[sectionKey].permissions[permKey]) {
-          next.permissions[sectionKey].permissions[permKey] = { read: false, write: false, edit: false, delete: false }
+          next.permissions[sectionKey].permissions[permKey] = emptyActions()
         }
-        next.permissions[sectionKey].permissions[permKey][action] = enable
+        applyAction(next.permissions[sectionKey].permissions[permKey], action, enable)
       }
       return next
     })
@@ -181,6 +284,12 @@ export default function RolesDialog({
           title: editingRole._id ? 'Role Updated' : 'Role Created',
           message: editingRole._id ? 'Role has been updated successfully' : 'Role has been created successfully',
         })
+        // Editing your own role changes what you can see. Pull the new
+        // permissions immediately rather than leaving this session on the old
+        // copy until its next scheduled refresh.
+        if (isRole(getCurrentUser()?.role, editingRole.role)) {
+          await refreshSession()
+        }
         onRefresh?.()
         onClose()
       } else {
@@ -244,8 +353,12 @@ export default function RolesDialog({
             permissionsSchema={effectiveSchema || permissionsSchema}
             onChange={setEditingRole}
             togglePermission={togglePermission}
+            toggleSubPermission={toggleSubPermission}
             toggleAllPermissions={toggleAllPermissions}
             toggleColumnPermission={toggleColumnPermission}
+            setPermissionScope={setPermissionScope}
+            presets={ROLE_PRESETS}
+            onApplyPreset={applyPreset}
             onSave={handleSave}
             onDelete={handleDelete}
             onCancel={onClose}

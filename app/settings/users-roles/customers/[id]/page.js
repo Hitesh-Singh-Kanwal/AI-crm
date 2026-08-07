@@ -1796,6 +1796,143 @@ function AddInstallmentDialog({ open, onClose, plan, onSuccess }) {
   );
 }
 
+// ─── SetupPaymentPlanDialog ───────────────────────────────────────────────────
+// Schedules NEW going-forward installments against an enrollment's remaining
+// balance — for migrated enrollments (which land with a package + a static
+// due amount but no billing schedule) and any other one_time enrollment that
+// still owes money. Posts to POST /api/customer-package/:enrollmentId/payment-plan.
+
+function SetupPaymentPlanDialog({ open, onClose, enrollment, outstanding, onSuccess }) {
+  const [numberOfInstallments, setNumberOfInstallments] = useState(3);
+  const [frequency, setFrequency] = useState("monthly");
+  const [startDate, setStartDate] = useState("");
+  const [collectNow, setCollectNow] = useState(false);
+  const [method, setMethod] = useState("cash");
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (open) {
+      setNumberOfInstallments(3);
+      setFrequency("monthly");
+      setStartDate(new Date().toISOString().slice(0, 10));
+      setCollectNow(false);
+      setMethod("cash");
+    }
+  }, [open]);
+
+  const perInstallment =
+    outstanding > 0 && numberOfInstallments > 0
+      ? (outstanding / numberOfInstallments).toFixed(2)
+      : "0.00";
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!numberOfInstallments || !frequency || !startDate) return;
+    setSaving(true);
+    const res = await api.post(`/api/customer-package/${enrollment._id}/payment-plan`, {
+      billing: {
+        numberOfInstallments: Number(numberOfInstallments),
+        frequency,
+        startDate,
+        collectNow,
+        method,
+      },
+    });
+    if (res.success) {
+      toast.success("Payment plan created.");
+      onSuccess();
+      onClose();
+    } else {
+      toast.error(res.error || res.message || "Failed to create payment plan.");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Set Up Payment Plan</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <p className="text-[12px] text-muted-foreground">
+            Schedule the remaining{" "}
+            <span className="font-semibold text-foreground">${Number(outstanding).toFixed(2)}</span>{" "}
+            balance into recurring payments.
+          </p>
+          <FormField label="Number of Installments" required>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={numberOfInstallments}
+              onChange={(e) => setNumberOfInstallments(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
+          </FormField>
+          <FormField label="Frequency" required>
+            <select
+              value={frequency}
+              onChange={(e) => setFrequency(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            >
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Biweekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </FormField>
+          <FormField label="First Payment Date" required>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
+          </FormField>
+          {numberOfInstallments > 0 && (
+            <p className="text-[12px] text-muted-foreground">
+              ≈ ${perInstallment} per installment
+            </p>
+          )}
+          <label className="flex items-center gap-2 text-[13px] text-foreground">
+            <input
+              type="checkbox"
+              checked={collectNow}
+              onChange={(e) => setCollectNow(e.target.checked)}
+            />
+            Collect the first installment now
+          </label>
+          {collectNow && (
+            <FormField label="Method">
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+              >
+                <option value="cash">Cash</option>
+                <option value="cheque">Cheque</option>
+                <option value="other">Other</option>
+              </select>
+            </FormField>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving || !numberOfInstallments || !frequency || !startDate}
+              className="bg-brand hover:opacity-90 text-white"
+            >
+              {saving ? "Saving…" : "Create Plan"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Packages Tab ─────────────────────────────────────────────────────────────
 
 const BLANK_ADD_FORM = {
@@ -3211,6 +3348,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
   const [payInstallTarget, setPayInstallTarget] = useState(null);
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null);
   const [addInstallTarget, setAddInstallTarget] = useState(null);
+  const [setupPlanTarget, setSetupPlanTarget] = useState(null); // { enrollment, outstanding }
   const [expandedServices, setExpandedServices] = useState(new Set());
   const [calendarEvents, setCalendarEvents] = useState([]);
 
@@ -4258,6 +4396,46 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                         );
                       })()}
 
+                    {/* Set up a going-forward payment plan on a package that
+                        doesn't have one yet — mainly for migrated enrollments,
+                        which land with a static outstanding balance and no
+                        billing schedule (see customerImport.service.js).
+                        setupPaymentPlanForEnrollment schedules cp.dueAmount,
+                        not the Collected-derived `outstanding` figure above —
+                        those two can diverge (e.g. this card's `outstanding`
+                        is still $1000 for a legacy-imported enrollment whose
+                        $700-collected Payment record predates this feature,
+                        while dueAmount already correctly says $300). Pass the
+                        same amount the backend will actually schedule so the
+                        dialog never promises a number it won't deliver. */}
+                    {(() => {
+                      const schedulable =
+                        cp.dueAmount != null ? Number(cp.dueAmount) : outstanding;
+                      return (
+                        (!cp.billingType || cp.billingType === "one_time") &&
+                        enr.status === "active" &&
+                        cp.status === "active" &&
+                        !plansMap[String(enr._id)] &&
+                        schedulable > 0 && (
+                          <div className="mt-5 border-t border-border pt-5 flex items-center justify-between">
+                            <p className="text-[12px] text-muted-foreground">
+                              ${schedulable.toFixed(2)} outstanding with no billing schedule.
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-[12px]"
+                              onClick={() =>
+                                setSetupPlanTarget({ enrollment: enr, outstanding: schedulable })
+                              }
+                            >
+                              + Set Up Payment Plan
+                            </Button>
+                          </div>
+                        )
+                      );
+                    })()}
+
                     {/* Flexible billing — single-due-date payment card.
                         Hidden when the flexible enrollment carries a tracked
                         schedule (rendered as installments below instead). */}
@@ -4341,6 +4519,15 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
         open={Boolean(addInstallTarget)}
         onClose={() => setAddInstallTarget(null)}
         plan={addInstallTarget}
+        onSuccess={load}
+      />
+
+      {/* Set up a new payment plan on an existing package (e.g. migrated enrollments) */}
+      <SetupPaymentPlanDialog
+        open={Boolean(setupPlanTarget)}
+        onClose={() => setSetupPlanTarget(null)}
+        enrollment={setupPlanTarget?.enrollment}
+        outstanding={setupPlanTarget?.outstanding ?? 0}
         onSuccess={load}
       />
 

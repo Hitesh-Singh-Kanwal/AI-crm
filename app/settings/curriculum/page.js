@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import api from '@/lib/api'
+import { hasPermission } from '@/lib/permissions'
 import { useToast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 
@@ -87,6 +88,8 @@ function CurriculumDialog({ open, onClose, onSaved, initial }) {
 }
 
 export default function CurriculumSettingsPage() {
+  const canWriteCurriculum = hasPermission('calendar', 'curriculum', 'write')
+  const canDeleteCurriculum = hasPermission('calendar', 'curriculum', 'delete')
   const [tiers, setTiers] = useState([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -157,10 +160,12 @@ export default function CurriculumSettingsPage() {
               The tier sequence students progress through. Drag to reorder. Assign packages to a tier from the package form.
             </p>
           </div>
-          <Button onClick={() => { setEditingTier(null); setDialogOpen(true) }}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            Add Tier
-          </Button>
+          {canWriteCurriculum && (
+            <Button onClick={() => { setEditingTier(null); setDialogOpen(true) }}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add Tier
+            </Button>
+          )}
         </div>
 
         <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -184,26 +189,32 @@ export default function CurriculumSettingsPage() {
                   {!tier.isActive && (
                     <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">Inactive</span>
                   )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => { setEditingTier(tier); setDialogOpen(true) }}>
-                        <Pencil className="mr-2 h-3.5 w-3.5" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => setDeleteTarget(tier)}
-                      >
-                        <Trash2 className="mr-2 h-3.5 w-3.5" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  {(canWriteCurriculum || canDeleteCurriculum) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {canWriteCurriculum && (
+                          <DropdownMenuItem onClick={() => { setEditingTier(tier); setDialogOpen(true) }}>
+                            <Pencil className="mr-2 h-3.5 w-3.5" />
+                            Edit
+                          </DropdownMenuItem>
+                        )}
+                        {canDeleteCurriculum && (
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setDeleteTarget(tier)}
+                          >
+                            <Trash2 className="mr-2 h-3.5 w-3.5" />
+                            Delete
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               ))}
             </div>

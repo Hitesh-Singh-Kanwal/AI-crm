@@ -42,6 +42,7 @@ import LocationSelector from '@/components/shared/LocationSelector'
 import CustomerMigrationImportDialog from '@/components/customers/CustomerMigrationImportDialog'
 import { getInitials, formatDate, cn } from '@/lib/utils'
 import { isViewingAllBranches, getBranchQueryParam } from '@/lib/branch-filter'
+import { hasPermission } from '@/lib/permissions'
 import {
   customerLifecycleBadgeClass,
   customerLifecycleLabel,
@@ -365,6 +366,8 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
 
 export default function CustomersPage() {
   const router = useRouter()
+  const canWriteCustomers = hasPermission('customers', 'manage', 'write')
+  const canDeleteCustomers = hasPermission('customers', 'manage', 'delete')
   const [customers, setCustomers] = useState([])
   const [locations, setLocations] = useState([])
   const [teachers, setTeachers] = useState([])
@@ -642,15 +645,21 @@ export default function CustomersPage() {
           <div className="flex items-center gap-2">
             <CustomerMigrationImportDialog
               quickImportFields={CUSTOMER_CSV_FIELDS}
-              onQuickImportRows={handleImportCustomers}
+              onQuickImportRows={canWriteCustomers ? handleImportCustomers : undefined}
               getExportRows={handleExportCustomers}
-              disabled={isViewingAllBranches()}
-              disabledReason="Select a specific branch to import or export customers"
+              disabled={isViewingAllBranches() || !canWriteCustomers}
+              disabledReason={
+                !canWriteCustomers
+                  ? "You don't have permission to import customers"
+                  : 'Select a specific branch to import or export customers'
+              }
             />
-            <Button onClick={() => { setEditingCustomer(null); setDialogOpen(true) }}>
-              <Plus className="mr-1.5 h-4 w-4" />
-              Add Customer
-            </Button>
+            {canWriteCustomers && (
+              <Button onClick={() => { setEditingCustomer(null); setDialogOpen(true) }}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                Add Customer
+              </Button>
+            )}
           </div>
         </div>
 
@@ -866,17 +875,21 @@ export default function CustomersPage() {
                             <ExternalLink className="mr-2 h-3.5 w-3.5" />
                             View Profile
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { setEditingCustomer(customer); setDialogOpen(true) }}>
-                            <Pencil className="mr-2 h-3.5 w-3.5" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeleteTarget(customer)}
-                          >
-                            <Trash2 className="mr-2 h-3.5 w-3.5" />
-                            Delete
-                          </DropdownMenuItem>
+                          {canWriteCustomers && (
+                            <DropdownMenuItem onClick={() => { setEditingCustomer(customer); setDialogOpen(true) }}>
+                              <Pencil className="mr-2 h-3.5 w-3.5" />
+                              Edit
+                            </DropdownMenuItem>
+                          )}
+                          {canDeleteCustomers && (
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeleteTarget(customer)}
+                            >
+                              <Trash2 className="mr-2 h-3.5 w-3.5" />
+                              Delete
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
