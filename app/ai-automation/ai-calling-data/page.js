@@ -188,6 +188,9 @@ function isCallPendingSync(call) {
     call.transcript ||
     call.recordingUrl ||
     call.artifact?.recordingUrl ||
+    call.artifact?.transcript ||
+    call.messages?.length ||
+    call.artifact?.messages?.length ||
     call.analysis?.summary ||
     call.analysis?.successEvaluation ||
     call.summary
@@ -945,24 +948,38 @@ export default function AiCallDetailPage() {
                     />
                   )}
 
-                  {(selectedCall.artifact?.recordingUrl ||
-                    selectedCall.recordingUrl ||
-                    selectedCall.artifact?.stereoRecordingUrl ||
-                    selectedCall.stereoRecordingUrl) && (
+                  {(() => {
+                    const hasStoredRecording = Boolean(
+                      selectedCall.artifact?.recordingUrl ||
+                      selectedCall.recordingUrl ||
+                      selectedCall.artifact?.stereoRecordingUrl ||
+                      selectedCall.stereoRecordingUrl,
+                    )
+                    // Stream proxy uses callId against Vapi — show player for ended calls
+                    // even when URLs have not been flattened onto the document yet.
+                    const canStreamRecording = Boolean(
+                      selectedCall._id &&
+                      selectedCall.callId &&
+                      (hasStoredRecording ||
+                        selectedCall.endedAt ||
+                        ['ended', 'completed', 'done'].includes(
+                          String(selectedCall.status || '').toLowerCase(),
+                        )),
+                    )
+                    if (!canStreamRecording) return null
+                    return (
                     <div className="space-y-3">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">
                         Recording
                       </p>
                       <div className="space-y-3">
-                        {(selectedCall.artifact?.recordingUrl || selectedCall.recordingUrl) && (
-                          <AiCallRecordingPlayer
-                            key={`${selectedCall._id}-mono`}
-                            callDetailId={selectedCall._id}
-                            channel="mono"
-                            autoStart
-                            className="w-full"
-                          />
-                        )}
+                        <AiCallRecordingPlayer
+                          key={`${selectedCall._id}-mono`}
+                          callDetailId={selectedCall._id}
+                          channel="mono"
+                          autoStart
+                          className="w-full"
+                        />
                         {(selectedCall.artifact?.stereoRecordingUrl ||
                           selectedCall.stereoRecordingUrl) && (
                           <AiCallRecordingPlayer
@@ -974,16 +991,31 @@ export default function AiCallDetailPage() {
                         )}
                       </div>
                     </div>
-                  )}
+                    )
+                  })()}
 
-                  {Array.isArray(selectedCall.artifact?.messages) &&
-                    selectedCall.artifact.messages.length > 0 && (
+                  {(() => {
+                    const turnMessages = (
+                      Array.isArray(selectedCall.artifact?.messages) &&
+                      selectedCall.artifact.messages.length > 0
+                        ? selectedCall.artifact.messages
+                        : Array.isArray(selectedCall.messages)
+                          ? selectedCall.messages
+                          : []
+                    )
+                    const transcriptText =
+                      selectedCall.transcript ||
+                      selectedCall.artifact?.transcript ||
+                      null
+
+                    if (turnMessages.length > 0) {
+                      return (
                       <div className="space-y-3">
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">
                           Script (system prompt)
                         </p>
                         <div className="text-[11px] text-foreground bg-muted/50 rounded-lg p-3 max-h-[200px] overflow-y-auto whitespace-pre-wrap">
-                          {selectedCall.artifact.messages.find((m) => m.role === 'system')?.message ||
+                          {turnMessages.find((m) => m.role === 'system')?.message ||
                             'Script not available'}
                         </div>
 
@@ -991,7 +1023,7 @@ export default function AiCallDetailPage() {
                           Turn-by-turn messages
                         </p>
                         <div className="max-h-[360px] overflow-y-auto border border-dashed border-border rounded-lg p-3 bg-muted/30 space-y-2">
-                          {selectedCall.artifact.messages
+                          {turnMessages
                             .filter((msg) => msg.role !== 'system')
                             .map((msg, idx) => {
                             const role =
@@ -1029,7 +1061,24 @@ export default function AiCallDetailPage() {
                           })}
                         </div>
                       </div>
-                    )}
+                      )
+                    }
+
+                    if (transcriptText) {
+                      return (
+                        <div className="space-y-3">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Transcript
+                          </p>
+                          <div className="text-[11px] text-foreground bg-muted/50 rounded-lg p-3 max-h-[360px] overflow-y-auto whitespace-pre-wrap">
+                            {transcriptText}
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    return null
+                  })()}
                 </CardContent>
               </Card>
             </div>
