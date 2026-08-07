@@ -19,7 +19,18 @@ const emptyActions = () => ({
   edit: false,
   delete: false,
   scope: 'all',
+  subPermissions: {},
 })
+
+/** Fill in false for any catalog subPermission key missing from saved data. */
+function normalizeSubPermissions(subPerms, catalogSubPerms) {
+  if (!catalogSubPerms) return undefined
+  const out = {}
+  for (const key of Object.keys(catalogSubPerms)) {
+    out[key] = !!subPerms?.[key]
+  }
+  return out
+}
 
 /** Only an explicit 'own' narrows; everything else is 'all'. Matches the backend. */
 const normalizeScope = (scope) => (scope === 'own' ? 'own' : 'all')
@@ -36,6 +47,7 @@ function deepClonePermissions(schema) {
         edit: !!permVal.edit,
         delete: !!permVal.delete,
         scope: normalizeScope(permVal.scope),
+        subPermissions: normalizeSubPermissions(undefined, permVal.subPermissions) || {},
       }
     }
   }
@@ -54,7 +66,11 @@ function normalizeLoadedPermissions(rolePermissions) {
   for (const [sectionKey, sectionVal] of Object.entries(rolePermissions || {})) {
     out[sectionKey] = { ...sectionVal, permissions: {} }
     for (const [permKey, permVal] of Object.entries(sectionVal?.permissions || {})) {
-      out[sectionKey].permissions[permKey] = { ...permVal, scope: normalizeScope(permVal?.scope) }
+      out[sectionKey].permissions[permKey] = {
+        ...permVal,
+        scope: normalizeScope(permVal?.scope),
+        subPermissions: permVal?.subPermissions || {},
+      }
     }
   }
   return out
@@ -110,10 +126,12 @@ export default function RolesDialog({
                   scope: normalizeScope(actions.scope),
                   label: basePerm.label,
                   description: basePerm.description,
-                  // Which modules offer an All/Own selector is declared in the
-                  // backend catalog, so there's no second list here to drift.
+                  // Which modules offer an All/Own selector, or sub-permissions,
+                  // is declared in the backend catalog — mirrored here so
+                  // RoleEditor can render labels without a second list to drift.
                   scopeable: !!basePerm.scopeable,
                   scopeLabels: basePerm.scopeLabels,
+                  subPermissions: basePerm.subPermissions,
                 }
               }
             }
@@ -167,6 +185,21 @@ export default function RolesDialog({
       }
       const actions = next.permissions[sectionKey].permissions[permKey]
       applyAction(actions, action, !actions[action])
+      return next
+    })
+  }
+
+  function toggleSubPermission(sectionKey, permKey, subKey) {
+    setEditingRole((prev) => {
+      if (!prev) return prev
+      const next = JSON.parse(JSON.stringify(prev))
+      if (!next.permissions[sectionKey]) next.permissions[sectionKey] = { permissions: {} }
+      if (!next.permissions[sectionKey].permissions[permKey]) {
+        next.permissions[sectionKey].permissions[permKey] = emptyActions()
+      }
+      const mod = next.permissions[sectionKey].permissions[permKey]
+      if (!mod.subPermissions) mod.subPermissions = {}
+      mod.subPermissions[subKey] = !mod.subPermissions[subKey]
       return next
     })
   }
@@ -320,6 +353,7 @@ export default function RolesDialog({
             permissionsSchema={effectiveSchema || permissionsSchema}
             onChange={setEditingRole}
             togglePermission={togglePermission}
+            toggleSubPermission={toggleSubPermission}
             toggleAllPermissions={toggleAllPermissions}
             toggleColumnPermission={toggleColumnPermission}
             setPermissionScope={setPermissionScope}

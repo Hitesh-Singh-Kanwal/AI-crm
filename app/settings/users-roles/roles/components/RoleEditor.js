@@ -21,6 +21,7 @@ export default function RoleEditor({
   permissionsSchema,
   onChange,
   togglePermission,
+  toggleSubPermission,
   toggleAllPermissions,
   toggleColumnPermission,
   setPermissionScope,
@@ -32,9 +33,14 @@ export default function RoleEditor({
   embedded = false,
 }) {
   const [expandedSections, setExpandedSections] = useState({})
+  const [expandedModules, setExpandedModules] = useState({})
 
   function toggleSection(key) {
     setExpandedSections((p) => ({ ...p, [key]: !p[key] }))
+  }
+
+  function toggleModule(key) {
+    setExpandedModules((p) => ({ ...p, [key]: !p[key] }))
   }
 
   const showCompactHeader = embedded
@@ -337,19 +343,38 @@ export default function RoleEditor({
                                   (current.read || overridden('read')) &&
                                   (current.write || overridden('write')) &&
                                   (current.delete || overridden('delete'))
+                                const subPermEntries = Object.entries(permVal.subPermissions || {})
+                                const moduleKey = `${sectionKey}.${permKey}`
+                                const moduleExpanded = !!expandedModules[moduleKey]
                                 return (
+                                  <React.Fragment key={permKey}>
                                   <TableRow
-                                    key={permKey}
                                     className="hover:bg-muted/40"
                                   >
                                     <TableCell>
-                                      <div>
-                                        <p className="font-medium text-foreground">{permVal.label || (permKey === '*' ? 'Master' : permKey)}</p>
-                                        {permVal.description && (
-                                          <p className="text-xs text-muted-foreground">
-                                            {permVal.description}
-                                          </p>
+                                      <div className="flex items-start gap-1.5">
+                                        {subPermEntries.length > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleModule(moduleKey)}
+                                            className="mt-0.5 shrink-0 text-muted-foreground/80 hover:text-foreground"
+                                            title="Show sub-permissions"
+                                          >
+                                            {moduleExpanded ? (
+                                              <ChevronDown className="h-3.5 w-3.5" />
+                                            ) : (
+                                              <ChevronRight className="h-3.5 w-3.5" />
+                                            )}
+                                          </button>
                                         )}
+                                        <div>
+                                          <p className="font-medium text-foreground">{permVal.label || (permKey === '*' ? 'Master' : permKey)}</p>
+                                          {permVal.description && (
+                                            <p className="text-xs text-muted-foreground">
+                                              {permVal.description}
+                                            </p>
+                                          )}
+                                        </div>
                                       </div>
                                     </TableCell>
                                     <TableCell className="text-center">
@@ -425,6 +450,33 @@ export default function RoleEditor({
                                       </TableCell>
                                     )}
                                   </TableRow>
+                                  {moduleExpanded && subPermEntries.length > 0 && (
+                                    <TableRow className="hover:bg-transparent">
+                                      <TableCell
+                                        colSpan={4 + (sectionHasScope ? 1 : 0)}
+                                        className="bg-muted/20 py-3"
+                                      >
+                                        <div className="ml-6 flex flex-wrap gap-x-6 gap-y-2">
+                                          {subPermEntries.map(([subKey, subVal]) => (
+                                            <label
+                                              key={subKey}
+                                              className="flex items-center gap-2 text-xs text-foreground"
+                                              title={subVal.description}
+                                            >
+                                              <Switch
+                                                checked={!!current.subPermissions?.[subKey]}
+                                                onChange={() =>
+                                                  toggleSubPermission(sectionKey, permKey, subKey)
+                                                }
+                                              />
+                                              {subVal.label || subKey}
+                                            </label>
+                                          ))}
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                  </React.Fragment>
                                 )
                               })}
                             </TableBody>
