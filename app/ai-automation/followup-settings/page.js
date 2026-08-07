@@ -14,10 +14,13 @@ import api from '@/lib/api'
 import { getEffectiveBranch } from '@/lib/auth'
 import { isSuperAdmin } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
+import WorkflowStageMultiSelect from '@/components/workflow/WorkflowStageMultiSelect'
+import { formatLeadStageLabel } from '@/lib/lead-stages'
 
 const ORG_SCOPE = '__org__'
 const MIN_FOLLOWUPS = 1
 const MAX_FOLLOWUPS = 10
+const DEFAULT_FOLLOWUP_STAGES = ['engaged']
 
 function emptyFollowup(overrides = {}) {
   return {
@@ -35,6 +38,14 @@ const DEFAULT_FOLLOWUPS = [
   emptyFollowup({ intervalHours: '5', intervalMinutes: '0' }),
 ]
 
+function normalizeFollowupStages(raw) {
+  const stages = Array.isArray(raw)
+    ? raw.map((s) => String(s || '').trim()).filter(Boolean)
+    : []
+  if (!stages.length) return [...DEFAULT_FOLLOWUP_STAGES]
+  return [stages[0]]
+}
+
 function followupFromApi(item) {
   const message = item?.message ?? null
   const hasCustomMessage = typeof message === 'string' && message.trim().length > 0
@@ -49,10 +60,12 @@ function followupFromApi(item) {
 /** Normalize API payload — supports new `followups[]` and legacy flat fields. */
 function settingsToForm(raw) {
   const agentFollowupEnabled = raw?.agentFollowupEnabled !== false
+  const followupStages = normalizeFollowupStages(raw?.followupStages)
 
   if (Array.isArray(raw?.followups) && raw.followups.length > 0) {
     return {
       agentFollowupEnabled,
+      followupStages,
       followups: raw.followups.map(followupFromApi),
     }
   }
@@ -69,6 +82,7 @@ function settingsToForm(raw) {
     const hasCustomMessage = typeof message === 'string' && message.trim().length > 0
     return {
       agentFollowupEnabled,
+      followupStages,
       followups: Array.from({ length: count }, () =>
         emptyFollowup({
           intervalHours: hours,
@@ -82,6 +96,7 @@ function settingsToForm(raw) {
 
   return {
     agentFollowupEnabled: true,
+    followupStages: [...DEFAULT_FOLLOWUP_STAGES],
     followups: DEFAULT_FOLLOWUPS.map((f) => ({ ...f })),
   }
 }
@@ -96,16 +111,20 @@ function formatIntervalLabel(hours, minutes) {
 function summarizeFollowups(item) {
   if (item.agentFollowupEnabled === false) return 'Follow-ups disabled'
   const list = Array.isArray(item.followups) ? item.followups : []
+  const stages = normalizeFollowupStages(item.followupStages)
+    .map((key) => formatLeadStageLabel(key) || key)
+    .join(', ')
+  const stagePart = stages ? ` · ${stages}` : ''
   if (list.length === 0) {
     if (item.followupCount != null) {
       return `${item.followupCount} follow-ups every ${formatIntervalLabel(
         item.followupIntervalHours ?? 0,
         item.followupIntervalMinutes ?? 0
-      )}`
+      )}${stagePart}`
     }
     return 'No follow-ups configured'
   }
-  return `${list.length} follow-up${list.length === 1 ? '' : 's'}`
+  return `${list.length} follow-up${list.length === 1 ? '' : 's'}${stagePart}`
 }
 
 export default function FollowupSettingsPage() {
@@ -262,6 +281,14 @@ export default function FollowupSettingsPage() {
     // Location can be saved with follow-ups turned off for that location only.
     if (isLocationScope && form.agentFollowupEnabled === false) return true
 
+    if (!Array.isArray(form.followupStages) || form.followupStages.length !== 1) {
+      toast.error({
+        title: 'Validation',
+        message: 'Select one lead stage for follow-ups.',
+      })
+      return false
+    }
+
     if (!Array.isArray(form.followups) || form.followups.length < MIN_FOLLOWUPS) {
       toast.error({ title: 'Validation', message: 'Add at least one follow-up.' })
       return false
@@ -313,6 +340,7 @@ export default function FollowupSettingsPage() {
     setSaving(true)
     try {
       const body = {
+        followupStages: normalizeFollowupStages(form.followupStages),
         followups: form.followups.map((step) => ({
           intervalHours: Number(step.intervalHours),
           intervalMinutes: Number(step.intervalMinutes),
@@ -433,6 +461,27 @@ export default function FollowupSettingsPage() {
                     scheduleDisabled && 'pointer-events-none opacity-50'
                   )}
                 >
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Follow-up stage</label>
+                    <WorkflowStageMultiSelect
+                      single
+                      values={form.followupStages || []}
+                      onChange={(next) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          followupStages:
+                            Array.isArray(next) && next[0] ? [String(next[0])] : [],
+                        }))
+                      }
+                      placeholder="Select stage…"
+                      compact={false}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Follow-ups start when a lead enters this stage, and stop when they leave.
+                      Default is Engaged.
+                    </p>
+                  </div>
+
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium">Follow-up steps</div>
