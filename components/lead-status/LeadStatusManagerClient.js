@@ -49,11 +49,11 @@ function lifecycleBadge(status) {
 function lifecycleLabel(status) {
   switch (status) {
     case 'trial_scheduled':
-      return 'Intro Scheduled'
+      return 'Trial Scheduled'
     case 'trial_unscheduled':
-      return 'Intro Unscheduled'
+      return 'Trial Unscheduled'
     case 'trial_no_show':
-      return 'Intro No-Show'
+      return 'Trial No-Show'
     case 'no_sale':
       return 'No Sale'
     case 'inactive':
@@ -386,7 +386,7 @@ export default function LeadStatusManagerClient() {
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="text-[11px] font-bold uppercase tracking-wide text-brand">Phases</div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-foreground">
-              <span>Intro</span>
+              <span>Trial</span>
               <span className="text-muted-foreground">+</span>
               <span>Student</span>
             </div>
@@ -404,7 +404,7 @@ export default function LeadStatusManagerClient() {
             <p className="mt-1 max-w-2xl text-[15px] text-muted-foreground">
               {isLead
                 ? 'Customize pipeline stages, then set rules that move leads automatically.'
-                : 'Customers start in Intro after first purchase / convert, then become Active when they buy a program. Rules move them through Intro → Active.'}
+                : 'Customers start in Trial after first purchase / convert, then become Active when they buy a program. Rules move them through Trial → Active.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -748,7 +748,7 @@ export default function LeadStatusManagerClient() {
                         <td className="px-4 py-3">
                           <span className="inline-flex rounded-md bg-muted px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                             {status.phase === 'intro' || status.phase === 'trial'
-                              ? 'Intro'
+                              ? 'Trial'
                               : 'Student'}
                           </span>
                         </td>
@@ -767,7 +767,7 @@ export default function LeadStatusManagerClient() {
               <div>
                 <h3 className="text-[15px] font-semibold text-foreground">Automations</h3>
                 <p className="text-[13px] text-muted-foreground">
-                  IF conditions match → set Intro or Active / Inactive / Archived.
+                  IF conditions match → set Trial or Active / Inactive / Archived.
                 </p>
               </div>
               <button
