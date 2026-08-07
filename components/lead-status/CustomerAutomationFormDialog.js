@@ -50,10 +50,10 @@ const DAY_TYPES = new Set([
 ])
 
 const LIFECYCLE_STATUS_OPTIONS = [
-  { value: 'trial_scheduled', label: 'Intro Scheduled', hint: 'First purchase done; intro lesson booked' },
-  { value: 'trial_unscheduled', label: 'Intro Unscheduled', hint: 'First purchase / convert; lesson not booked yet' },
-  { value: 'trial_no_show', label: 'Intro No-Show', hint: 'Missed the intro lesson' },
-  { value: 'no_sale', label: 'No Sale', hint: 'Attended intro, no program yet' },
+  { value: 'trial_scheduled', label: 'Trial Scheduled', hint: 'First purchase done; trial lesson booked' },
+  { value: 'trial_unscheduled', label: 'Trial Unscheduled', hint: 'First purchase / convert; lesson not booked yet' },
+  { value: 'trial_no_show', label: 'Trial No-Show', hint: 'Missed the trial lesson' },
+  { value: 'no_sale', label: 'No Sale', hint: 'Attended trial, no program yet' },
   { value: 'active', label: 'Active', hint: 'Bought a program / package again' },
   { value: 'inactive', label: 'Inactive', hint: 'Lapsed or idle' },
   { value: 'archived', label: 'Archived', hint: 'Closed / no longer managed' },
@@ -331,7 +331,7 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
         <DialogShell
           icon={Users}
           title={isEdit ? 'Edit customer rule' : 'New customer rule'}
-          description="When conditions match, set Intro or Active / Inactive / Archived."
+          description="When conditions match, set Trial or Active / Inactive / Archived."
           onClose={handleClose}
           saving={saving}
           footer={<FormActions onCancel={onClose} saving={saving} isEdit={isEdit} />}

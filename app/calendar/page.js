@@ -809,7 +809,7 @@ function ViewOptionsDropdown({ hideEmptySlots, setHideEmptySlots, goToToday, com
 const EVENT_TYPE_LABEL = {
   private: "Appt",
   lesson:  "Group",
-  trial:   "Intro",
+  trial:   "Trial",
   event:   "To Do",
   record:  "Record",
 };

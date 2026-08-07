@@ -286,7 +286,7 @@ function IssueRefundDialog({ open, onClose, payment, customerID, onSuccess }) {
 
 const TABS = [
   { id: "profile", label: "Profile", Icon: User },
-  { id: "intro", label: "Intro", Icon: Sparkles },
+  { id: "intro", label: "Trial", Icon: Sparkles },
   {
     id: "active-enrollments",
     label: " Enrollments",
@@ -5791,7 +5791,7 @@ function eventStatusLabel(status) {
   );
 }
 
-// ─── Intro / 1st-purchase Tab ─────────────────────────────────────────────────
+// ─── Trial / 1st-purchase Tab ─────────────────────────────────────────────────
 
 const INTRO_STATUS_LABELS = {
   scheduled: "Scheduled",
@@ -5813,9 +5813,10 @@ const INTRO_STATUS_PILL = {
   held: "bg-muted text-muted-foreground",
 };
 
-function formatIntroDateTime(value) {
+function formatIntroDateTime(value, timeZone) {
   if (!value) return "—";
   return new Date(value).toLocaleString("en-US", {
+    ...(timeZone ? { timeZone } : {}),
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -5826,18 +5827,20 @@ function formatIntroDateTime(value) {
   });
 }
 
-function formatIntroDate(value) {
+function formatIntroDate(value, timeZone) {
   if (!value) return "—";
   return new Date(value).toLocaleDateString("en-US", {
+    ...(timeZone ? { timeZone } : {}),
     month: "short",
     day: "numeric",
     year: "numeric",
   });
 }
 
-function formatIntroTime(value) {
+function formatIntroTime(value, timeZone) {
   if (!value) return "";
   return new Date(value).toLocaleTimeString("en-US", {
+    ...(timeZone ? { timeZone } : {}),
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -5849,11 +5852,12 @@ function formatIntroMoney(amount) {
   return `$${Number(amount).toFixed(2)}`;
 }
 
-function groupIntroSlotsByDay(slots) {
+function groupIntroSlotsByDay(slots, timeZone) {
   const groups = [];
   const map = new Map();
   for (const slot of slots || []) {
     const dayKey = new Date(slot.start).toLocaleDateString("en-US", {
+      ...(timeZone ? { timeZone } : {}),
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -5932,13 +5936,13 @@ function IntroTab({ customer }) {
         setData(res.data);
       } else {
         setData(null);
-        setLoadError(res.error || "Failed to load intro details.");
-        toast.error(res.error || "Failed to load intro details.");
+        setLoadError(res.error || "Failed to load trial details.");
+        toast.error(res.error || "Failed to load trial details.");
       }
     } catch (err) {
       setData(null);
-      setLoadError(err?.message || "Failed to load intro details.");
-      toast.error(err?.message || "Failed to load intro details.");
+      setLoadError(err?.message || "Failed to load trial details.");
+      toast.error(err?.message || "Failed to load trial details.");
     } finally {
       setLoading(false);
     }
@@ -5948,12 +5952,12 @@ function IntroTab({ customer }) {
 
   async function handleCancel() {
     if (!data?.upcoming || cancelling) return;
-    if (!confirm("Cancel this intro lesson? No charge will apply. They can rebook free since they already paid.")) return;
+    if (!confirm("Cancel this trial lesson? No charge will apply. They can rebook free since they already paid.")) return;
     setCancelling(true);
     try {
       const res = await api.delete(`/api/calendar/${data.upcoming._id}`);
       if (res.success) {
-        toast.success("Intro lesson cancelled.");
+        toast.success("Trial lesson cancelled.");
         setShowRescheduleForm(false);
         await load();
       } else {
@@ -5999,6 +6003,7 @@ function IntroTab({ customer }) {
     const locationID = Array.isArray(customer.locationID)
       ? customer.locationID[0]?._id || customer.locationID[0]
       : customer.locationID?._id || customer.locationID;
+    const isMovingUpcoming = Boolean(data?.upcoming);
 
     try {
       // Backend moves an existing upcoming lesson in place, or books a new one if none.
@@ -6008,16 +6013,20 @@ function IntroTab({ customer }) {
         locationID,
       });
       if (res.success) {
-        toast.success("Intro lesson rescheduled successfully.");
+        toast.success(
+          isMovingUpcoming
+            ? "Trial lesson rescheduled successfully."
+            : "Trial lesson booked successfully.",
+        );
         setShowRescheduleForm(false);
         setSelectedSlot(null);
         await load();
       } else {
-        toast.error(res.error || "Failed to reschedule.");
+        toast.error(res.error || (isMovingUpcoming ? "Failed to reschedule." : "Failed to book."));
         await load();
       }
     } catch (err) {
-      toast.error(err?.message || "Failed to reschedule.");
+      toast.error(err?.message || (isMovingUpcoming ? "Failed to reschedule." : "Failed to book."));
       await load();
     } finally {
       rescheduleInFlightRef.current = false;
@@ -6052,13 +6061,28 @@ function IntroTab({ customer }) {
     status,
     statusLabel,
     rescheduleBlockReason,
+    canBookOrRebook,
+    timezone: studioTimezone,
   } = data || {};
 
   const introConsumed = taken || rescheduleBlockReason === "intro_consumed";
-  const showFreeReschedule = Boolean(purchased) && !introConsumed && !showRescheduleForm;
+  const hadCancelledTrial = (history || []).some((ev) =>
+    String(ev?.status || "").startsWith("cancelled"),
+  );
+  // Staff: move upcoming in place, or book/rebook when paid + unscheduled.
+  const canOpenScheduler =
+    Boolean(purchased) &&
+    !introConsumed &&
+    (Boolean(upcoming) || canBookOrRebook !== false);
+  const showSchedulerActions = canOpenScheduler && !showRescheduleForm;
+  const schedulingMode = upcoming
+    ? "reschedule"
+    : hadCancelledTrial
+      ? "rebook"
+      : "book";
   const originalSlot = purchase?.slot;
   const lessonForTaken = takenLesson || null;
-  const slotGroups = groupIntroSlotsByDay(availSlots);
+  const slotGroups = groupIntroSlotsByDay(availSlots, studioTimezone);
 
   const stepPurchased = Boolean(purchased);
   const stepScheduled = Boolean(upcoming) || Boolean(taken);
@@ -6072,14 +6096,17 @@ function IntroTab({ customer }) {
         ? "taken"
         : upcoming
           ? "purchased_scheduled"
-          : "purchased_not_taken");
+          : hadCancelledTrial
+            ? "purchased_cancelled"
+            : "purchased_not_taken");
 
   const resolvedStatusLabel =
     statusLabel ||
     {
       not_purchased: "Not purchased",
       purchased_scheduled: "Purchased — scheduled (not taken yet)",
-      purchased_not_taken: "Purchased — not taken yet (needs schedule)",
+      purchased_cancelled: "Purchased — cancelled (needs rebook)",
+      purchased_not_taken: "Purchased — not scheduled yet",
       taken: "Purchased — already taken",
     }[resolvedStatus];
 
@@ -6088,9 +6115,47 @@ function IntroTab({ customer }) {
       ? "border-success/20 bg-success/5"
       : resolvedStatus === "purchased_scheduled"
         ? "border-primary/20 bg-primary/5"
-        : resolvedStatus === "purchased_not_taken"
+        : resolvedStatus === "purchased_cancelled" || resolvedStatus === "purchased_not_taken"
           ? "border-warning/25 bg-warning/5"
           : "border-border bg-muted/30";
+
+  const heroSubcopy = !purchased
+    ? "This customer has not purchased their first trial lesson yet."
+    : taken
+      ? "Purchase complete and the trial lesson has been taken."
+      : upcoming
+        ? "Purchased and scheduled — waiting for the lesson."
+        : hadCancelledTrial
+          ? "Purchased, but the trial was cancelled. Free rebook is available."
+          : "Purchased, but not scheduled yet. Book a free time whenever they’re ready.";
+
+  const primaryActionLabel =
+    schedulingMode === "reschedule"
+      ? "Reschedule"
+      : schedulingMode === "rebook"
+        ? "Rebook free"
+        : "Book trial";
+
+  const confirmActionLabel =
+    schedulingMode === "reschedule"
+      ? "Confirm reschedule"
+      : schedulingMode === "rebook"
+        ? "Confirm rebook"
+        : "Confirm booking";
+
+  const schedulerTitle =
+    schedulingMode === "reschedule"
+      ? "Pick a new time"
+      : schedulingMode === "rebook"
+        ? "Rebook trial"
+        : "Schedule trial";
+
+  const schedulerSubcopy =
+    schedulingMode === "reschedule"
+      ? "Free reschedule — payment already collected. The current booking will move to the new time."
+      : schedulingMode === "rebook"
+        ? "Free rebook — payment already collected."
+        : "Free booking — payment already collected.";
 
   return (
     <div className="space-y-5">
@@ -6099,19 +6164,13 @@ function IntroTab({ customer }) {
         <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
-              Intro lesson
+              Trial lesson
             </p>
             <h3 className="text-[17px] font-semibold text-foreground leading-snug">
               {resolvedStatusLabel}
             </h3>
             <p className="text-[12px] text-muted-foreground mt-1 max-w-2xl">
-              {!purchased
-                ? "This customer has not purchased their first intro lesson yet."
-                : taken
-                  ? "Purchase complete and the intro lesson has been taken."
-                  : upcoming
-                    ? "Purchased and scheduled — waiting for the lesson."
-                    : "Purchased, but not scheduled yet. Free rebook is available."}
+              {heroSubcopy}
             </p>
           </div>
           {purchased && (
@@ -6127,7 +6186,7 @@ function IntroTab({ customer }) {
             done={stepPurchased}
             active={!stepPurchased}
             label="Purchased"
-            sub={purchased ? formatIntroDate(purchase?.paidAt) : "Not yet"}
+            sub={purchased ? formatIntroDate(purchase?.paidAt, studioTimezone) : "Not yet"}
           />
           <IntroStatusStep
             done={stepScheduled}
@@ -6135,12 +6194,14 @@ function IntroTab({ customer }) {
             label="Scheduled"
             sub={
               upcoming
-                ? formatIntroDate(upcoming.startDateTime)
+                ? formatIntroDate(upcoming.startDateTime, studioTimezone)
                 : taken
                   ? "Was scheduled"
-                  : purchased
-                    ? "Needs a time"
-                    : "—"
+                  : hadCancelledTrial
+                    ? "Cancelled — needs rebook"
+                    : purchased
+                      ? "Needs a time"
+                      : "—"
             }
           />
           <IntroStatusStep
@@ -6176,7 +6237,7 @@ function IntroTab({ customer }) {
             <div>
               <div className="mb-3 rounded-lg bg-muted/40 px-4 py-3.5">
                 <p className="text-[15px] font-semibold text-foreground">
-                  {purchase.description || "Intro Lesson"}
+                  {purchase.description || "Trial Lesson"}
                 </p>
                 <p className="text-[22px] font-semibold tracking-tight mt-0.5">
                   {formatIntroMoney(purchase.amount)}
@@ -6184,7 +6245,7 @@ function IntroTab({ customer }) {
               </div>
               <div className="grid sm:grid-cols-2 gap-x-6">
                 <IntroMetaRow icon={CheckCircle} label="Payment status" value="Paid" />
-                <IntroMetaRow icon={Calendar} label="Paid on" value={formatIntroDate(purchase.paidAt)} />
+                <IntroMetaRow icon={Calendar} label="Paid on" value={formatIntroDate(purchase.paidAt, studioTimezone)} />
                 <IntroMetaRow
                   icon={Send}
                   label="Booked via"
@@ -6198,10 +6259,10 @@ function IntroTab({ customer }) {
                 <div className="sm:col-span-2">
                   <IntroMetaRow
                     icon={Clock}
-                    label="Originally booked for"
+                    label="Slot chosen at payment"
                     value={
                       originalSlot?.startDateTime
-                        ? formatIntroDateTime(originalSlot.startDateTime)
+                        ? formatIntroDateTime(originalSlot.startDateTime, studioTimezone)
                         : null
                     }
                   />
@@ -6219,7 +6280,7 @@ function IntroTab({ customer }) {
               <Sparkles className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" />
               <p className="text-[13px] font-medium text-foreground">Not purchased yet</p>
               <p className="text-[12px] text-muted-foreground mt-1">
-                No intro payment on record for this customer.
+                No trial payment on record for this customer.
               </p>
             </div>
           )}
@@ -6234,7 +6295,7 @@ function IntroTab({ customer }) {
               </div>
               <div>
                 <p className="text-[13px] font-semibold text-foreground">Lesson</p>
-                <p className="text-[11px] text-muted-foreground">Current intro booking</p>
+                <p className="text-[11px] text-muted-foreground">Current trial booking</p>
               </div>
             </div>
             {upcoming && (
@@ -6255,11 +6316,11 @@ function IntroTab({ customer }) {
                 <div className="rounded-lg bg-muted/40 px-4 py-3.5 mb-3">
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Upcoming</p>
                   <p className="text-[16px] font-semibold text-foreground leading-snug">
-                    {formatIntroDate(upcoming.startDateTime)}
+                    {formatIntroDate(upcoming.startDateTime, studioTimezone)}
                   </p>
                   <p className="text-[14px] text-foreground/80 mt-0.5">
-                    {formatIntroTime(upcoming.startDateTime)}
-                    {upcoming.endDateTime ? ` – ${formatIntroTime(upcoming.endDateTime)}` : ""}
+                    {formatIntroTime(upcoming.startDateTime, studioTimezone)}
+                    {upcoming.endDateTime ? ` – ${formatIntroTime(upcoming.endDateTime, studioTimezone)}` : ""}
                   </p>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-x-6">
@@ -6288,10 +6349,10 @@ function IntroTab({ customer }) {
                 <div className="rounded-lg bg-success/5 border border-success/15 px-4 py-3.5 mb-3">
                   <p className="text-[13px] font-medium text-foreground flex items-center gap-1.5">
                     <CheckCircle className="h-3.5 w-3.5 text-success" />
-                    Intro already taken
+                    Trial already taken
                   </p>
                   <p className="text-[12px] text-muted-foreground mt-1">
-                    {formatIntroDateTime(lessonForTaken.startDateTime)}
+                    {formatIntroDateTime(lessonForTaken.startDateTime, studioTimezone)}
                   </p>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-x-6">
@@ -6312,9 +6373,13 @@ function IntroTab({ customer }) {
             ) : purchased ? (
               <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
                 <Clock className="h-6 w-6 mx-auto mb-2 text-warning" />
-                <p className="text-[13px] font-medium text-foreground">Not scheduled yet</p>
+                <p className="text-[13px] font-medium text-foreground">
+                  {hadCancelledTrial ? "Trial cancelled — not scheduled" : "Not scheduled yet"}
+                </p>
                 <p className="text-[12px] text-muted-foreground mt-1 max-w-sm mx-auto">
-                  They already paid — book a free reschedule whenever they’re ready.
+                  {hadCancelledTrial
+                    ? "They already paid — rebook a free time whenever they’re ready."
+                    : "They already paid — book a free trial time whenever they’re ready."}
                 </p>
               </div>
             ) : (
@@ -6322,7 +6387,7 @@ function IntroTab({ customer }) {
                 <Calendar className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" />
                 <p className="text-[13px] font-medium text-foreground">No lesson yet</p>
                 <p className="text-[12px] text-muted-foreground mt-1">
-                  Details appear here after the intro is purchased.
+                  Details appear here after the trial is purchased.
                 </p>
               </div>
             )}
@@ -6330,10 +6395,10 @@ function IntroTab({ customer }) {
 
           {(upcoming || (purchased && !introConsumed)) && (
             <div className="flex flex-wrap gap-2 pt-4 mt-auto border-t border-border">
-              {showFreeReschedule && (
+              {showSchedulerActions && (
                 <Button size="sm" variant={upcoming ? "outline" : "default"} onClick={openReschedule}>
                   <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-                  {upcoming ? "Reschedule" : "Book free reschedule"}
+                  {primaryActionLabel}
                 </Button>
               )}
               {upcoming && (
@@ -6353,15 +6418,14 @@ function IntroTab({ customer }) {
         </div>
       </div>
 
-      {/* Reschedule picker — full width */}
+      {/* Reschedule / book picker — full width */}
       {showRescheduleForm && (
         <div className="rounded-xl border border-border bg-card p-5 md:p-6 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[13px] font-semibold text-foreground">Pick a new time</p>
+              <p className="text-[13px] font-semibold text-foreground">{schedulerTitle}</p>
               <p className="text-[12px] text-muted-foreground mt-0.5">
-                Free reschedule — payment already collected
-                {upcoming ? ". Current lesson will be cancelled first." : "."}
+                {schedulerSubcopy}
               </p>
             </div>
             <button
@@ -6409,7 +6473,7 @@ function IntroTab({ customer }) {
                               : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-muted/40",
                           ].join(" ")}
                         >
-                          {formatIntroTime(slot.start) || slot.label}
+                          {slot.label || formatIntroTime(slot.start, studioTimezone)}
                         </button>
                       );
                     })}
@@ -6424,7 +6488,7 @@ function IntroTab({ customer }) {
               <p className="text-[12px] text-muted-foreground">
                 Selected:{" "}
                 <span className="font-medium text-foreground">
-                  {formatIntroDateTime(selectedSlot.start)}
+                  {formatIntroDateTime(selectedSlot.start, studioTimezone)}
                 </span>
               </p>
               <div className="flex gap-2">
@@ -6432,7 +6496,7 @@ function IntroTab({ customer }) {
                   Clear
                 </Button>
                 <Button size="sm" onClick={handleReschedule} disabled={rescheduling}>
-                  {rescheduling ? "Saving…" : "Confirm reschedule"}
+                  {rescheduling ? "Saving…" : confirmActionLabel}
                 </Button>
               </div>
             </div>
@@ -6475,12 +6539,12 @@ function IntroTab({ customer }) {
                     </div>
                     <div className="min-w-0">
                       <p className="text-[13px] font-medium text-foreground">
-                        {formatIntroDateTime(ev.startDateTime)}
+                        {formatIntroDateTime(ev.startDateTime, studioTimezone)}
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
                         {[ev.teacherID?.name ? `with ${ev.teacherID.name}` : null, ev.title]
                           .filter(Boolean)
-                          .join(" · ") || "Intro lesson"}
+                          .join(" · ") || "Trial lesson"}
                       </p>
                     </div>
                   </div>
@@ -6497,7 +6561,7 @@ function IntroTab({ customer }) {
       {!purchased && !upcoming && (!history || !history.length) && (
         <div className="rounded-xl border border-dashed border-border px-6 py-14 text-center">
           <Sparkles className="h-8 w-8 mx-auto mb-3 text-muted-foreground/40" />
-          <p className="text-[14px] font-medium text-foreground">No intro activity yet</p>
+          <p className="text-[14px] font-medium text-foreground">No trial activity yet</p>
           <p className="text-[12px] text-muted-foreground mt-1 max-w-md mx-auto">
             When this customer buys and books their first lesson through AI, the purchase and lesson details will show up here.
           </p>
