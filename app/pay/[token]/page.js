@@ -99,10 +99,11 @@ function StudioMark({ name }) {
   )
 }
 
-function formatPreferred(slot) {
+function formatPreferred(slot, timeZone) {
   if (!slot?.start) return null
   try {
     return new Date(slot.start).toLocaleString('en-US', {
+      timeZone: timeZone || undefined,
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -225,7 +226,7 @@ export default function PayPage() {
 
   if (state === 'pick-slot') {
     const slots = request.availableSlots || []
-    const preferredLabel = formatPreferred(request.preferredSlot)
+    const preferredLabel = formatPreferred(request.preferredSlot, request.timezone)
     return (
       <Shell>
         <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -334,7 +335,7 @@ export default function PayPage() {
     )
   }
 
-  const preferredLabel = formatPreferred(request.preferredSlot)
+  const preferredLabel = formatPreferred(request.preferredSlot, request.timezone)
 
   return (
     <Shell>
@@ -350,6 +351,9 @@ export default function PayPage() {
           {preferredLabel && (
             <p className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-[13px] leading-relaxed text-foreground">
               Preferred time: <span className="font-medium">{preferredLabel}</span>
+              {request.timezone ? (
+                <span className="text-muted-foreground"> (studio local time)</span>
+              ) : null}
               {request.holdActive
                 ? ' — held for you while this link is open (up to 2 hours from when it was sent).'
                 : ' — if this time is taken when you pay, you’ll choose another available slot.'}
