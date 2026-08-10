@@ -2334,6 +2334,8 @@ function FormsPageInner() {
         return `<input type="hidden" name="organisationID" value="${organisationID}" />`
       }
       if (field.name === 'formID') {
+        // Unsaved forms have no id yet — omit the field so Mongoose doesn't cast "".
+        if (!formID) return ''
         return `<input type="hidden" name="formID" value="${formID}" />`
       }
       return `<input type="hidden" name="${fieldName}" value="${escapedDefault}" />`
@@ -2575,6 +2577,42 @@ function FormsPageInner() {
     .submit-btn:active {
       opacity: 0.8;
     }
+    .crm-toast-host {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      pointer-events: none;
+      max-width: min(360px, calc(100vw - 2rem));
+    }
+    .crm-toast {
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      border-radius: 0.75rem;
+      background: #0f172a;
+      color: #f8fafc;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+      font-size: 0.875rem;
+      line-height: 1.4;
+      animation: crm-toast-in 0.22s ease-out;
+    }
+    .crm-toast--success { background: #065f46; }
+    .crm-toast--error { background: #9f1239; }
+    .crm-toast__title {
+      font-weight: 600;
+      margin-bottom: 0.15rem;
+    }
+    .crm-toast__message { opacity: 0.95; }
+    @keyframes crm-toast-in {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 ${gtagScript}
   ${embedGlobalStylesMeta(globalStyles, globalStyleExcludeKeys)}
@@ -2586,10 +2624,32 @@ ${gtagScript}
       <button type="submit" class="submit-btn">${submitButton.label}</button>
     </form>
   </div>
+  <div class="crm-toast-host" id="crmToastHost" aria-live="polite"></div>
   <script>
 ${getCaptchaExportRuntimeScript()}
 ${getFormPhoneExportRuntimeScript()}
     (function() {
+      function showToast(type, title, message) {
+        var host = document.getElementById('crmToastHost');
+        if (!host) return;
+        var el = document.createElement('div');
+        el.className = 'crm-toast crm-toast--' + (type === 'success' ? 'success' : 'error');
+        el.innerHTML =
+          '<div>' +
+            '<div class="crm-toast__title"></div>' +
+            (message ? '<div class="crm-toast__message"></div>' : '') +
+          '</div>';
+        el.querySelector('.crm-toast__title').textContent = title || '';
+        var msgEl = el.querySelector('.crm-toast__message');
+        if (msgEl) msgEl.textContent = message || '';
+        host.appendChild(el);
+        setTimeout(function() {
+          el.style.opacity = '0';
+          el.style.transition = 'opacity 0.2s ease';
+          setTimeout(function() { el.remove(); }, 220);
+        }, 3200);
+      }
+
       const form = document.getElementById('exportedForm');
       if (form) {
         form.addEventListener('submit', async function(event) {
@@ -2653,23 +2713,25 @@ ${getFormPhoneExportRuntimeScript()}
           // Safety: ensure backend required ids are scalar even if duplicated somehow
           payload.organisationID = pickFirst(payload.organisationID);
           payload.formID = pickFirst(payload.formID);
+          if (!payload.formID) delete payload.formID;
           delete payload.captcha;
           delete payload.captcha_images;
 
           try {
-            const res = await fetch('https://backend.cadance.ai/api/lead/form', {
+            const res = await fetch('${String(getApiBaseUrl() || '').replace(/\/$/, '')}/api/lead/form', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
             const body = await res.json().catch(() => null);
             if (res.ok) {
-              alert('Form submitted successfully!');
+              showToast('success', 'Form submitted successfully!', 'Thanks — we received your details.');
+              form.reset();
             } else {
-              alert(body?.message || 'Form submission failed');
+              showToast('error', 'Form submission failed', body?.message || 'Please try again.');
             }
           } catch (err) {
-            alert('Network error while submitting form');
+            showToast('error', 'Network error', 'Could not submit the form. Please try again.');
           }
         });
       }
