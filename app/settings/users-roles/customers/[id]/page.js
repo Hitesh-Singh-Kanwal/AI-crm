@@ -61,6 +61,7 @@ import { getInitials, formatDate } from "@/lib/utils";
 import {
   customerLifecycleBadgeClass,
   customerLifecycleLabel,
+  CUSTOMER_LIFECYCLE_STATUS_OPTIONS,
 } from "@/lib/customer-lifecycle";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -542,6 +543,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
       callbackDate: customer.callbackDate
         ? String(customer.callbackDate).slice(0, 10)
         : "",
+      lifecycleStatus: customer.lifecycleStatus || "active",
       address: {
         street: customer.address?.street || "",
         city: customer.address?.city || "",
@@ -577,6 +579,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
       dateOfBirth: form.dateOfBirth || undefined,
       gender: form.gender || undefined,
       callbackDate: form.callbackDate || null,
+      lifecycleStatus: form.lifecycleStatus || "active",
       address: hasAddress ? addr : undefined,
     });
     if (res.success) {
@@ -769,6 +772,24 @@ function ProfileTab({ customer, locations, onUpdated }) {
                     className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
                   />
                 </FormField>
+                <FormField label="Lifecycle status">
+                  <div className="relative">
+                    <select
+                      value={form.lifecycleStatus || "active"}
+                      onChange={(e) =>
+                        setForm({ ...form, lifecycleStatus: e.target.value })
+                      }
+                      className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
+                    >
+                      {CUSTOMER_LIFECYCLE_STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </FormField>
               </div>
               <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
                 <p className="text-[12px] font-semibold text-muted-foreground">
@@ -926,6 +947,19 @@ function ProfileTab({ customer, locations, onUpdated }) {
                         ? formatDate(customer.callbackDate)
                         : "—"}
                     </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground mb-0.5">
+                      Lifecycle status
+                    </p>
+                    <span
+                      className={[
+                        "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                        customerLifecycleBadgeClass(customer.lifecycleStatus),
+                      ].join(" ")}
+                    >
+                      {customerLifecycleLabel(customer.lifecycleStatus)}
+                    </span>
                   </div>
                 </div>
               </div>

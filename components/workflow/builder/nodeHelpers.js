@@ -1,5 +1,17 @@
 import { getPaletteItem } from '@/components/workflow/builder/constants'
 import { summarizeContactConfig } from '@/lib/workflow-contact'
+import { customerLifecycleLabel, CUSTOMER_LIFECYCLE_STATUS_OPTIONS } from '@/lib/customer-lifecycle'
+
+const LIFECYCLE_STATUS_KEYS = new Set(
+  CUSTOMER_LIFECYCLE_STATUS_OPTIONS.map((opt) => opt.value)
+)
+
+function formatExitStageLabel(stage) {
+  const key = String(stage || '').trim()
+  if (!key) return ''
+  if (LIFECYCLE_STATUS_KEYS.has(key)) return customerLifecycleLabel(key)
+  return key
+}
 
 function triggerSummary(config) {
   return summarizeContactConfig(config)
@@ -18,7 +30,7 @@ function waitSummary(config) {
 
 function exitSummary(config) {
   const stage = Array.isArray(config.exitRuleStages) ? config.exitRuleStages[0] : null
-  return stage ? `Exit · ${stage}` : 'Select exit stage'
+  return stage ? `Exit · ${formatExitStageLabel(stage)}` : 'Select exit stage'
 }
 
 export function getNodeSummary(paletteType, config = {}) {

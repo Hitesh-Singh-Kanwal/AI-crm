@@ -4,9 +4,21 @@ import { Handle, Position } from '@xyflow/react'
 import { cn } from '@/lib/utils'
 import { NODE_STYLES, getPaletteItem } from '@/components/workflow/builder/constants'
 import { useWorkflowBuilderStore } from '@/components/workflow/builder/workflowBuilderStore'
+import { customerLifecycleLabel, CUSTOMER_LIFECYCLE_STATUS_OPTIONS } from '@/lib/customer-lifecycle'
 
 const handleClass =
   '!h-3 !w-3 !border-2 !border-background !bg-[var(--studio-primary)]'
+
+const LIFECYCLE_STATUS_KEYS = new Set(
+  CUSTOMER_LIFECYCLE_STATUS_OPTIONS.map((opt) => opt.value)
+)
+
+function formatExitStageLabel(stage) {
+  const key = String(stage || '').trim()
+  if (!key) return ''
+  if (LIFECYCLE_STATUS_KEYS.has(key)) return customerLifecycleLabel(key)
+  return key
+}
 
 function NodeSummary({ paletteType, config }) {
   if (paletteType === 'send_email' && config?.subject) {
@@ -28,7 +40,11 @@ function NodeSummary({ paletteType, config }) {
     if (!stage) {
       return <p className="mt-1 truncate text-[11px] text-muted-foreground">Select exit stage</p>
     }
-    return <p className="mt-1 truncate text-[11px] text-muted-foreground">Exit · {stage}</p>
+    return (
+      <p className="mt-1 truncate text-[11px] text-muted-foreground">
+        Exit · {formatExitStageLabel(stage)}
+      </p>
+    )
   }
   if (paletteType === 'contact' || paletteType === 'contact_created' || paletteType === 'form_submitted') {
     if (config?.listName) {
