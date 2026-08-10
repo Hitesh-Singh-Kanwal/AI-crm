@@ -2925,8 +2925,22 @@ ${getFormPhoneExportRuntimeScript()}
     : formFields.find((f) => f.id === selectedField)
 
   return (
-    <MainLayout title="Form Builder" subtitle="Create and manage forms">
-      <div className="space-y-6 min-h-full flex flex-col">
+    <MainLayout
+      title="Form Builder"
+      subtitle="Create and manage forms"
+      mainClassName={
+        activeTab === 'builder'
+          ? 'flex flex-col overflow-hidden !py-2'
+          : undefined
+      }
+    >
+      <div
+        className={
+          activeTab === 'builder'
+            ? 'flex min-h-0 flex-1 flex-col'
+            : 'flex min-h-full flex-col space-y-6'
+        }
+      >
         {/* Templates View */}
         {activeTab === 'templates' && (
           <div className="space-y-6 flex-1 min-h-0 flex flex-col">
@@ -3182,8 +3196,8 @@ ${getFormPhoneExportRuntimeScript()}
 
         {/* Builder View */}
         {activeTab === 'builder' && (
-          <div className="h-[calc(100vh-200px)] flex flex-col gap-3">
-          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={() => {
@@ -3247,10 +3261,10 @@ ${getFormPhoneExportRuntimeScript()}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <div className="grid grid-cols-12 gap-4 flex-1 min-h-0">
+            <div className="grid min-h-0 flex-1 grid-cols-12 grid-rows-1 gap-4">
               {/* Properties palette */}
-              <div className="col-span-3 flex flex-col min-h-0 self-stretch">
-                <Card className="flex flex-col flex-1 min-h-0" style={{ height: 'calc(100% + 30px)' }}>
+              <div className="col-span-3 flex min-h-0 flex-col self-stretch">
+                <Card className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
                   <CardHeader className="flex-shrink-0 space-y-3 pb-3">
                     <div>
                       <CardTitle className="text-base">Properties</CardTitle>
@@ -3426,8 +3440,8 @@ ${getFormPhoneExportRuntimeScript()}
               </div>
 
               {/* Form Canvas */}
-              <div className="col-span-6 flex flex-col min-h-0">
-                <Card className="flex flex-col flex-1 min-h-0 overflow-hidden border-slate-200">
+              <div className="col-span-6 flex min-h-0 flex-col">
+                <Card className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-slate-200">
                   <CardHeader className="flex-shrink-0 border-b border-slate-200 bg-white pb-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -3539,8 +3553,8 @@ ${getFormPhoneExportRuntimeScript()}
               </div>
 
               {/* Field Settings / Global CSS Panel */}
-              <div className="col-span-3 flex flex-col min-h-0">
-                <Card className="flex flex-col flex-1 min-h-0">
+              <div className="col-span-3 flex min-h-0 flex-col">
+                <Card className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
                   <CardHeader className="flex-shrink-0 space-y-3">
                     <div className="flex rounded-md border border-border p-0.5 bg-muted/30">
                       <button
