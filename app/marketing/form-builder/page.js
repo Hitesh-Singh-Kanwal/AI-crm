@@ -2718,7 +2718,7 @@ ${getFormPhoneExportRuntimeScript()}
           delete payload.captcha_images;
 
           try {
-            const res = await fetch('${String(getApiBaseUrl() || '').replace(/\/$/, '')}/api/lead/form', {
+            const res = await fetch('https://backend.cadance.ai/api/lead/form', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
