@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Calendar, CheckSquare, PhoneCall, Headphones } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { useUpcomingTasks } from '@/lib/hooks/useUpcomingTasks'
+import CreateTaskDialog from '@/components/dashboard/CreateTaskDialog'
 
 const PREVIEW_COUNT = 3
 const UPCOMING_TASKS_PAGE = '/dashboard/upcoming-tasks'
@@ -30,7 +31,7 @@ const KIND_LABEL = {
 export default function UpcomingTasks() {
   // Fetched wider than the preview shows, so the count badge and "View all"
   // link reflect the real total, not just what's visible on the dashboard.
-  const { tasks, loading } = useUpcomingTasks({ days: 7, limit: 20 })
+  const { tasks, loading, refresh } = useUpcomingTasks({ days: 7, limit: 20 })
   const previewTasks = tasks.slice(0, PREVIEW_COUNT)
 
   return (
@@ -51,6 +52,7 @@ export default function UpcomingTasks() {
           >
             View all
           </Link>
+          <CreateTaskDialog compact onCreated={() => refresh()} />
         </div>
       </CardHeader>
       <CardContent className="pt-0">

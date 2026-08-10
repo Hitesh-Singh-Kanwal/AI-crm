@@ -13,10 +13,26 @@ const DETAIL_COLUMNS = [
   { key: 'booked', label: 'Booked' },
 ]
 
+// `noBaseline` (see pctTrend in ownerDashboard.controller.js) means the prior
+// period had 0 — percent growth from zero is undefined, so a fixed "100%"
+// badge used to show for both a 0->1 and a 0->11 jump. Show "New" instead of
+// a fabricated percentage, and skip the badge entirely when there's nothing
+// to report either way (0 now, nothing to compare against).
+function trendDisplay(growth, comparisonLabel) {
+  if (growth.noBaseline) {
+    if (!growth.value) return null
+    return { text: 'New', label: `No ${comparisonLabel} data to compare against` }
+  }
+  const pct = (growth.trendPct ?? 0).toFixed(1)
+  return { text: `${pct}%`, label: `${pct}% vs ${comparisonLabel}` }
+}
+
 export default function StudentHealthOverviewWidget({ studentHealth, rangeDays, onRangeChange }) {
   const totals = studentHealth?.totals || { active: 0, booked: 0, notBooked: 0, bookedPct: 0 }
   const momGrowth = studentHealth?.newActiveTrend?.momGrowth || { value: 0, trendPct: 0, trendType: 'up' }
   const ytdGrowth = studentHealth?.newActiveTrend?.ytdGrowth || { value: 0, trendPct: 0, trendType: 'up' }
+  const momTrend = trendDisplay(momGrowth, 'last month')
+  const ytdTrend = trendDisplay(ytdGrowth, 'same period last year')
 
   const cards = [
     { title: 'Active Students', value: totals.active.toLocaleString(), icon: Users },
@@ -24,16 +40,16 @@ export default function StudentHealthOverviewWidget({ studentHealth, rangeDays, 
     {
       title: 'New Active — MTD',
       value: momGrowth.value.toLocaleString(),
-      trend: `${(momGrowth.trendPct ?? 0).toFixed(1)}%`,
-      trendLabel: `${(momGrowth.trendPct ?? 0).toFixed(1)}% vs last month`,
+      trend: momTrend?.text,
+      trendLabel: momTrend?.label,
       trendType: momGrowth.trendType,
       icon: UserPlus,
     },
     {
       title: 'New Active — YTD',
       value: ytdGrowth.value.toLocaleString(),
-      trend: `${(ytdGrowth.trendPct ?? 0).toFixed(1)}%`,
-      trendLabel: `${(ytdGrowth.trendPct ?? 0).toFixed(1)}% vs same period last year`,
+      trend: ytdTrend?.text,
+      trendLabel: ytdTrend?.label,
       trendType: ytdGrowth.trendType,
       icon: TrendingUp,
     },

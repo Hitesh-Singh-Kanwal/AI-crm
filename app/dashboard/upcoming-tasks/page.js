@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { formatDate, cn } from '@/lib/utils'
 import { useUpcomingTasks } from '@/lib/hooks/useUpcomingTasks'
+import CreateTaskDialog from '@/components/dashboard/CreateTaskDialog'
 
 const ROWS_PER_PAGE = 15
 
@@ -268,6 +269,7 @@ export default function UpcomingTasksPage() {
             >
               <RotateCw className="h-3.5 w-3.5" />
             </button>
+            <CreateTaskDialog onCreated={() => refresh()} />
           </div>
 
           {showMoreFilters && (

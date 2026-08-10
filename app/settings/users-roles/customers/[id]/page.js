@@ -51,10 +51,20 @@ import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import LocationSelector from "@/components/shared/LocationSelector";
 import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
 import api from "@/lib/api";
-import { useCloverConnection, resolveLocationID } from "@/app/settings/payments/clover/useCloverConnection";
-import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
+import {
+  useCloverConnection,
+  resolveLocationID,
+} from "@/app/settings/payments/clover/useCloverConnection";
+import {
+  openCheckoutTab,
+  navigateCheckoutTab,
+  closeCheckoutTab,
+  CHECKOUT_TOAST,
+} from "@/lib/clover";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
-import WalletShortfallField, { walletPaymentFields } from "@/components/payments/WalletShortfallField";
+import WalletShortfallField, {
+  walletPaymentFields,
+} from "@/components/payments/WalletShortfallField";
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
 import { getInitials, formatDate } from "@/lib/utils";
@@ -108,7 +118,6 @@ function paymentTypeBadge(type) {
   );
 }
 
-
 function SessionBar({ used, total }) {
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
   return (
@@ -140,7 +149,7 @@ function FormField({ label, required, children }) {
 
 // ─── IssueRefundDialog ───────────────────────────────────────────────────────
 
-const refIdOf = (ref) => (ref?._id ?? ref ?? null);
+const refIdOf = (ref) => ref?._id ?? ref ?? null;
 
 // Where the refunded money goes. Anything originally taken on a card is returned to that
 // card by Clover regardless of this choice; it decides what happens to the rest.
@@ -319,7 +328,9 @@ function TagsEditor({ customer, onUpdated }) {
 
   async function saveTags(nextTags) {
     setSaving(true);
-    const res = await api.put(`/api/customer/${customer._id}`, { tags: nextTags });
+    const res = await api.put(`/api/customer/${customer._id}`, {
+      tags: nextTags,
+    });
     if (res.success) {
       onUpdated();
       setOrgTags((prev) => [...new Set([...prev, ...nextTags])].sort());
@@ -413,10 +424,190 @@ function TagsEditor({ customer, onUpdated }) {
             <option key={tag} value={tag} />
           ))}
         </datalist>
-        <Button type="submit" size="sm" variant="outline" className="h-8 px-2.5" disabled={saving || !draft.trim()}>
+        <Button
+          type="submit"
+          size="sm"
+          variant="outline"
+          className="h-8 px-2.5"
+          disabled={saving || !draft.trim()}
+        >
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </form>
+    </div>
+  );
+}
+
+// ─── Balance Breakdown ───────────────────────────────────────────────────────
+
+// Consolidates every payment-related balance concept scattered across the
+// Enrollments/Memberships/Wallet tabs into one place: what the customer owes
+// (per package/membership, so staff can see exactly where an outstanding
+// total is coming from) and what they have available to spend (wallet +
+// store credit) — two different, easily-conflated numbers, kept visibly
+// separate rather than netted together.
+function BalanceBreakdownCard({ customer }) {
+  const [loading, setLoading] = useState(true);
+  const [owedBreakdown, setOwedBreakdown] = useState([]); // [{ label, amount, type }]
+  const [walletBalance, setWalletBalance] = useState(0);
+
+  useEffect(() => {
+    if (!customer?._id) return;
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      // Explicit limit — the list endpoint defaults to 20 per page, which
+      // would silently drop any enrollment past the first page for a
+      // long-tenured customer.
+      api.get(`/api/enrollment?customerID=${customer._id}&limit=500`),
+      api.get(`/api/customer-membership/customer/${customer._id}`),
+      fetchWalletBalance(customer._id),
+    ]).then(([enrRes, memRes, wallet]) => {
+      if (cancelled) return;
+      // package.dueAmount / membership.dueAmount are snapshot fields that
+      // aren't always kept in sync (e.g. mid-payment-plan) — `!= null`
+      // means "the snapshot is trustworthy", but when it's null the real
+      // outstanding amount still exists, just has to be derived the same
+      // way the payment-plan scheduler on this page already does
+      // (`cp.dueAmount != null ? dueAmount : totalPaid - amountCollected`).
+      // Reading only dueAmount directly here silently dropped any
+      // enrollment/membership that had fallen out of sync.
+      const packages = (enrRes.success ? enrRes.data || [] : [])
+        .map((enr) => {
+          const pkg = enr.package;
+          if (!pkg) return null;
+          const due =
+            pkg.dueAmount != null
+              ? Number(pkg.dueAmount)
+              : Math.max(0, Number(pkg.totalPaid || 0) - Number(pkg.amountCollected || 0));
+          return due > 0 ? { label: pkg.packageName || "Package", amount: due, type: "Package" } : null;
+        })
+        .filter(Boolean);
+      const memberships = (memRes.success ? memRes.data || [] : [])
+        .map((m) => {
+          const due =
+            m.dueAmount != null
+              ? Number(m.dueAmount)
+              : Math.max(0, Number(m.price || 0) - Number(m.amountCollected || 0));
+          return due > 0 ? { label: m.membershipName || "Membership", amount: due, type: "Membership" } : null;
+        })
+        .filter(Boolean);
+      setOwedBreakdown([...packages, ...memberships].sort((a, b) => b.amount - a.amount));
+      setWalletBalance(Number(wallet) || 0);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [customer?._id]);
+
+  const totalOwed = owedBreakdown.reduce((sum, row) => sum + row.amount, 0);
+  const creditBalance = Number(customer.credits) || 0;
+  const totalAvailable = walletBalance + creditBalance;
+
+  const availableBreakdown = [
+    walletBalance > 0 && { label: "Wallet Balance", amount: walletBalance, type: "Wallet" },
+    creditBalance > 0 && { label: "Store Credit", amount: creditBalance, type: "Credit" },
+  ].filter(Boolean);
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
+      <h2 className="text-[13px] font-semibold text-foreground">Balance Summary</h2>
+      {loading ? (
+        <p className="text-[12px] text-muted-foreground">Loading…</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="rounded-xl border border-border bg-card px-4 py-3">
+              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
+                <AlertTriangle className="h-3 w-3" />
+                Outstanding
+              </p>
+              <p
+                className={`text-[19px] font-semibold ${totalOwed > 0 ? "text-destructive" : "text-foreground"}`}
+              >
+                ${totalOwed.toFixed(2)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-card px-4 py-3">
+              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
+                <Wallet className="h-3 w-3" />
+                Available
+              </p>
+              <p className="text-[19px] font-semibold text-success">
+                ${totalAvailable.toFixed(2)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-card px-4 py-3">
+              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
+                <Wallet className="h-3 w-3" />
+                Wallet Balance
+              </p>
+              <p className="text-[19px] font-semibold text-foreground">
+                ${walletBalance.toFixed(2)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-card px-4 py-3">
+              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
+                <CreditCard className="h-3 w-3" />
+                Store Credit
+              </p>
+              <p className="text-[19px] font-semibold text-foreground">
+                ${creditBalance.toFixed(2)}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+              Where it's coming from
+            </p>
+            {owedBreakdown.length === 0 && availableBreakdown.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground">
+                No outstanding balance and no available funds.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {owedBreakdown.map((row, i) => (
+                  <div
+                    key={`owed-${i}`}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-destructive/5 px-3 py-2"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-foreground">
+                      <Package className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{row.label}</span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                        ({row.type} due)
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-[12px] font-semibold text-destructive">
+                      ${row.amount.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+                {availableBreakdown.map((row, i) => (
+                  <div
+                    key={`avail-${i}`}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-success/5 px-3 py-2"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-foreground">
+                      {row.type === "Wallet" ? (
+                        <Wallet className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <CreditCard className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="truncate">{row.label}</span>
+                    </span>
+                    <span className="shrink-0 text-[12px] font-semibold text-success">
+                      ${row.amount.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -427,6 +618,14 @@ function ProfileTab({ customer, locations, onUpdated }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
+  // Quick-save for just the callback date, without entering full profile
+  // edit mode — mirrors saveCallbackDate() in app/leads/components/LeadsDialog.js
+  // so Customers gets the same "update the follow-up reminder in one click"
+  // UX Leads already has, instead of requiring the whole profile form.
+  const [callbackDateDraft, setCallbackDateDraft] = useState(
+    customer.callbackDate ? String(customer.callbackDate).slice(0, 10) : "",
+  );
+  const [savingCallbackDate, setSavingCallbackDate] = useState(false);
   const [customerEvents, setCustomerEvents] = useState([]);
   const [sessionStats, setSessionStats] = useState({
     usedValue: 0,
@@ -440,6 +639,27 @@ function ProfileTab({ customer, locations, onUpdated }) {
     completedValue: 0,
   });
   const toast = useToast();
+
+  useEffect(() => {
+    setCallbackDateDraft(
+      customer.callbackDate ? String(customer.callbackDate).slice(0, 10) : "",
+    );
+  }, [customer?._id, customer?.callbackDate]);
+
+  async function saveCallbackDate() {
+    if (!customer?._id) return;
+    setSavingCallbackDate(true);
+    const res = await api.put(`/api/customer/${customer._id}`, {
+      callbackDate: callbackDateDraft || null,
+    });
+    if (res.success) {
+      toast.success("Callback date updated.");
+      onUpdated();
+    } else {
+      toast.error(res.error || "Unable to update callback date.");
+    }
+    setSavingCallbackDate(false);
+  }
 
   useEffect(() => {
     if (!customer?._id) return;
@@ -669,6 +889,8 @@ function ProfileTab({ customer, locations, onUpdated }) {
         </div>
       </div>
 
+      <BalanceBreakdownCard customer={customer} />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Info card */}
         <div className="lg:col-span-2 rounded-xl border border-border bg-card p-6 space-y-5">
@@ -723,7 +945,13 @@ function ProfileTab({ customer, locations, onUpdated }) {
                 </FormField>
                 <FormField label="Location">
                   <LocationSelector
-                    value={Array.isArray(form.locationID) ? form.locationID : form.locationID ? [form.locationID] : []}
+                    value={
+                      Array.isArray(form.locationID)
+                        ? form.locationID
+                        : form.locationID
+                          ? [form.locationID]
+                          : []
+                    }
                     onChange={(ids) => setForm({ ...form, locationID: ids })}
                     multiple
                     showAllOption={false}
@@ -942,11 +1170,30 @@ function ProfileTab({ customer, locations, onUpdated }) {
                     <p className="text-[11px] text-muted-foreground mb-0.5">
                       Callback date
                     </p>
-                    <p className="text-[13px] text-foreground">
-                      {customer.callbackDate
-                        ? formatDate(customer.callbackDate)
-                        : "—"}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={callbackDateDraft}
+                        onChange={(e) => setCallbackDateDraft(e.target.value)}
+                        className="h-8 rounded-lg border border-border bg-background px-2.5 text-[13px] outline-none focus:border-primary"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={saveCallbackDate}
+                        disabled={
+                          savingCallbackDate ||
+                          callbackDateDraft ===
+                            (customer.callbackDate
+                              ? String(customer.callbackDate).slice(0, 10)
+                              : "")
+                        }
+                        className="h-8 shrink-0 px-2.5 text-[12px]"
+                      >
+                        {savingCallbackDate ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
                   </div>
                   <div>
                     <p className="text-[11px] text-muted-foreground mb-0.5">
@@ -1078,7 +1325,9 @@ function ProfileTab({ customer, locations, onUpdated }) {
             {(() => {
               const now = new Date();
               const past = customerEvents
-                .filter((ev) => new Date(ev.endDateTime ?? ev.startDateTime) <= now)
+                .filter(
+                  (ev) => new Date(ev.endDateTime ?? ev.startDateTime) <= now,
+                )
                 .sort(
                   (a, b) =>
                     new Date(b.startDateTime) - new Date(a.startDateTime),
@@ -1133,7 +1382,17 @@ function ProfileTab({ customer, locations, onUpdated }) {
 
 // ─── PaymentSchedule ─────────────────────────────────────────────────────────
 
-function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAddInstallment, billingType, customerID, locationID, onSent }) {
+function PaymentSchedule({
+  plan,
+  cpStatus,
+  onPayInstallment,
+  onChangeDate,
+  onAddInstallment,
+  billingType,
+  customerID,
+  locationID,
+  onSent,
+}) {
   const [open, setOpen] = useState(false);
   const { cloverReady } = useCloverConnection(locationID || plan);
 
@@ -1253,7 +1512,11 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
                             size="sm"
                             className="h-7 px-2.5 text-[11px] bg-success hover:bg-success text-white"
                             onClick={() =>
-                              onPayInstallment({ plan, index: idx, billingType })
+                              onPayInstallment({
+                                plan,
+                                index: idx,
+                                billingType,
+                              })
                             }
                           >
                             Pay
@@ -1275,16 +1538,18 @@ function PaymentSchedule({ plan, cpStatus, onPayInstallment, onChangeDate, onAdd
               })}
             </p>
           )}
-          {billingType === "flexible" && plan.status !== "cancelled" && cpStatus === "active" && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-3 h-7 px-3 text-[11px] w-full"
-              onClick={() => onAddInstallment(plan)}
-            >
-              + Add Payment
-            </Button>
-          )}
+          {billingType === "flexible" &&
+            plan.status !== "cancelled" &&
+            cpStatus === "active" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 h-7 px-3 text-[11px] w-full"
+                onClick={() => onAddInstallment(plan)}
+              >
+                + Add Payment
+              </Button>
+            )}
         </div>
       )}
     </div>
@@ -1342,7 +1607,7 @@ function PaymentTimeline({ customerID, enrollmentID }) {
         <ChevronDown
           className={`h-3.5 w-3.5 transition-transform shrink-0 ${open ? "" : "-rotate-90"}`}
         />
-        Payment Timeline
+        Payment History
         {payments !== null && (
           <span className="ml-1 normal-case font-normal">
             ({payments.length} record{payments.length !== 1 ? "s" : ""})
@@ -1490,7 +1755,9 @@ function PayInstallmentDialog({
 
   useEffect(() => {
     if (open && plan?.customerID) {
-      fetchWalletBalance(plan.customerID?._id ?? plan.customerID).then(setWalletBalance);
+      fetchWalletBalance(plan.customerID?._id ?? plan.customerID).then(
+        setWalletBalance,
+      );
     }
   }, [open, plan?.customerID]);
 
@@ -1526,16 +1793,19 @@ function PayInstallmentDialog({
     if (num === null) return;
     const checkoutTab = payWithClover ? openCheckoutTab() : null;
     setSaving(true);
-    const res = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
-      installmentIndex,
-      amount: num,
-      ...walletPaymentFields({
-        method,
-        shortfallMethod,
-        balance: walletBalance,
-        amountDue: num,
-      }),
-    });
+    const res = await api.post(
+      `/api/payment-plan/${plan._id}/pay-installment`,
+      {
+        installmentIndex,
+        amount: num,
+        ...walletPaymentFields({
+          method,
+          shortfallMethod,
+          balance: walletBalance,
+          amountDue: num,
+        }),
+      },
+    );
     if (res.success) {
       if (res.data?.checkoutUrl) {
         navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
@@ -1697,7 +1967,11 @@ function ChangeInstallmentDateDialog({
 
   useEffect(() => {
     if (installment) {
-      setDueDate(installment.dueDate ? new Date(installment.dueDate).toISOString().slice(0, 10) : "");
+      setDueDate(
+        installment.dueDate
+          ? new Date(installment.dueDate).toISOString().slice(0, 10)
+          : "",
+      );
     }
   }, [installment]);
 
@@ -1772,7 +2046,10 @@ function AddInstallmentDialog({ open, onClose, plan, onSuccess }) {
   const toast = useToast();
 
   useEffect(() => {
-    if (open) { setDueDate(""); setAmount(""); }
+    if (open) {
+      setDueDate("");
+      setAmount("");
+    }
   }, [open]);
 
   async function handleSubmit(e) {
@@ -1794,7 +2071,12 @@ function AddInstallmentDialog({ open, onClose, plan, onSuccess }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Add Scheduled Payment</DialogTitle>
@@ -1819,8 +2101,15 @@ function AddInstallmentDialog({ open, onClose, plan, onSuccess }) {
             />
           </FormField>
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={saving || !dueDate || !amount} className="bg-brand hover:opacity-90 text-white">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving || !dueDate || !amount}
+              className="bg-brand hover:opacity-90 text-white"
+            >
               {saving ? "Saving…" : "Add Payment"}
             </Button>
           </div>
@@ -1836,7 +2125,13 @@ function AddInstallmentDialog({ open, onClose, plan, onSuccess }) {
 // due amount but no billing schedule) and any other one_time enrollment that
 // still owes money. Posts to POST /api/customer-package/:enrollmentId/payment-plan.
 
-function SetupPaymentPlanDialog({ open, onClose, enrollment, outstanding, onSuccess }) {
+function SetupPaymentPlanDialog({
+  open,
+  onClose,
+  enrollment,
+  outstanding,
+  onSuccess,
+}) {
   const [numberOfInstallments, setNumberOfInstallments] = useState(3);
   const [frequency, setFrequency] = useState("monthly");
   const [startDate, setStartDate] = useState("");
@@ -1864,15 +2159,18 @@ function SetupPaymentPlanDialog({ open, onClose, enrollment, outstanding, onSucc
     e.preventDefault();
     if (!numberOfInstallments || !frequency || !startDate) return;
     setSaving(true);
-    const res = await api.post(`/api/customer-package/${enrollment._id}/payment-plan`, {
-      billing: {
-        numberOfInstallments: Number(numberOfInstallments),
-        frequency,
-        startDate,
-        collectNow,
-        method,
+    const res = await api.post(
+      `/api/customer-package/${enrollment._id}/payment-plan`,
+      {
+        billing: {
+          numberOfInstallments: Number(numberOfInstallments),
+          frequency,
+          startDate,
+          collectNow,
+          method,
+        },
       },
-    });
+    );
     if (res.success) {
       toast.success("Payment plan created.");
       onSuccess();
@@ -1884,7 +2182,12 @@ function SetupPaymentPlanDialog({ open, onClose, enrollment, outstanding, onSucc
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Set Up Payment Plan</DialogTitle>
@@ -1892,7 +2195,9 @@ function SetupPaymentPlanDialog({ open, onClose, enrollment, outstanding, onSucc
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <p className="text-[12px] text-muted-foreground">
             Schedule the remaining{" "}
-            <span className="font-semibold text-foreground">${Number(outstanding).toFixed(2)}</span>{" "}
+            <span className="font-semibold text-foreground">
+              ${Number(outstanding).toFixed(2)}
+            </span>{" "}
             balance into recurring payments.
           </p>
           <FormField label="Number of Installments" required>
@@ -1951,11 +2256,15 @@ function SetupPaymentPlanDialog({ open, onClose, enrollment, outstanding, onSucc
             </FormField>
           )}
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
             <Button
               type="submit"
               size="sm"
-              disabled={saving || !numberOfInstallments || !frequency || !startDate}
+              disabled={
+                saving || !numberOfInstallments || !frequency || !startDate
+              }
               className="bg-brand hover:opacity-90 text-white"
             >
               {saving ? "Saving…" : "Create Plan"}
@@ -2040,7 +2349,9 @@ function PackagesTab({ customerID, locationID }) {
         setDetailsMap(detMap);
 
         const hasPlanPkgs = list.some(
-          (enr) => enr.package?.billingType === "payment_plan" || enr.package?.billingType === "flexible",
+          (enr) =>
+            enr.package?.billingType === "payment_plan" ||
+            enr.package?.billingType === "flexible",
         );
         if (hasPlanPkgs) {
           const plansRes = await api.get(
@@ -2423,9 +2734,7 @@ function PackagesTab({ customerID, locationID }) {
                       label: "Refunded",
                       value: `$${Number(refunded).toFixed(2)}`,
                       cls:
-                        refunded > 0
-                          ? "text-warning"
-                          : "text-muted-foreground",
+                        refunded > 0 ? "text-warning" : "text-muted-foreground",
                     },
                   ].map(({ label, value, cls }) => (
                     <div key={label} className="text-center">
@@ -2550,174 +2859,170 @@ function PackagesTab({ customerID, locationID }) {
 
                 {/* Payment plan / scheduled-flexible installment schedule */}
                 {(() => {
-                    const plan = plansMap[String(enr._id)];
-                    if (!plan) return null;
-                    const paidCount = plan.installments.filter(
-                      (i) => i.status === "paid",
-                    ).length;
-                    return (
-                      <div className="mt-4 border-t border-border pt-4">
-                        <div className="flex items-center justify-between mb-2.5">
-                          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                            Payment Schedule
-                          </p>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                plan.status === "completed"
-                                  ? "bg-success/10 text-success"
-                                  : plan.status === "cancelled"
-                                    ? "bg-muted text-muted-foreground"
-                                    : "bg-violet-500/10 text-violet-600"
+                  const plan = plansMap[String(enr._id)];
+                  if (!plan) return null;
+                  const paidCount = plan.installments.filter(
+                    (i) => i.status === "paid",
+                  ).length;
+                  return (
+                    <div className="mt-4 border-t border-border pt-4">
+                      <div className="flex items-center justify-between mb-2.5">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                          Payment Schedule
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              plan.status === "completed"
+                                ? "bg-success/10 text-success"
+                                : plan.status === "cancelled"
+                                  ? "bg-muted text-muted-foreground"
+                                  : "bg-violet-500/10 text-violet-600"
+                            }`}
+                          >
+                            {plan.status}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {paidCount} / {plan.numberOfInstallments} paid
+                          </span>
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-border overflow-hidden">
+                        {plan.installments.map((inst, idx) => {
+                          const isLast = idx === plan.installments.length - 1;
+                          const hasDiscount =
+                            isLast && plan.installmentAmount > inst.amount;
+                          return (
+                            <div
+                              key={idx}
+                              className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${
+                                inst.status === "paid" ? "bg-success/5" : ""
                               }`}
                             >
-                              {plan.status}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground">
-                              {paidCount} / {plan.numberOfInstallments} paid
-                            </span>
-                          </div>
-                        </div>
-                        <div className="rounded-lg border border-border overflow-hidden">
-                          {plan.installments.map((inst, idx) => {
-                            const isLast = idx === plan.installments.length - 1;
-                            const hasDiscount =
-                              isLast && plan.installmentAmount > inst.amount;
-                            return (
-                              <div
-                                key={idx}
-                                className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${
-                                  inst.status === "paid"
-                                    ? "bg-success/5"
-                                    : ""
-                                }`}
-                              >
-                                <div className="flex items-center gap-2.5">
-                                  <div
-                                    className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
-                                      inst.status === "paid"
-                                        ? "bg-success text-white"
-                                        : inst.status === "failed"
-                                          ? "bg-rose-600 text-white"
-                                          : inst.status === "payment_pending"
-                                            ? "bg-warning text-white"
-                                            : "bg-muted text-muted-foreground"
-                                    }`}
-                                  >
-                                    {inst.status === "paid" ? "✓" : idx + 1}
-                                  </div>
-                                  <div>
-                                    <p className="text-[12px] text-foreground font-medium">
-                                      Payment {idx + 1}
-                                      {inst.status === "paid" && (
-                                        <span className="ml-1.5 text-[11px] font-normal text-success">
-                                          Paid
-                                        </span>
-                                      )}
-                                      {inst.status === "failed" && (
-                                        <span className="ml-1.5 text-[11px] font-normal text-rose-600">
-                                          Failed
-                                        </span>
-                                      )}
-                                      {inst.status === "payment_pending" && (
-                                        <span className="ml-1.5 text-[11px] font-normal text-warning">
-                                          Payment pending
-                                        </span>
-                                      )}
-                                    </p>
-                                    <p className="text-[11px] text-muted-foreground">
-                                      Due{" "}
-                                      {new Date(
-                                        inst.dueDate,
-                                      ).toLocaleDateString("en-AU", {
+                              <div className="flex items-center gap-2.5">
+                                <div
+                                  className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                                    inst.status === "paid"
+                                      ? "bg-success text-white"
+                                      : inst.status === "failed"
+                                        ? "bg-rose-600 text-white"
+                                        : inst.status === "payment_pending"
+                                          ? "bg-warning text-white"
+                                          : "bg-muted text-muted-foreground"
+                                  }`}
+                                >
+                                  {inst.status === "paid" ? "✓" : idx + 1}
+                                </div>
+                                <div>
+                                  <p className="text-[12px] text-foreground font-medium">
+                                    Payment {idx + 1}
+                                    {inst.status === "paid" && (
+                                      <span className="ml-1.5 text-[11px] font-normal text-success">
+                                        Paid
+                                      </span>
+                                    )}
+                                    {inst.status === "failed" && (
+                                      <span className="ml-1.5 text-[11px] font-normal text-rose-600">
+                                        Failed
+                                      </span>
+                                    )}
+                                    {inst.status === "payment_pending" && (
+                                      <span className="ml-1.5 text-[11px] font-normal text-warning">
+                                        Payment pending
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    Due{" "}
+                                    {new Date(inst.dueDate).toLocaleDateString(
+                                      "en-AU",
+                                      {
                                         day: "numeric",
                                         month: "short",
                                         year: "numeric",
-                                      })}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {hasDiscount && (
-                                    <span className="text-[11px] text-muted-foreground line-through">
-                                      $
-                                      {Number(plan.installmentAmount).toFixed(
-                                        2,
-                                      )}
-                                    </span>
-                                  )}
-                                  <p className="text-[13px] font-semibold text-foreground">
-                                    ${Number(inst.amount).toFixed(2)}
-                                  </p>
-                                  {hasDiscount && (
-                                    <span className="text-[10px] font-medium text-warning bg-warning/10 px-1.5 py-0.5 rounded-full">
-                                      discount
-                                    </span>
-                                  )}
-                                  {inst.status === "pending" &&
-                                    plan.status === "active" &&
-                                    pkg.status === "active" && (
-                                      <>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-7 px-2.5 text-[11px]"
-                                          onClick={() =>
-                                            setChangeInstallDateTarget({
-                                              plan,
-                                              index: idx,
-                                            })
-                                          }
-                                        >
-                                          Change Date
-                                        </Button>
-                                        {cloverReady && (
-                                          <SendPaymentLinkMenu
-                                            customerID={customerID}
-                                            target={{
-                                              kind: "installment",
-                                              paymentPlanID: plan._id,
-                                              installmentIndex: idx,
-                                            }}
-                                            onSent={load}
-                                          />
-                                        )}
-                                        <Button
-                                          size="sm"
-                                          className="h-7 px-2.5 text-[11px] bg-success hover:bg-success text-white"
-                                          onClick={() =>
-                                            setPayInstallTarget({
-                                              plan,
-                                              index: idx,
-                                              billingType: pkg.billingType,
-                                            })
-                                          }
-                                        >
-                                          Pay
-                                        </Button>
-                                      </>
+                                      },
                                     )}
+                                  </p>
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                        {plan.nextPaymentDate && plan.status === "active" && (
-                          <p className="text-[11px] text-muted-foreground mt-1.5">
-                            Next payment due:{" "}
-                            {new Date(plan.nextPaymentDate).toLocaleDateString(
-                              "en-AU",
-                              {
-                                day: "numeric",
-                                month: "short",
-                                year: "numeric",
-                              },
-                            )}
-                          </p>
-                        )}
+                              <div className="flex items-center gap-2">
+                                {hasDiscount && (
+                                  <span className="text-[11px] text-muted-foreground line-through">
+                                    ${Number(plan.installmentAmount).toFixed(2)}
+                                  </span>
+                                )}
+                                <p className="text-[13px] font-semibold text-foreground">
+                                  ${Number(inst.amount).toFixed(2)}
+                                </p>
+                                {hasDiscount && (
+                                  <span className="text-[10px] font-medium text-warning bg-warning/10 px-1.5 py-0.5 rounded-full">
+                                    discount
+                                  </span>
+                                )}
+                                {inst.status === "pending" &&
+                                  plan.status === "active" &&
+                                  pkg.status === "active" && (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 px-2.5 text-[11px]"
+                                        onClick={() =>
+                                          setChangeInstallDateTarget({
+                                            plan,
+                                            index: idx,
+                                          })
+                                        }
+                                      >
+                                        Change Date
+                                      </Button>
+                                      {cloverReady && (
+                                        <SendPaymentLinkMenu
+                                          customerID={customerID}
+                                          target={{
+                                            kind: "installment",
+                                            paymentPlanID: plan._id,
+                                            installmentIndex: idx,
+                                          }}
+                                          onSent={load}
+                                        />
+                                      )}
+                                      <Button
+                                        size="sm"
+                                        className="h-7 px-2.5 text-[11px] bg-success hover:bg-success text-white"
+                                        onClick={() =>
+                                          setPayInstallTarget({
+                                            plan,
+                                            index: idx,
+                                            billingType: pkg.billingType,
+                                          })
+                                        }
+                                      >
+                                        Pay
+                                      </Button>
+                                    </>
+                                  )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })()}
+                      {plan.nextPaymentDate && plan.status === "active" && (
+                        <p className="text-[11px] text-muted-foreground mt-1.5">
+                          Next payment due:{" "}
+                          {new Date(plan.nextPaymentDate).toLocaleDateString(
+                            "en-AU",
+                            {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            },
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <PaymentTimeline
                   customerID={customerID}
@@ -3202,7 +3507,8 @@ function PackagesTab({ customerID, locationID }) {
                   </FormField>
                   {cloverNotConnected && (
                     <p className="text-[12px] text-muted-foreground">
-                      Finish Clover setup in Settings → Integrations to charge a card.
+                      Finish Clover setup in Settings → Integrations to charge a
+                      card.
                     </p>
                   )}
                 </div>
@@ -3259,7 +3565,8 @@ function PackagesTab({ customerID, locationID }) {
                         </p>
                         {totalDiscount > 0 && (
                           <span className="text-[11px] text-warning">
-                            ${totalDiscount.toFixed(2)} discount spread across payments
+                            ${totalDiscount.toFixed(2)} discount spread across
+                            payments
                           </span>
                         )}
                       </div>
@@ -3423,7 +3730,9 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
         });
         setDetailsMap(detMap);
         const hasPlan = withPkg.some(
-          (e) => e.package?.billingType === "payment_plan" || e.package?.billingType === "flexible",
+          (e) =>
+            e.package?.billingType === "payment_plan" ||
+            e.package?.billingType === "flexible",
         );
         if (hasPlan) {
           const plansRes = await api.get(
@@ -3641,7 +3950,8 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
         return;
       }
     }
-    const checkoutTab = payWithClover || flexInitialByCard ? openCheckoutTab() : null;
+    const checkoutTab =
+      payWithClover || flexInitialByCard ? openCheckoutTab() : null;
     setAdding(true);
     const targetEnrollmentID = addTargetEnrollment?._id
       ? String(addTargetEnrollment._id)
@@ -4022,7 +4332,10 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                               setCancelTarget({
                                 enrollmentId: enr._id,
                                 packageName: cp.packageName,
-                                maxRefundable: Math.max(0, collected - refunded),
+                                maxRefundable: Math.max(
+                                  0,
+                                  collected - refunded,
+                                ),
                               })
                             }
                           >
@@ -4113,13 +4426,14 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                             0,
                             sessTotal - sessUsed - sessSched,
                           );
-                          const pps = isFree ? 0 : Number(svc.pricePerSession) || 0;
-                          const effectivePps =
-                            isFree
-                              ? 0
-                              : sessTotal > 0 && svc.finalAmount > 0
-                                ? Number(svc.finalAmount) / sessTotal
-                                : pps;
+                          const pps = isFree
+                            ? 0
+                            : Number(svc.pricePerSession) || 0;
+                          const effectivePps = isFree
+                            ? 0
+                            : sessTotal > 0 && svc.finalAmount > 0
+                              ? Number(svc.finalAmount) / sessTotal
+                              : pps;
                           const svcTotal = isFree ? 0 : sessTotal * pps;
                           // For deferred billing, credit = paid amount ÷ price-per-session (decimal)
                           const svcCreditSessions = (() => {
@@ -4246,7 +4560,9 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                             </span>
                                             {isFree && (
                                               <span className="shrink-0 inline-flex items-center rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
-                                                {svc.isChargeable === false ? "Non-chargeable" : "Free"}
+                                                {svc.isChargeable === false
+                                                  ? "Non-chargeable"
+                                                  : "Free"}
                                               </span>
                                             )}
                                           </div>
@@ -4314,11 +4630,17 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                               .filter((e) => {
                                                 const cs = e.calendarServiceID;
                                                 if (!cs) return false;
-                                                const matchesService = svc.serviceCode
-                                                  ? cs.serviceCode === svc.serviceCode
-                                                  : cs.serviceName === svc.serviceName;
-                                                if (!matchesService) return false;
-                                                const charge = (e.charges || []).find(
+                                                const matchesService =
+                                                  svc.serviceCode
+                                                    ? cs.serviceCode ===
+                                                      svc.serviceCode
+                                                    : cs.serviceName ===
+                                                      svc.serviceName;
+                                                if (!matchesService)
+                                                  return false;
+                                                const charge = (
+                                                  e.charges || []
+                                                ).find(
                                                   (c) =>
                                                     String(c.customerID) ===
                                                       String(customerID) &&
@@ -4348,16 +4670,18 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                             return (
                                               <div className="rounded-lg border border-border overflow-hidden">
                                                 <div className="grid grid-cols-[1fr_140px_150px] gap-2 bg-muted/50 border-b border-border px-3 py-2">
-                                                  {["Date & Time", "Teacher", "Status"].map(
-                                                    (h) => (
-                                                      <span
-                                                        key={h}
-                                                        className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider"
-                                                      >
-                                                        {h}
-                                                      </span>
-                                                    ),
-                                                  )}
+                                                  {[
+                                                    "Date & Time",
+                                                    "Teacher",
+                                                    "Status",
+                                                  ].map((h) => (
+                                                    <span
+                                                      key={h}
+                                                      className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider"
+                                                    >
+                                                      {h}
+                                                    </span>
+                                                  ))}
                                                 </div>
                                                 {svcEvents.map((ev, idx) => (
                                                   <div
@@ -4407,10 +4731,9 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                                               : "bg-violet-500/10 text-violet-500"
                                                       }`}
                                                     >
-                                                      {(ev.status || "scheduled").replace(
-                                                        /_/g,
-                                                        " ",
-                                                      )}
+                                                      {(
+                                                        ev.status || "scheduled"
+                                                      ).replace(/_/g, " ")}
                                                     </span>
                                                   </div>
                                                 ))}
@@ -4444,7 +4767,9 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                         dialog never promises a number it won't deliver. */}
                     {(() => {
                       const schedulable =
-                        cp.dueAmount != null ? Number(cp.dueAmount) : outstanding;
+                        cp.dueAmount != null
+                          ? Number(cp.dueAmount)
+                          : outstanding;
                       return (
                         (!cp.billingType || cp.billingType === "one_time") &&
                         enr.status === "active" &&
@@ -4453,14 +4778,18 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                         schedulable > 0 && (
                           <div className="mt-5 border-t border-border pt-5 flex items-center justify-between">
                             <p className="text-[12px] text-muted-foreground">
-                              ${schedulable.toFixed(2)} outstanding with no billing schedule.
+                              ${schedulable.toFixed(2)} outstanding with no
+                              billing schedule.
                             </p>
                             <Button
                               size="sm"
                               variant="outline"
                               className="h-8 text-[12px]"
                               onClick={() =>
-                                setSetupPlanTarget({ enrollment: enr, outstanding: schedulable })
+                                setSetupPlanTarget({
+                                  enrollment: enr,
+                                  outstanding: schedulable,
+                                })
                               }
                             >
                               + Set Up Payment Plan
@@ -4971,7 +5300,8 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                           </FormField>
                           {cloverNotConnected && (
                             <p className="text-[12px] text-muted-foreground">
-                              Finish Clover setup in Settings → Integrations to charge a card.
+                              Finish Clover setup in Settings → Integrations to
+                              charge a card.
                             </p>
                           )}
                         </div>
@@ -5083,7 +5413,8 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                 </p>
                                 {enrTotalDiscount > 0 && (
                                   <span className="text-[11px] text-warning">
-                                    ${enrTotalDiscount.toFixed(2)} discount spread across payments
+                                    ${enrTotalDiscount.toFixed(2)} discount
+                                    spread across payments
                                   </span>
                                 )}
                               </div>
@@ -5391,7 +5722,9 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
         toast.success(CHECKOUT_TOAST);
       } else {
         toast.success(
-          num >= outstanding ? "Payment recorded." : "Partial payment recorded.",
+          num >= outstanding
+            ? "Payment recorded."
+            : "Partial payment recorded.",
         );
       }
       setMode(null);
@@ -5916,8 +6249,12 @@ function IntroMetaRow({ label, value, icon: Icon }) {
         <span className="w-3.5 shrink-0" />
       )}
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] text-muted-foreground leading-none mb-1">{label}</p>
-        <p className="text-[13px] font-medium text-foreground break-words">{value}</p>
+        <p className="text-[11px] text-muted-foreground leading-none mb-1">
+          {label}
+        </p>
+        <p className="text-[13px] font-medium text-foreground break-words">
+          {value}
+        </p>
       </div>
     </div>
   );
@@ -5939,10 +6276,14 @@ function IntroStatusStep({ done, active, label, sub }) {
         {done ? <CheckCircle className="h-3.5 w-3.5" /> : null}
       </div>
       <div className="min-w-0">
-        <p className={`text-[13px] font-medium ${active || done ? "text-foreground" : "text-muted-foreground"}`}>
+        <p
+          className={`text-[13px] font-medium ${active || done ? "text-foreground" : "text-muted-foreground"}`}
+        >
           {label}
         </p>
-        {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
+        {sub && (
+          <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
+        )}
       </div>
     </div>
   );
@@ -5982,11 +6323,18 @@ function IntroTab({ customer }) {
     }
   }, [customer._id]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function handleCancel() {
     if (!data?.upcoming || cancelling) return;
-    if (!confirm("Cancel this trial lesson? No charge will apply. They can rebook free since they already paid.")) return;
+    if (
+      !confirm(
+        "Cancel this trial lesson? No charge will apply. They can rebook free since they already paid.",
+      )
+    )
+      return;
     setCancelling(true);
     try {
       const res = await api.delete(`/api/calendar/${data.upcoming._id}`);
@@ -6041,11 +6389,14 @@ function IntroTab({ customer }) {
 
     try {
       // Backend moves an existing upcoming lesson in place, or books a new one if none.
-      const res = await api.post(`/api/customer/${customer._id}/intro/reschedule`, {
-        start: selectedSlot.start,
-        end: selectedSlot.end,
-        locationID,
-      });
+      const res = await api.post(
+        `/api/customer/${customer._id}/intro/reschedule`,
+        {
+          start: selectedSlot.start,
+          end: selectedSlot.end,
+          locationID,
+        },
+      );
       if (res.success) {
         toast.success(
           isMovingUpcoming
@@ -6056,11 +6407,17 @@ function IntroTab({ customer }) {
         setSelectedSlot(null);
         await load();
       } else {
-        toast.error(res.error || (isMovingUpcoming ? "Failed to reschedule." : "Failed to book."));
+        toast.error(
+          res.error ||
+            (isMovingUpcoming ? "Failed to reschedule." : "Failed to book."),
+        );
         await load();
       }
     } catch (err) {
-      toast.error(err?.message || (isMovingUpcoming ? "Failed to reschedule." : "Failed to book."));
+      toast.error(
+        err?.message ||
+          (isMovingUpcoming ? "Failed to reschedule." : "Failed to book."),
+      );
       await load();
     } finally {
       rescheduleInFlightRef.current = false;
@@ -6080,7 +6437,9 @@ function IntroTab({ customer }) {
     return (
       <div className="rounded-xl border border-border bg-card p-6 text-center space-y-3">
         <p className="text-sm text-muted-foreground">{loadError}</p>
-        <Button size="sm" variant="outline" onClick={load}>Retry</Button>
+        <Button size="sm" variant="outline" onClick={load}>
+          Retry
+        </Button>
       </div>
     );
   }
@@ -6149,7 +6508,8 @@ function IntroTab({ customer }) {
       ? "border-success/20 bg-success/5"
       : resolvedStatus === "purchased_scheduled"
         ? "border-primary/20 bg-primary/5"
-        : resolvedStatus === "purchased_cancelled" || resolvedStatus === "purchased_not_taken"
+        : resolvedStatus === "purchased_cancelled" ||
+            resolvedStatus === "purchased_not_taken"
           ? "border-warning/25 bg-warning/5"
           : "border-border bg-muted/30";
 
@@ -6220,7 +6580,11 @@ function IntroTab({ customer }) {
             done={stepPurchased}
             active={!stepPurchased}
             label="Purchased"
-            sub={purchased ? formatIntroDate(purchase?.paidAt, studioTimezone) : "Not yet"}
+            sub={
+              purchased
+                ? formatIntroDate(purchase?.paidAt, studioTimezone)
+                : "Not yet"
+            }
           />
           <IntroStatusStep
             done={stepScheduled}
@@ -6262,8 +6626,12 @@ function IntroTab({ customer }) {
               <Receipt className="h-4 w-4 text-muted-foreground" />
             </div>
             <div>
-              <p className="text-[13px] font-semibold text-foreground">1st Purchase</p>
-              <p className="text-[11px] text-muted-foreground">Payment from AI / booking link</p>
+              <p className="text-[13px] font-semibold text-foreground">
+                1st Purchase
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Payment from AI / booking link
+              </p>
             </div>
           </div>
 
@@ -6278,12 +6646,24 @@ function IntroTab({ customer }) {
                 </p>
               </div>
               <div className="grid sm:grid-cols-2 gap-x-6">
-                <IntroMetaRow icon={CheckCircle} label="Payment status" value="Paid" />
-                <IntroMetaRow icon={Calendar} label="Paid on" value={formatIntroDate(purchase.paidAt, studioTimezone)} />
+                <IntroMetaRow
+                  icon={CheckCircle}
+                  label="Payment status"
+                  value="Paid"
+                />
+                <IntroMetaRow
+                  icon={Calendar}
+                  label="Paid on"
+                  value={formatIntroDate(purchase.paidAt, studioTimezone)}
+                />
                 <IntroMetaRow
                   icon={Send}
                   label="Booked via"
-                  value={purchase.channel ? String(purchase.channel).toUpperCase() : null}
+                  value={
+                    purchase.channel
+                      ? String(purchase.channel).toUpperCase()
+                      : null
+                  }
                 />
                 <IntroMetaRow
                   icon={BookOpen}
@@ -6296,7 +6676,10 @@ function IntroTab({ customer }) {
                     label="Slot chosen at payment"
                     value={
                       originalSlot?.startDateTime
-                        ? formatIntroDateTime(originalSlot.startDateTime, studioTimezone)
+                        ? formatIntroDateTime(
+                            originalSlot.startDateTime,
+                            studioTimezone,
+                          )
                         : null
                     }
                   />
@@ -6312,7 +6695,9 @@ function IntroTab({ customer }) {
           ) : (
             <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
               <Sparkles className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" />
-              <p className="text-[13px] font-medium text-foreground">Not purchased yet</p>
+              <p className="text-[13px] font-medium text-foreground">
+                Not purchased yet
+              </p>
               <p className="text-[12px] text-muted-foreground mt-1">
                 No trial payment on record for this customer.
               </p>
@@ -6328,18 +6713,27 @@ function IntroTab({ customer }) {
                 <Calendar className="h-4 w-4 text-muted-foreground" />
               </div>
               <div>
-                <p className="text-[13px] font-semibold text-foreground">Lesson</p>
-                <p className="text-[11px] text-muted-foreground">Current trial booking</p>
+                <p className="text-[13px] font-semibold text-foreground">
+                  Lesson
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Current trial booking
+                </p>
               </div>
             </div>
             {upcoming && (
-              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${INTRO_STATUS_PILL[upcoming.status] || "bg-muted text-muted-foreground"}`}>
+              <span
+                className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${INTRO_STATUS_PILL[upcoming.status] || "bg-muted text-muted-foreground"}`}
+              >
                 {INTRO_STATUS_LABELS[upcoming.status] || upcoming.status}
               </span>
             )}
             {!upcoming && taken && lessonForTaken && (
-              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${INTRO_STATUS_PILL[lessonForTaken.status] || "bg-muted text-muted-foreground"}`}>
-                {INTRO_STATUS_LABELS[lessonForTaken.status] || lessonForTaken.status}
+              <span
+                className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${INTRO_STATUS_PILL[lessonForTaken.status] || "bg-muted text-muted-foreground"}`}
+              >
+                {INTRO_STATUS_LABELS[lessonForTaken.status] ||
+                  lessonForTaken.status}
               </span>
             )}
           </div>
@@ -6348,17 +6742,25 @@ function IntroTab({ customer }) {
             {upcoming ? (
               <div>
                 <div className="rounded-lg bg-muted/40 px-4 py-3.5 mb-3">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Upcoming</p>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
+                    Upcoming
+                  </p>
                   <p className="text-[16px] font-semibold text-foreground leading-snug">
                     {formatIntroDate(upcoming.startDateTime, studioTimezone)}
                   </p>
                   <p className="text-[14px] text-foreground/80 mt-0.5">
                     {formatIntroTime(upcoming.startDateTime, studioTimezone)}
-                    {upcoming.endDateTime ? ` – ${formatIntroTime(upcoming.endDateTime, studioTimezone)}` : ""}
+                    {upcoming.endDateTime
+                      ? ` – ${formatIntroTime(upcoming.endDateTime, studioTimezone)}`
+                      : ""}
                   </p>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-x-6">
-                  <IntroMetaRow icon={User} label="Teacher" value={upcoming.teacherID?.name || "Not assigned"} />
+                  <IntroMetaRow
+                    icon={User}
+                    label="Teacher"
+                    value={upcoming.teacherID?.name || "Not assigned"}
+                  />
                   <IntroMetaRow
                     icon={CheckCircle}
                     label="Lesson payment"
@@ -6371,10 +6773,18 @@ function IntroTab({ customer }) {
                     }
                   />
                   <div className="sm:col-span-2">
-                    <IntroMetaRow icon={BookOpen} label="Title" value={upcoming.title || null} />
+                    <IntroMetaRow
+                      icon={BookOpen}
+                      label="Title"
+                      value={upcoming.title || null}
+                    />
                   </div>
                   <div className="sm:col-span-2">
-                    <IntroMetaRow icon={StickyNote} label="Notes" value={upcoming.notes || null} />
+                    <IntroMetaRow
+                      icon={StickyNote}
+                      label="Notes"
+                      value={upcoming.notes || null}
+                    />
                   </div>
                 </div>
               </div>
@@ -6386,21 +6796,39 @@ function IntroTab({ customer }) {
                     Trial already taken
                   </p>
                   <p className="text-[12px] text-muted-foreground mt-1">
-                    {formatIntroDateTime(lessonForTaken.startDateTime, studioTimezone)}
+                    {formatIntroDateTime(
+                      lessonForTaken.startDateTime,
+                      studioTimezone,
+                    )}
                   </p>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-x-6">
-                  <IntroMetaRow icon={User} label="Teacher" value={lessonForTaken.teacherID?.name || "—"} />
+                  <IntroMetaRow
+                    icon={User}
+                    label="Teacher"
+                    value={lessonForTaken.teacherID?.name || "—"}
+                  />
                   <IntroMetaRow
                     icon={CheckCircle}
                     label="Result"
-                    value={INTRO_STATUS_LABELS[lessonForTaken.status] || lessonForTaken.status}
+                    value={
+                      INTRO_STATUS_LABELS[lessonForTaken.status] ||
+                      lessonForTaken.status
+                    }
                   />
                   <div className="sm:col-span-2">
-                    <IntroMetaRow icon={BookOpen} label="Title" value={lessonForTaken.title || null} />
+                    <IntroMetaRow
+                      icon={BookOpen}
+                      label="Title"
+                      value={lessonForTaken.title || null}
+                    />
                   </div>
                   <div className="sm:col-span-2">
-                    <IntroMetaRow icon={StickyNote} label="Notes" value={lessonForTaken.notes || null} />
+                    <IntroMetaRow
+                      icon={StickyNote}
+                      label="Notes"
+                      value={lessonForTaken.notes || null}
+                    />
                   </div>
                 </div>
               </div>
@@ -6408,7 +6836,9 @@ function IntroTab({ customer }) {
               <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
                 <Clock className="h-6 w-6 mx-auto mb-2 text-warning" />
                 <p className="text-[13px] font-medium text-foreground">
-                  {hadCancelledTrial ? "Trial cancelled — not scheduled" : "Not scheduled yet"}
+                  {hadCancelledTrial
+                    ? "Trial cancelled — not scheduled"
+                    : "Not scheduled yet"}
                 </p>
                 <p className="text-[12px] text-muted-foreground mt-1 max-w-sm mx-auto">
                   {hadCancelledTrial
@@ -6419,7 +6849,9 @@ function IntroTab({ customer }) {
             ) : (
               <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
                 <Calendar className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" />
-                <p className="text-[13px] font-medium text-foreground">No lesson yet</p>
+                <p className="text-[13px] font-medium text-foreground">
+                  No lesson yet
+                </p>
                 <p className="text-[12px] text-muted-foreground mt-1">
                   Details appear here after the trial is purchased.
                 </p>
@@ -6430,7 +6862,11 @@ function IntroTab({ customer }) {
           {(upcoming || (purchased && !introConsumed)) && (
             <div className="flex flex-wrap gap-2 pt-4 mt-auto border-t border-border">
               {showSchedulerActions && (
-                <Button size="sm" variant={upcoming ? "outline" : "default"} onClick={openReschedule}>
+                <Button
+                  size="sm"
+                  variant={upcoming ? "outline" : "default"}
+                  onClick={openReschedule}
+                >
                   <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
                   {primaryActionLabel}
                 </Button>
@@ -6457,7 +6893,9 @@ function IntroTab({ customer }) {
         <div className="rounded-xl border border-border bg-card p-5 md:p-6 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[13px] font-semibold text-foreground">{schedulerTitle}</p>
+              <p className="text-[13px] font-semibold text-foreground">
+                {schedulerTitle}
+              </p>
               <p className="text-[12px] text-muted-foreground mt-0.5">
                 {schedulerSubcopy}
               </p>
@@ -6465,7 +6903,10 @@ function IntroTab({ customer }) {
             <button
               type="button"
               className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-              onClick={() => { setShowRescheduleForm(false); setSelectedSlot(null); }}
+              onClick={() => {
+                setShowRescheduleForm(false);
+                setSelectedSlot(null);
+              }}
             >
               <X className="h-4 w-4" />
             </button>
@@ -6507,7 +6948,8 @@ function IntroTab({ customer }) {
                               : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-muted/40",
                           ].join(" ")}
                         >
-                          {slot.label || formatIntroTime(slot.start, studioTimezone)}
+                          {slot.label ||
+                            formatIntroTime(slot.start, studioTimezone)}
                         </button>
                       );
                     })}
@@ -6526,10 +6968,18 @@ function IntroTab({ customer }) {
                 </span>
               </p>
               <div className="flex gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setSelectedSlot(null)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedSlot(null)}
+                >
                   Clear
                 </Button>
-                <Button size="sm" onClick={handleReschedule} disabled={rescheduling}>
+                <Button
+                  size="sm"
+                  onClick={handleReschedule}
+                  disabled={rescheduling}
+                >
                   {rescheduling ? "Saving…" : confirmActionLabel}
                 </Button>
               </div>
@@ -6542,12 +6992,17 @@ function IntroTab({ customer }) {
       {history && history.length > 0 && (
         <div className="rounded-xl border border-border bg-card p-5 md:p-6">
           <div className="flex items-center justify-between gap-3 mb-4">
-            <p className="text-[13px] font-semibold text-foreground">Lesson history</p>
-            <p className="text-[11px] text-muted-foreground">{history.length} record{history.length === 1 ? "" : "s"}</p>
+            <p className="text-[13px] font-semibold text-foreground">
+              Lesson history
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {history.length} record{history.length === 1 ? "" : "s"}
+            </p>
           </div>
           <div className="grid md:grid-cols-2 gap-x-8 gap-y-0">
             {history.map((ev) => {
-              const isDone = ev.status === "completed" || ev.status === "no_show_charged";
+              const isDone =
+                ev.status === "completed" || ev.status === "no_show_charged";
               const isCancel = String(ev.status || "").startsWith("cancelled");
               return (
                 <div
@@ -6576,13 +7031,20 @@ function IntroTab({ customer }) {
                         {formatIntroDateTime(ev.startDateTime, studioTimezone)}
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                        {[ev.teacherID?.name ? `with ${ev.teacherID.name}` : null, ev.title]
+                        {[
+                          ev.teacherID?.name
+                            ? `with ${ev.teacherID.name}`
+                            : null,
+                          ev.title,
+                        ]
                           .filter(Boolean)
                           .join(" · ") || "Trial lesson"}
                       </p>
                     </div>
                   </div>
-                  <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${INTRO_STATUS_PILL[ev.status] || "bg-muted text-muted-foreground"}`}>
+                  <span
+                    className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${INTRO_STATUS_PILL[ev.status] || "bg-muted text-muted-foreground"}`}
+                  >
                     {INTRO_STATUS_LABELS[ev.status] || ev.status}
                   </span>
                 </div>
@@ -6595,9 +7057,12 @@ function IntroTab({ customer }) {
       {!purchased && !upcoming && (!history || !history.length) && (
         <div className="rounded-xl border border-dashed border-border px-6 py-14 text-center">
           <Sparkles className="h-8 w-8 mx-auto mb-3 text-muted-foreground/40" />
-          <p className="text-[14px] font-medium text-foreground">No trial activity yet</p>
+          <p className="text-[14px] font-medium text-foreground">
+            No trial activity yet
+          </p>
           <p className="text-[12px] text-muted-foreground mt-1 max-w-md mx-auto">
-            When this customer buys and books their first lesson through AI, the purchase and lesson details will show up here.
+            When this customer buys and books their first lesson through AI, the
+            purchase and lesson details will show up here.
           </p>
         </div>
       )}
@@ -6638,7 +7103,9 @@ function LessonsTab({ customer }) {
         const filtered = res.data
           .filter((ev) => {
             const ids = Array.isArray(ev.customerIDs) ? ev.customerIDs : [];
-            return ids.some((c) => String(c?._id ?? c) === String(customer._id));
+            return ids.some(
+              (c) => String(c?._id ?? c) === String(customer._id),
+            );
           })
           .sort(
             (a, b) => new Date(b.startDateTime) - new Date(a.startDateTime),
@@ -7124,9 +7591,7 @@ export default function CustomerDetailPage() {
               onUpdated={load}
             />
           )}
-          {tab === "intro" && (
-            <IntroTab customer={customer} />
-          )}
+          {tab === "intro" && <IntroTab customer={customer} />}
           {tab === "active-enrollments" && (
             <EnrollmentsTab
               customerID={customer._id}

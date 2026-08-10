@@ -24,9 +24,20 @@ function dateOnly(d) {
   return d.toISOString().slice(0, 10)
 }
 
-function rangeDates(days) {
+/**
+ * Accepts either a number of days (relative range) or a { from, to } custom
+ * date pair (YYYY-MM-DD) — same two shapes useAnalyticsOverview's rangeQuery()
+ * handles, since `range` here comes from the same page-level date picker /
+ * withOwnRange-style state. Passing the custom-range object straight into the
+ * `days * ...` arithmetic below (as if it were always a number) produced NaN
+ * -> an Invalid Date -> a thrown RangeError from toISOString().
+ */
+function rangeDates(range) {
+  if (range && typeof range === 'object') {
+    return { from: range.from, to: range.to }
+  }
   const to = new Date()
-  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000)
+  const from = new Date(to.getTime() - range * 24 * 60 * 60 * 1000)
   return { from: dateOnly(from), to: dateOnly(to) }
 }
 

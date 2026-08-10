@@ -11,6 +11,8 @@ import { toCSVValue, triggerDownload, parseCSVText } from '@/lib/csv-utils'
 import {
   CUSTOMER_COLUMNS,
   ENROLLMENT_COLUMNS,
+  LESSON_COLUMNS,
+  PAYMENT_COLUMNS,
   parseCsvFile,
   parseXlsxFile,
   preflightCheck,
@@ -18,6 +20,13 @@ import {
   downloadSampleCsv,
   downloadSampleXlsx,
 } from '@/lib/customer-migration-import'
+
+const CSV_SHEETS = {
+  customers: { label: 'Customers', columns: CUSTOMER_COLUMNS, sampleFile: 'sample_customers.csv' },
+  enrollments: { label: 'Enrollments', columns: ENROLLMENT_COLUMNS, sampleFile: 'sample_enrollments.csv' },
+  lessons: { label: 'Lessons (optional)', columns: LESSON_COLUMNS, sampleFile: 'sample_lessons.csv' },
+  payments: { label: 'Payments (optional)', columns: PAYMENT_COLUMNS, sampleFile: 'sample_payments.csv' },
+}
 
 const STEPS = { UPLOAD: 'upload', PREVIEW: 'preview', DONE: 'done' }
 const MODES = { MIGRATION: 'migration', QUICK: 'quick', EXPORT: 'export' }
@@ -83,9 +92,15 @@ export default function CustomerMigrationImportDialog({
     if (!file) return
     setBusy(true)
     try {
-      const { customers, enrollments } = await parseXlsxFile(file)
-      setParsed({ customers, enrollments, fileNames: [file.name] })
-      toast.success({ title: 'File parsed', message: `${customers.length} customer row(s), ${enrollments.length} enrollment row(s)` })
+      const { customers, enrollments, lessons, payments } = await parseXlsxFile(file)
+      setParsed({ customers, enrollments, lessons, payments, fileNames: [file.name] })
+      const extra = [lessons.length && `${lessons.length} lesson row(s)`, payments.length && `${payments.length} payment row(s)`]
+        .filter(Boolean)
+        .join(', ')
+      toast.success({
+        title: 'File parsed',
+        message: `${customers.length} customer row(s), ${enrollments.length} enrollment row(s)${extra ? `, ${extra}` : ''}`,
+      })
     } catch (err) {
       toast.error({ title: 'Could not parse workbook', message: err.message })
     } finally {
@@ -99,15 +114,20 @@ export default function CustomerMigrationImportDialog({
     if (!file) return
     setBusy(true)
     try {
-      const columns = which === 'customers' ? CUSTOMER_COLUMNS : ENROLLMENT_COLUMNS
-      const rows = await parseCsvFile(file, columns)
+      const rows = await parseCsvFile(file, CSV_SHEETS[which].columns)
       setParsed((prev) => {
-        const next = { customers: prev?.customers || [], enrollments: prev?.enrollments || [], fileNames: prev?.fileNames || [] }
+        const next = {
+          customers: prev?.customers || [],
+          enrollments: prev?.enrollments || [],
+          lessons: prev?.lessons || [],
+          payments: prev?.payments || [],
+          fileNames: prev?.fileNames || [],
+        }
         next[which] = rows
         next.fileNames = [...next.fileNames.filter((n) => !n.startsWith(`${which}:`)), `${which}:${file.name}`]
         return next
       })
-      toast.success({ title: `${which === 'customers' ? 'Customers' : 'Enrollments'} CSV parsed`, message: `${rows.length} row(s)` })
+      toast.success({ title: `${CSV_SHEETS[which].label} CSV parsed`, message: `${rows.length} row(s)` })
     } catch (err) {
       toast.error({ title: 'Could not parse CSV', message: err.message })
     } finally {
@@ -120,12 +140,14 @@ export default function CustomerMigrationImportDialog({
       toast.error({ title: 'Nothing to validate', message: 'Upload the Customers data first' })
       return
     }
-    const preflightErrors = preflightCheck(parsed.customers, parsed.enrollments || [])
+    const preflightErrors = preflightCheck(parsed.customers, parsed.enrollments || [], parsed.lessons || [], parsed.payments || [])
     setBusy(true)
     try {
       const res = await api.post('/api/customer/import/validate', {
         customers: parsed.customers,
         enrollments: parsed.enrollments || [],
+        lessons: parsed.lessons || [],
+        payments: parsed.payments || [],
       })
       if (!res.success) {
         toast.error({ title: 'Validation failed', message: res.error || 'Unable to reach the server' })
@@ -158,10 +180,16 @@ export default function CustomerMigrationImportDialog({
         (preview?.rowErrors || []).filter((e) => e.sheet === 'enrollments').map((e) => e.rowIndex),
       )
       const enrollmentsForTotals = (parsed.enrollments || []).filter((_, i) => !invalidEnrollmentRows.has(i))
-      const sheetTotals = computeSheetTotals(enrollmentsForTotals, parsed.customers || [])
+      const invalidPaymentRows = new Set(
+        (preview?.rowErrors || []).filter((e) => e.sheet === 'payments' && e.severity !== 'warning').map((e) => e.rowIndex),
+      )
+      const paymentsForTotals = (parsed.payments || []).filter((_, i) => !invalidPaymentRows.has(i))
+      const sheetTotals = computeSheetTotals(enrollmentsForTotals, parsed.customers || [], paymentsForTotals)
       const res = await api.post('/api/customer/import/commit', {
         customers: parsed.customers,
         enrollments: parsed.enrollments || [],
+        lessons: parsed.lessons || [],
+        payments: parsed.payments || [],
         sourceFileNames: parsed.fileNames,
         sheetTotals,
       })
@@ -275,7 +303,8 @@ export default function CustomerMigrationImportDialog({
   }
 
   const canValidate = !!parsed?.customers?.length
-  const blockingErrorCount = preview?.rowErrors?.length || 0
+  const blockingErrorCount = (preview?.rowErrors || []).filter((e) => e.severity !== 'warning').length
+  const warningCount = (preview?.rowErrors || []).filter((e) => e.severity === 'warning').length
 
   return (
     <>
@@ -298,7 +327,7 @@ export default function CustomerMigrationImportDialog({
               Import Customers
             </DialogTitle>
             <DialogDescription>
-              Full migration (Customers + Enrollments, CSV or Excel) or a quick single-sheet CSV add.
+              Full migration (Customers + Enrollments, plus optional Lessons/Payments history, CSV or Excel) or a quick single-sheet CSV add.
             </DialogDescription>
           </DialogHeader>
 
@@ -352,7 +381,7 @@ export default function CustomerMigrationImportDialog({
                   {format === 'excel' ? (
                     <div>
                       <label className="block text-sm font-medium mb-2">
-                        Workbook with "Customers" and "Enrollments" sheets
+                        Workbook with "Customers" and "Enrollments" sheets (plus optional "Lessons"/"Payments" for full history)
                       </label>
                       <div className="flex items-center gap-2">
                         <label className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg cursor-pointer hover:bg-muted/40 w-fit">
@@ -372,56 +401,38 @@ export default function CustomerMigrationImportDialog({
                       </div>
                       {parsed && (
                         <p className="mt-2 text-xs text-muted-foreground">
-                          {parsed.customers.length} customer row(s), {parsed.enrollments.length} enrollment row(s) detected
+                          {parsed.customers.length} customer row(s), {parsed.enrollments.length} enrollment row(s)
+                          {parsed.lessons?.length ? `, ${parsed.lessons.length} lesson row(s)` : ''}
+                          {parsed.payments?.length ? `, ${parsed.payments.length} payment row(s)` : ''} detected
                         </p>
                       )}
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-4">
-      <div>
-                        <label className="block text-sm font-medium mb-2">Customers CSV</label>
-                        <div className="flex items-center gap-2">
-                          <label className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg cursor-pointer hover:bg-muted/40 w-fit">
-                            <Upload className="h-4 w-4" />
-                            <span className="text-sm">Choose File</span>
-                            <input type="file" accept=".csv" onChange={(e) => handleCsvUpload('customers', e)} className="hidden" disabled={busy} />
-                          </label>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-1.5"
-                            onClick={() => downloadSampleCsv(CUSTOMER_COLUMNS, 'sample_customers.csv')}
-                          >
-                            <FileText className="h-4 w-4" />
-                            Sample
-                          </Button>
+                      {Object.entries(CSV_SHEETS).map(([which, { label, columns, sampleFile }]) => (
+                        <div key={which}>
+                          <label className="block text-sm font-medium mb-2">{label} CSV</label>
+                          <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg cursor-pointer hover:bg-muted/40 w-fit">
+                              <Upload className="h-4 w-4" />
+                              <span className="text-sm">Choose File</span>
+                              <input type="file" accept=".csv" onChange={(e) => handleCsvUpload(which, e)} className="hidden" disabled={busy} />
+                            </label>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5"
+                              onClick={() => downloadSampleCsv(columns, sampleFile)}
+                            >
+                              <FileText className="h-4 w-4" />
+                              Sample
+                            </Button>
+                          </div>
+                          {parsed?.[which]?.length > 0 && (
+                            <p className="mt-2 text-xs text-muted-foreground">{parsed[which].length} row(s)</p>
+                          )}
                         </div>
-                        {parsed?.customers?.length > 0 && (
-                          <p className="mt-2 text-xs text-muted-foreground">{parsed.customers.length} row(s)</p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Enrollments CSV</label>
-                        <div className="flex items-center gap-2">
-                          <label className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg cursor-pointer hover:bg-muted/40 w-fit">
-                            <Upload className="h-4 w-4" />
-                            <span className="text-sm">Choose File</span>
-                            <input type="file" accept=".csv" onChange={(e) => handleCsvUpload('enrollments', e)} className="hidden" disabled={busy} />
-                          </label>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-1.5"
-                            onClick={() => downloadSampleCsv(ENROLLMENT_COLUMNS, 'sample_enrollments.csv')}
-                          >
-                            <FileText className="h-4 w-4" />
-                            Sample
-                          </Button>
-                        </div>
-                        {parsed?.enrollments?.length > 0 && (
-                          <p className="mt-2 text-xs text-muted-foreground">{parsed.enrollments.length} row(s)</p>
-                        )}
-                      </div>
+                      ))}
                     </div>
                   )}
                 </>
@@ -471,8 +482,15 @@ export default function CustomerMigrationImportDialog({
                 <Stat label="New services" value={preview.servicesCreated} />
                 <Stat label="Rows with errors" value={blockingErrorCount} warn={blockingErrorCount > 0} />
               </div>
+              {(parsed?.lessons?.length > 0 || parsed?.payments?.length > 0) && (
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <Stat label="Lesson rows" value={parsed?.lessons?.length || 0} />
+                  <Stat label="Payment rows" value={parsed?.payments?.length || 0} />
+                  <Stat label="Data mismatch warnings" value={warningCount} warn={warningCount > 0} />
+                </div>
+              )}
 
-              {blockingErrorCount > 0 && (
+              {(preview.rowErrors || []).length > 0 && (
                 <div className="border border-border rounded-lg max-h-64 overflow-y-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-muted/40 sticky top-0">
@@ -484,10 +502,10 @@ export default function CustomerMigrationImportDialog({
                     </thead>
                     <tbody>
                       {preview.rowErrors.map((err, i) => (
-                        <tr key={i} className="border-t border-border">
+                        <tr key={i} className={`border-t border-border ${err.severity === 'warning' ? 'text-warning' : ''}`}>
                           <td className="px-3 py-1.5 capitalize">{err.sheet}</td>
                           <td className="px-3 py-1.5">{err.rowIndex + 2}</td>
-                          <td className="px-3 py-1.5">{err.message}</td>
+                          <td className="px-3 py-1.5">{err.severity === 'warning' ? '⚠️ ' : ''}{err.message}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -496,7 +514,7 @@ export default function CustomerMigrationImportDialog({
               )}
               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                 <AlertTriangle className="h-3.5 w-3.5" />
-                Rows with errors are skipped automatically — only valid rows will be imported.
+                Rows with errors are skipped automatically — only valid rows will be imported. Warnings (⚠️) don't block import.
               </p>
             </div>
           )}
@@ -517,6 +535,12 @@ export default function CustomerMigrationImportDialog({
                 <Stat label="New packages" value={commitResult.packagesCreated} />
                 <Stat label="New services" value={commitResult.servicesCreated} />
               </div>
+              {(commitResult.walletCreditsCreated > 0 || commitResult.walletCreditsSkipped > 0) && (
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <Stat label="Wallet balances credited" value={commitResult.walletCreditsCreated} />
+                  <Stat label="Wallet credits skipped (already imported)" value={commitResult.walletCreditsSkipped} />
+                </div>
+              )}
 
               {reconcile && (
                 <div>
