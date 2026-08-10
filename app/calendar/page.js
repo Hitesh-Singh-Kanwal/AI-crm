@@ -2073,7 +2073,32 @@ function TutorDayCalendar({
   const gridPadTop = Math.max(12, Math.ceil(slotRowHeightPx / 2));
   const paddedDayHeight = dayHeight + gridPadTop;
 
-  const effectiveTutors = tutors;
+  // `tutors` is the active-teacher list — an event assigned to no one, or to
+  // a non-teacher user (e.g. a task assigned to an admin via the "Assign
+  // to" picker on New Task), resolves to a tutorKey ("unknown", or that
+  // admin's user id) that never matches any teacher column, so it would
+  // otherwise render nowhere in day view even though month view shows it
+  // fine (month view has no per-column filtering at all). Give every such
+  // orphaned event a synthetic "Unassigned" column instead of silently
+  // dropping it.
+  const effectiveTutors = useMemo(() => {
+    const knownKeys = new Set(tutors.map((t) => t.key));
+    const orphanNames = new Map(); // key -> best-known display name
+    [...dayTimedEvents, ...dayAllDayEvents].forEach((event) => {
+      eventTutorKeys(event).forEach((key) => {
+        if (knownKeys.has(key) || orphanNames.has(key)) return;
+        orphanNames.set(key, event.extendedProps?.tutorName || "Unassigned");
+      });
+    });
+    if (!orphanNames.size) return tutors;
+    const orphanTutors = Array.from(orphanNames, ([key, name]) => ({
+      key,
+      name,
+      initials: name === "Unassigned" ? "UN" : (name.slice(0, 2) || "??").toUpperCase(),
+      color: "hsl(var(--muted-foreground))",
+    }));
+    return [...tutors, ...orphanTutors];
+  }, [tutors, dayTimedEvents, dayAllDayEvents]);
 
   const visibleDayTimedEvents = useMemo(
     () =>
@@ -3514,7 +3539,15 @@ function CalendarPageInner() {
       const s = new Date(e.start);
       const en = new Date(e.end);
       minMins = Math.min(minMins, s.getHours() * 60 + s.getMinutes());
-      maxMins = Math.max(maxMins, en.getHours() * 60 + en.getMinutes());
+      // An event ending exactly at midnight has an `end` timestamp on the
+      // *next* calendar day at 00:00 — getHours() reads that as 0, indistin-
+      // guishable from a start-of-day time, which would shrink the "hide
+      // empty slots" window down to just after midnight instead of out to
+      // the event's real end. Same day-crossing check timedEventOverlapsMinuteRange
+      // already uses above.
+      const endMins =
+        en.getDate() !== s.getDate() ? 24 * 60 : en.getHours() * 60 + en.getMinutes();
+      maxMins = Math.max(maxMins, endMins);
     });
 
     const paddedStart = Math.max(baseStartMins, minMins - padMins);
