@@ -46,6 +46,7 @@ import { hasPermission } from '@/lib/permissions'
 import {
   customerLifecycleBadgeClass,
   customerLifecycleLabel,
+  CUSTOMER_LIFECYCLE_STATUS_OPTIONS,
 } from '@/lib/customer-lifecycle'
 
 const CUSTOMER_CSV_FIELDS = [
@@ -72,6 +73,7 @@ const EMPTY_FORM = {
   dateOfBirth: '',
   gender: '',
   callbackDate: '',
+  lifecycleStatus: 'active',
   address: {
     street: '',
     city: '',
@@ -137,6 +139,7 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
             dateOfBirth: initial.dateOfBirth ? String(initial.dateOfBirth).slice(0, 10) : '',
             gender: initial.gender || '',
             callbackDate: initial.callbackDate ? String(initial.callbackDate).slice(0, 10) : '',
+            lifecycleStatus: initial.lifecycleStatus || 'active',
             address: {
               street: initial.address?.street || '',
               city: initial.address?.city || '',
@@ -185,6 +188,7 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
       dateOfBirth: form.dateOfBirth || undefined,
       gender: form.gender || undefined,
       callbackDate: form.callbackDate || (isEdit ? null : undefined),
+      lifecycleStatus: form.lifecycleStatus || 'active',
       address: hasAddress ? address : undefined,
     }
     const result = isEdit
@@ -269,6 +273,22 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
                     onChange={(e) => setField('callbackDate', e.target.value)}
                     className={inputClass}
                   />
+                </FormField>
+                <FormField label="Lifecycle status">
+                  <div className="relative">
+                    <select
+                      value={form.lifecycleStatus || 'active'}
+                      onChange={(e) => setField('lifecycleStatus', e.target.value)}
+                      className={cn(inputClass, 'appearance-none pr-8')}
+                    >
+                      {CUSTOMER_LIFECYCLE_STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  </div>
                 </FormField>
               </div>
             </FormSection>

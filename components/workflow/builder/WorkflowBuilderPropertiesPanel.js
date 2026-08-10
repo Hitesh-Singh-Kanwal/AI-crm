@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Check,
   ChevronLeft,
@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { CUSTOMER_LIFECYCLE_STATUS_OPTIONS } from '@/lib/customer-lifecycle'
 
 function Field({ label, hint, children, className }) {
   return (
@@ -137,27 +138,49 @@ function TriggerFields({ config, onChange }) {
   )
 }
 
-function ExitLogicFields({ config, onChange }) {
+function ExitLogicFields({ config, onChange, entityType = 'lead' }) {
+  const isCustomer = entityType === 'customer'
   const exitRuleStages = Array.isArray(config.exitRuleStages)
     ? config.exitRuleStages.slice(0, 1)
     : []
+  const stageOptions = isCustomer ? CUSTOMER_LIFECYCLE_STATUS_OPTIONS : undefined
+  const allowedValues = new Set(
+    (stageOptions || []).map((opt) => String(opt.value || opt)),
+  )
+
+  // Drop a lead-stage selection if the workflow was switched to customers (and vice versa).
+  useEffect(() => {
+    if (!exitRuleStages.length) return
+    if (!isCustomer) return
+    if (allowedValues.has(String(exitRuleStages[0]))) return
+    onChange({ successGoalStages: [], exitRuleStages: [] })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCustomer, exitRuleStages[0]])
 
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
-        Step 3 · Exit logic — choose one stage. When the contact reaches it, they leave this workflow.
+        Step 3 · Exit logic — choose one{' '}
+        {isCustomer ? 'lifecycle status' : 'stage'}. When the contact reaches it,
+        they leave this workflow.
       </div>
 
       <div className="space-y-3 rounded-xl border border-border bg-background p-3">
         <div>
           <div className="text-[13px] font-semibold text-foreground">Workflow exit rule</div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Remove the contact from this workflow when they reach this stage.
+            {isCustomer
+              ? 'Remove the customer from this workflow when they reach this lifecycle status.'
+              : 'Remove the contact from this workflow when they reach this stage.'}
           </p>
         </div>
-        <Field label="Stage" hint="select one">
+        <Field
+          label={isCustomer ? 'Lifecycle status' : 'Stage'}
+          hint="select one"
+        >
           <WorkflowStageMultiSelect
             single
+            options={stageOptions}
             values={exitRuleStages}
             onChange={(next) =>
               onChange({
@@ -165,7 +188,9 @@ function ExitLogicFields({ config, onChange }) {
                 exitRuleStages: Array.isArray(next) && next[0] ? [String(next[0])] : [],
               })
             }
-            placeholder="Select exit stage…"
+            placeholder={
+              isCustomer ? 'Select exit lifecycle status…' : 'Select exit stage…'
+            }
           />
         </Field>
       </div>
@@ -363,12 +388,12 @@ function UnsupportedNote() {
   )
 }
 
-function NodeConfigFields({ paletteType, category, config, onChange, options }) {
+function NodeConfigFields({ paletteType, category, config, onChange, options, entityType = 'lead' }) {
   if (category === 'trigger' || paletteType === 'contact') {
     return <TriggerFields config={config} onChange={onChange} />
   }
   if (paletteType === 'exit_logic' || category === 'exit') {
-    return <ExitLogicFields config={config} onChange={onChange} />
+    return <ExitLogicFields config={config} onChange={onChange} entityType={entityType} />
   }
   switch (paletteType) {
     case 'send_email':
@@ -432,6 +457,9 @@ export default function WorkflowBuilderPropertiesPanel() {
   const options = useWorkflowBuilderStore((s) => s.options)
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId)
+  const triggerNode = nodes.find((n) => n.data?.category === 'trigger')
+  const workflowEntityType =
+    triggerNode?.data?.config?.entityType === 'customer' ? 'customer' : 'lead'
   const expand = () => setPropertiesPanelCollapsed(false)
 
   return (
@@ -539,6 +567,7 @@ export default function WorkflowBuilderPropertiesPanel() {
                         config={selectedNode.data.config || {}}
                         onChange={(partial) => updateNodeConfig(selectedNode.id, partial)}
                         options={options}
+                        entityType={workflowEntityType}
                       />
                     </div>
                   </div>

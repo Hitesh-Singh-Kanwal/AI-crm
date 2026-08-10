@@ -2334,6 +2334,8 @@ function FormsPageInner() {
         return `<input type="hidden" name="organisationID" value="${organisationID}" />`
       }
       if (field.name === 'formID') {
+        // Unsaved forms have no id yet — omit the field so Mongoose doesn't cast "".
+        if (!formID) return ''
         return `<input type="hidden" name="formID" value="${formID}" />`
       }
       return `<input type="hidden" name="${fieldName}" value="${escapedDefault}" />`
@@ -2575,6 +2577,42 @@ function FormsPageInner() {
     .submit-btn:active {
       opacity: 0.8;
     }
+    .crm-toast-host {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      pointer-events: none;
+      max-width: min(360px, calc(100vw - 2rem));
+    }
+    .crm-toast {
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      border-radius: 0.75rem;
+      background: #0f172a;
+      color: #f8fafc;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+      font-size: 0.875rem;
+      line-height: 1.4;
+      animation: crm-toast-in 0.22s ease-out;
+    }
+    .crm-toast--success { background: #065f46; }
+    .crm-toast--error { background: #9f1239; }
+    .crm-toast__title {
+      font-weight: 600;
+      margin-bottom: 0.15rem;
+    }
+    .crm-toast__message { opacity: 0.95; }
+    @keyframes crm-toast-in {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 ${gtagScript}
   ${embedGlobalStylesMeta(globalStyles, globalStyleExcludeKeys)}
@@ -2586,10 +2624,32 @@ ${gtagScript}
       <button type="submit" class="submit-btn">${submitButton.label}</button>
     </form>
   </div>
+  <div class="crm-toast-host" id="crmToastHost" aria-live="polite"></div>
   <script>
 ${getCaptchaExportRuntimeScript()}
 ${getFormPhoneExportRuntimeScript()}
     (function() {
+      function showToast(type, title, message) {
+        var host = document.getElementById('crmToastHost');
+        if (!host) return;
+        var el = document.createElement('div');
+        el.className = 'crm-toast crm-toast--' + (type === 'success' ? 'success' : 'error');
+        el.innerHTML =
+          '<div>' +
+            '<div class="crm-toast__title"></div>' +
+            (message ? '<div class="crm-toast__message"></div>' : '') +
+          '</div>';
+        el.querySelector('.crm-toast__title').textContent = title || '';
+        var msgEl = el.querySelector('.crm-toast__message');
+        if (msgEl) msgEl.textContent = message || '';
+        host.appendChild(el);
+        setTimeout(function() {
+          el.style.opacity = '0';
+          el.style.transition = 'opacity 0.2s ease';
+          setTimeout(function() { el.remove(); }, 220);
+        }, 3200);
+      }
+
       const form = document.getElementById('exportedForm');
       if (form) {
         form.addEventListener('submit', async function(event) {
@@ -2653,6 +2713,7 @@ ${getFormPhoneExportRuntimeScript()}
           // Safety: ensure backend required ids are scalar even if duplicated somehow
           payload.organisationID = pickFirst(payload.organisationID);
           payload.formID = pickFirst(payload.formID);
+          if (!payload.formID) delete payload.formID;
           delete payload.captcha;
           delete payload.captcha_images;
 
@@ -2664,12 +2725,13 @@ ${getFormPhoneExportRuntimeScript()}
             });
             const body = await res.json().catch(() => null);
             if (res.ok) {
-              alert('Form submitted successfully!');
+              showToast('success', 'Form submitted successfully!', 'Thanks — we received your details.');
+              form.reset();
             } else {
-              alert(body?.message || 'Form submission failed');
+              showToast('error', 'Form submission failed', body?.message || 'Please try again.');
             }
           } catch (err) {
-            alert('Network error while submitting form');
+            showToast('error', 'Network error', 'Could not submit the form. Please try again.');
           }
         });
       }
@@ -2863,8 +2925,22 @@ ${getFormPhoneExportRuntimeScript()}
     : formFields.find((f) => f.id === selectedField)
 
   return (
-    <MainLayout title="Form Builder" subtitle="Create and manage forms">
-      <div className="space-y-6 min-h-full flex flex-col">
+    <MainLayout
+      title="Form Builder"
+      subtitle="Create and manage forms"
+      mainClassName={
+        activeTab === 'builder'
+          ? 'flex flex-col overflow-hidden !py-2'
+          : undefined
+      }
+    >
+      <div
+        className={
+          activeTab === 'builder'
+            ? 'flex min-h-0 flex-1 flex-col'
+            : 'flex min-h-full flex-col space-y-6'
+        }
+      >
         {/* Templates View */}
         {activeTab === 'templates' && (
           <div className="space-y-6 flex-1 min-h-0 flex flex-col">
@@ -3120,8 +3196,8 @@ ${getFormPhoneExportRuntimeScript()}
 
         {/* Builder View */}
         {activeTab === 'builder' && (
-          <div className="h-[calc(100vh-200px)] flex flex-col gap-3">
-          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={() => {
@@ -3185,10 +3261,10 @@ ${getFormPhoneExportRuntimeScript()}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <div className="grid grid-cols-12 gap-4 flex-1 min-h-0">
+            <div className="grid min-h-0 flex-1 grid-cols-12 grid-rows-1 gap-4">
               {/* Properties palette */}
-              <div className="col-span-3 flex flex-col min-h-0 self-stretch">
-                <Card className="flex flex-col flex-1 min-h-0" style={{ height: 'calc(100% + 30px)' }}>
+              <div className="col-span-3 flex min-h-0 flex-col self-stretch">
+                <Card className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
                   <CardHeader className="flex-shrink-0 space-y-3 pb-3">
                     <div>
                       <CardTitle className="text-base">Properties</CardTitle>
@@ -3364,8 +3440,8 @@ ${getFormPhoneExportRuntimeScript()}
               </div>
 
               {/* Form Canvas */}
-              <div className="col-span-6 flex flex-col min-h-0">
-                <Card className="flex flex-col flex-1 min-h-0 overflow-hidden border-slate-200">
+              <div className="col-span-6 flex min-h-0 flex-col">
+                <Card className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-slate-200">
                   <CardHeader className="flex-shrink-0 border-b border-slate-200 bg-white pb-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -3477,8 +3553,8 @@ ${getFormPhoneExportRuntimeScript()}
               </div>
 
               {/* Field Settings / Global CSS Panel */}
-              <div className="col-span-3 flex flex-col min-h-0">
-                <Card className="flex flex-col flex-1 min-h-0">
+              <div className="col-span-3 flex min-h-0 flex-col">
+                <Card className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
                   <CardHeader className="flex-shrink-0 space-y-3">
                     <div className="flex rounded-md border border-border p-0.5 bg-muted/30">
                       <button
