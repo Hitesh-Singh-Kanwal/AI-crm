@@ -1288,6 +1288,7 @@ function FormsPageInner() {
     label: 'Submit Form',
     styles: {},
   })
+  const [redirectUrl, setRedirectUrl] = useState('')
   const [globalStyles, setGlobalStyles] = useState({})
   const [globalStyleExcludeKeys, setGlobalStyleExcludeKeys] = useState([])
   const [settingsPanelMode, setSettingsPanelMode] = useState('field') // 'field' | 'global'
@@ -1626,6 +1627,7 @@ function FormsPageInner() {
       label: 'Submit Form',
       styles: {},
     })
+    setRedirectUrl('')
     setGlobalStyles({})
     setGlobalStyleExcludeKeys([])
     setSettingsPanelMode('field')
@@ -1837,10 +1839,15 @@ function FormsPageInner() {
 
       const inferred = []
       const byName = new Map()
+      setRedirectUrl('')
 
       if (htmlCode && typeof window !== 'undefined') {
         const doc = new DOMParser().parseFromString(htmlCode, 'text/html')
         const formEl = doc.querySelector('form')
+
+        const redirectMeta =
+          doc.querySelector('meta[name="cadance-redirect-url"]')?.getAttribute('content') || ''
+        setRedirectUrl(String(redirectMeta || '').trim())
 
         const submitEl = formEl?.querySelector('button[type="submit"], input[type="submit"]')
         const submitLabel = submitEl
@@ -2495,6 +2502,7 @@ function FormsPageInner() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${redirectUrl.trim() ? `<meta name="cadance-redirect-url" content="${String(redirectUrl.trim()).replace(/"/g, '&quot;')}">` : ''}
   <title>Form</title>
   <style>
     * {
@@ -2549,6 +2557,30 @@ function FormsPageInner() {
     .form-container select:focus {
       border-color: #3b82f6;
       box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    /* Phone widget — themable via --cadance-input-* so host CSS can restyle the whole control */
+    .crm-phone-field {
+      width: 100%;
+    }
+    .crm-phone-shell,
+    .crm-phone-flag-btn,
+    .crm-phone-dropdown {
+      background: var(--cadance-input-bg, #fff);
+      color: var(--cadance-input-text, #0f172a);
+      border-color: var(--cadance-input-border, #cbd5e1);
+    }
+    .crm-phone-flag-btn {
+      background: transparent;
+    }
+    .crm-phone-local,
+    .crm-phone-dial,
+    .crm-phone-search {
+      color: var(--cadance-input-text, #0f172a);
+      background: transparent;
+    }
+    .crm-phone-label,
+    .crm-phone-caret {
+      color: var(--cadance-muted-text, #94a3b8);
     }
     .submit-btn {
       background: ${submitButton.styles?.backgroundColor || '#2563eb'};
@@ -2629,6 +2661,24 @@ ${gtagScript}
 ${getCaptchaExportRuntimeScript()}
 ${getFormPhoneExportRuntimeScript()}
     (function() {
+      var REDIRECT_URL = ${JSON.stringify(String(redirectUrl || '').trim())};
+
+      function goToRedirect() {
+        if (!REDIRECT_URL) return false;
+        try {
+          var w = window.top || window;
+          w.location.href = REDIRECT_URL;
+          return true;
+        } catch (e) {
+          try {
+            window.location.href = REDIRECT_URL;
+            return true;
+          } catch (e2) {
+            return false;
+          }
+        }
+      }
+
       function showToast(type, title, message) {
         var host = document.getElementById('crmToastHost');
         if (!host) return;
@@ -2725,6 +2775,7 @@ ${getFormPhoneExportRuntimeScript()}
             });
             const body = await res.json().catch(() => null);
             if (res.ok) {
+              if (goToRedirect()) return;
               showToast('success', 'Form submitted successfully!', 'Thanks — we received your details.');
               form.reset();
             } else {
@@ -2781,6 +2832,23 @@ ${getFormPhoneExportRuntimeScript()}
       setExportTab('embed')
     }
     setShowExport(true)
+  }
+
+  const openEmbedPreview = () => {
+    const code = String(embedCode || '').trim()
+    if (!code) {
+      toast.info({
+        title: 'No embed code',
+        message: 'Save the form first to generate embed code, then try again.',
+      })
+      return
+    }
+    try {
+      localStorage.setItem('cadance-embed-preview-code', code)
+    } catch {
+      // ignore quota / private mode
+    }
+    window.open('/marketing/form-builder/embed-preview', '_blank', 'noopener,noreferrer')
   }
 
   const copyExportValue = (value) => {
@@ -3231,6 +3299,14 @@ ${getFormPhoneExportRuntimeScript()}
               value={formDescription}
               onChange={(e) => setFormDescription(e.target.value)}
               className="max-w-sm"
+            />
+            <Input
+              type="url"
+              placeholder="Thank-you redirect URL (optional)"
+              value={redirectUrl}
+              onChange={(e) => setRedirectUrl(e.target.value)}
+              className="min-w-[280px] max-w-md"
+              title="After a successful submit, visitors are sent to this page"
             />
             <div
               id="form-builder-location"
@@ -4288,13 +4364,28 @@ ${getFormPhoneExportRuntimeScript()}
             {exportTab === 'embed' && embedCode ? (
               <>
                 <p className="text-[13px] text-muted-foreground mb-3 flex-shrink-0">
-                  Paste this into your website HTML. Wrap it in your own section for styling.
+                  Paste this into your website. The form keeps its original look until you add your own{' '}
+                  <code className="text-xs bg-muted px-1 rounded">&lt;style&gt;</code> block.
+                  A CSS selector guide is in the comment above the scripts (comments do not change styles).
                 </p>
                 <div className="bg-slate-900 rounded-lg p-4 overflow-auto flex-1 min-h-0 border border-slate-700">
                   <pre className="text-sm text-slate-100 font-mono whitespace-pre-wrap break-words">
                     <code>{embedCode}</code>
                   </pre>
                 </div>
+                <a
+                  href="/marketing/form-builder/embed-preview"
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    openEmbedPreview()
+                  }}
+                  className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--studio-primary)] hover:underline flex-shrink-0"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open test webpage to preview this embed
+                </a>
               </>
             ) : exportTab === 'share' && shareLink ? (
               <>
@@ -4331,7 +4422,12 @@ ${getFormPhoneExportRuntimeScript()}
                 <Copy className="h-4 w-4 mr-2" />
                 Copy
               </Button>
-              {exportTab === 'share' && shareLink ? (
+              {exportTab === 'embed' && embedCode ? (
+                <Button variant="gradient" className="flex-1" onClick={openEmbedPreview}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  Test preview
+                </Button>
+              ) : exportTab === 'share' && shareLink ? (
                 <Button
                   variant="gradient"
                   className="flex-1"

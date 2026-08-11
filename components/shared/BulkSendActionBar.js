@@ -1,9 +1,9 @@
 'use client'
 
-import { Mail, MessageSquare, X } from 'lucide-react'
+import { Mail, MessageSquare, Trash2, X } from 'lucide-react'
 
 /**
- * Selection toolbar for bulk SMS / email (same pattern as dynamic list members).
+ * Selection toolbar for bulk SMS / email / delete (same pattern as dynamic list members).
  */
 export default function BulkSendActionBar({
   selectedCount = 0,
@@ -11,6 +11,9 @@ export default function BulkSendActionBar({
   onSendSms,
   onSendEmail,
   onClear,
+  onDelete,
+  canDelete = false,
+  deleting = false,
   showSelectAll = false,
   selectAllTotal = 0,
   pageCount = 0,
@@ -33,7 +36,7 @@ export default function BulkSendActionBar({
               {selectedCount} {plural} selected
             </div>
             <div className="text-[12px] text-muted-foreground">
-              Choose an action to reach selected {plural}
+              Choose an action for the selected {plural}
             </div>
           </div>
         </div>
@@ -58,6 +61,19 @@ export default function BulkSendActionBar({
             </span>
             Send email
           </button>
+          {canDelete && typeof onDelete === 'function' ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleting}
+              className="inline-flex h-10 items-center gap-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 px-4 text-[13px] font-semibold text-white shadow-md shadow-rose-500/30 transition hover:brightness-105 disabled:opacity-60"
+            >
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 ring-1 ring-white/30">
+                <Trash2 className="h-4 w-4" />
+              </span>
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClear}

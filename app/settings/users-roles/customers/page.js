@@ -407,6 +407,7 @@ export default function CustomersPage() {
   const [editingCustomer, setEditingCustomer] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
   const [filters, setFilters] = useState(EMPTY_CUSTOMER_FILTERS)
@@ -561,6 +562,35 @@ export default function CustomersPage() {
       toast.error(result.error || 'Failed to delete customer.')
     }
     setDeleting(false)
+  }
+
+  const handleBulkDeleteCustomers = async () => {
+    if (!canDeleteCustomers || selectedIds.length === 0) return
+    const confirmed = window.confirm(
+      `Delete ${selectedIds.length} customer${selectedIds.length === 1 ? '' : 's'}? This cannot be undone.`,
+    )
+    if (!confirmed) return
+
+    setBulkDeleting(true)
+    try {
+      const result = await api.request('/api/customer/bulk', {
+        method: 'DELETE',
+        body: JSON.stringify({ ids: selectedIds }),
+      })
+      if (result.success) {
+        const count = result.data?.deletedCount ?? selectedIds.length
+        toast.success(`${count} customer${count === 1 ? '' : 's'} deleted.`)
+        clearSelection()
+        fetchCustomers()
+      } else {
+        toast.error(result.error || 'Failed to delete selected customers.')
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('Unexpected error while deleting selected customers.')
+    } finally {
+      setBulkDeleting(false)
+    }
   }
 
   const locationName = (raw) => {
@@ -770,6 +800,9 @@ export default function CustomersPage() {
           onSendSms={() => openSendDialog('SMS')}
           onSendEmail={() => openSendDialog('Email')}
           onClear={clearSelection}
+          canDelete={canDeleteCustomers}
+          onDelete={handleBulkDeleteCustomers}
+          deleting={bulkDeleting}
           showSelectAll={allOnPageSelected}
           selectAllTotal={total}
           pageCount={customers.length}
