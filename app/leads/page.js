@@ -94,6 +94,7 @@ export default function LeadsPage() {
   const [forms, setForms] = useState([])
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [convertingId, setConvertingId] = useState(null)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const latestRequestRef = useRef(0)
 
   const totalPages = Math.max(1, Math.ceil((totalCount || 0) / ROWS_PER_PAGE))
@@ -382,6 +383,37 @@ export default function LeadsPage() {
     }
   }
 
+  const handleBulkDeleteLeads = async () => {
+    if (!canDeleteLeads || selectedIds.length === 0) return
+    const confirmed = window.confirm(
+      `Delete ${selectedIds.length} lead${selectedIds.length === 1 ? '' : 's'}? This cannot be undone.`,
+    )
+    if (!confirmed) return
+
+    try {
+      setBulkDeleting(true)
+      const result = await api.request('/api/lead/bulk', {
+        method: 'DELETE',
+        body: JSON.stringify({ ids: selectedIds }),
+      })
+      if (result.success) {
+        const count = result.data?.deletedCount ?? selectedIds.length
+        toast.success('Deleted', {
+          description: `${count} lead${count === 1 ? '' : 's'} deleted successfully`,
+        })
+        clearSelection()
+        refreshLeads()
+      } else {
+        toast.error('Delete failed', { description: result.error || 'Unable to delete selected leads' })
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('Error', { description: 'Unexpected error while deleting selected leads' })
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   return (
     <MainLayout>
       <div className="space-y-6 p-6">
@@ -445,6 +477,9 @@ export default function LeadsPage() {
           onSendSms={() => openSendDialog('SMS')}
           onSendEmail={() => openSendDialog('Email')}
           onClear={clearSelection}
+          canDelete={canDeleteLeads}
+          onDelete={handleBulkDeleteLeads}
+          deleting={bulkDeleting}
           showSelectAll={allOnPageSelected}
           selectAllTotal={totalCount}
           pageCount={leads.length}
