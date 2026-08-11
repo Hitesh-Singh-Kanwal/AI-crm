@@ -1669,6 +1669,7 @@ export default function EventDetailPanel({
             <MiniStudentPanel
               customerId={selectedStudentId}
               customerName={selectedStudentName}
+              studioTz={studioTz}
               onBack={() => {
                 setSelectedStudentId(null);
                 setSelectedStudentName("");

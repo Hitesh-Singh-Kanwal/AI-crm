@@ -11,6 +11,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 import api from "@/lib/api";
+import { formatStudioDate, formatStudioTime } from "@/lib/studioLocalDate";
+import { useStudioTimezone } from "@/lib/hooks/useStudioTimezone";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
@@ -68,7 +70,10 @@ export default function MiniStudentPanel({
   onBack,
   inline = false,
   onPaymentSuccess,
+  studioTz: studioTzProp = null,
 }) {
+  // Lesson times are UTC instants — render them in the studio's zone, never the browser's.
+  const studioTz = useStudioTimezone(studioTzProp);
   const [activeTab, setActiveTab] = useState("appointments");
   const [customer, setCustomer] = useState(null);
   const [loadingCustomer, setLoadingCustomer] = useState(true);
@@ -933,23 +938,9 @@ export default function MiniStudentPanel({
                         </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        {new Date(appt.startDateTime).toLocaleDateString(
-                          "en-US",
-                          {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          },
-                        )}
+                        {formatStudioDate(appt.startDateTime, studioTz)}
                         {" · "}
-                        {new Date(appt.startDateTime).toLocaleTimeString(
-                          "en-US",
-                          {
-                            hour: "numeric",
-                            minute: "2-digit",
-                            hour12: true,
-                          },
-                        )}
+                        {formatStudioTime(appt.startDateTime, studioTz)}
                       </p>
                       {appt.teacherID?.name && (
                         <p className="text-[10px] text-muted-foreground">
@@ -2223,21 +2214,15 @@ export default function MiniStudentPanel({
                                     </span>
                                   )}
                                   <span className="text-[10px] text-muted-foreground">
-                                    {new Date(
+                                    {formatStudioDate(
                                       item.startDateTime,
-                                    ).toLocaleDateString("en-US", {
-                                      weekday: "short",
-                                      month: "short",
-                                      day: "numeric",
-                                    })}{" "}
+                                      studioTz,
+                                    )}{" "}
                                     ·{" "}
-                                    {new Date(
+                                    {formatStudioTime(
                                       item.startDateTime,
-                                    ).toLocaleTimeString("en-US", {
-                                      hour: "numeric",
-                                      minute: "2-digit",
-                                      hour12: true,
-                                    })}
+                                      studioTz,
+                                    )}
                                   </span>
                                 </div>
                               </div>
@@ -2354,23 +2339,9 @@ export default function MiniStudentPanel({
                               </div>
                             </div>
                             <p className="text-[10px] text-muted-foreground">
-                              {new Date(evt.startDateTime).toLocaleDateString(
-                                "en-US",
-                                {
-                                  weekday: "short",
-                                  month: "short",
-                                  day: "numeric",
-                                },
-                              )}
+                              {formatStudioDate(evt.startDateTime, studioTz)}
                               {" · "}
-                              {new Date(evt.startDateTime).toLocaleTimeString(
-                                "en-US",
-                                {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                  hour12: true,
-                                },
-                              )}
+                              {formatStudioTime(evt.startDateTime, studioTz)}
                             </p>
                             {evt.calendarServiceID?.serviceName && (
                               <p className="text-[10px] text-muted-foreground">

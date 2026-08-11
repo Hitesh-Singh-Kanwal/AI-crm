@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, RotateCcw, X, Infinity as InfinityIcon, ChevronDown, Snowflake } from 'lucide-react'
 import api from '@/lib/api'
+import { formatStudioDate, formatStudioTime } from '@/lib/studioLocalDate'
+import { useStudioTimezone } from '@/lib/hooks/useStudioTimezone'
 import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -128,6 +130,8 @@ function PayInstallmentDialog({ target, onClose, onPaid, locationID }) {
 }
 
 export default function CustomerMembershipsTab({ customerID, locationID }) {
+  // Lesson times are UTC instants — render them in the studio's zone, never the browser's.
+  const studioTz = useStudioTimezone()
   const [memberships, setMemberships] = useState([])
   const [plansMap, setPlansMap] = useState({})
   const [loading, setLoading] = useState(true)
@@ -349,9 +353,9 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
                               {svcEvents.map((ev, idx) => (
                                 <div key={ev._id} className={`grid grid-cols-[1fr_120px_130px] gap-2 items-center px-2.5 py-1.5 ${idx > 0 ? 'border-t border-border/50' : ''}`}>
                                   <span className="text-[11px] text-foreground">
-                                    {new Date(ev.startDateTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                    {formatStudioDate(ev.startDateTime, studioTz, { year: 'numeric' })}
                                     {' · '}
-                                    {new Date(ev.startDateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                    {formatStudioTime(ev.startDateTime, studioTz)}
                                   </span>
                                   <span className="text-[11px] text-muted-foreground truncate">{ev.teacherID?.name || '—'}</span>
                                   <span className={`inline-flex w-fit max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase leading-tight whitespace-normal text-center ${
