@@ -93,7 +93,7 @@ export const PALETTE_CATEGORIES = [
       {
         type: 'exit_logic',
         label: 'Exit logic',
-        description: 'Stop the workflow when a goal is met or the contact leaves the audience',
+        description: 'After all steps finish, set the contact to a chosen stage',
         icon: Flag,
         category: 'exit',
       },

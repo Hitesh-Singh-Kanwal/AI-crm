@@ -160,9 +160,8 @@ function ExitLogicFields({ config, onChange, entityType = 'lead' }) {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
-        Step 3 · Exit logic — choose one{' '}
-        {isCustomer ? 'lifecycle status' : 'stage'}. When the contact reaches it,
-        they leave this workflow.
+        Step 3 · Exit — optional. When every action in this workflow has run, set
+        the contact to the {isCustomer ? 'lifecycle status' : 'stage'} you pick here.
       </div>
 
       <div className="space-y-3 rounded-xl border border-border bg-background p-3">
@@ -170,13 +169,13 @@ function ExitLogicFields({ config, onChange, entityType = 'lead' }) {
           <div className="text-[13px] font-semibold text-foreground">Workflow exit rule</div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             {isCustomer
-              ? 'Remove the customer from this workflow when they reach this lifecycle status.'
-              : 'Remove the contact from this workflow when they reach this stage.'}
+              ? 'After the last step finishes, move the customer to this status.'
+              : 'After the last step finishes, move the lead to this stage.'}
           </p>
         </div>
         <Field
-          label={isCustomer ? 'Lifecycle status' : 'Stage'}
-          hint="select one"
+          label={isCustomer ? 'Set status to' : 'Set stage to'}
+          hint="optional · select one"
         >
           <WorkflowStageMultiSelect
             single
