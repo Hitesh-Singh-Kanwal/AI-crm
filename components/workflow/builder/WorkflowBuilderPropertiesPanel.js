@@ -170,7 +170,7 @@ function ExitLogicFields({ config, onChange, entityType = 'lead' }) {
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             {isCustomer
               ? 'After the last step finishes, move the customer to this status.'
-              : 'After the last step finishes, move the lead to this stage.'}
+              : 'After the final step is completed, move the lead to the selected stage.'}
           </p>
         </div>
         <Field
