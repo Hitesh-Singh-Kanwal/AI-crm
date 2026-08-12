@@ -4394,6 +4394,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                           totalUsed = 0,
                           totalSched = 0,
                           totalRemaining = 0,
+                          totalCreditSessions = 0,
                           totalCredit = 0,
                           totalServicePrice = 0;
                         const isDeferred =
@@ -4406,14 +4407,30 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                         const isFreeService = (sv) =>
                           sv.isChargeable === false ||
                           Number(sv.finalAmount || 0) <= 0;
-                        // Sum of all chargeable service prices (denominator for proportion)
+                        // Net (post-discount) price for a service — what was
+                        // actually charged, so proration below allocates the
+                        // pooled `amountCollected` by what each service costs
+                        // net of discount, not its undiscounted list price.
+                        // Falls back to list price when finalAmount isn't set
+                        // (legacy/migrated enrollments).
+                        const svcNetPrice = (sv) => {
+                          if (isFreeService(sv)) return 0;
+                          const listPrice =
+                            (sv.sessionsTotal ?? 0) *
+                            Number(sv.pricePerSession || 0);
+                          return Number(sv.finalAmount) > 0
+                            ? Number(sv.finalAmount)
+                            : listPrice;
+                        };
+                        // Sum of all chargeable services' net prices
+                        // (denominator for proportion) — matches the
+                        // per-service net price used for the numerator below,
+                        // so proration and the sessions conversion (which
+                        // uses discount-adjusted effectivePps) stay on the
+                        // same discounted basis instead of mixing list-price
+                        // weights with discounted per-session divisors.
                         const chargeableSvcPriceTotal = services.reduce(
-                          (s, sv) =>
-                            s +
-                            (isFreeService(sv)
-                              ? 0
-                              : (sv.sessionsTotal ?? 0) *
-                                Number(sv.pricePerSession || 0)),
+                          (s, sv) => s + svcNetPrice(sv),
                           0,
                         );
                         const rows = services.map((svc, i) => {
@@ -4439,10 +4456,12 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                           const svcCreditSessions = (() => {
                             if (isFree) return 0;
                             if (!isDeferred || pps <= 0) return sessRemaining;
-                            // Proportion by this service's share of total chargeable price
+                            // Proportion by this service's share of total
+                            // chargeable price, net of discount (same basis as
+                            // chargeableSvcPriceTotal above).
                             const svcShare =
                               chargeableSvcPriceTotal > 0
-                                ? svcTotal / chargeableSvcPriceTotal
+                                ? svcNetPrice(svc) / chargeableSvcPriceTotal
                                 : 1;
                             const svcAmountPaid =
                               (cp.amountCollected ?? 0) * svcShare;
@@ -4453,13 +4472,21 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                               paidSessions - sessUsed - sessSched,
                             );
                           })();
-                          const svcCredit = svcCreditSessions * pps;
+                          // Valued at effectivePps (net of discount) rather
+                          // than list-price pps, so a discounted package's
+                          // dollar credit balance reflects what was actually
+                          // charged per session, not the pre-discount rate.
+                          const svcCredit = svcCreditSessions * effectivePps;
                           totalEnrolled += sessTotal;
                           totalUsed += sessUsed;
                           totalSched += sessSched;
-                          totalRemaining += isDeferred
-                            ? svcCreditSessions
-                            : sessRemaining;
+                          // Matches the per-row Remaining cell (always
+                          // sessRemaining, regardless of billing type) —
+                          // Credit Balance is tracked separately below since
+                          // the two columns mean different things for
+                          // deferred/flexible billing.
+                          totalRemaining += sessRemaining;
+                          totalCreditSessions += svcCreditSessions;
                           totalCredit += svcCredit;
                           totalServicePrice += svcTotal;
                           return {
@@ -4594,12 +4621,14 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                         <span
                                           className={`text-[13px] font-semibold text-right ${svcCreditSessions > 0 ? "text-success" : "text-muted-foreground"}`}
                                         >
-                                          {isDeferred
-                                            ? svcCreditSessions
-                                                .toFixed(2)
-                                                .replace(/\.00$/, "")
-                                                .replace(/(\.\d)0$/, "$1")
-                                            : svcCreditSessions}
+                                          {isFree
+                                            ? "—"
+                                            : isDeferred
+                                              ? svcCreditSessions
+                                                  .toFixed(2)
+                                                  .replace(/\.00$/, "")
+                                                  .replace(/(\.\d)0$/, "$1")
+                                              : svcCreditSessions}
                                         </span>
                                         <span className="text-[13px] font-semibold text-foreground text-right">
                                           {svcTotal > 0
@@ -4746,8 +4775,55 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                   );
                                 },
                               )}
-                              {/* Totals row */}
-                              {rows.length > 1 && <></>}
+                              {/* Totals row — sums across all services in
+                                  this enrollment. Session-count columns
+                                  (Enrolled/Completed/Scheduled/Remaining) sum
+                                  across different service types (privates +
+                                  groups + parties + coaching, etc.), so
+                                  they're a rough "sessions total" rather than
+                                  a like-for-like count — Credit Balance and
+                                  Total are the meaningful ones since $ is a
+                                  common unit across services. */}
+                              {rows.length > 1 && (
+                                <div
+                                  className="grid items-center px-3 py-2.5 border-t-2 border-border bg-muted/30"
+                                  style={{
+                                    gridTemplateColumns:
+                                      "minmax(0,1fr) 80px 80px 80px 80px 80px 100px",
+                                  }}
+                                >
+                                  <span className="text-[12px] font-bold text-foreground uppercase tracking-wide">
+                                    Total
+                                  </span>
+                                  <span className="text-[13px] font-bold text-foreground text-right">
+                                    {totalEnrolled}
+                                  </span>
+                                  <span className="text-[13px] font-bold text-foreground text-right">
+                                    {totalUsed}
+                                  </span>
+                                  <span className="text-[13px] font-bold text-foreground text-right">
+                                    {totalSched}
+                                  </span>
+                                  <span className="text-[13px] font-bold text-foreground text-right">
+                                    {totalRemaining}
+                                  </span>
+                                  <span
+                                    className={`text-[13px] font-bold text-right ${totalCreditSessions > 0 ? "text-success" : "text-muted-foreground"}`}
+                                  >
+                                    {isDeferred
+                                      ? totalCreditSessions
+                                          .toFixed(2)
+                                          .replace(/\.00$/, "")
+                                          .replace(/(\.\d)0$/, "$1")
+                                      : totalCreditSessions}
+                                  </span>
+                                  <span className="text-[13px] font-bold text-foreground text-right">
+                                    {totalServicePrice > 0
+                                      ? `$${totalServicePrice.toFixed(2)}`
+                                      : "—"}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );

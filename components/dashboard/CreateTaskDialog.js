@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import LocationSelector from '@/components/shared/LocationSelector'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
+import { studioWallTimeToUtcISO } from '@/lib/studio-time'
 
 const DEFAULT_DURATION_MINUTES = 30
 
@@ -33,6 +34,7 @@ export default function CreateTaskDialog({ onCreated, compact = false }) {
   const [dueTime, setDueTime] = useState('09:00')
   const [assignedTo, setAssignedTo] = useState('')
   const [locationID, setLocationID] = useState('')
+  const [locationTz, setLocationTz] = useState(null)
   const [notes, setNotes] = useState('')
   const [staff, setStaff] = useState([])
   const [loadingStaff, setLoadingStaff] = useState(false)
@@ -56,6 +58,7 @@ export default function CreateTaskDialog({ onCreated, compact = false }) {
     setDueTime('09:00')
     setAssignedTo('')
     setLocationID('')
+    setLocationTz(null)
     setNotes('')
   }
 
@@ -69,8 +72,19 @@ export default function CreateTaskDialog({ onCreated, compact = false }) {
     e.preventDefault()
     if (!title.trim() || !dueDate || !locationID) return
     setSaving(true)
-    const start = new Date(`${dueDate}T${dueTime || '09:00'}:00`)
-    const end = new Date(start.getTime() + DEFAULT_DURATION_MINUTES * 60000)
+    // The task spans from "now" (when it's created) to the due date/time —
+    // not a fixed 30-minute block sitting at the due time. The due time is a
+    // wall-clock time at the task's studio, so it must go through the same
+    // studio-timezone conversion the calendar uses elsewhere; parsing it as a
+    // plain `new Date(...)` interprets it in the *browser's* timezone instead,
+    // which is what made a 9am due time show up on the calendar at 5:30am for
+    // a studio in a different timezone than the browser.
+    const start = new Date()
+    let end = studioWallTimeToUtcISO(dueDate, dueTime || '09:00', locationTz)
+    end = end ? new Date(end) : new Date(start.getTime() + DEFAULT_DURATION_MINUTES * 60000)
+    // Due time already passed relative to now (e.g. due "today, 9am" created
+    // at 2pm) — keep a minimal, non-inverted duration instead of end < start.
+    if (end <= start) end = new Date(start.getTime() + DEFAULT_DURATION_MINUTES * 60000)
     const res = await api.post('/api/calendar', {
       title: title.trim(),
       type: 'event',
@@ -171,7 +185,13 @@ export default function CreateTaskDialog({ onCreated, compact = false }) {
 
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">Location *</label>
-              <LocationSelector value={locationID} onChange={setLocationID} multiple={false} showAllOption={false} />
+              <LocationSelector
+                value={locationID}
+                onChange={setLocationID}
+                onChangeObject={(loc) => setLocationTz(loc?.timezone || null)}
+                multiple={false}
+                showAllOption={false}
+              />
             </div>
 
             <div>
