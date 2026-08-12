@@ -10,7 +10,9 @@ import api from '@/lib/api'
 import { toCSVValue, triggerDownload, parseCSVText } from '@/lib/csv-utils'
 import {
   CUSTOMER_COLUMNS,
+  SERVICE_COLUMNS,
   ENROLLMENT_COLUMNS,
+  MEMBERSHIP_COLUMNS,
   LESSON_COLUMNS,
   PAYMENT_COLUMNS,
   parseCsvFile,
@@ -23,7 +25,9 @@ import {
 
 const CSV_SHEETS = {
   customers: { label: 'Customers', columns: CUSTOMER_COLUMNS, sampleFile: 'sample_customers.csv' },
+  services: { label: 'Services (optional)', columns: SERVICE_COLUMNS, sampleFile: 'sample_services.csv' },
   enrollments: { label: 'Enrollments', columns: ENROLLMENT_COLUMNS, sampleFile: 'sample_enrollments.csv' },
+  memberships: { label: 'Memberships (optional)', columns: MEMBERSHIP_COLUMNS, sampleFile: 'sample_memberships.csv' },
   lessons: { label: 'Lessons (optional)', columns: LESSON_COLUMNS, sampleFile: 'sample_lessons.csv' },
   payments: { label: 'Payments (optional)', columns: PAYMENT_COLUMNS, sampleFile: 'sample_payments.csv' },
 }
@@ -92,9 +96,14 @@ export default function CustomerMigrationImportDialog({
     if (!file) return
     setBusy(true)
     try {
-      const { customers, enrollments, lessons, payments } = await parseXlsxFile(file)
-      setParsed({ customers, enrollments, lessons, payments, fileNames: [file.name] })
-      const extra = [lessons.length && `${lessons.length} lesson row(s)`, payments.length && `${payments.length} payment row(s)`]
+      const { customers, services, enrollments, memberships, lessons, payments } = await parseXlsxFile(file)
+      setParsed({ customers, services, enrollments, memberships, lessons, payments, fileNames: [file.name] })
+      const extra = [
+        services.length && `${services.length} service row(s)`,
+        memberships.length && `${memberships.length} membership row(s)`,
+        lessons.length && `${lessons.length} lesson row(s)`,
+        payments.length && `${payments.length} payment row(s)`,
+      ]
         .filter(Boolean)
         .join(', ')
       toast.success({
@@ -118,7 +127,9 @@ export default function CustomerMigrationImportDialog({
       setParsed((prev) => {
         const next = {
           customers: prev?.customers || [],
+          services: prev?.services || [],
           enrollments: prev?.enrollments || [],
+          memberships: prev?.memberships || [],
           lessons: prev?.lessons || [],
           payments: prev?.payments || [],
           fileNames: prev?.fileNames || [],
@@ -140,12 +151,21 @@ export default function CustomerMigrationImportDialog({
       toast.error({ title: 'Nothing to validate', message: 'Upload the Customers data first' })
       return
     }
-    const preflightErrors = preflightCheck(parsed.customers, parsed.enrollments || [], parsed.lessons || [], parsed.payments || [])
+    const preflightErrors = preflightCheck(
+      parsed.customers,
+      parsed.enrollments || [],
+      parsed.lessons || [],
+      parsed.payments || [],
+      parsed.memberships || [],
+      parsed.services || [],
+    )
     setBusy(true)
     try {
       const res = await api.post('/api/customer/import/validate', {
         customers: parsed.customers,
+        services: parsed.services || [],
         enrollments: parsed.enrollments || [],
+        memberships: parsed.memberships || [],
         lessons: parsed.lessons || [],
         payments: parsed.payments || [],
       })
@@ -187,7 +207,9 @@ export default function CustomerMigrationImportDialog({
       const sheetTotals = computeSheetTotals(enrollmentsForTotals, parsed.customers || [], paymentsForTotals)
       const res = await api.post('/api/customer/import/commit', {
         customers: parsed.customers,
+        services: parsed.services || [],
         enrollments: parsed.enrollments || [],
+        memberships: parsed.memberships || [],
         lessons: parsed.lessons || [],
         payments: parsed.payments || [],
         sourceFileNames: parsed.fileNames,
@@ -327,7 +349,7 @@ export default function CustomerMigrationImportDialog({
               Import Customers
             </DialogTitle>
             <DialogDescription>
-              Full migration (Customers + Enrollments, plus optional Lessons/Payments history, CSV or Excel) or a quick single-sheet CSV add.
+              Full migration (Customers + Enrollments, plus optional Memberships/Lessons/Payments, CSV or Excel) or a quick single-sheet CSV add.
             </DialogDescription>
           </DialogHeader>
 
@@ -381,7 +403,7 @@ export default function CustomerMigrationImportDialog({
                   {format === 'excel' ? (
                     <div>
                       <label className="block text-sm font-medium mb-2">
-                        Workbook with "Customers" and "Enrollments" sheets (plus optional "Lessons"/"Payments" for full history)
+                        Workbook with "Customers" and "Enrollments" sheets (plus optional "Services"/"Memberships"/"Lessons"/"Payments")
                       </label>
                       <div className="flex items-center gap-2">
                         <label className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg cursor-pointer hover:bg-muted/40 w-fit">
@@ -402,6 +424,8 @@ export default function CustomerMigrationImportDialog({
                       {parsed && (
                         <p className="mt-2 text-xs text-muted-foreground">
                           {parsed.customers.length} customer row(s), {parsed.enrollments.length} enrollment row(s)
+                          {parsed.services?.length ? `, ${parsed.services.length} service row(s)` : ''}
+                          {parsed.memberships?.length ? `, ${parsed.memberships.length} membership row(s)` : ''}
                           {parsed.lessons?.length ? `, ${parsed.lessons.length} lesson row(s)` : ''}
                           {parsed.payments?.length ? `, ${parsed.payments.length} payment row(s)` : ''} detected
                         </p>
@@ -482,11 +506,16 @@ export default function CustomerMigrationImportDialog({
                 <Stat label="New services" value={preview.servicesCreated} />
                 <Stat label="Rows with errors" value={blockingErrorCount} warn={blockingErrorCount > 0} />
               </div>
-              {(parsed?.lessons?.length > 0 || parsed?.payments?.length > 0) && (
+              {(parsed?.services?.length > 0 || parsed?.memberships?.length > 0 || parsed?.lessons?.length > 0 || parsed?.payments?.length > 0) && (
                 <div className="grid grid-cols-3 gap-3 text-sm">
-                  <Stat label="Lesson rows" value={parsed?.lessons?.length || 0} />
-                  <Stat label="Payment rows" value={parsed?.payments?.length || 0} />
-                  <Stat label="Data mismatch warnings" value={warningCount} warn={warningCount > 0} />
+                  <Stat label="Service rows" value={parsed?.services?.length || 0} />
+                  <Stat label="Membership rows" value={parsed?.memberships?.length || 0} />
+                  <Stat label="Lesson + Payment rows" value={(parsed?.lessons?.length || 0) + (parsed?.payments?.length || 0)} />
+                </div>
+              )}
+              {warningCount > 0 && (
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <Stat label="Data mismatch warnings" value={warningCount} warn />
                 </div>
               )}
 
@@ -535,6 +564,12 @@ export default function CustomerMigrationImportDialog({
                 <Stat label="New packages" value={commitResult.packagesCreated} />
                 <Stat label="New services" value={commitResult.servicesCreated} />
               </div>
+              {(commitResult.membershipsCreated > 0 || commitResult.catalogServicesCreated > 0) && (
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <Stat label="Catalog services created" value={commitResult.catalogServicesCreated} />
+                  <Stat label="Memberships created" value={commitResult.membershipsCreated} />
+                </div>
+              )}
               {(commitResult.walletCreditsCreated > 0 || commitResult.walletCreditsSkipped > 0) && (
                 <div className="grid grid-cols-3 gap-3 text-sm">
                   <Stat label="Wallet balances credited" value={commitResult.walletCreditsCreated} />

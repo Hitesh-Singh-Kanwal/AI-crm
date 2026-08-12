@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import api from "@/lib/api";
+import { getEffectiveBranch } from "@/lib/auth";
 import { studioWallTimeToUtcISO } from "@/lib/studio-time";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MultiSelectCheckboxDropdown from "@/components/shared/MultiSelectCheckboxDropdown";
@@ -2406,10 +2407,19 @@ export default function AppointmentComposerPanel({
       : null;
     const selectedLesson = form.lesson_id ? lessonMap[String(form.lesson_id)] : null;
     const selectedTodo = form.todo_id ? todoMap[String(form.todo_id)] : null;
+    // A customer/lesson/to-do can be assigned to several studios; picking
+    // whichever one happened to sort first ignored the studio the user is
+    // actually working in, so a to-do would silently get booked under (or
+    // filtered out of) the wrong location after switching studios. Prefer
+    // the currently active studio when it's one of the entity's valid
+    // locations, and only fall back to the first one otherwise.
+    const activeBranchId = getEffectiveBranch();
     const firstLoc = (raw) => {
       if (!raw) return undefined;
-      if (Array.isArray(raw)) return raw[0]?._id || raw[0] || undefined;
-      return raw._id || raw;
+      const ids = Array.isArray(raw) ? raw.map((r) => r?._id || r).filter(Boolean) : [raw._id || raw];
+      if (!ids.length) return undefined;
+      const activeMatch = activeBranchId && ids.find((id) => String(id) === String(activeBranchId));
+      return activeMatch || ids[0];
     };
     const createLocationID =
       firstLoc(selectedCustomer?.locationID) ||
@@ -2418,8 +2428,12 @@ export default function AppointmentComposerPanel({
       form.location_id ||
       undefined;
 
-    if (activeTab === "Group Class" && !createLocationID) {
-      setError("Select a location to create this group class.");
+    if ((activeTab === "Group Class" || activeTab === "To Do") && !createLocationID) {
+      setError(
+        activeTab === "To Do"
+          ? "This to-do isn't assigned to any location. Add a location to it under Settings."
+          : "Select a location to create this group class.",
+      );
       setIsSaving(false);
       return;
     }

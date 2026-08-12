@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
-import { studioWallTimeToUtcISO } from "@/lib/studio-time";
+import { studioWallTimeToUtcISO, utcToStudioWallTime } from "@/lib/studio-time";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -44,11 +44,12 @@ function Label({ children }) {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, children, error }) {
   return (
     <div>
       <Label>{label}</Label>
       {children}
+      {error && <p className="mt-1 text-[11px] text-destructive">{error}</p>}
     </div>
   );
 }
@@ -164,17 +165,6 @@ function formatDisplayTime(iso, tz) {
     minute: "2-digit",
     hour12: true,
   });
-}
-
-function toDateInputValue(iso) {
-  if (!iso) return "";
-  return new Date(iso).toISOString().slice(0, 10);
-}
-
-function toTimeInputValue(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 // ─── New customer form for group class ───────────────────────────────────────
@@ -1467,6 +1457,11 @@ export default function EventDetailPanel({
   const [selectedStudentId, setSelectedStudentId] = useState(null);
   const [selectedStudentName, setSelectedStudentName] = useState("");
   const isRecurring = Boolean(event.recurrenceGroupID);
+  // Group Class appointments (type "lesson") carry a multi-student roster
+  // managed via GroupStudentRoster — the single-customer field/payload below
+  // must not touch customerIDs for these, or saving would collapse the
+  // roster down to one student.
+  const isGroupClass = event.type === "lesson";
 
   // Reset to the appointment view whenever the panel is closed so reopening a
   // booking always lands on the appointment details rather than a previously
@@ -1484,24 +1479,52 @@ export default function EventDetailPanel({
   const [customerDetails, setCustomerDetails] = useState([]);
   const [teacherDetail, setTeacherDetail] = useState(null);
 
-  const [form, setForm] = useState({
-    title: event.title || "",
-    date: toDateInputValue(event.startDateTime),
-    start_time: toTimeInputValue(event.startDateTime),
-    end_time: toTimeInputValue(event.endDateTime),
-    teacherID: String(event.teacherID?._id ?? event.teacherID ?? ""),
-    customerID: String(
-      event.customerIDs?.[0]?._id ?? event.customerIDs?.[0] ?? "",
-    ),
-    // Use effectiveStatus (auto-completed for past events) if no explicit terminal status
-    status: event.effectiveStatus || event.status || "scheduled",
-    type: event.type || "",
-    notes: event.notes || "",
-    payment_collected: event.payment?.collected || false,
-    payment_amount:
-      event.payment?.amount != null ? String(event.payment.amount) : "",
-    payment_method: event.payment?.method || "",
-  });
+  // Seeded in the STUDIO's timezone (utcToStudioWallTime), matching both the
+  // read-only view above (which formats with studioTz) and handleUpdate
+  // below (which re-encodes with studioWallTimeToUtcISO/studioTz) — using
+  // the browser's local time here instead (the old toDateInputValue/
+  // toTimeInputValue) would show a different time than what's actually on
+  // the calendar whenever the browser's timezone differs from the studio's,
+  // and silently save a shifted time if the user "corrects" a field that
+  // only looked wrong.
+  const buildFormFromEvent = (ev) => {
+    const { date, time: start_time } = utcToStudioWallTime(ev.startDateTime, studioTz);
+    const { time: end_time } = utcToStudioWallTime(ev.endDateTime, studioTz);
+    return {
+      title: ev.title || "",
+      date,
+      start_time,
+      end_time,
+      teacherID: String(ev.teacherID?._id ?? ev.teacherID ?? ""),
+      customerID: String(ev.customerIDs?.[0]?._id ?? ev.customerIDs?.[0] ?? ""),
+      // Use effectiveStatus (auto-completed for past events) if no explicit terminal status
+      status: ev.effectiveStatus || ev.status || "scheduled",
+      type: ev.type || "",
+      notes: ev.notes || "",
+      payment_collected: ev.payment?.collected || false,
+      payment_amount: ev.payment?.amount != null ? String(ev.payment.amount) : "",
+      payment_method: ev.payment?.method || "",
+    };
+  };
+
+  const [form, setForm] = useState(() => buildFormFromEvent(event));
+
+  // This panel stays mounted across event selections (its `open` prop just
+  // toggles visibility — see app/calendar/page.js), so `useState`'s initial
+  // value above only ever ran once, on this component's very first mount —
+  // almost certainly before any event was selected. Without this, every
+  // field stays stuck on whatever (likely blank) event that first render
+  // saw, forever, regardless of which event you actually open. Re-derive
+  // fresh whenever a different event is selected, or whenever you re-enter
+  // edit mode (picks up anything that changed since the form was last built,
+  // e.g. after a save elsewhere).
+  useEffect(() => {
+    setForm(buildFormFromEvent(event));
+  }, [event._id]);
+
+  useEffect(() => {
+    if (isEditing) setForm(buildFormFromEvent(event));
+  }, [isEditing]);
 
   const setField = (key, val) => setForm((prev) => ({ ...prev, [key]: val }));
 
@@ -1566,7 +1589,14 @@ export default function EventDetailPanel({
       startDateTime,
       endDateTime,
       teacherID: form.teacherID || undefined,
-      customerIDs: form.customerID ? [form.customerID] : undefined,
+      // Group Class rosters are edited via GroupStudentRoster, not this
+      // single-select field — leave customerIDs untouched so saving other
+      // fields doesn't wipe the roster down to one student.
+      customerIDs: isGroupClass
+        ? undefined
+        : form.customerID
+          ? [form.customerID]
+          : undefined,
       status: form.status,
       type: form.type || undefined,
       notes: form.notes || undefined,
@@ -1655,7 +1685,14 @@ export default function EventDetailPanel({
             <button
               type="button"
               onClick={() => setIsEditing(true)}
-              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              // mr-9 clears space for SheetContent's own close (X) button,
+              // which is absolutely positioned at right-4 top-4 with a
+              // higher z-index — without this margin the two buttons land
+              // in the same top-right corner and the close button's opaque
+              // background visually covers this one entirely, making Edit
+              // look like it doesn't exist even though it's still rendered
+              // and clickable underneath.
+              className="grid h-7 w-7 mr-9 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
               aria-label="Edit event"
             >
               <Pencil className="h-3.5 w-3.5" />
@@ -1733,13 +1770,20 @@ export default function EventDetailPanel({
                       options={teacherOptions}
                     />
                   </Field>
-                  <Field label="Customer">
-                    <Select
-                      value={form.customerID}
-                      onChange={(v) => setField("customerID", v)}
-                      options={customerOptions}
-                    />
-                  </Field>
+                  {isGroupClass ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      Manage the student roster from the appointment view
+                      (close editing to add/remove students).
+                    </p>
+                  ) : (
+                    <Field label="Customer">
+                      <Select
+                        value={form.customerID}
+                        onChange={(v) => setField("customerID", v)}
+                        options={customerOptions}
+                      />
+                    </Field>
+                  )}
                   <Field label="Notes">
                     <textarea
                       rows={3}

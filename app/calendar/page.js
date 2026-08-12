@@ -15,7 +15,7 @@ import EventDetailPanel from "./components/EventDetailPanel";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toStudioLocalDate } from "@/lib/studioLocalDate";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId, getEffectiveBranch } from "@/lib/auth";
 import { isOwnScope } from "@/lib/permissions";
 
 const COLORS = {
@@ -3418,11 +3418,19 @@ function CalendarPageInner() {
       });
       membershipCoverageRef.current = set;
     });
-    // Active branch is sent via x-location-id; use that location's timezone so Midtown
-    // (etc.) wall-clock times render correctly even when the browser is in IST.
+    // Active branch is sent via x-location-id; use THAT location's timezone so
+    // Midtown (etc.) wall-clock times render correctly even when the browser is
+    // in IST. /api/location always returns every studio (the branch switcher
+    // needs the full list), so grabbing the first entry with a timezone picked
+    // whichever studio happened to sort first — not the one actually selected —
+    // and misplaced events onto the wrong day/column after switching studios.
     api.get("/api/location?limit=50").then((res) => {
       const list = Array.isArray(res?.data) ? res.data : [];
-      const tz = list.find((l) => l?.timezone)?.timezone || list[0]?.timezone;
+      const activeBranchId = getEffectiveBranch();
+      const active = activeBranchId
+        ? list.find((l) => String(l?._id) === String(activeBranchId))
+        : null;
+      const tz = active?.timezone || list.find((l) => l?.timezone)?.timezone || list[0]?.timezone;
       if (tz) {
         studioTzRef.current = tz;
         setStudioTz(tz);
@@ -3510,10 +3518,6 @@ function CalendarPageInner() {
       };
     };
 
-    if (!hideEmptySlots) {
-      return finish(baseStartMins, baseEndHour);
-    }
-
     const timedForWindow =
       viewMode === VIEW_MODE.DAY
         ? filteredEvents.filter(
@@ -3550,7 +3554,21 @@ function CalendarPageInner() {
       maxMins = Math.max(maxMins, endMins);
     });
 
-    const paddedStart = Math.max(baseStartMins, minMins - padMins);
+    // baseStartMins/baseEndHour are just the grid's *default* bounds (6am–
+    // midnight, or wherever the user set "day start"). A real event outside
+    // that range must never be clipped, whether or not "Hide Empty" is on —
+    // previously the window floored at baseStartMins unconditionally, which
+    // silently hid any event before it (e.g. a 5:30am to-do) from day/week
+    // view even though it showed fine in month view. So always extend the
+    // window to cover real events; "Hide Empty" additionally shrinks the
+    // *unused* slack around them.
+    if (!hideEmptySlots) {
+      const start = Math.min(baseStartMins, minMins);
+      const endHour = Math.max(baseEndHour, Math.ceil(maxMins / 60));
+      return finish(start, endHour);
+    }
+
+    const paddedStart = Math.min(baseStartMins, Math.max(0, minMins - padMins));
     const paddedEndMins = Math.min(baseEndMins, maxMins + padMins);
     const snappedStart = firstSlotOnGridAtOrAfter(
       paddedStart,

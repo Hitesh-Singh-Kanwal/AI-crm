@@ -518,6 +518,11 @@ export default function Header({
               </div>
             </div>
           </div>
+
+          {/* BRANCH / LOCATION SELECTOR — MOBILE (hidden md:block above hides it) */}
+          <div className="order-3 w-full md:hidden">
+            {isSuperAdmin() ? <BranchSelector /> : <StaffLocationSwitcher />}
+          </div>
         </div>
       </header>
 
