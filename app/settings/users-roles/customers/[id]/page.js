@@ -4514,7 +4514,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                 className="grid sticky top-0 z-10 bg-muted/50 border-b-2 border-border px-3 py-2.5"
                                 style={{
                                   gridTemplateColumns:
-                                    "minmax(0,1fr) 80px 80px 80px 80px 80px 100px",
+                                    "minmax(0,1fr) 80px 80px 80px 80px 80px",
                                 }}
                               >
                                 <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -4526,7 +4526,6 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                   "Scheduled",
                                   "Remaining",
                                   "Credit Balance",
-                                  "Total",
                                 ].map((h) => (
                                   <span
                                     key={h}
@@ -4565,7 +4564,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                         className="grid items-center px-3 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
                                         style={{
                                           gridTemplateColumns:
-                                            "minmax(0,1fr) 80px 80px 80px 80px 80px 100px",
+                                            "minmax(0,1fr) 80px 80px 80px 80px 80px",
                                         }}
                                         onClick={() => toggleService(expandKey)}
                                       >
@@ -4629,27 +4628,6 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                                   .replace(/\.00$/, "")
                                                   .replace(/(\.\d)0$/, "$1")
                                               : svcCreditSessions}
-                                        </span>
-                                        <span className="text-[13px] font-semibold text-foreground text-right">
-                                          {svcTotal > 0
-                                            ? (() => {
-                                                const svcNet =
-                                                  Number(svc.finalAmount) ||
-                                                  svcTotal;
-                                                return svcNet < svcTotal ? (
-                                                  <>
-                                                    <span className="text-[11px] text-muted-foreground line-through block">
-                                                      ${svcTotal.toFixed(2)}
-                                                    </span>
-                                                    <span className="text-success">
-                                                      ${svcNet.toFixed(2)}
-                                                    </span>
-                                                  </>
-                                                ) : (
-                                                  `$${svcTotal.toFixed(2)}`
-                                                );
-                                              })()
-                                            : "—"}
                                         </span>
                                       </div>
                                       {isExpanded && (
@@ -4781,15 +4759,15 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                   across different service types (privates +
                                   groups + parties + coaching, etc.), so
                                   they're a rough "sessions total" rather than
-                                  a like-for-like count — Credit Balance and
-                                  Total are the meaningful ones since $ is a
-                                  common unit across services. */}
+                                  a like-for-like count — Credit Balance is
+                                  the meaningful one since $ is a common unit
+                                  across services. */}
                               {rows.length > 1 && (
                                 <div
                                   className="grid items-center px-3 py-2.5 border-t-2 border-border bg-muted/30"
                                   style={{
                                     gridTemplateColumns:
-                                      "minmax(0,1fr) 80px 80px 80px 80px 80px 100px",
+                                      "minmax(0,1fr) 80px 80px 80px 80px 80px",
                                   }}
                                 >
                                   <span className="text-[12px] font-bold text-foreground uppercase tracking-wide">
@@ -4816,11 +4794,6 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                           .replace(/\.00$/, "")
                                           .replace(/(\.\d)0$/, "$1")
                                       : totalCreditSessions}
-                                  </span>
-                                  <span className="text-[13px] font-bold text-foreground text-right">
-                                    {totalServicePrice > 0
-                                      ? `$${totalServicePrice.toFixed(2)}`
-                                      : "—"}
                                   </span>
                                 </div>
                               )}
