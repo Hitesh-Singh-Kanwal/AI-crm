@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { buildLeadQueryParams, filtersToConditionsForForm } from '@/lib/lead-filter-fields'
+import { formatReasonLabel } from '@/lib/dynamic-list-normalize'
 import {
   EMPTY_LEAD_FILTERS,
   hasActiveLeadFilters,
@@ -576,7 +577,7 @@ export default function LeadsPage() {
                   </TableCell>
                   <TableCell className="py-3 px-4">
                     <span className="text-sm font-normal text-foreground leading-tight">
-                      {leadReasons.find((r) => (r.reasonCode || r.name) === lead.reason)?.name || lead.reason || '—'}
+                      {lead.reason ? formatReasonLabel(lead.reason, leadReasons) : '—'}
                     </span>
                   </TableCell>
                   <TableCell className="py-3 px-4">

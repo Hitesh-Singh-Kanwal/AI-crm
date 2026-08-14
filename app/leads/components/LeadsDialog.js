@@ -14,6 +14,7 @@ import LocationSelector from '@/components/shared/LocationSelector'
 import PhoneNumberInput from '@/components/shared/PhoneNumberInput'
 import { useLeadStages } from '@/lib/lead-stages'
 import { getLeadReasonOptions } from '@/lib/lead-filter-fields'
+import { formatReasonLabel } from '@/lib/dynamic-list-normalize'
 
 const bookingStatusOptions = [
   { value: 'Not Booked', label: 'Not Booked' },
@@ -102,6 +103,16 @@ export default function LeadsDialog({
         setEditingLead({ ...found, callbackDate: initialCallbackDate, notes: Array.isArray(found.notes) ? found.notes : [] })
         setSavedCallbackDate(initialCallbackDate)
         setMode(viewOnly ? 'view' : 'edit')
+        if (viewOnly) {
+          // The leads list payload may omit actualReason; fetch the full record to fill it in.
+          api.get(`/api/lead/${initialLeadId}`).then((res) => {
+            if (res?.success && res.data) {
+              setEditingLead((prev) =>
+                prev && prev._id === initialLeadId ? { ...prev, actualReason: res.data.actualReason } : prev
+              )
+            }
+          })
+        }
       }
     } else {
       setEditingLead({ ...emptyLead })
@@ -312,20 +323,33 @@ export default function LeadsDialog({
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Reason</label>
-              <select
-                value={editingLead.reason || ''}
-                onChange={(e) => setEditingLead({ ...editingLead, reason: e.target.value })}
-                disabled={viewOnly}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info"
-              >
-                <option value="">None</option>
-                {reasonOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              {viewOnly ? (
+                <p className="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm text-foreground">
+                  {editingLead.reason ? formatReasonLabel(editingLead.reason, leadReasons) : '—'}
+                </p>
+              ) : (
+                <select
+                  value={editingLead.reason || ''}
+                  onChange={(e) => setEditingLead({ ...editingLead, reason: e.target.value })}
+                  className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info"
+                >
+                  <option value="">None</option>
+                  {reasonOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
+            {viewOnly && editingLead.actualReason && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium mb-1">Their Words</label>
+                <p className="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm text-foreground italic whitespace-pre-wrap">
+                  “{editingLead.actualReason}”
+                </p>
+              </div>
+            )}
             {/* Send Payment Link — shown for engaged/re_engaged leads in view mode */}
             {viewOnly && editingLead?._id && PAYMENT_LINK_STAGES.has(editingLead.stage) && (
               <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">

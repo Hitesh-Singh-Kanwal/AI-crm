@@ -214,6 +214,9 @@ export default function MemberLeadViewDialog({
                 tone="violet"
               />
               <InfoCard icon={Tag} label="Reason" value={formatReasonLabel(lead.reason, leadReasons)} tone="amber" />
+              {lead.actualReason && (
+                <InfoCard icon={Tag} label="Their Words" value={`“${lead.actualReason}”`} tone="amber" className="md:col-span-2" />
+              )}
               <InfoCard
                 icon={Tag}
                 label="Source"
