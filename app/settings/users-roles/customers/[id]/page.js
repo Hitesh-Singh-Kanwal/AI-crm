@@ -839,7 +839,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
       {/* Quick stats */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Member Since", value: formatDate(customer.createdAt) },
+          { label: "Member Since", value: formatDate(customer.memberSince ?? customer.createdAt) },
           {
             label: `Sessions Completed (${sessionStats.completedCount ?? 0})`,
             value: `$${(sessionStats.completedValue ?? 0).toFixed(2)}`,
@@ -2800,8 +2800,18 @@ function PackagesTab({ customerID, locationID }) {
                     <div className="space-y-2.5">
                       {services.map((svc, i) => {
                         const sessTotal = svc.sessionsTotal ?? 0;
-                        const sessUsed =
-                          svc.sessionsCompleted ?? svc.sessionsUsed ?? 0;
+                        // `sessionsCompleted` (real CalendarEvent charge
+                        // history) is ALWAYS a number, never null/undefined
+                        // — `??` alone would silently bury `sessionsUsed`
+                        // (e.g. an imported package's Sessions Taken count
+                        // with no accompanying Lessons-sheet history) behind
+                        // a 0 forever. Take whichever is higher instead, so
+                        // real post-import lesson activity can only ever
+                        // raise the count, never hide an imported baseline.
+                        const sessUsed = Math.max(
+                          svc.sessionsCompleted ?? 0,
+                          svc.sessionsUsed ?? 0,
+                        );
                         const sessSched = svc.sessionsScheduled ?? 0;
                         const sessRemaining = Math.max(
                           0,
@@ -4136,7 +4146,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
             0,
           );
           const used = svcs.reduce(
-            (s, svc) => s + (svc.sessionsCompleted ?? svc.sessionsUsed ?? 0),
+            (s, svc) => s + Math.max(svc.sessionsCompleted ?? 0, svc.sessionsUsed ?? 0),
             0,
           );
           return (
@@ -4426,6 +4436,18 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                           totalCreditSessions = 0,
                           totalCredit = 0,
                           totalServicePrice = 0;
+                        // Historically this proration only ran for
+                        // "deferred" billing types (flexible/payment_plan/
+                        // pay_per_session); "one_time" (including every
+                        // migration-imported package, whose billingType
+                        // defaults to "one_time" when the sheet leaves it
+                        // blank) always showed 100% of remaining sessions as
+                        // credit regardless of how much was actually
+                        // collected — an unpaid balance displayed as
+                        // spendable credit. The credit-vs-owed split must be
+                        // based on the package's actual paid ratio
+                        // (amountCollected / contractedValue) for every
+                        // billing type, not gated on billingType at all.
                         const isDeferred =
                           cp.billingType === "flexible" ||
                           cp.billingType === "payment_plan" ||
@@ -4465,8 +4487,13 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                         const rows = services.map((svc, i) => {
                           const isFree = isFreeService(svc);
                           const sessTotal = svc.sessionsTotal ?? 0;
-                          const sessUsed =
-                            svc.sessionsCompleted ?? svc.sessionsUsed ?? 0;
+                          // See the same fix's comment above (list view) —
+                          // `??` alone hides an imported Sessions Taken
+                          // count whenever there's no real charge history.
+                          const sessUsed = Math.max(
+                            svc.sessionsCompleted ?? 0,
+                            svc.sessionsUsed ?? 0,
+                          );
                           const sessSched = svc.sessionsScheduled ?? 0;
                           const sessRemaining = Math.max(
                             0,
@@ -4484,7 +4511,17 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                           // For deferred billing, credit = paid amount ÷ price-per-session (decimal)
                           const svcCreditSessions = (() => {
                             if (isFree) return 0;
-                            if (!isDeferred || pps <= 0) return sessRemaining;
+                            if (pps <= 0) return sessRemaining;
+                            // Fully collected (paid ratio >= 100%, e.g. the
+                            // common "one_time" fully-paid case) — every
+                            // remaining session is credit, no proration
+                            // needed. Only an *actual* unpaid/partial
+                            // balance (any billing type) prorates below.
+                            const totalContracted = Number(cp.totalPaid ?? cp.contractedValue ?? 0);
+                            if (totalContracted > 0 && Number(cp.amountCollected ?? 0) >= totalContracted) {
+                              return sessRemaining;
+                            }
+                            if (!isDeferred && totalContracted <= 0) return sessRemaining;
                             // Proportion by this service's share of total
                             // chargeable price, net of discount (same basis as
                             // chargeableSvcPriceTotal above).
@@ -4646,17 +4683,29 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                         >
                                           {sessRemaining}
                                         </span>
+                                        {/* Credit Balance is a SESSION COUNT —
+                                            how many sessions the customer has
+                                            effectively paid for and can still
+                                            schedule (svcCreditSessions), not a
+                                            dollar figure (svcCredit is the $
+                                            equivalent, shown on hover/expanded
+                                            detail elsewhere, not here). The
+                                            actual bug was that this only got
+                                            rounded when billing was
+                                            "deferred" — a partially-paid
+                                            one_time package rendered the raw
+                                            float unrounded (e.g.
+                                            "2.9803921568"). Round unconditionally instead. */}
                                         <span
                                           className={`text-[13px] font-semibold text-right ${svcCreditSessions > 0 ? "text-success" : "text-muted-foreground"}`}
+                                          title={`$${svcCredit.toFixed(2)}`}
                                         >
                                           {isFree
                                             ? "—"
-                                            : isDeferred
-                                              ? svcCreditSessions
-                                                  .toFixed(2)
-                                                  .replace(/\.00$/, "")
-                                                  .replace(/(\.\d)0$/, "$1")
-                                              : svcCreditSessions}
+                                            : svcCreditSessions
+                                                .toFixed(2)
+                                                .replace(/\.00$/, "")
+                                                .replace(/(\.\d)0$/, "$1")}
                                         </span>
                                       </div>
                                       {isExpanded && (
@@ -4816,13 +4865,12 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                                   </span>
                                   <span
                                     className={`text-[13px] font-bold text-right ${totalCreditSessions > 0 ? "text-success" : "text-muted-foreground"}`}
+                                    title={`$${totalCredit.toFixed(2)}`}
                                   >
-                                    {isDeferred
-                                      ? totalCreditSessions
-                                          .toFixed(2)
-                                          .replace(/\.00$/, "")
-                                          .replace(/(\.\d)0$/, "$1")
-                                      : totalCreditSessions}
+                                    {totalCreditSessions
+                                      .toFixed(2)
+                                      .replace(/\.00$/, "")
+                                      .replace(/(\.\d)0$/, "$1")}
                                   </span>
                                 </div>
                               )}
