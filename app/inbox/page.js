@@ -27,6 +27,7 @@ import {
   normalizeEmailAddress,
   validateEmailSendInput,
 } from '@/lib/emailSend'
+import { isPaidConvertedInboxContact } from '@/lib/inbox-contact-search'
 
 function resolveContactType(leadOrConv = {}) {
   const explicit = String(leadOrConv.type || '').toLowerCase()
@@ -39,21 +40,18 @@ function resolveContactType(leadOrConv = {}) {
     explicit === 'leads'
   ) {
     if (explicit.startsWith('teacher')) return 'Teacher'
-    if (explicit.startsWith('customer')) return 'Customer'
+    if (explicit.startsWith('customer')) {
+      // API may still say customer while stage is pending_payment.
+      return isPaidConvertedInboxContact(leadOrConv) ? 'Customer' : 'Lead'
+    }
     return 'Lead'
   }
-  // Converted only after payment — pending_payment / engaged / etc. stay Leads.
-  if (leadOrConv.convertedCustomerID || String(leadOrConv.stage || '').toLowerCase() === 'converted') {
-    return 'Customer'
-  }
-  return 'Lead'
+  return isPaidConvertedInboxContact(leadOrConv) ? 'Customer' : 'Lead'
 }
 
 /** Inbox type for a lead profile refresh — never invent Teacher from phone collision. */
 function resolveLeadProfileInboxType(lead = {}, previousType = null) {
-  if (lead?.convertedCustomerID || String(lead?.stage || '').toLowerCase() === 'converted') {
-    return 'Customer'
-  }
+  if (isPaidConvertedInboxContact(lead)) return 'Customer'
   // Preserve Teacher when inbox already classified this thread that way.
   const prev = String(previousType || '').toLowerCase()
   if (prev.startsWith('teacher')) return 'Teacher'
