@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, CheckCircle, Lock, Search, Brain, Zap, DollarSign, Loader2, CheckCircle2, Eye } from 'lucide-react'
+import { Plus, Pencil, Trash2, CheckCircle, Lock, Search, Brain, Zap, DollarSign, Loader2, CheckCircle2, Eye, Sparkles, Crown, Settings2, ChevronDown } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -198,41 +198,147 @@ function ViewDialog({ open, onClose, prompt }) {
 
 // ─── Model selector ───────────────────────────────────────────────────────────
 
+const LEGACY_SMS_MODEL_LABELS = {
+  'gpt-4o-mini': 'GPT-4o Mini',
+  'gpt-3.5-turbo': 'GPT-3.5 Turbo',
+}
+
 const SMS_MODELS = [
+  {
+    value: 'gpt-4.1',
+    label: 'GPT-4.1',
+    badge: 'Recommended',
+    badgeClass: 'bg-success/10 text-success',
+    icon: Brain,
+    iconClass: 'text-success',
+    price: '$2 / $8 per 1M tokens',
+    perText: '~$0.009 / typical text',
+    speed: 'Replies instantly',
+    description: 'Best everyday choice for booking texts. Follows the studio prompt well and catches inconsistent details without slowing every reply.',
+    pros: [
+      'Accurate on booking details before offering times',
+      'Handles constraints and objections naturally',
+      'Instant replies — good for live texting',
+    ],
+    cons: [
+      'Not the cheapest option',
+      'Won’t pause to double-check the rarest confusing messages',
+    ],
+  },
+  {
+    value: 'gpt-4.1-mini',
+    label: 'GPT-4.1 Mini',
+    badge: 'Lower cost',
+    badgeClass: 'bg-info/10 text-info',
+    icon: Zap,
+    iconClass: 'text-info',
+    price: '$0.40 / $1.60 per 1M tokens',
+    perText: '~$0.002 / typical text',
+    speed: 'Replies instantly',
+    description: 'Lower-cost option for straightforward booking chats. Fast when the request is clear; weaker when details conflict.',
+    pros: [
+      'Much cheaper at high text volume',
+      'Follows the studio prompt on simple chats',
+      'Instant replies',
+    ],
+    cons: [
+      'More likely to miss inconsistent details',
+      'Weaker on complex objections',
+    ],
+  },
   {
     value: 'gpt-4o',
     label: 'GPT-4o',
-    badge: 'Recommended',
-    badgeClass: 'bg-success/10 text-success',
-    description: 'Best reasoning and context understanding. Handles budget constraints, timelines, and complex scenarios naturally.',
+    badge: 'Standard',
+    badgeClass: 'bg-muted text-muted-foreground',
     icon: Brain,
-    iconClass: 'text-success',
+    iconClass: 'text-muted-foreground',
+    price: '$2.50 / $10 per 1M tokens',
+    perText: '~$0.011 / typical text',
+    speed: 'Replies instantly',
+    description: 'The model already running for most studios. Keep it while you compare, or switch to GPT-4.1 for similar speed at a lower cost.',
+    pros: [
+      'Already in production — no surprise change in tone',
+      'Instant replies',
+    ],
+    cons: [
+      'Can miss inconsistent booking details',
+      'Costs more than GPT-4.1 for similar quality',
+    ],
   },
   {
-    value: 'gpt-4o-mini',
-    label: 'GPT-4o Mini',
-    badge: 'Balanced',
-    badgeClass: 'bg-info/10 text-info',
-    description: 'Faster and cheaper than GPT-4o. Good for straightforward conversations with clear prompts.',
-    icon: Zap,
-    iconClass: 'text-info',
+    value: 'gpt-5.6-terra',
+    label: 'GPT-5.6 Terra',
+    badge: 'Checks details',
+    badgeClass: 'bg-primary/10 text-primary',
+    icon: Sparkles,
+    iconClass: 'text-primary',
+    price: '$2 / $12 per 1M tokens',
+    perText: '~$0.013 / typical text',
+    speed: 'Pauses 1–3 seconds to check',
+    description: 'Newer model that thinks briefly before it replies. Strong option if you want extra care on messy requests without paying for Sol.',
+    pros: [
+      'Stronger at checking details before offering times',
+      'Better on messy or conflicting requests',
+      'Cost is close to GPT-4.1',
+    ],
+    cons: [
+      'Replies take 1–3 seconds longer',
+      'A little more expensive than GPT-4.1',
+    ],
   },
   {
-    value: 'gpt-3.5-turbo',
-    label: 'GPT-3.5 Turbo',
-    badge: 'Budget',
+    value: 'gpt-5.6-luna',
+    label: 'GPT-5.6 Luna',
+    badge: 'Cheapest new model',
     badgeClass: 'bg-warning/10 text-warning',
-    description: 'Most affordable option. Works for simple Q&A but may miss context in nuanced conversations.',
     icon: DollarSign,
     iconClass: 'text-warning',
+    price: '$0.20 / $1.20 per 1M tokens',
+    perText: '~$0.001 / typical text',
+    speed: 'Usually fast',
+    description: 'Cheapest newer model. Fine for simple chats. Not the best choice if booking accuracy is the priority.',
+    pros: [
+      'Lowest cost if you send a lot of texts',
+      'Fast among the newer models',
+    ],
+    cons: [
+      'More likely to miss details or sound scripted',
+      'Not recommended as the main booking agent',
+    ],
+  },
+  {
+    value: 'gpt-5.6-sol',
+    label: 'GPT-5.6 Sol',
+    badge: 'Highest quality',
+    badgeClass: 'bg-brand/10 text-brand',
+    icon: Crown,
+    iconClass: 'text-brand',
+    price: '$5 / $30 per 1M tokens',
+    perText: '~$0.029 / typical text',
+    speed: 'Slowest replies here',
+    description: 'Strongest model on this list. Use it for hard conversations. Too expensive and slow for everyday studio texting.',
+    pros: [
+      'Best at clarifying unclear requests before booking',
+      'Best at tricky objections',
+    ],
+    cons: [
+      'Most expensive card on this list',
+      'Slowest replies — not a good everyday default',
+    ],
   },
 ]
+
+function modelLabel(value) {
+  return SMS_MODELS.find((m) => m.value === value)?.label || LEGACY_SMS_MODEL_LABELS[value] || value
+}
 
 function ModelSelector() {
   const toast = useToast()
   const [selectedModel, setSelectedModel] = useState(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     api.get('/api/ai-settings')
@@ -247,8 +353,11 @@ function ModelSelector() {
     try {
       const result = await api.put('/api/ai-settings', { smsModel: value })
       if (result.success) {
-        setSelectedModel(value)
-        toast.success({ title: 'Model updated', message: `SMS agent will now use ${SMS_MODELS.find((m) => m.value === value)?.label}` })
+        setSelectedModel(result.data?.smsModel || value)
+        toast.success({
+          title: 'Model updated',
+          message: `SMS agent will now use ${modelLabel(result.data?.smsModel || value)}`,
+        })
       } else {
         toast.error({ title: 'Error', message: result.error || 'Unable to update model' })
       }
@@ -259,70 +368,137 @@ function ModelSelector() {
     }
   }
 
+  const selectedMeta = SMS_MODELS.find((m) => m.value === selectedModel)
+  const SelectedIcon = selectedMeta?.icon || Settings2
+  const isLegacy = Boolean(selectedModel) && !selectedMeta && !loading
+
   return (
     <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-sm">
-      <CardContent className="p-4 sm:p-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-base font-semibold text-foreground">SMS Agent Model</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Choose the AI model powering your texting agent. Takes effect on the next conversation.
-            </p>
-          </div>
-          {saving && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Saving…
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className={cn(
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+              open ? 'bg-primary/10' : 'bg-muted',
+            )}>
+              {loading
+                ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                : <SelectedIcon className={cn('h-4 w-4', selectedMeta ? selectedMeta.iconClass : 'text-muted-foreground')} />}
             </div>
-          )}
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">Texting model</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {loading
+                  ? 'Loading…'
+                  : (
+                    <>
+                      Using <span className="font-medium text-foreground">{modelLabel(selectedModel)}</span>
+                      {selectedMeta?.price ? ` · ${selectedMeta.price}` : null}
+                    </>
+                  )}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {saving && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Saving…
+              </div>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 gap-2 rounded-lg px-3 text-sm"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+            >
+              <Settings2 className="h-4 w-4" />
+              {open ? 'Hide settings' : 'Settings'}
+              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
+            </Button>
+          </div>
         </div>
 
-        {loading ? (
-          <div className="flex h-24 items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {SMS_MODELS.map(({ value, label, badge, badgeClass, description, icon: Icon, iconClass }) => {
-              const isSelected = selectedModel === value
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  disabled={saving}
-                  onClick={() => handleSave(value)}
-                  className={cn(
-                    'group relative flex flex-col gap-3 rounded-xl border p-4 text-left transition-all duration-150',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                    isSelected
-                      ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
-                      : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
-                    saving && 'cursor-not-allowed opacity-60',
-                  )}
-                >
-                  {isSelected && (
-                    <span className="absolute right-3 top-3">
-                      <CheckCircle2 className="h-4 w-4 text-primary" />
-                    </span>
-                  )}
-                  <div className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-lg',
-                    isSelected ? 'bg-primary/10' : 'bg-muted',
-                  )}>
-                    <Icon className={cn('h-4 w-4', isSelected ? 'text-primary' : iconClass)} />
-                  </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-sm font-semibold text-foreground">{label}</span>
-                      <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', badgeClass)}>
-                        {badge}
+        {open && (
+          <div className="mt-4 border-t border-border/80 pt-4">
+            <p className="mb-3 text-xs text-muted-foreground">
+              Change takes effect on the next conversation. Prices are OpenAI list rates
+              (input / output per 1M tokens). Typical text ≈ 4,000 input + 100 output tokens.
+            </p>
+            {isLegacy && (
+              <p className="mb-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-muted-foreground">
+                This studio is still on <span className="font-medium text-foreground">{modelLabel(selectedModel)}</span> from the previous list.
+                Choose a model below to switch.
+              </p>
+            )}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {SMS_MODELS.map(({
+                value, label, badge, badgeClass, description, icon: Icon, iconClass,
+                price, perText, speed, pros, cons,
+              }) => {
+                const isSelected = selectedModel === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => handleSave(value)}
+                    className={cn(
+                      'group relative flex flex-col gap-3 rounded-xl border p-4 text-left transition-all duration-150',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                      isSelected
+                        ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
+                        : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
+                      saving && 'cursor-not-allowed opacity-60',
+                    )}
+                  >
+                    {isSelected && (
+                      <span className="absolute right-3 top-3">
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
                       </span>
+                    )}
+                    <div className="flex items-start gap-3 pr-6">
+                      <div className={cn(
+                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+                        isSelected ? 'bg-primary/10' : 'bg-muted',
+                      )}>
+                        <Icon className={cn('h-4 w-4', isSelected ? 'text-primary' : iconClass)} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-sm font-semibold text-foreground">{label}</span>
+                          <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', badgeClass)}>
+                            {badge}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] font-medium text-foreground">{price}</p>
+                        <p className="text-[11px] text-muted-foreground">{perText} · {speed}</p>
+                      </div>
                     </div>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
-                  </div>
-                </button>
-              )
-            })}
+                    <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-success">Pros</p>
+                        <ul className="mt-1 space-y-0.5">
+                          {pros.map((item) => (
+                            <li key={item} className="text-[11px] leading-snug text-muted-foreground">• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-warning">Cons</p>
+                        <ul className="mt-1 space-y-0.5">
+                          {cons.map((item) => (
+                            <li key={item} className="text-[11px] leading-snug text-muted-foreground">• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
       </CardContent>
