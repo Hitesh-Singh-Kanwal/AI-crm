@@ -428,9 +428,22 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
     // every billing type: one-time/upfront packages pay for all sessions at
     // purchase (full credits), while flexible/payment-plan accrue credits as
     // money is collected.
-    const sessionsBefore = pkgSessionNumber != null
-      ? pkgSessionNumber - 1
-      : (totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0);
+    //
+    // pkgSessionNumber only counts sessions with a real CalendarEvent/charge
+    // history (pkgSessionOrder) — a migrated package's baseline "sessions
+    // already used" (Enrollment.package.services[].sessionsUsed, set at
+    // import time with no calendar event behind it) is invisible to that
+    // ordering. Without the floor below, the first REAL booking against a
+    // migrated package looks like "session #1 ever" and shows far more
+    // credit than actually remains. totalSessions - sessionsRemaining is the
+    // authoritative "already used" count either way (it's what the
+    // Enrollments tab and Profile tab both show), so it's a floor
+    // pkgSessionNumber's position-based count can raise but never undercut.
+    const sessionsBeforeFromHistory = totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0;
+    const sessionsBefore = Math.max(
+      pkgSessionNumber != null ? pkgSessionNumber - 1 : 0,
+      sessionsBeforeFromHistory,
+    );
     const coveredByCredits = sessionsPaidFor != null && sessionsPaidFor - sessionsBefore >= 0.999;
     // A package charge whose service is free/non-chargeable has nothing to pay.
     const freePackageService =
@@ -1544,8 +1557,17 @@ function AppointmentTimedEventRows({ event, compact = false }) {
 
   const sessionsLabel = (() => {
     if (sessionsRemaining == null || totalSessions == null) return null;
+    // Same blind spot as the "Paid" badge/credit-check fix above:
+    // pkgSessionNumber only sees sessions with a real calendar-event/charge
+    // history, so `totalSessions - pkgSessionNumber` overstates what's left
+    // whenever a migrated package's imported baseline usage has no such
+    // history behind it (this is the "11/12 left" that should read "7/12").
+    // sessionsRemaining (the stored, authoritative field — same one the
+    // Enrollments tab and this card's own tooltip already show) is always
+    // at least as accurate, so take whichever is smaller/more conservative
+    // instead of trusting the position-based count outright.
     const remaining = pkgSessionNumber != null
-      ? totalSessions - pkgSessionNumber
+      ? Math.min(sessionsRemaining, totalSessions - pkgSessionNumber)
       : sessionsRemaining;
     return `${remaining}/${totalSessions}`;
   })();
@@ -1593,8 +1615,17 @@ function AppointmentTimedEventRows({ event, compact = false }) {
           </span>
         )}
         {!isGroupClass && sessionsPaidFor != null && (() => {
-          // Show credit balance as it was just before this session was consumed
-          const sessionsBefore = pkgSessionNumber != null ? pkgSessionNumber - 1 : (totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0);
+          // Show credit balance as it was just before this session was consumed.
+          // See the matching fix/comment on `sessionsBefore` above (same
+          // formula, duplicated here since this badge is computed in a
+          // separate render pass) — floored by totalSessions-sessionsRemaining
+          // so a migrated package's import-time baseline usage (no calendar
+          // event behind it) isn't invisible to pkgSessionNumber's
+          // charge-history-only ordering.
+          const sessionsBefore = Math.max(
+            pkgSessionNumber != null ? pkgSessionNumber - 1 : 0,
+            totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0,
+          );
           const net = sessionsPaidFor - (sessionsBefore + 1);
           // When credits run out, show the fractional remainder (e.g. 0.3) so the
           // customer can see what they still have — don't collapse to 0.
