@@ -17,6 +17,7 @@ export default function CustomersFilterPanel({
   tags = [],
   memberships = [],
   packages = [],
+  leadReasons = [],
   loadingOptions = false,
 }) {
   const [draft, setDraft] = useState(appliedFilters)
@@ -81,6 +82,7 @@ export default function CustomersFilterPanel({
             tags={tags}
             memberships={memberships}
             packages={packages}
+            leadReasons={leadReasons}
             loadingOptions={loadingOptions}
           />
         </div>

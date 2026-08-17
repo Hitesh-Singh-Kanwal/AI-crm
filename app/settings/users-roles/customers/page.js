@@ -21,7 +21,8 @@ import {
   countAdvancedCustomerFilters,
 } from '@/lib/customer-page-filters'
 import { buildCustomerQueryParams, filtersToConditionsForForm } from '@/lib/customer-filter-fields'
-import { normalizeConditionsForForm } from '@/lib/dynamic-list-normalize'
+import { formatReasonLabel, normalizeConditionsForForm } from '@/lib/dynamic-list-normalize'
+import { extractLeadReasonsList } from '@/lib/workflow-normalize'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -394,6 +395,7 @@ export default function CustomersPage() {
   const [memberships, setMemberships] = useState([])
   const [packages, setPackages] = useState([])
   const [tagOptions, setTagOptions] = useState([])
+  const [leadReasons, setLeadReasons] = useState([])
   const [teacherFilter, setTeacherFilter] = useState('')
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -460,6 +462,9 @@ export default function CustomersPage() {
     })
     api.get('/api/customer/tags').then((res) => {
       if (res.success) setTagOptions(res.data || [])
+    })
+    api.get('/api/lead-reasons').then((res) => {
+      if (res?.success) setLeadReasons(extractLeadReasonsList(res))
     })
   }, [])
 
@@ -781,6 +786,7 @@ export default function CustomersPage() {
           tags={tagOptions}
           memberships={memberships}
           packages={packages}
+          leadReasons={leadReasons}
         />
 
         <DynamicListFormDialog
@@ -825,6 +831,7 @@ export default function CustomersPage() {
                 </TableHead>
                 <TableHead className="text-[12px] font-semibold">Customer</TableHead>
                 <TableHead className="text-[12px] font-semibold">Status</TableHead>
+                <TableHead className="text-[12px] font-semibold">Reason</TableHead>
                 <TableHead className="text-[12px] font-semibold">Contact</TableHead>
                 <TableHead className="text-[12px] font-semibold">Location</TableHead>
                 <TableHead className="text-[12px] font-semibold">Credits</TableHead>
@@ -835,13 +842,13 @@ export default function CustomersPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-12 text-center">
+                  <TableCell colSpan={9} className="py-12 text-center">
                     <LoadingSpinner />
                   </TableCell>
                 </TableRow>
               ) : customers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-14 text-center">
+                  <TableCell colSpan={9} className="py-14 text-center">
                     <div className="mx-auto flex max-w-xs flex-col items-center gap-3">
                       <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
                         <Users className="h-5 w-5 text-primary" />
@@ -898,6 +905,9 @@ export default function CustomersPage() {
                       >
                         {customerLifecycleLabel(customer.lifecycleStatus)}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-[12px] text-foreground">
+                      {customer.reason ? formatReasonLabel(customer.reason, leadReasons) : '—'}
                     </TableCell>
                     <TableCell>
                       <p className="text-[12px] text-foreground">{customer.email}</p>

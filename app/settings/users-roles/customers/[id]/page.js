@@ -73,6 +73,8 @@ import {
   customerLifecycleLabel,
   CUSTOMER_LIFECYCLE_STATUS_OPTIONS,
 } from "@/lib/customer-lifecycle";
+import { formatReasonLabel } from "@/lib/dynamic-list-normalize";
+import { extractLeadReasonsList } from "@/lib/workflow-normalize";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -618,6 +620,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
+  const [leadReasons, setLeadReasons] = useState([]);
   // Quick-save for just the callback date, without entering full profile
   // edit mode — mirrors saveCallbackDate() in app/leads/components/LeadsDialog.js
   // so Customers gets the same "update the follow-up reminder in one click"
@@ -639,6 +642,12 @@ function ProfileTab({ customer, locations, onUpdated }) {
     completedValue: 0,
   });
   const toast = useToast();
+
+  useEffect(() => {
+    api.get("/api/lead-reasons").then((res) => {
+      if (res?.success) setLeadReasons(extractLeadReasonsList(res));
+    });
+  }, []);
 
   useEffect(() => {
     setCallbackDateDraft(
@@ -1208,6 +1217,26 @@ function ProfileTab({ customer, locations, onUpdated }) {
                       {customerLifecycleLabel(customer.lifecycleStatus)}
                     </span>
                   </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground mb-0.5">
+                      Reason
+                    </p>
+                    <p className="text-[13px] text-foreground">
+                      {customer.reason
+                        ? formatReasonLabel(customer.reason, leadReasons)
+                        : "—"}
+                    </p>
+                  </div>
+                  {customer.actualReason ? (
+                    <div className="col-span-2">
+                      <p className="text-[11px] text-muted-foreground mb-0.5">
+                        Their Words
+                      </p>
+                      <p className="text-[13px] text-foreground italic whitespace-pre-wrap">
+                        “{customer.actualReason}”
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
