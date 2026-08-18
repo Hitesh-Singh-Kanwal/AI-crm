@@ -32,6 +32,7 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
+  History,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -308,6 +309,7 @@ const TABS = [
   { id: "wallet", label: "Wallet", Icon: Wallet },
   { id: "payments", label: "Payment History", Icon: Receipt },
   { id: "lessons", label: "Lessons", Icon: BookOpen },
+  { id: "history", label: "History", Icon: History },
   { id: "notes", label: "Notes", Icon: StickyNote },
   { id: "members", label: "Members", Icon: Users },
   { id: "contracts", label: "Contracts", Icon: FileText },
@@ -445,9 +447,11 @@ function TagsEditor({ customer, onUpdated }) {
 // Consolidates every payment-related balance concept scattered across the
 // Enrollments/Memberships/Wallet tabs into one place: what the customer owes
 // (per package/membership, so staff can see exactly where an outstanding
-// total is coming from) and what they have available to spend (wallet +
-// store credit) — two different, easily-conflated numbers, kept visibly
-// separate rather than netted together.
+// total is coming from) and what they have available to spend (Wallet — the
+// only spendable balance the app has; customer.credits/"Store Credit" was a
+// legacy field nothing writes to anymore, so it isn't read here) — two
+// different, easily-conflated numbers, kept visibly separate rather than
+// netted together.
 function BalanceBreakdownCard({ customer }) {
   const [loading, setLoading] = useState(true);
   const [owedBreakdown, setOwedBreakdown] = useState([]); // [{ label, amount, type }]
@@ -504,12 +508,14 @@ function BalanceBreakdownCard({ customer }) {
   }, [customer?._id]);
 
   const totalOwed = owedBreakdown.reduce((sum, row) => sum + row.amount, 0);
-  const creditBalance = Number(customer.credits) || 0;
-  const totalAvailable = walletBalance + creditBalance;
+  // Wallet is the only spendable balance a customer can have — customer.credits
+  // ("Store Credit") is a legacy field nothing writes to anymore, so it isn't
+  // read here. "Available" used to be Wallet + Store Credit; now that Store
+  // Credit is gone, that sum would just be Wallet Balance again — collapsed
+  // into one tile below instead of showing the same number twice.
 
   const availableBreakdown = [
     walletBalance > 0 && { label: "Wallet Balance", amount: walletBalance, type: "Wallet" },
-    creditBalance > 0 && { label: "Store Credit", amount: creditBalance, type: "Credit" },
   ].filter(Boolean);
 
   return (
@@ -519,7 +525,7 @@ function BalanceBreakdownCard({ customer }) {
         <p className="text-[12px] text-muted-foreground">Loading…</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="rounded-xl border border-border bg-card px-4 py-3">
               <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
                 <AlertTriangle className="h-3 w-3" />
@@ -534,28 +540,10 @@ function BalanceBreakdownCard({ customer }) {
             <div className="rounded-xl border border-border bg-card px-4 py-3">
               <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
                 <Wallet className="h-3 w-3" />
-                Available
-              </p>
-              <p className="text-[19px] font-semibold text-success">
-                ${totalAvailable.toFixed(2)}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border bg-card px-4 py-3">
-              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
-                <Wallet className="h-3 w-3" />
                 Wallet Balance
               </p>
-              <p className="text-[19px] font-semibold text-foreground">
+              <p className="text-[19px] font-semibold text-success">
                 ${walletBalance.toFixed(2)}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border bg-card px-4 py-3">
-              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
-                <CreditCard className="h-3 w-3" />
-                Store Credit
-              </p>
-              <p className="text-[19px] font-semibold text-foreground">
-                ${creditBalance.toFixed(2)}
               </p>
             </div>
           </div>
@@ -7479,6 +7467,122 @@ function LessonsTab({ customer }) {
   );
 }
 
+// ─── History Tab ────────────────────────────────────────────────────────────
+// Surfaces customFields.migrationLegacy — the historic/contextual fields a
+// migration import saves (lifetime lesson counts, last lesson date, lifetime
+// collected, source, dance level, assigned teacher, key dates) but that have
+// no dedicated Customer model column. Previously this data was written on
+// import and then never shown anywhere; this tab is the display surface for it.
+
+const HISTORY_DATE_FIELDS = [
+  { key: "customerSince", label: "Customer Since" },
+  { key: "firstSessionDate", label: "First Session (Intro) Date" },
+  { key: "lastLessonDate", label: "Last Lesson Date" },
+  { key: "anniversary", label: "Anniversary" },
+  { key: "nextAppointmentDate", label: "Next Appointment Date" },
+];
+
+const HISTORY_COUNT_FIELDS = [
+  { key: "privatesTaken", label: "Privates Taken" },
+  { key: "groupsTaken", label: "Groups Taken" },
+  { key: "partiesTaken", label: "Parties Taken" },
+  { key: "coachingTaken", label: "Coaching Taken" },
+];
+
+function HistoryTab({ customer }) {
+  const legacy = customer?.customFields?.migrationLegacy || {};
+  const hasAnything = Object.keys(legacy).length > 0;
+
+  if (!hasAnything) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-8 text-center">
+        <p className="text-[13px] text-muted-foreground">
+          No migration history on file for this customer.
+        </p>
+        <p className="mt-1 text-[12px] text-muted-foreground">
+          This section fills in automatically for customers brought in through a migration import that
+          supplied Source, Dance Level, Assigned Teacher, historic lesson counts, Lifetime Collected, or
+          key dates.
+        </p>
+      </div>
+    );
+  }
+
+  const totalLessons = HISTORY_COUNT_FIELDS.reduce(
+    (sum, { key }) => sum + (Number(legacy[key]) || 0),
+    0,
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-xl border border-border bg-card p-5">
+        <h2 className="mb-1 text-[13px] font-semibold text-foreground">Legacy Record</h2>
+        <p className="mb-4 text-[12px] text-muted-foreground">
+          Carried over from this customer's old system at migration time.
+        </p>
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {legacy.source && (
+            <div>
+              <p className="text-[11px] text-muted-foreground mb-1">Source</p>
+              <p className="text-[13px] font-medium text-foreground">{legacy.source}</p>
+            </div>
+          )}
+          {legacy.danceLevel && (
+            <div>
+              <p className="text-[11px] text-muted-foreground mb-1">Dance Level</p>
+              <p className="text-[13px] font-medium text-foreground">{legacy.danceLevel}</p>
+            </div>
+          )}
+          {legacy.assignedTeacher && (
+            <div>
+              <p className="text-[11px] text-muted-foreground mb-1">Assigned Teacher</p>
+              <p className="text-[13px] font-medium text-foreground">{legacy.assignedTeacher}</p>
+            </div>
+          )}
+          {legacy.lifetimeCollected !== undefined && (
+            <div>
+              <p className="text-[11px] text-muted-foreground mb-1">Lifetime Collected</p>
+              <p className="text-[13px] font-medium text-foreground">
+                ${Number(legacy.lifetimeCollected).toFixed(2)}
+              </p>
+            </div>
+          )}
+          {HISTORY_DATE_FIELDS.map(
+            ({ key, label }) =>
+              legacy[key] && (
+                <div key={key}>
+                  <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
+                  <p className="text-[13px] font-medium text-foreground">{formatDate(legacy[key])}</p>
+                </div>
+              ),
+          )}
+        </div>
+      </div>
+
+      {totalLessons > 0 && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h2 className="mb-4 text-[13px] font-semibold text-foreground">Historic Lesson Counts</h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+            {HISTORY_COUNT_FIELDS.map(({ key, label }) => (
+              <div key={key} className="rounded-xl border border-border bg-card px-4 py-3">
+                <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
+                <p className="text-[19px] font-semibold text-foreground">
+                  {Number(legacy[key]) || 0}
+                </p>
+              </div>
+            ))}
+            <div className="rounded-xl border border-border bg-primary/5 px-4 py-3">
+              <p className="text-[11px] text-muted-foreground mb-1">Total</p>
+              <p className="text-[19px] font-semibold text-primary">{totalLessons}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Notes Tab ────────────────────────────────────────────────────────────────
 
 function NotesTab({ customer, onUpdated }) {
@@ -7735,6 +7839,7 @@ export default function CustomerDetailPage() {
           {tab === "wallet" && <CustomerWalletTab customerID={customer._id} />}
           {tab === "payments" && <PaymentsTab customerID={customer._id} />}
           {tab === "lessons" && <LessonsTab customer={customer} />}
+          {tab === "history" && <HistoryTab customer={customer} />}
           {tab === "notes" && <NotesTab customer={customer} onUpdated={load} />}
           {tab === "members" && (
             <MembersTab customer={customer} onUpdated={load} />
