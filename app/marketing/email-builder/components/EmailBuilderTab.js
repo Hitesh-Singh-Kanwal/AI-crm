@@ -38,6 +38,7 @@ import EmailPreviewFrame from './EmailPreviewFrame'
 import EmailVisualHtmlEditor from './EmailVisualHtmlEditor'
 import EmailTemplateDetailsForm, { isTemplateDetailsComplete } from './EmailTemplateDetailsForm'
 import { EmailImageMediaFields, EmailVideoMediaFields } from './EmailMediaFields'
+import EmailFooterPicker from './EmailFooterPicker'
 import {
   extractCategoriesList,
   buildVideoEmailHtml,
@@ -803,6 +804,14 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
                       </Button>
                     ) : null}
                     <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                      <EmailFooterPicker
+                        html={effectiveHtmlBody}
+                        onHtmlChange={(next) => {
+                          setHtmlBody(next)
+                          setHtmlCustomized(true)
+                          setCanvasView('preview')
+                        }}
+                      />
                       <Button
                         type="button"
                         variant="outline"

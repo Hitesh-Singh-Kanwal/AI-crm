@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import EmailHtmlPanel from './EmailHtmlPanel'
 import EmailPreviewFrame from './EmailPreviewFrame'
 import EmailVisualHtmlEditor from './EmailVisualHtmlEditor'
+import EmailFooterPicker from './EmailFooterPicker'
 import {
   extractCategoriesList,
   getTemplateCategoryId,
@@ -167,12 +168,23 @@ export default function EmailTemplateEditorDialog({
               </p>
             </div>
 
+            {!loading && !error ? (
+              <EmailFooterPicker
+                html={htmlBody}
+                onHtmlChange={(next) => {
+                  setHtmlBody(next)
+                  setEditTab('preview')
+                }}
+                className="shrink-0"
+              />
+            ) : null}
+
             <Button
               variant="gradient"
               size="sm"
               onClick={save}
               disabled={saving || loading || !!error}
-              className="h-8 shrink-0 ml-auto"
+              className="h-8 shrink-0"
             >
               <Send className="h-3.5 w-3.5 sm:mr-1.5" />
               <span className="hidden sm:inline">{saving ? 'Saving…' : 'Save'}</span>

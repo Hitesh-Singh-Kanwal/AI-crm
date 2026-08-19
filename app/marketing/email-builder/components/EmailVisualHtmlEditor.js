@@ -114,11 +114,13 @@ export default function EmailVisualHtmlEditor({
   const lastWritten = useRef('')
   const htmlRef = useRef(html)
   const initializedRef = useRef(false)
+  const ignoreEmitUntilRef = useRef(0)
   htmlRef.current = html
 
   const getDoc = () => iframeRef.current?.contentDocument || null
 
   const emitHtml = useCallback(() => {
+    if (Date.now() < ignoreEmitUntilRef.current) return
     const doc = getDoc()
     if (!doc?.body) return
     // Clone so editor selection chrome (outline / data-crm-selected) never lands in saved HTML.
@@ -274,10 +276,9 @@ export default function EmailVisualHtmlEditor({
     const next = extractEditableHtml(html)
     if (!ready) return
     if (next === lastWritten.current) return
-    const doc = getDoc()
-    if (!doc?.body) return
-    if (doc.hasFocus?.() || doc.activeElement === doc.body) return
-    writeDocument(next)
+    // Ignore blur/input emits while we apply an external update (footer inject, etc.)
+    ignoreEmitUntilRef.current = Date.now() + 500
+    writeDocument(html)
   }, [html, ready, writeDocument])
 
   const runCommand = (command, value = null) => {
