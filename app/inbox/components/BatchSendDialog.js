@@ -272,6 +272,9 @@ export default function BatchSendDialog({
           body: htmlBody,
           scheduleNow: scheduleMode === 'now',
           scheduleDate: scheduleIso,
+          ...(usingHtmlTemplate
+            ? { useTemplate: true, emailType: 'template' }
+            : {}),
         })
         if (!result.success) {
           toast.error({ title: 'Failed', message: result.error || 'Could not send email batch.' })

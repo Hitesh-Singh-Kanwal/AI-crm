@@ -835,6 +835,7 @@ function InboxPageContent() {
           html: htmlForSend,
           scheduleNow,
           scheduleDate,
+          useTemplate: Boolean(htmlForSend),
         })
         const preferredLocationID = payload.preferredLocationID || null
         const result = await api.post(
