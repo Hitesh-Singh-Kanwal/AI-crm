@@ -12,6 +12,7 @@ import {
   SERVICE_COLUMNS,
   UNIVERSAL_COLUMNS,
   parseFileForMapping,
+  parseXlsxSheetIfPresent,
   splitUniversalRows,
   parseCsvFile,
   parseCsvFileForMapping,
@@ -37,6 +38,14 @@ const CSV_SHEETS = {
 
 const STEPS = { UPLOAD: 'upload', MAPPING: 'mapping', PREVIEW: 'preview', TRIAL_REVIEW: 'trial_review', DONE: 'done' }
 const MODES = { MIGRATION: 'migration', QUICK: 'quick', EXPORT: 'export' }
+// Two Migration Import flavors — same backend, same one-sheet upload, just a
+// shorter template when there's no lesson/payment history to bring over.
+// "Totals only" is the default: most studios migrating just want the
+// customer + package/balance snapshot, not a line-by-line replay of history.
+const IMPORT_LEVELS = {
+  TOTALS: 'totals',
+  HISTORY: 'history',
+}
 
 /**
  * Single entry point for all customer CSV/Excel workflows: the full
@@ -62,6 +71,11 @@ export default function CustomerMigrationImportDialog({
 }) {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState(MODES.MIGRATION)
+  // Which Migration Import template/columns are in play — "Totals Only"
+  // (default) vs "With History" (adds the Lessons/Payments line-item
+  // columns). Affects only the template shape and mapping columns; the
+  // upload/validate/commit flow underneath is identical either way.
+  const [importLevel, setImportLevel] = useState(IMPORT_LEVELS.TOTALS)
   const [step, setStep] = useState(STEPS.UPLOAD)
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -130,7 +144,32 @@ export default function CustomerMigrationImportDialog({
     const file = e.target.files[0]
     e.target.value = ''
     if (!file) return
-    await openMappingReview('universal', UNIVERSAL_COLUMNS, file)
+    // Always recognize the FULL column set on upload, regardless of which
+    // template (Totals Only vs With History) is currently selected.
+    // importLevel only controls what the DOWNLOADABLE sample asks for —
+    // it must never restrict what an upload is willing to READ. Using the
+    // reduced Totals Only column list here silently dropped Discount Type/
+    // Discount Amount/Final Amount from any file that actually had them
+    // (they just never appeared in the mapping-review table at all, so
+    // nothing looked wrong — the data was simply never looked for), even
+    // though the backend has always been able to use them fine.
+    const columns = UNIVERSAL_COLUMNS
+    // Auto-pick-up: the same .xlsx may already carry a "Services" tab (our
+    // own downloadSampleXlsx bundles one) — grab it now so Enrollments/
+    // Memberships rows referencing those service codes resolve immediately,
+    // instead of every one of them warning "not found in the studio's
+    // catalog" just because the operator never separately re-uploaded the
+    // same file's second sheet through the dedicated Services control below.
+    try {
+      const serviceRows = await parseXlsxSheetIfPresent(file, 'services', SERVICE_COLUMNS)
+      if (serviceRows?.length) {
+        mergeParsedRows('services', serviceRows, file.name)
+        toast.success({ title: 'Services picked up', message: `${serviceRows.length} service row(s) found in this file's "Services" tab` })
+      }
+    } catch {
+      // Non-fatal — the operator can still upload Services separately below.
+    }
+    await openMappingReview('universal', columns, file)
   }
 
   const mergeParsedRows = (which, rows, fileName) => {
@@ -560,11 +599,39 @@ export default function CustomerMigrationImportDialog({
               ) : mode === MODES.MIGRATION ? (
                 <>
                   <div>
+                    <label className="block text-sm font-medium mb-2">Import type</label>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Button
+                        variant={importLevel === IMPORT_LEVELS.TOTALS ? 'gradient' : 'outline'}
+                        size="sm"
+                        onClick={() => setImportLevel(IMPORT_LEVELS.TOTALS)}
+                      >
+                        Totals Only (Recommended)
+                      </Button>
+                      <Button
+                        variant={importLevel === IMPORT_LEVELS.HISTORY ? 'gradient' : 'outline'}
+                        size="sm"
+                        onClick={() => setImportLevel(IMPORT_LEVELS.HISTORY)}
+                      >
+                        With Lesson/Payment History
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      {importLevel === IMPORT_LEVELS.TOTALS
+                        ? 'Shorter template — just each customer and their current package balance (sessions bought/used, amount collected/owed). Use this unless you specifically need a lesson-by-lesson or payment-by-payment history on the customer profile.'
+                        : 'Adds two extra column groups for a full lesson-by-lesson and payment-by-payment history, on top of everything Totals Only already covers. Only worth the extra columns if your old system can actually export that level of detail.'}
+                    </p>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium mb-2">
-                      Upload your file (CSV or Excel) — one sheet with everything: customers, packages, lessons, payments, memberships
+                      Upload your file (CSV or Excel) — one sheet with everything: customers, packages
+                      {importLevel === IMPORT_LEVELS.HISTORY ? ', lessons, payments' : ''}, memberships
                     </label>
                     <p className="text-xs text-muted-foreground mb-2">
-                      Whatever your old system exports is fine — the app maps the columns on the next screen. A customer's row and their package/lesson/payment rows can share one file; we match them by email/phone and Program Name, not an ID you have to invent.
+                      Whatever your old system exports is fine — the app maps the columns on the next screen. A customer's row and their package{importLevel === IMPORT_LEVELS.HISTORY ? '/lesson/payment' : ''}/membership rows can share one file; we match them by email/phone and Program Name, not an ID you have to invent.
+                      A package with only one service fits entirely on one row; if it has more than one (e.g. "12 privates + 2 parties"), list the extra ones in the <strong>Additional Services</strong> column as <code>code:sessionsTotal:sessionsTaken</code>, separated by <code>;</code> — still just one row.
+                      To add a Membership for a customer, fill in the <strong>Membership Plan Name</strong> and its columns on any row for that same email/phone.
+                      For a spouse/family member who's also a customer: give them their own full row (name, email/phone, studio, consent flags — same as anyone else), then on EITHER their row or the other person's row, fill in <strong>Partner Email</strong>/<strong>Partner Phone</strong> pointing at the other one. There's no separate "partner name" column — their name comes from their own row.
                     </p>
                     <div className="flex items-center gap-2">
                       <label className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg cursor-pointer hover:bg-muted/40 w-fit">
@@ -572,11 +639,11 @@ export default function CustomerMigrationImportDialog({
                         <span className="text-sm">Choose File (.csv, .xlsx)</span>
                         <input type="file" accept=".csv,.xlsx,.xls" onChange={handleUniversalUpload} className="hidden" disabled={busy} />
                       </label>
-                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => downloadSampleXlsx()}>
+                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => downloadSampleXlsx(undefined, importLevel)}>
                         <FileText className="h-4 w-4" />
                         Sample .xlsx
                       </Button>
-                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => downloadUniversalSampleCsv()}>
+                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => downloadUniversalSampleCsv(undefined, importLevel)}>
                         <FileText className="h-4 w-4" />
                         Sample .csv
                       </Button>
@@ -782,7 +849,24 @@ export default function CustomerMigrationImportDialog({
                   <div className="border border-border rounded-lg max-h-48 overflow-y-auto">
                     <table className="w-full text-xs">
                       <tbody>
-                        {(parsed?.customers || []).map((c, i) => {
+                        {(() => {
+                          // parsed.customers can legitimately contain more than
+                          // one row for the same Email/Phone now — e.g. a
+                          // duplicate-customer row that preflightCheck will
+                          // reject, or a stub row kept around just so a
+                          // missing-Studio/consent error has something to
+                          // attach to (see splitUniversalRows). Neither is a
+                          // real, importable customer, so only the FIRST row
+                          // per key is offered here — same rule the actual
+                          // import uses ("first row wins").
+                          const seen = new Set()
+                          return (parsed?.customers || []).filter((c) => {
+                            const key = rowCustomerKey(c)
+                            if (!key || seen.has(key)) return false
+                            seen.add(key)
+                            return true
+                          })
+                        })().map((c, i) => {
                           const key = rowCustomerKey(c)
                           return (
                             <tr key={key || i} className="border-t border-border first:border-t-0">
