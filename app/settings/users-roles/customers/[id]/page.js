@@ -66,6 +66,7 @@ import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import WalletShortfallField, {
   walletPaymentFields,
 } from "@/components/payments/WalletShortfallField";
+import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
 import { getInitials, formatDate } from "@/lib/utils";
@@ -5790,6 +5791,7 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
   const [method, setMethod] = useState("cash");
   const [shortfallMethod, setShortfallMethod] = useState("cash");
   const [walletBalance, setWalletBalance] = useState(0);
+  const [deviceID, setDeviceID] = useState("");
   const [newDueDate, setNewDueDate] = useState(
     cp.dueDate ? new Date(cp.dueDate).toISOString().slice(0, 10) : "",
   );
@@ -5811,11 +5813,14 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
   });
   const payWithClover = paymentFields.method === "card" && cloverReady;
   const cloverNotConnected = paymentFields.method === "card" && !cloverReady;
+  const payWithTerminal = paymentFields.method === "terminal";
+  const terminalNotSelected = payWithTerminal && !deviceID;
   const amountValid = parseFloat(amount) > 0;
 
   async function submitPayment() {
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) return;
+    if (payWithTerminal && !deviceID) return;
     const checkoutTab = payWithClover ? openCheckoutTab() : null;
     setSaving(true);
     const res = await api.post("/api/payment", {
@@ -5829,6 +5834,7 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
         balance: walletBalance,
         amountDue: num,
       }),
+      ...(payWithTerminal ? { deviceID } : {}),
     });
     if (res.success) {
       if (res.data?.checkoutUrl) {
@@ -5994,6 +6000,12 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
                 Finish Clover setup in Settings → Integrations to charge a card.
               </p>
             )}
+            <TerminalDeviceField
+              method={method}
+              locationID={locationID}
+              deviceID={deviceID}
+              onDeviceChange={setDeviceID}
+            />
             <div className="flex gap-1.5">
               <Button
                 type="button"
@@ -6008,13 +6020,17 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
                 type="submit"
                 size="sm"
                 className="h-8 px-3 text-[11px]"
-                disabled={saving || !amountValid || cloverNotConnected}
+                disabled={saving || !amountValid || cloverNotConnected || terminalNotSelected}
               >
                 {saving
-                  ? "Saving…"
+                  ? payWithTerminal
+                    ? "Waiting for terminal…"
+                    : "Saving…"
                   : payWithClover
                     ? "Pay with Clover"
-                    : "Confirm Payment"}
+                    : payWithTerminal
+                      ? "Charge Terminal"
+                      : "Confirm Payment"}
               </Button>
             </div>
           </div>

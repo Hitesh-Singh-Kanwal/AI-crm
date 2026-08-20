@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import { useToast } from '@/components/ui/toast'
 import CloverConnectionCard from '@/app/settings/payments/clover/CloverConnectionCard'
+import CloverDeviceManager from '@/app/settings/payments/clover/CloverDeviceManager'
 
 function CloverCallbackStatusHandler() {
   const router = useRouter()
@@ -42,6 +43,7 @@ export default function IntegrationsPage() {
       </Suspense>
       <div className="space-y-4">
         <CloverConnectionCard />
+        <CloverDeviceManager />
       </div>
     </MainLayout>
   )
