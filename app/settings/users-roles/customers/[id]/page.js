@@ -482,7 +482,10 @@ function BalanceBreakdownCard({ customer }) {
       const packages = (enrRes.success ? enrRes.data || [] : [])
         .map((enr) => {
           const pkg = enr.package;
-          if (!pkg) return null;
+          // A cancelled package/enrollment shouldn't keep contributing to
+          // Outstanding — its stale dueAmount snapshot otherwise lingers
+          // here even after the cancel flow has zeroed/refunded it.
+          if (!pkg || pkg.status === "cancelled" || enr.status === "cancelled") return null;
           const due =
             pkg.dueAmount != null
               ? Number(pkg.dueAmount)
@@ -492,6 +495,7 @@ function BalanceBreakdownCard({ customer }) {
         .filter(Boolean);
       const memberships = (memRes.success ? memRes.data || [] : [])
         .map((m) => {
+          if (m.status === "cancelled") return null;
           const due =
             m.dueAmount != null
               ? Number(m.dueAmount)
