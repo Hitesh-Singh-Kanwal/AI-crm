@@ -155,9 +155,19 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
     }
   }, [open, initial])
 
-  const setField = (key, val) => setForm((prev) => ({ ...prev, [key]: val }))
-  const setAddressField = (key, val) =>
+  // Clear any error from a previous failed submission as soon as the user
+  // edits the form again — otherwise a stale "email already exists" (or any
+  // other) message stays on screen after they've already changed the field
+  // it was complaining about, making it look like the *new* value is the
+  // problem.
+  const setField = (key, val) => {
+    setError(null)
+    setForm((prev) => ({ ...prev, [key]: val }))
+  }
+  const setAddressField = (key, val) => {
+    setError(null)
     setForm((prev) => ({ ...prev, address: { ...prev.address, [key]: val } }))
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()

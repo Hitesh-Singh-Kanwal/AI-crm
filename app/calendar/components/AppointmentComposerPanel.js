@@ -1450,6 +1450,12 @@ function DateTimeRow({ form, setField, lessonDuration }) {
               setField("start_time", newStart);
               if (newStart && lessonDuration)
                 setField("end_time", addMinutes(newStart, lessonDuration));
+              // A manual edit here supersedes whatever slot was clicked in the
+              // availability grid below — without clearing it, submit still
+              // prefers selected_time_slots (see the save handler) and this
+              // typed change is silently discarded in favor of the stale
+              // fixed-duration slot.
+              setField("selected_time_slots", []);
             }}
             className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary transition-colors"
           />
@@ -1457,7 +1463,11 @@ function DateTimeRow({ form, setField, lessonDuration }) {
           <input
             type="time"
             value={form.end_time}
-            onChange={(e) => setField("end_time", e.target.value)}
+            onChange={(e) => {
+              setField("end_time", e.target.value);
+              // Same reasoning as the start-time handler above.
+              setField("selected_time_slots", []);
+            }}
             className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary transition-colors"
           />
         </div>
@@ -1941,8 +1951,14 @@ function ToDoFields({
     const todo = todoMap[id];
     if (todo?.name) setField("title", todo.name);
     if (todo?.color) setField("event_color", todo.color);
-    if (todo?.duration && form.start_time)
+    if (todo?.duration && form.start_time) {
       setField("end_time", addMinutes(form.start_time, todo.duration));
+      // Same reasoning as the manual time-edit handlers in DateTimeRow: any
+      // slot already picked from the availability grid (fixed to the studio's
+      // generic slot width) is now stale — without clearing it, submit still
+      // prefers selected_time_slots over this freshly computed end time.
+      setField("selected_time_slots", []);
+    }
   }
   return (
     <div className="space-y-4">
@@ -2197,6 +2213,15 @@ export default function AppointmentComposerPanel({
   }, [form.service_id, allServices]);
 
   const lessonDuration = useMemo(() => {
+    // To-Do tab: the selected to-do's own catalog duration drives both the
+    // availability grid's slot width and the auto-computed end time — without
+    // this, a 120-minute to-do like "Lunch" got the studio's generic default
+    // slot length (e.g. 50m) instead, and every availability-grid button
+    // offered only a 50m block regardless of what the to-do actually needs.
+    if (form.todo_id) {
+      const todo = todoMap[form.todo_id];
+      if (todo?.duration) return Number(todo.duration);
+    }
     if (form.lesson_id) {
       const lesson = lessonMap[form.lesson_id];
       if (lesson?.duration) return Number(lesson.duration);
@@ -2210,11 +2235,13 @@ export default function AppointmentComposerPanel({
     }
     return initialDuration || 60;
   }, [
+    form.todo_id,
     form.lesson_id,
     form.service_id,
     allServices,
     lessonByName,
     lessonMap,
+    todoMap,
     initialDuration,
   ]);
 
