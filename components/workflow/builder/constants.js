@@ -231,6 +231,7 @@ export const DEFAULT_NODE_CONFIG = {
     subject: '',
     body: '',
     htmlBody: '',
+    hasFooter: false,
     emailTemplateId: '',
     emailTemplateSubject: '',
   },

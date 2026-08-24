@@ -155,12 +155,17 @@ function stepFromNode(node, offsetMinutes) {
 
   if (type === 'email') {
     const emailType = config.emailType === 'template' ? 'template' : 'message'
+    const htmlBody = config.htmlBody || ''
+    const hasFooter =
+      typeof config.hasFooter === 'boolean'
+        ? config.hasFooter
+        : /data-cadance-studio-footer\s*=/i.test(htmlBody)
     return {
       ...base,
       emailType,
       subject: config.subject || '',
       ...(emailType === 'template'
-        ? { htmlBody: config.htmlBody || '' }
+        ? { htmlBody, hasFooter }
         : { script: config.body || config.script || '' }),
     }
   }
@@ -424,6 +429,7 @@ function actionNodeFromStep(step, index, y) {
       subject: step.subject || '',
       body: step.script || '',
       htmlBody: step.htmlBody || '',
+      hasFooter: Boolean(step.hasFooter),
       emailTemplateId: step.emailTemplateId || '',
       emailTemplateSubject: step.emailTemplateSubject || '',
     }

@@ -209,7 +209,13 @@ function EmailFields({ config, onChange }) {
           name={config.emailTemplateSubject || ''}
           onPick={() => setPickerOpen(true)}
           onClear={() =>
-            onChange({ emailTemplateId: '', emailTemplateSubject: '', htmlBody: '', emailType: 'message' })
+            onChange({
+              emailTemplateId: '',
+              emailTemplateSubject: '',
+              htmlBody: '',
+              emailType: 'message',
+              hasFooter: false,
+            })
           }
         />
       </Field>
@@ -261,13 +267,14 @@ function EmailFields({ config, onChange }) {
         open={pickerOpen}
         selectedId={config.emailTemplateId || ''}
         onClose={() => setPickerOpen(false)}
-        onSelect={({ emailTemplateId, emailTemplateSubject, subject, htmlBody }) =>
+        onSelect={({ emailTemplateId, emailTemplateSubject, subject, htmlBody, hasFooter }) =>
           onChange({
             emailType: 'template',
             emailTemplateId,
             emailTemplateSubject,
             subject: subject || config.subject || '',
             htmlBody,
+            hasFooter: Boolean(hasFooter),
           })
         }
       />
