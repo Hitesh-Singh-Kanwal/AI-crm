@@ -48,6 +48,7 @@ const navItems = [
       { name: 'Form Builder', href: '/marketing/form-builder' },
       { name: 'Campaigns', href: '/marketing/campaigns' },
       { name: 'Email Builder', href: '/marketing/email-builder' },
+      { name: 'Unsubscribed', href: '/marketing/unsubscribed' },
       { name: 'SMS Builder', href: '/marketing/sms-builder' },
     ],
   },
