@@ -53,6 +53,8 @@ const TIME_SLOT_ROW_MIN_HEIGHT_PX = 60;
 const DAY_LEFT_RAIL_WIDTH = 86;
 /** Fixed display height for all timed booking cards (private + group); fits title, teacher, time, badges. */
 const TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX = 60;
+/** Floor so a very short booking (e.g. 10m) still has room for its title line when sized by duration. */
+const TIMED_EVENT_CARD_MIN_HEIGHT_PX = 28;
 /** Vertical gap when stacking overlapping bookings (day view + FullCalendar week). */
 const TIMED_EVENT_CARD_STACK_GAP_PX = 2;
 /** Week view: cards shown before "+N more" for same instructor + same time range. */
@@ -234,17 +236,25 @@ function deriveEffectiveStatus(appt) {
 }
 
 function transformAppointments(appointments, colorMap, memberSelections = {}, membershipCoverageSet = new Set(), studioTz = null) {
-  // Track session order per (customerID + enrollmentID) for all package billing types.
-  // Key: `${customerId}::${enrollmentId}`, value: sorted array of appointment IDs by date.
-  // Used to figure out each session's chronological position so we can decide which
-  // sessions are covered by the credits paid so far.
+  // Track session order per (customerID + package reference) for all package
+  // billing types. A "package" charge is booked against either a CustomerPackage
+  // (charge.customerPackageID — the direct-purchase path, tried first below at
+  // sessionsRemaining resolution) or an Enrollment (charge.enrollmentID — the
+  // curriculum-enrollment path); either identifies the same kind of credit pool,
+  // so both are accepted here. Key: `${customerId}::${packageRefId}::${serviceCode}`,
+  // value: sorted array of appointment IDs by date. Used to figure out each
+  // session's chronological position so we can decide which sessions are
+  // covered by the credits paid so far.
   const pkgSessionOrder = {};
 
   appointments.forEach((appt) => {
     const pkgCharge = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
     if (!pkgCharge) return;
-    const enrollmentId = String(pkgCharge.enrollmentID?._id ?? pkgCharge.enrollmentID ?? "");
-    if (!enrollmentId) return;
+    const packageRefId = String(
+      pkgCharge.customerPackageID?._id ?? pkgCharge.customerPackageID ??
+      pkgCharge.enrollmentID?._id ?? pkgCharge.enrollmentID ?? "",
+    );
+    if (!packageRefId) return;
     // Order sessions per service: a package's private-lesson credits are tracked
     // separately from its group-class (or any other) service lines.
     const serviceCode = pkgCharge.serviceCode ?? "";
@@ -252,7 +262,7 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
       ? appt.customerIDs.map((c) => String(c._id ?? c))
       : [];
     customerIds.forEach((cid) => {
-      const key = `${cid}::${enrollmentId}::${serviceCode}`;
+      const key = `${cid}::${packageRefId}::${serviceCode}`;
       if (!pkgSessionOrder[key]) pkgSessionOrder[key] = [];
       pkgSessionOrder[key].push({ id: String(appt._id), date: new Date(appt.startDateTime) });
     });
@@ -403,47 +413,83 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
       }
     }
 
-    // Determine this event's chronological session number within its enrollment
+    // "Already used" per the package's own aggregate (sessionsUsed vs
+    // sessionsRemaining). The backend increments sessionsUsed synchronously
+    // the moment a session is *booked* against the package (see
+    // calendarEvent.controller.js's charge-application step) — not when it's
+    // attended — so for a normal package this count is already fully
+    // explained by the real bookings sitting in pkgSessionOrder below. It only
+    // has "invisible" extra beyond that for a migrated package's baseline
+    // usage (imported with no CalendarEvent behind it) or bookings outside
+    // this fetch's date range.
+    const sessionsBeforeFromHistory = totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0;
+
+    // Determine this event's chronological session number within its enrollment.
     let pkgSessionNumber = null;
     {
       const pkgCharge2 = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
       if (pkgCharge2) {
-        const enrollmentId2 = String(pkgCharge2.enrollmentID?._id ?? pkgCharge2.enrollmentID ?? "");
-        const serviceCode2 = pkgCharge2.serviceCode ?? "";
-        const customerIds2 = Array.isArray(appt.customerIDs) ? appt.customerIDs.map((c) => String(c._id ?? c)) : [];
-        for (const cid of customerIds2) {
-          const key = `${cid}::${enrollmentId2}::${serviceCode2}`;
-          const order = pkgSessionOrder[key];
-          if (order) {
-            const idx = order.findIndex((e) => e.id === String(appt._id));
-            if (idx >= 0) { pkgSessionNumber = idx + 1; break; }
+        // The backend stamps each package-funded charge with its true position
+        // in the credit pool at booking time (baseline sessionsUsed + this
+        // occurrence's own share — see computeSessionBaselines in
+        // calendarEvent.controller.js). That's authoritative and immune to
+        // this fetch's date window, unlike the client-side fallback below —
+        // always prefer it when present.
+        if (typeof pkgCharge2.sessionNumber === "number") {
+          pkgSessionNumber = pkgCharge2.sessionNumber;
+        } else {
+          // Fallback for events booked before the backend started stamping
+          // sessionNumber: derive it from chronological order among whatever
+          // sibling bookings happen to be loaded in the current fetch. This is
+          // only as good as that fetch's date window — a package whose
+          // bookings span further than it (e.g. a long recurring series) can
+          // make this undercount, since it can't tell "not visible" apart from
+          // "didn't happen yet".
+          //
+          // Must match the packageRefId resolution used to build pkgSessionOrder
+          // above — customerPackageID (direct-purchase) or enrollmentID
+          // (curriculum-enrollment), whichever this charge carries.
+          const packageRefId2 = String(
+            pkgCharge2.customerPackageID?._id ?? pkgCharge2.customerPackageID ??
+            pkgCharge2.enrollmentID?._id ?? pkgCharge2.enrollmentID ?? "",
+          );
+          const serviceCode2 = pkgCharge2.serviceCode ?? "";
+          const customerIds2 = Array.isArray(appt.customerIDs) ? appt.customerIDs.map((c) => String(c._id ?? c)) : [];
+          for (const cid of customerIds2) {
+            const key = `${cid}::${packageRefId2}::${serviceCode2}`;
+            const order = pkgSessionOrder[key];
+            if (order) {
+              const idx = order.findIndex((e) => e.id === String(appt._id));
+              if (idx >= 0) {
+                // sessionsBeforeFromHistory in excess of what `order` itself
+                // accounts for is the genuinely invisible portion (see comment
+                // above) — that's the only part that should stack on top of this
+                // event's own position in the list. When `order` already
+                // explains all of it (the common case: every booking for this
+                // key loaded in this fetch), nothing is added and each sibling
+                // gets its own increasing position instead of collapsing onto
+                // one shared floor.
+                const invisiblePriorUsage = Math.max(0, sessionsBeforeFromHistory - order.length);
+                pkgSessionNumber = invisiblePriorUsage + idx + 1;
+                break;
+              }
+            }
           }
         }
       }
     }
 
     // Credits available for this specific session = sessions paid for minus the
-    // sessions that come chronologically before it. A session is "paid" once it
-    // has at least ~one full credit (≥ 0.9, allowing for rounding). This unifies
-    // every billing type: one-time/upfront packages pay for all sessions at
-    // purchase (full credits), while flexible/payment-plan accrue credits as
-    // money is collected.
-    //
-    // pkgSessionNumber only counts sessions with a real CalendarEvent/charge
-    // history (pkgSessionOrder) — a migrated package's baseline "sessions
-    // already used" (Enrollment.package.services[].sessionsUsed, set at
-    // import time with no calendar event behind it) is invisible to that
-    // ordering. Without the floor below, the first REAL booking against a
-    // migrated package looks like "session #1 ever" and shows far more
-    // credit than actually remains. totalSessions - sessionsRemaining is the
-    // authoritative "already used" count either way (it's what the
-    // Enrollments tab and Profile tab both show), so it's a floor
-    // pkgSessionNumber's position-based count can raise but never undercut.
-    const sessionsBeforeFromHistory = totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0;
-    const sessionsBefore = Math.max(
-      pkgSessionNumber != null ? pkgSessionNumber - 1 : 0,
-      sessionsBeforeFromHistory,
-    );
+    // sessions that come chronologically before it. pkgSessionNumber above
+    // already folds in any invisible prior usage, so it's used as-is when
+    // resolved; sessionsBeforeFromHistory is only the fallback for an event
+    // whose package charge/order couldn't be matched at all. A session is
+    // "paid" once it has at least ~one full credit (≥ 0.9, allowing for
+    // rounding). This unifies every billing type: one-time/upfront packages
+    // pay for all sessions at purchase (full credits), while flexible/
+    // payment-plan accrue credits as money is collected.
+    const sessionsBefore =
+      pkgSessionNumber != null ? pkgSessionNumber - 1 : sessionsBeforeFromHistory;
     const coveredByCredits = sessionsPaidFor != null && sessionsPaidFor - sessionsBefore >= 0.999;
     // A package charge whose service is free/non-chargeable has nothing to pay.
     const freePackageService =
@@ -1615,17 +1661,23 @@ function AppointmentTimedEventRows({ event, compact = false }) {
           </span>
         )}
         {!isGroupClass && sessionsPaidFor != null && (() => {
-          // Show credit balance as it was just before this session was consumed.
-          // See the matching fix/comment on `sessionsBefore` above (same
-          // formula, duplicated here since this badge is computed in a
-          // separate render pass) — floored by totalSessions-sessionsRemaining
-          // so a migrated package's import-time baseline usage (no calendar
-          // event behind it) isn't invisible to pkgSessionNumber's
-          // charge-history-only ordering.
-          const sessionsBefore = Math.max(
-            pkgSessionNumber != null ? pkgSessionNumber - 1 : 0,
-            totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0,
-          );
+          // Show credit balance as it was just after this session's own
+          // credit was consumed — pkgSessionNumber (from transformAppointments)
+          // is already this event's 1-based position in booking order, with
+          // any invisible prior usage (a migrated package's baseline usage
+          // with no calendar event behind it, or bookings outside the current
+          // fetch) folded in, so it's used as-is here instead of being
+          // reclamped against totalSessions-sessionsRemaining — that floor is
+          // already part of pkgSessionNumber, and re-applying it here as a
+          // separate max() flattened every sibling in the same batch onto one
+          // shared number instead of decrementing per session. The +1 accounts
+          // for this session's own credit — the very first session in the
+          // whole package (sessionsBefore = 0) shows sessionsPaidFor - 1, not
+          // sessionsPaidFor, since booking it already spent one.
+          const sessionsBefore =
+            pkgSessionNumber != null
+              ? pkgSessionNumber - 1
+              : (totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0);
           const net = sessionsPaidFor - (sessionsBefore + 1);
           // When credits run out, show the fractional remainder (e.g. 0.3) so the
           // customer can see what they still have — don't collapse to 0.
@@ -1869,6 +1921,8 @@ function TimedCalendarEventCard({
   onEventClick,
   slotOverflow,
   onSlotMoreClick,
+  customSlotMins = DEFAULT_SLOT_MINS,
+  slotRowHeightPx = TIME_SLOT_ROW_MIN_HEIGHT_PX,
 }) {
   const accentColor = event.extendedProps?.color || "var(--studio-primary)";
   const effectiveStatus = event.extendedProps?.effectiveStatus;
@@ -1876,7 +1930,13 @@ function TimedCalendarEventCard({
     effectiveStatus === "cancelled_no_charge" ||
     effectiveStatus === "cancelled_charged";
   const isCompletedEvent = effectiveStatus === "completed";
-  const height = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
+  // Sized to the event's own duration — same px-per-minute rate as the time
+  // grid — instead of one fixed height for every card regardless of length.
+  const durationMins = getEventDurationMins(event) || customSlotMins;
+  const height = Math.max(
+    TIMED_EVENT_CARD_MIN_HEIGHT_PX,
+    (durationMins / customSlotMins) * slotRowHeightPx,
+  );
 
   return (
     <div
@@ -2160,11 +2220,14 @@ function TutorDayCalendar({
     return map;
   }, [dayAllDayEvents, effectiveTutors]);
 
+  // The "N today · N/wk" badge is meant to reflect real bookings/lessons, so
+  // to-dos (extendedProps.isTodo) are excluded from both counts.
   const weekCountByTutor = useMemo(() => {
     const map = {};
     const weekStart = startOfWeekSunday(focusDate);
     const weekEnd = addDays(weekStart, 7);
     allEvents.forEach((event) => {
+      if (event.extendedProps?.isTodo) return;
       const d = new Date(event.start);
       if (d >= weekStart && d < weekEnd) {
         const key = event.extendedProps?.tutorKey || "unknown";
@@ -2218,8 +2281,9 @@ function TutorDayCalendar({
             <div className="flex" style={{ minWidth: effectiveTutors.length * MIN_COL_WIDTH }}>
           {effectiveTutors.map((tutor, idx) => {
             const todayCount =
-              dayTimedEvents.filter((e) => eventBelongsToTutor(e, tutor.key))
-                .length + (byTutorAllDay[tutor.key]?.length ?? 0);
+              dayTimedEvents.filter((e) => !e.extendedProps?.isTodo && eventBelongsToTutor(e, tutor.key))
+                .length +
+              (byTutorAllDay[tutor.key]?.filter((e) => !e.extendedProps?.isTodo).length ?? 0);
             const weekCount = weekCountByTutor[tutor.key] ?? 0;
             return (
               <div
@@ -2411,7 +2475,16 @@ function TutorDayCalendar({
                 const startMins = s.getHours() * 60 + s.getMinutes();
                 const displayStartMins = Math.max(startMins, gridStartMins);
 
-                const height = TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX;
+                // Sized to the event's own duration (same px-per-minute rate as
+                // the time grid itself: slotRowHeightPx per customSlotMins),
+                // instead of every card rendering at one fixed height
+                // regardless of whether it's a 20m or 2h booking. Floored so a
+                // very short booking still fits its title.
+                const durationMins = getEventDurationMins(event) || customSlotMins;
+                const height = Math.max(
+                  TIMED_EVENT_CARD_MIN_HEIGHT_PX,
+                  (durationMins / customSlotMins) * slotRowHeightPx,
+                );
                 const stackOffset =
                   (event.lane || 0) * (height + TIMED_EVENT_CARD_STACK_GAP_PX);
                 const top =
@@ -2763,6 +2836,8 @@ function TutorWeekCalendar({
                   event={event}
                   top={event.top}
                   onEventClick={onEventClick}
+                  customSlotMins={customSlotMins}
+                  slotRowHeightPx={slotRowHeightPx}
                   slotOverflow={event.slotOverflow}
                   onSlotMoreClick={(e, overflow, cardEl) => {
                     const moreKey = `${key}-${overflow.bucketKey}`;

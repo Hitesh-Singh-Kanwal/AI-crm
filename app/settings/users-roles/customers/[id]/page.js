@@ -2793,19 +2793,26 @@ function PackagesTab({ customerID, locationID }) {
                     <div className="space-y-2.5">
                       {services.map((svc, i) => {
                         const sessTotal = svc.sessionsTotal ?? 0;
+                        const sessSched = svc.sessionsScheduled ?? 0;
                         // `sessionsCompleted` (real CalendarEvent charge
-                        // history) is ALWAYS a number, never null/undefined
-                        // — `??` alone would silently bury `sessionsUsed`
-                        // (e.g. an imported package's Sessions Taken count
-                        // with no accompanying Lessons-sheet history) behind
-                        // a 0 forever. Take whichever is higher instead, so
-                        // real post-import lesson activity can only ever
-                        // raise the count, never hide an imported baseline.
+                        // history) is ALWAYS a number, never null/undefined —
+                        // `??` alone would silently bury `sessionsUsed` (e.g.
+                        // an imported package's Sessions Taken count with no
+                        // accompanying Lessons-sheet history) behind a 0
+                        // forever. But `sessionsUsed` is the backend's raw
+                        // booking-time counter — it already counts every
+                        // still-scheduled (not yet completed) session too, so
+                        // subtract sessSched before taking the floor, or a
+                        // normal (non-imported) package double-counts its
+                        // live-scheduled sessions as both "completed" (via
+                        // this fallback) and "scheduled". Only the portion of
+                        // sessionsUsed that sessSched can't already explain —
+                        // i.e. genuinely pre-existing/imported usage with no
+                        // CalendarEvent behind it — should raise the floor.
                         const sessUsed = Math.max(
                           svc.sessionsCompleted ?? 0,
-                          svc.sessionsUsed ?? 0,
+                          (svc.sessionsUsed ?? 0) - sessSched,
                         );
-                        const sessSched = svc.sessionsScheduled ?? 0;
                         const sessRemaining = Math.max(
                           0,
                           sessTotal - sessUsed - sessSched,
@@ -4480,14 +4487,19 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                         const rows = services.map((svc, i) => {
                           const isFree = isFreeService(svc);
                           const sessTotal = svc.sessionsTotal ?? 0;
+                          const sessSched = svc.sessionsScheduled ?? 0;
                           // See the same fix's comment above (list view) —
-                          // `??` alone hides an imported Sessions Taken
-                          // count whenever there's no real charge history.
+                          // `??` alone hides an imported Sessions Taken count
+                          // whenever there's no real charge history, but
+                          // sessionsUsed already counts still-scheduled
+                          // sessions too, so subtract sessSched before taking
+                          // the floor — otherwise a normal (non-imported)
+                          // package double-counts its live-scheduled sessions
+                          // as both "completed" and "scheduled".
                           const sessUsed = Math.max(
                             svc.sessionsCompleted ?? 0,
-                            svc.sessionsUsed ?? 0,
+                            (svc.sessionsUsed ?? 0) - sessSched,
                           );
-                          const sessSched = svc.sessionsScheduled ?? 0;
                           const sessRemaining = Math.max(
                             0,
                             sessTotal - sessUsed - sessSched,
