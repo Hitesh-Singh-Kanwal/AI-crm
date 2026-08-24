@@ -4,22 +4,6 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Check, Loader2, AlertCircle, MailX } from 'lucide-react'
 
-function resolveApiBase() {
-  const fromEnv = (
-    (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL) ||
-    ''
-  ).replace(/\/$/, '')
-  if (fromEnv) return fromEnv
-  // Live fallback when the Vercel env var was not baked into the build.
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname || ''
-    if (host.includes('cadance.ai') || host.includes('vercel.app')) {
-      return 'https://backend.cadance.ai'
-    }
-  }
-  return 'http://localhost:8080'
-}
-
 function Shell({ children }) {
   return (
     <div
@@ -35,7 +19,6 @@ function UnsubscribeInner() {
   const searchParams = useSearchParams()
   const token = useMemo(() => String(searchParams.get('token') || '').trim(), [searchParams])
   const view = String(searchParams.get('view') || '').toLowerCase()
-  const apiBase = useMemo(() => resolveApiBase(), [])
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -43,9 +26,9 @@ function UnsubscribeInner() {
   const [record, setRecord] = useState(null)
   const [done, setDone] = useState(false)
 
-  const backendConfirmUrl = token
-    ? `${apiBase}/api/email-unsubscribe/public/${encodeURIComponent(token)}/confirm`
-    : ''
+  // Same-origin proxy — avoids CORS / wrong baked API base on the public page.
+  const proxyBase = token ? `/api/public-unsubscribe/${encodeURIComponent(token)}` : ''
+  const confirmUrl = proxyBase ? `${proxyBase}/confirm` : ''
 
   const load = useCallback(async () => {
     if (!token) {
@@ -56,25 +39,24 @@ function UnsubscribeInner() {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(
-        `${apiBase}/api/email-unsubscribe/public/${encodeURIComponent(token)}`,
-      )
+      const res = await fetch(proxyBase, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok || !json?.success) {
-        setError(json?.message || 'This unsubscribe link is invalid or has expired.')
+        setError(
+          json?.message ||
+            'This unsubscribe link is invalid. Links do not expire — ask the studio for a new email if needed.',
+        )
         setRecord(null)
         return
       }
       setRecord(json.data)
       if (json.data?.status === 'unsubscribed') setDone(true)
     } catch {
-      setError(
-        'Unable to reach the server from this page. Use the button below to unsubscribe directly.',
-      )
+      setError('Unable to reach the server from this page. Use the button below to unsubscribe directly.')
     } finally {
       setLoading(false)
     }
-  }, [token, apiBase])
+  }, [token, proxyBase])
 
   useEffect(() => {
     load()
@@ -85,19 +67,15 @@ function UnsubscribeInner() {
     setSubmitting(true)
     setError('')
     try {
-      const res = await fetch(
-        `${apiBase}/api/email-unsubscribe/public/${encodeURIComponent(token)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        },
-      )
+      const res = await fetch(proxyBase, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      })
       const json = await res.json().catch(() => null)
       if (!res.ok || !json?.success) {
-        // Fall through to backend HTML confirm (no CORS / SPA dependency).
-        if (backendConfirmUrl) {
-          window.location.href = backendConfirmUrl
+        if (confirmUrl) {
+          window.location.href = confirmUrl
           return
         }
         setError(json?.message || 'Could not unsubscribe. Please try again.')
@@ -106,8 +84,8 @@ function UnsubscribeInner() {
       setRecord(json.data)
       setDone(true)
     } catch {
-      if (backendConfirmUrl) {
-        window.location.href = backendConfirmUrl
+      if (confirmUrl) {
+        window.location.href = confirmUrl
         return
       }
       setError('Could not unsubscribe. Please try again.')
@@ -134,9 +112,9 @@ function UnsubscribeInner() {
           <AlertCircle className="h-8 w-8 text-destructive mx-auto" />
           <h1 className="text-lg font-semibold text-foreground">Link unavailable</h1>
           <p className="text-sm text-muted-foreground">{error}</p>
-          {backendConfirmUrl ? (
+          {confirmUrl ? (
             <a
-              href={backendConfirmUrl}
+              href={confirmUrl}
               className="inline-flex h-11 items-center justify-center rounded-xl bg-[#1c1c1c] px-4 text-sm font-semibold text-white"
             >
               Unsubscribe anyway
