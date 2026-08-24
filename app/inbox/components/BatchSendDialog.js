@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/toast'
 import { cn, getInitials } from '@/lib/utils'
 import api from '@/lib/api'
 import { htmlToPlainText, plainTextToHtml, toScheduleIsoOrNull, getScheduleMinLocalDatetime } from '@/lib/emailSend'
+import { htmlHasStudioFooter } from '@/lib/email-footer'
 import { fetchInboxContacts, INBOX_CONTACT_PAGE_SIZE } from '@/lib/inbox-contact-search'
 import InboxContactPagination from '@/app/inbox/components/InboxContactPagination'
 import { ScaledInboxHtmlEmail } from '@/app/inbox/components/InboxHtmlEmailFrame'
@@ -265,6 +266,7 @@ export default function BatchSendDialog({
         const htmlBody = String(contentHtml || '').trim()
           ? String(contentHtml).trim()
           : plainTextToHtml(message.trim())
+        const footerSaved = usingHtmlTemplate && htmlHasStudioFooter(htmlBody)
         const result = await api.post('/api/email/', {
           leads: leadsPayload,
           subject: subject.trim(),
@@ -273,7 +275,12 @@ export default function BatchSendDialog({
           scheduleNow: scheduleMode === 'now',
           scheduleDate: scheduleIso,
           ...(usingHtmlTemplate
-            ? { useTemplate: true, emailType: 'template' }
+            ? {
+                useTemplate: true,
+                emailType: 'template',
+                hasFooter: footerSaved,
+                ...(footerSaved ? { skipStudioFooter: true } : {}),
+              }
             : {}),
         })
         if (!result.success) {

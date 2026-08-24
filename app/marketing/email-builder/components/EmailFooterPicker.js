@@ -163,8 +163,8 @@ export default function EmailFooterPicker({
           </p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             {scopedToOne
-              ? 'Only this studio’s footer is available.'
-              : 'Choose a location footer to inject at the bottom.'}
+              ? 'Only this studio’s footer is available. If you skip this, send will add the active branch footer automatically.'
+              : 'Choose a location footer to inject. If you skip this, send will add the active branch footer automatically.'}
           </p>
         </div>
 

@@ -188,11 +188,15 @@ export default function WorkflowEmailTemplatePickerDialog({
     if (!tpl?._id) return
     let htmlBody = tpl.htmlBody || ''
     let subject = tpl.subject || ''
+    let hasFooter = typeof tpl.hasFooter === 'boolean' ? tpl.hasFooter : null
     if (!htmlBody) {
       const result = await api.get(`/api/email/builder/${tpl._id}`)
       if (result.success) {
         htmlBody = result.data?.htmlBody || ''
         subject = result.data?.subject || subject
+        if (typeof result.data?.hasFooter === 'boolean') {
+          hasFooter = result.data.hasFooter
+        }
       }
     }
     if (!String(htmlBody || '').trim()) {
@@ -207,6 +211,10 @@ export default function WorkflowEmailTemplatePickerDialog({
       emailTemplateSubject: subject || 'Untitled template',
       subject: subject || '',
       htmlBody,
+      hasFooter:
+        hasFooter === true || hasFooter === false
+          ? hasFooter
+          : /data-cadance-studio-footer\s*=/i.test(String(htmlBody || '')),
     })
     onClose?.()
   }
