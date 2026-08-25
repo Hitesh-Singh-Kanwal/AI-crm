@@ -403,6 +403,10 @@ export default function NewEnrollmentPackageInline({
       )
     : 0;
   const collectsFirstInstallment = form.billingType === "payment_plan" || scheduledFlexible;
+  // One-time payments have nothing to split — the amount collected now is
+  // always the full payable balance, so the field is locked the same way a
+  // first installment amount is (that one's fixed by the schedule instead).
+  const collectAmountIsFixed = collectsFirstInstallment || form.billingType === "one_time";
 
   // The wallet split settles part of a one-time balance already, so the card only ever
   // charges what's left for the chosen method.
@@ -1173,7 +1177,7 @@ export default function NewEnrollmentPackageInline({
                           step="0.01"
                           placeholder="0.00"
                           value={form.billing.collectAmount}
-                          readOnly={collectsFirstInstallment}
+                          readOnly={collectAmountIsFixed}
                           onChange={(e) =>
                             setForm((p) => ({
                               ...p,
@@ -1181,7 +1185,7 @@ export default function NewEnrollmentPackageInline({
                             }))
                           }
                           className={`h-9 w-full rounded-lg border border-border pl-6 pr-3 text-[12px] outline-none focus:border-primary ${
-                            collectsFirstInstallment ? "bg-muted/30 text-muted-foreground" : "bg-background"
+                            collectAmountIsFixed ? "bg-muted/30 text-muted-foreground" : "bg-background"
                           }`}
                         />
                       </div>

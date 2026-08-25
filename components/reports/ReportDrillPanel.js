@@ -3,13 +3,18 @@
 import { useEffect, useState } from 'react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { api } from '@/lib/api'
+import { getEffectiveBranch } from '@/lib/auth'
 import { buildReportQuery } from '@/lib/reports/reportFilters'
 
 export function ReportDrillPanel({ open, onClose, reportSlug, recordId, title, renderDetail, filters = {} }) {
   const [detail, setDetail] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
-  const filterKey = buildReportQuery(filters, { page: 1, pageSize: 1 })
+  // Same fallback as useReportData: an untouched Studio filter follows the
+  // location switcher explicitly rather than relying on the header alone —
+  // some detail endpoints scope supplementary data (e.g. revenue) by it too.
+  const effectiveFilters = filters.studioId ? filters : { ...filters, studioId: getEffectiveBranch() || '' }
+  const filterKey = buildReportQuery(effectiveFilters, { page: 1, pageSize: 1 })
 
   useEffect(() => {
     if (!open || !recordId) return
