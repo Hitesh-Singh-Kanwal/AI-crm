@@ -6,6 +6,8 @@ import { FILTER_SIDEBAR_STYLE, FILTER_SIDEBAR_WIDTH_CLASS } from '@/lib/filter-s
 import DateRangePresets from '@/components/dashboard-builder/DateRangePresets'
 import { Select } from '@/components/ui/select'
 import { dateBoundsFromPresetDays } from '@/lib/reports/reportFilters'
+import { isSuperAdmin, hasPermission } from '@/lib/permissions'
+import { getEffectiveBranch } from '@/lib/auth'
 import GroupedLeadFilterFields from '@/components/shared/GroupedLeadFilterFields'
 import { DASHBOARD_DETAILS_FILTER_CATALOGS, REPORT_FILTER_CATALOGS } from '@/lib/report-filter-catalogs'
 import { buildCatalogFromColumns } from '@/lib/reports/buildCatalogFromColumns'
@@ -27,6 +29,15 @@ export function ReportFilterPanel({
   savedViewsSlot = null,
 }) {
   const [draft, setDraft] = useState(appliedFilters)
+  // "All studios" only makes sense for someone allowed to see more than one
+  // location at once — everyone else is limited to the studio(s) `studios`
+  // already reflects (server-scoped to their assignment).
+  const canViewAllLocations = isSuperAdmin() || hasPermission('reports', 'overview', 'viewAllLocations')
+  // Shown only — an untouched studioId ('') isn't stored as this, it still
+  // means "follow the location switcher" until the user actually picks
+  // something here (see useReportData, which resolves the same fallback for
+  // the actual request).
+  const effectiveStudioId = getEffectiveBranch() || ''
   const catalog =
     DASHBOARD_DETAILS_FILTER_CATALOGS[catalogKey] ||
     REPORT_FILTER_CATALOGS[catalogKey] ||
@@ -50,7 +61,11 @@ export function ReportFilterPanel({
       ...draft,
       ...bounds,
       datePreset: String(defaultDateRangeDays || 30),
-      studioId: '',
+      // '' clears any explicit override, deferring back to whatever studio the
+      // location switcher up top has selected. A restricted user has no such
+      // fallback choice to defer to here, so pin their (only) selectable studio
+      // instead of a blank/unmatched value.
+      studioId: canViewAllLocations ? '' : studios[0]?.id || '',
       teacherId: '',
       programId: '',
       ...EMPTY_DRAFT_EXTRAS,
@@ -109,8 +124,15 @@ export function ReportFilterPanel({
           <div className="grid grid-cols-1 gap-3">
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold uppercase tracking-[0.04em] text-foreground/55">Studio</label>
-              <Select value={draft.studioId || ''} onChange={(e) => setDraft((d) => ({ ...d, studioId: e.target.value }))}>
-                <option value="">All studios</option>
+              <Select
+                value={draft.studioId || effectiveStudioId}
+                onChange={(e) => setDraft((d) => ({ ...d, studioId: e.target.value }))}
+              >
+                {/* "all" is an explicit choice, distinct from leaving the filter
+                    untouched (''), which instead defers to the studio picked in
+                    the location switcher up top — shown here pre-selected so
+                    it's clear which studio is actually in effect. */}
+                {canViewAllLocations && <option value="all">All studios</option>}
                 {studios.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </Select>
             </div>

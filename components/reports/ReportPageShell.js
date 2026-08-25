@@ -15,6 +15,7 @@ import { useReportData } from '@/lib/hooks/useReportData'
 import { useReportPreferences } from '@/lib/hooks/useReportPreferences'
 import { useReportFilterOptions } from '@/lib/hooks/useReportFilterOptions'
 import { parseReportFiltersFromSearchParams, buildReportQuery } from '@/lib/reports/reportFilters'
+import { groupReportRowsByStudio } from '@/lib/reports/groupRowsByLocation'
 import { countActiveReportFilters } from '@/lib/reports/buildReportQueryParams'
 import { getActiveReportFilterChips, removeReportFilterChip } from '@/lib/reports/reportActiveFilterChips'
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
@@ -88,6 +89,18 @@ function ReportPageShellContent({
   })
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  // studio-comparison's rows already *are* one per studio by design — grouping
+  // it again would just wrap each row in its own redundant single-row section.
+  //
+  // teacher-performance and teacher-lesson-count are one row per *teacher*,
+  // and their `studioName` is that teacher's own home studio (see
+  // studioNameForTeacher on the backend) — not the location the row's lesson
+  // data came from. A teacher based at another studio who also teaches at the
+  // one actually selected shows a "foreign" studioName on an otherwise
+  // correctly-scoped row, which isn't a second location's worth of data to
+  // segregate; grouping on it just fabricates a bogus extra section.
+  const NO_LOCATION_GROUPING_SLUGS = new Set(['studio-comparison', 'teacher-performance', 'teacher-lesson-count'])
+  const locationGroups = NO_LOCATION_GROUPING_SLUGS.has(slug) ? null : groupReportRowsByStudio(rows)
 
   return (
     <ReportTimezoneProvider timeZone={reportTimezone}>
@@ -181,6 +194,20 @@ function ReportPageShellContent({
       <div className="mt-2">
         {isLoading ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+        ) : locationGroups ? (
+          <div className="space-y-6">
+            {locationGroups.map((group) => (
+              <div key={group.studioName}>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">{group.studioName}</h3>
+                {/* `summary` is the org-wide total for the whole response, not this
+                    one studio's slice — passing it into every section would show
+                    the same blended number under each heading. Table components
+                    that show a summary card (e.g. TeacherLessonsTaughtReport)
+                    already degrade cleanly with it omitted. */}
+                <TableComponent rows={group.rows} onRowClick={(row) => setDrillId(row.id)} />
+              </div>
+            ))}
+          </div>
         ) : (
           <TableComponent rows={rows} summary={summary} onRowClick={(row) => setDrillId(row.id)} />
         )}
