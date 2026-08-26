@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..700;1,400..600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -831,3 +832,96 @@
 }
 
 
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Owner Dashboard — the sectioned, editorial "board meeting" page at /dashboard.
+ * Ports the DWM concept's layout language onto this app's tokens, so every
+ * surface/ink/accent below resolves through --card / --foreground /
+ * --studio-primary and therefore flips with light ↔ dark automatically.
+ * ──────────────────────────────────────────────────────────────────────────── */
+@layer components {
+  /* Editorial display face — the concept's Didot slot. Body text stays Inter. */
+  .od-display {
+    font-family: 'Playfair Display', 'Didot', 'Bodoni MT', Georgia, 'Times New Roman', serif;
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+
+  /* The concept's gold foil text treatment, re-cut in the brand ramp. */
+  .od-foil {
+    background: linear-gradient(
+      115deg,
+      var(--studio-primary-dark) 0%,
+      var(--studio-primary) 38%,
+      var(--studio-gradient) 50%,
+      var(--studio-primary) 62%,
+      var(--studio-primary-dark) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /*
+   * Numeric displays (KPI values, funnel counts, capacity %, connector rates)
+   * stay in the sans body face at a heavy weight instead of the serif display
+   * face. Playfair Display's figures are proportional old-style numerals —
+   * digit widths and heights vary by digit and glyphs like "$" sit at a
+   * different height, so a run like "$2,731" next to "13" or "0%" reads as
+   * mismatched sizes even though the font-size is identical. Tabular,
+   * same-height sans digits read as one consistent number system.
+   */
+  .od-figure {
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .od-hairline {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--studio-primary) 45%, transparent),
+      transparent
+    );
+  }
+
+  /* Scroll-in reveal. Falls back to "always visible" under reduced motion. */
+  .od-reveal {
+    opacity: 0;
+    transform: translateY(22px);
+    transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1), transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .od-reveal.od-in {
+    opacity: 1;
+    transform: none;
+  }
+  .od-reveal-d1 { transition-delay: 0.08s; }
+  .od-reveal-d2 { transition-delay: 0.16s; }
+  .od-reveal-d3 { transition-delay: 0.24s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .od-reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+
+  /* 1px-gutter bento grid — the gutter IS the border, as in the concept. */
+  .od-bento {
+    display: grid;
+    gap: 1px;
+    background: hsl(var(--border));
+    border: 1px solid hsl(var(--border));
+    border-radius: 20px;
+    overflow: hidden;
+  }
+  .od-bento > * {
+    background: hsl(var(--card));
+  }
+}
