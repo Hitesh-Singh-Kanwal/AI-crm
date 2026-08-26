@@ -73,25 +73,27 @@ function SectionNav({ sections }) {
   //    varies), the ::before paints an opaque strip directly above the bar that
   //    travels with it and hides anything passing behind.
   //
-  //    That strip must not be clipped, so overflow-x lives on the inner rail
-  //    instead of the <nav> — `overflow-x: auto` computes overflow-y to `auto`
-  //    too, which would cut off any pseudo-element outside the box.
-  //
   //  - The background stays fully opaque: translucency only reads correctly
   //    where backdrop-filter applies, which inside a scroll container it often
   //    does not, and the fallback is plain alpha with content showing through.
+  //
+  // The pills WRAP rather than scroll: an `overflow-x-auto` rail here clipped
+  // the trailing pills whenever the row was wider than the viewport, and with
+  // the scrollbar hidden there was nothing to signal they were there. Wrapping
+  // keeps a single row wherever it fits and spills to a second row when it
+  // doesn't, so no entry is ever hidden.
   return (
     <nav
       className="sticky top-0 z-40 -mx-3 border-b border-border bg-background px-3 py-2.5 shadow-[0_4px_12px_-8px_rgb(0_0_0/0.35)] sm:-mx-4 sm:px-4 lg:-mx-2 lg:px-2
         before:absolute before:inset-x-0 before:bottom-full before:h-6 before:bg-background before:content-['']"
     >
-      <div className="scrollbar-hide flex gap-1.5 overflow-x-auto">
+      <div className="flex flex-wrap gap-1.5">
         {sections.map((s) => (
           <a
             key={s.id}
             href={`#${s.id}`}
             onClick={(e) => jumpTo(e, s.id)}
-            className={`flex-none whitespace-nowrap rounded-full border px-3.5 py-2 text-[9.5px] font-bold tracking-[0.16em] transition-colors ${
+            className={`shrink-0 whitespace-nowrap rounded-full border px-3.5 py-2 text-[9.5px] font-bold tracking-[0.16em] transition-colors ${
               active === s.id
                 ? 'border-[var(--studio-primary)] bg-[var(--studio-primary)] text-brand-foreground'
                 : 'border-transparent text-muted-foreground hover:border-[color-mix(in_srgb,var(--studio-primary)_30%,transparent)] hover:text-foreground'
@@ -240,9 +242,6 @@ export default function OwnerDashboardPage() {
         <div>
           <p className="text-[15px] font-bold tracking-[0.2em] text-foreground">
             OWNER <span className="text-[var(--studio-primary)]">DASHBOARD</span>
-          </p>
-          <p className="mt-1 text-[8.5px] font-semibold tracking-[0.34em] text-muted-foreground">
-            EXECUTIVE OPERATING SYSTEM
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
