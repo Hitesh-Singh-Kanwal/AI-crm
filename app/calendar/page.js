@@ -505,20 +505,33 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
           membershipCoverageSet.has(`${String(c._id ?? c)}::${serviceCode}`)
         ));
 
-    const _isActuallyPaid =
+    // Coarse "paid" signals that don't look at this session's own credit:
+    // an explicit payment on the event, a non-installment package (one-time /
+    // pay-per-session — settled at purchase), a fully-paid enrollment, or a
+    // non-package charge method that always settles up front.
+    const paidByCoarseSignal =
       appt.payment?.collected ||
-      // Non-installment packages (one-time, pay-per-session) are settled at
-      // purchase/booking — only flexible & payment-plan accrue credits over time.
       (appt.chargeMethod === "package" &&
         appt.packageBillingType !== "flexible" &&
         appt.packageBillingType !== "payment_plan") ||
       pkgFullyPaid ||
-      coveredByCredits ||
-      freePackageService ||
       appt.chargeMethod === "credits" ||
       appt.chargeMethod === "direct" ||
       appt.chargeMethod === "mixed" ||
       coveredByMembership;
+
+    // When we could resolve the package's credit data, whether THIS session is
+    // covered by a purchased/paid credit is authoritative and vetoes the coarse
+    // signals above: a one-time (or fully-paid) package that's been booked past
+    // the number of sessions it actually paid for must not read as "Paid" just
+    // because of its billing type. An explicit payment recorded on the event
+    // still counts (e.g. the extra session was paid for separately).
+    const packageCreditDataResolved =
+      appt.chargeMethod === "package" &&
+      (sessionsPaidFor != null || sessionsRemaining != null);
+    const _isActuallyPaid = packageCreditDataResolved
+      ? coveredByCredits || freePackageService || Boolean(appt.payment?.collected)
+      : paidByCoarseSignal || coveredByCredits || freePackageService;
     const paymentCollected = _isActuallyPaid ? "paid" : "unpaid";
 
     return {
@@ -1462,13 +1475,18 @@ function showEventTooltip(e, props) {
     ? `Collected (${raw.payment.method || ""})`
     : null;
 
+  // Prefer the per-session "paid" verdict computed in transformAppointments
+  // (credit-aware — an over-booked package session reads as unpaid); fall back
+  // to the coarse method check only when it wasn't provided.
   const isPaid =
-    (chargeMethod === "package" && raw.packageBillingType !== "flexible") ||
-    chargeMethod === "credits" ||
-    chargeMethod === "direct" ||
-    chargeMethod === "mixed" ||
-    chargeMethod === "membership" ||
-    raw.payment?.collected;
+    props.paymentCollected != null
+      ? props.paymentCollected === "paid"
+      : (chargeMethod === "package" && raw.packageBillingType !== "flexible") ||
+        chargeMethod === "credits" ||
+        chargeMethod === "direct" ||
+        chargeMethod === "mixed" ||
+        chargeMethod === "membership" ||
+        raw.payment?.collected;
   const paymentStatus = isPaid ? "Paid" : "Unpaid";
   const paymentStatusColor = isPaid ? "#22c55e" : "#ef4444";
 
