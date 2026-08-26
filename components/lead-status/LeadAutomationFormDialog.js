@@ -277,12 +277,14 @@ function ConditionValue({ cond, index, saving, activeStatuses, catalog, updateCo
         {selected?.description ? (
           <p className="text-xs text-muted-foreground leading-relaxed">{selected.description}</p>
         ) : null}
-        {selected?.requiresEvidence ||
-        cond.event === 'opt_out_requested' ||
-        cond.event === 'human_escalation' ? (
+        {cond.event === 'opt_out_requested' || cond.event === 'human_escalation' ? (
           <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
             This event only fires with verified evidence. Also add an evidence/reason condition below
             so the rule cannot match by mistake.
+          </p>
+        ) : selected?.requiresEvidence ? (
+          <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+            This event only fires when the AI captures a supporting quote — no extra condition needed.
           </p>
         ) : null}
       </div>
