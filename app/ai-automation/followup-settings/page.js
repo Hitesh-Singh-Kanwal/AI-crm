@@ -12,15 +12,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
 import { getEffectiveBranch } from '@/lib/auth'
-import { isSuperAdmin } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import WorkflowStageMultiSelect from '@/components/workflow/WorkflowStageMultiSelect'
 import { formatLeadStageLabel } from '@/lib/lead-stages'
 
-const ORG_SCOPE = '__org__'
 const MIN_FOLLOWUPS = 1
 const MAX_FOLLOWUPS = 10
 const DEFAULT_FOLLOWUP_STAGES = ['engaged']
+/** Empty scope = Navbar is All branches and user has not picked a studio yet. */
+const NO_BRANCH = ''
 
 function emptyFollowup(overrides = {}) {
   return {
@@ -74,7 +74,7 @@ function settingsToForm(raw) {
   if (raw && (raw.followupCount != null || raw.followupIntervalHours != null)) {
     const count = Math.min(
       MAX_FOLLOWUPS,
-      Math.max(MIN_FOLLOWUPS, Number(raw.followupCount) || 1)
+      Math.max(MIN_FOLLOWUPS, Number(raw.followupCount) || 1),
     )
     const hours = String(raw.followupIntervalHours ?? 1)
     const minutes = String(raw.followupIntervalMinutes ?? 0)
@@ -89,7 +89,7 @@ function settingsToForm(raw) {
           intervalMinutes: minutes,
           useAiMessage: !hasCustomMessage,
           message: hasCustomMessage ? message : '',
-        })
+        }),
       ),
     }
   }
@@ -119,7 +119,7 @@ function summarizeFollowups(item) {
     if (item.followupCount != null) {
       return `${item.followupCount} follow-ups every ${formatIntervalLabel(
         item.followupIntervalHours ?? 0,
-        item.followupIntervalMinutes ?? 0
+        item.followupIntervalMinutes ?? 0,
       )}${stagePart}`
     }
     return 'No follow-ups configured'
@@ -129,42 +129,39 @@ function summarizeFollowups(item) {
 
 export default function FollowupSettingsPage() {
   const toast = useToast()
-  const superAdmin = isSuperAdmin()
-  const effectiveBranch = getEffectiveBranch()
 
+  const [navBranch, setNavBranch] = useState(() => getEffectiveBranch() || NO_BRANCH)
   const [locations, setLocations] = useState([])
-  const [scope, setScope] = useState(() => {
-    if (superAdmin) return ORG_SCOPE
-    return effectiveBranch || ORG_SCOPE
-  })
+  const [scope, setScope] = useState(() => getEffectiveBranch() || NO_BRANCH)
   const [form, setForm] = useState(() => settingsToForm(null))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [locationOverrides, setLocationOverrides] = useState([])
 
-  const scopeOptions = useMemo(() => {
-    const options = [{ value: ORG_SCOPE, label: 'Organization default' }]
-    locations.forEach((loc) => {
-      options.push({ value: String(loc._id), label: loc.name || 'Unnamed location' })
-    })
-    return options
-  }, [locations])
+  const navbarLocked = Boolean(navBranch)
 
-  const isLocationScope = scope !== ORG_SCOPE
+  const scopeOptions = useMemo(
+    () =>
+      locations.map((loc) => ({
+        value: String(loc._id),
+        label: loc.name || 'Unnamed location',
+      })),
+    [locations],
+  )
 
+  const hasBranchScope = Boolean(scope)
   const activeScopeLabel = useMemo(() => {
-    if (scope === ORG_SCOPE) return 'Organization default'
+    if (!scope) return 'Select a branch'
     return locations.find((loc) => String(loc._id) === String(scope))?.name || 'Selected location'
   }, [scope, locations])
 
-  // Enable/disable is per-location only — never blocks other locations from org default view.
-  const scheduleDisabled = isLocationScope && form.agentFollowupEnabled === false
+  const scheduleDisabled = hasBranchScope && form.agentFollowupEnabled === false
 
   const loadLocations = useCallback(async () => {
     const result = await api.get('/api/location?limit=200')
     if (!result.success) return []
     const locs = (result.data || []).filter(
-      (loc) => loc.status?.toLowerCase() === 'active' || !loc.status
+      (loc) => loc.status?.toLowerCase() === 'active' || !loc.status,
     )
     setLocations(locs)
     return locs
@@ -176,14 +173,18 @@ export default function FollowupSettingsPage() {
 
   const loadSettings = useCallback(
     async (nextScope) => {
+      if (!nextScope) {
+        setLocationOverrides([])
+        applySettings(null)
+        setLoading(false)
+        return
+      }
+
       setLoading(true)
       try {
-        const isOrgScope = nextScope === ORG_SCOPE
-        const url = isOrgScope
-          ? '/api/followup-settings'
-          : `/api/followup-settings?locationID=${encodeURIComponent(nextScope)}`
-
-        const result = await api.get(url)
+        const result = await api.get(
+          `/api/followup-settings?locationID=${encodeURIComponent(nextScope)}`,
+        )
         if (!result.success) {
           toast.error({
             title: 'Unable to load settings',
@@ -193,15 +194,13 @@ export default function FollowupSettingsPage() {
           return
         }
 
-        const data = result.data
-        if (Array.isArray(data)) {
-          const orgConfig = data.find((item) => item.locationID == null)
-          const overrides = data.filter((item) => item.locationID != null)
-          setLocationOverrides(overrides)
-          applySettings(orgConfig)
+        applySettings(result.data)
+        // Keep override list for quick jumps (superadmin / multi-branch).
+        const all = await api.get('/api/followup-settings')
+        if (all.success && Array.isArray(all.data)) {
+          setLocationOverrides(all.data.filter((item) => item.locationID != null))
         } else {
           setLocationOverrides([])
-          applySettings(data)
         }
       } catch {
         toast.error({ title: 'Error', message: 'Failed to load follow-up settings.' })
@@ -210,8 +209,15 @@ export default function FollowupSettingsPage() {
         setLoading(false)
       }
     },
-    [applySettings, toast]
+    [applySettings, toast],
   )
+
+  const resolveScopeFromNav = useCallback((branch, locs) => {
+    if (branch && locs.some((loc) => String(loc._id) === String(branch))) {
+      return String(branch)
+    }
+    return NO_BRANCH
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -220,19 +226,10 @@ export default function FollowupSettingsPage() {
       const locs = await loadLocations()
       if (cancelled) return
 
-      let initialScope = scope
-      if (!superAdmin) {
-        const branch = getEffectiveBranch()
-        if (branch && locs.some((loc) => String(loc._id) === String(branch))) {
-          initialScope = branch
-        } else if (locs.length === 1) {
-          initialScope = String(locs[0]._id)
-        } else {
-          initialScope = ORG_SCOPE
-        }
-        setScope(initialScope)
-      }
-
+      const branch = getEffectiveBranch() || NO_BRANCH
+      setNavBranch(branch)
+      const initialScope = resolveScopeFromNav(branch, locs)
+      setScope(initialScope)
       await loadSettings(initialScope)
     }
 
@@ -242,6 +239,19 @@ export default function FollowupSettingsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Keep Applies to in sync with the Navbar branch switcher.
+  useEffect(() => {
+    const onBranchChange = async () => {
+      const branch = getEffectiveBranch() || NO_BRANCH
+      setNavBranch(branch)
+      const nextScope = resolveScopeFromNav(branch, locations)
+      setScope(nextScope)
+      await loadSettings(nextScope)
+    }
+    window.addEventListener('branch-change', onBranchChange)
+    return () => window.removeEventListener('branch-change', onBranchChange)
+  }, [locations, loadSettings, resolveScopeFromNav])
 
   async function handleScopeChange(nextScope) {
     setScope(nextScope)
@@ -278,8 +288,16 @@ export default function FollowupSettingsPage() {
   }
 
   function validateForm() {
+    if (!hasBranchScope) {
+      toast.error({
+        title: 'Branch required',
+        message: 'Select a studio branch to save follow-up settings for.',
+      })
+      return false
+    }
+
     // Location can be saved with follow-ups turned off for that location only.
-    if (isLocationScope && form.agentFollowupEnabled === false) return true
+    if (form.agentFollowupEnabled === false) return true
 
     if (!Array.isArray(form.followupStages) || form.followupStages.length !== 1) {
       toast.error({
@@ -340,6 +358,8 @@ export default function FollowupSettingsPage() {
     setSaving(true)
     try {
       const body = {
+        locationID: scope,
+        agentFollowupEnabled: form.agentFollowupEnabled !== false,
         followupStages: normalizeFollowupStages(form.followupStages),
         followups: form.followups.map((step) => ({
           intervalHours: Number(step.intervalHours),
@@ -348,19 +368,11 @@ export default function FollowupSettingsPage() {
         })),
       }
 
-      if (isLocationScope) {
-        // Toggle applies only to this location — other locations are unchanged.
-        body.locationID = scope
-        body.agentFollowupEnabled = form.agentFollowupEnabled !== false
-      }
-
       const result = await api.put('/api/followup-settings', body)
       if (result.success) {
         toast.success({
           title: 'Saved',
-          message: isLocationScope
-            ? `Follow-up settings updated for ${activeScopeLabel}.`
-            : 'Organization default follow-up schedule updated.',
+          message: `Follow-up settings updated for ${activeScopeLabel}.`,
         })
         await loadSettings(scope)
       } else {
@@ -386,79 +398,81 @@ export default function FollowupSettingsPage() {
           <CardHeader>
             <CardTitle className="text-lg">Follow-up schedule</CardTitle>
             <CardDescription>
-              Add each follow-up with its own wait interval and message. Location-specific settings
-              override the organization default.
+              Settings are saved per studio. The branch in the navbar is used when one is selected.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {superAdmin ? (
-              <div className="space-y-2">
-                <label htmlFor="followup-scope" className="text-sm font-medium">
-                  Applies to
-                </label>
-                <Select
-                  id="followup-scope"
-                  value={scope}
-                  onChange={(e) => handleScopeChange(e.target.value)}
-                  disabled={loading || saving}
-                >
-                  {scopeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Organization default sets the schedule template. Pick a location to turn follow-ups
-                  on or off for that location only.
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
-                <span className="font-medium text-foreground">Applies to: </span>
-                <span className="text-muted-foreground">{activeScopeLabel}</span>
-              </div>
-            )}
+            <div className="space-y-2">
+              <label htmlFor="followup-scope" className="text-sm font-medium">
+                Applies to
+              </label>
+              {navbarLocked ? (
+                <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
+                  <span className="font-medium text-foreground">{activeScopeLabel}</span>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Taken from the branch selected in the navbar. Switch branches there to edit
+                    another studio.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <Select
+                    id="followup-scope"
+                    value={scope || NO_BRANCH}
+                    onChange={(e) => handleScopeChange(e.target.value)}
+                    disabled={loading || saving}
+                  >
+                    <option value={NO_BRANCH}>Select a branch…</option>
+                    {scopeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Navbar is on All branches — pick the studio you want to save follow-up settings
+                    for.
+                  </p>
+                </>
+              )}
+            </div>
 
-            {loading ? (
+            {!hasBranchScope ? (
+              <div className="rounded-lg border border-dashed border-border bg-muted/10 px-4 py-8 text-center text-sm text-muted-foreground">
+                Select a branch above to load and edit follow-up settings.
+              </div>
+            ) : loading ? (
               <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading settings…
               </div>
             ) : (
               <>
-                {isLocationScope ? (
-                  <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 p-4">
-                    <div>
-                      <div className="text-sm font-medium">
-                        Enable agent follow-ups for {activeScopeLabel}
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Location-only switch. When off, follow-ups stop for leads at{' '}
-                        <span className="font-medium text-foreground">{activeScopeLabel}</span> —
-                        other locations are not affected. Individual leads can still opt out on their
-                        profile.
-                      </p>
+                <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 p-4">
+                  <div>
+                    <div className="text-sm font-medium">
+                      Enable agent follow-ups for {activeScopeLabel}
                     </div>
-                    <Switch
-                      checked={form.agentFollowupEnabled !== false}
-                      onCheckedChange={(checked) =>
-                        setForm((prev) => ({ ...prev, agentFollowupEnabled: checked }))
-                      }
-                      disabled={saving}
-                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Location-only switch. When off, follow-ups stop for leads at{' '}
+                      <span className="font-medium text-foreground">{activeScopeLabel}</span> —
+                      other locations are not affected. Individual leads can still opt out on their
+                      profile.
+                    </p>
                   </div>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-border bg-muted/10 px-4 py-3 text-sm text-muted-foreground">
-                    Select a location above to enable or disable follow-ups for that location only.
-                    Saving here updates the organization default schedule.
-                  </div>
-                )}
+                  <Switch
+                    checked={form.agentFollowupEnabled !== false}
+                    onCheckedChange={(checked) =>
+                      setForm((prev) => ({ ...prev, agentFollowupEnabled: checked }))
+                    }
+                    disabled={saving}
+                  />
+                </div>
 
                 <div
                   className={cn(
                     'space-y-4',
-                    scheduleDisabled && 'pointer-events-none opacity-50'
+                    scheduleDisabled && 'pointer-events-none opacity-50',
                   )}
                 >
                   <div className="space-y-2">
@@ -614,7 +628,11 @@ export default function FollowupSettingsPage() {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button onClick={handleSave} disabled={saving} variant="gradient">
+                  <Button
+                    onClick={handleSave}
+                    disabled={saving || !hasBranchScope}
+                    variant="gradient"
+                  >
                     {saving ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -630,13 +648,13 @@ export default function FollowupSettingsPage() {
           </CardContent>
         </Card>
 
-        {superAdmin && locationOverrides.length > 0 ? (
+        {locationOverrides.length > 0 ? (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Location overrides</CardTitle>
               <CardDescription>
-                These locations have custom follow-up settings that differ from the organization
-                default.
+                Studios with custom follow-up settings. Switch the navbar branch (or pick a branch
+                when on All branches) to edit one.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -649,10 +667,19 @@ export default function FollowupSettingsPage() {
                     <li key={String(item.locationID)}>
                       <button
                         type="button"
-                        onClick={() => handleScopeChange(String(item.locationID))}
+                        onClick={() => {
+                          if (navbarLocked) {
+                            toast.error({
+                              title: 'Switch branch',
+                              message: `Use the navbar to switch to ${locationName} to edit these settings.`,
+                            })
+                            return
+                          }
+                          handleScopeChange(String(item.locationID))
+                        }}
                         className={cn(
                           'flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-muted/40',
-                          String(scope) === String(item.locationID) && 'bg-muted/50'
+                          String(scope) === String(item.locationID) && 'bg-muted/50',
                         )}
                       >
                         <div>
@@ -662,7 +689,7 @@ export default function FollowupSettingsPage() {
                           </div>
                         </div>
                         <span className="text-xs font-medium text-[color:var(--studio-primary)]">
-                          Edit
+                          {navbarLocked ? 'View in navbar' : 'Edit'}
                         </span>
                       </button>
                     </li>
