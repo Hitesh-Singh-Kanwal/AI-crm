@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import SearchableSelect from '@/components/ui/searchable-select'
 import NewEnrollmentPackageInline from '@/app/calendar/components/NewEnrollmentPackageInline'
 import AssignMembershipForm from '@/components/membership/AssignMembershipForm'
 import api from '@/lib/api'
@@ -316,28 +316,12 @@ export default function CreateEnrollmentSheet({
                     {selectedCustomerLabel || 'Selected student'}
                   </p>
                 ) : (
-                  <>
-                    <div className="relative">
-                      <select
-                        value={selectedCustomerID}
-                        onChange={(e) => setSelectedCustomerID(e.target.value)}
-                        className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary"
-                      >
-                        <option value="">Select student…</option>
-                        {customerOptions.map((c) => (
-                          <option key={c.value} value={c.value}>
-                            {c.label}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                    </div>
-                    {selectedCustomerLabel && (
-                      <p className="text-[10px] text-muted-foreground mt-1 truncate">
-                        Selected: {selectedCustomerLabel}
-                      </p>
-                    )}
-                  </>
+                  <SearchableSelect
+                    value={selectedCustomerID}
+                    onChange={(v) => setSelectedCustomerID(v)}
+                    options={customerOptions}
+                    placeholder="Select student…"
+                  />
                 )}
               </div>
 
@@ -365,26 +349,12 @@ export default function CreateEnrollmentSheet({
               {!fixedCustomerID && (
                 <div className="rounded-xl border border-border bg-card p-3 mb-4">
                   <p className="text-[11px] font-medium text-muted-foreground mb-1">Student</p>
-                  <div className="relative">
-                    <select
-                      value={selectedCustomerID}
-                      onChange={(e) => setSelectedCustomerID(e.target.value)}
-                      className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary"
-                    >
-                      <option value="">Select student…</option>
-                      {customerOptions.map((c) => (
-                        <option key={c.value} value={c.value}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                  {selectedCustomerLabel && (
-                    <p className="text-[10px] text-muted-foreground mt-1 truncate">
-                      Selected: {selectedCustomerLabel}
-                    </p>
-                  )}
+                  <SearchableSelect
+                    value={selectedCustomerID}
+                    onChange={(v) => setSelectedCustomerID(v)}
+                    options={customerOptions}
+                    placeholder="Select student…"
+                  />
                 </div>
               )}
               <AssignMembershipForm
