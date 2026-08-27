@@ -15,6 +15,8 @@ import LessonsByCurriculumWidget from './LessonsByCurriculumWidget'
 import CurriculumProgressionWidget from './CurriculumProgressionWidget'
 import GoalsWidget from './GoalsWidget'
 import LeadsByUploadTypeWidget from './LeadsByUploadTypeWidget'
+import ExecutiveScorecardWidget from './ExecutiveScorecardWidget'
+import OperatingExceptionsWidget from './OperatingExceptionsWidget'
 import { withOwnRange, withRangeState } from './withOwnRange'
 
 /**
@@ -45,6 +47,27 @@ const PERMISSION = {
  * their own data directly instead of reading owner-overview (Leads by Source).
  */
 export const ownerDashboardWidgetRegistry = [
+  {
+    id: 'owner-executive-scorecard',
+    title: 'Executive Scorecard',
+    description: 'Headline metrics — revenue, lessons, leads, conversion, utilization — vs prior period and last year',
+    category: 'Overview',
+    // No single permission: each card self-blanks for any metric whose section
+    // the caller can't see, so the widget is safe to always offer.
+    component: withRangeState(ExecutiveScorecardWidget),
+    defaultSize: 'full',
+    allowedSizes: ['full'],
+  },
+  {
+    id: 'owner-operating-exceptions',
+    title: 'Operating Exceptions',
+    description: 'Booking risk, capacity ceilings and goal shortfalls flagged against a fixed threshold',
+    category: 'Overview',
+    permission: PERMISSION.lessons,
+    component: withOwnRange(OperatingExceptionsWidget),
+    defaultSize: 'half',
+    allowedSizes: ['half', 'full'],
+  },
   {
     id: 'owner-student-health-overview',
     title: 'Student Health Overview',

@@ -66,16 +66,41 @@ export function StackedBarRow({ rows = [] }) {
   )
 }
 
-/** A single stage card in a connected funnel. */
-export function FunnelStage({ label, value, metrics = [], highlight = false }) {
+/**
+ * A single stage card in a connected funnel. Grows to share the row width
+ * equally with its siblings (down to a min width, below which the row scrolls).
+ * `barPct` (0–100) draws a proportion bar so the funnel's narrowing is visible
+ * at a glance, not just in the numbers.
+ */
+export function FunnelStage({ label, value, metrics = [], barPct = null, highlight = false, onClick, active = false }) {
+  const Tag = onClick ? 'button' : 'div'
+  const emphasized = highlight || active
   return (
-    <div
-      className={`flex-none w-[190px] rounded-2xl border p-4 transition-colors ${
-        highlight ? 'border-[var(--studio-primary)] bg-[color-mix(in_srgb,var(--studio-primary)_6%,transparent)]' : 'border-border bg-card'
+    <Tag
+      {...(onClick ? { type: 'button', onClick } : {})}
+      className={`flex min-w-[150px] flex-1 flex-col rounded-2xl border p-4 text-left transition-colors ${
+        onClick ? 'cursor-pointer hover:border-[var(--studio-primary)] hover:shadow-sm' : ''
+      } ${
+        emphasized
+          ? 'border-[var(--studio-primary)] bg-[color-mix(in_srgb,var(--studio-primary)_7%,transparent)]'
+          : 'border-border bg-card'
       }`}
     >
       <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-1.5 text-[28px] font-bold leading-none tabular-nums text-foreground">{value}</p>
+      <p className="mt-1.5 bg-gradient-to-b from-muted-foreground to-foreground bg-clip-text text-[28px] font-bold leading-none tabular-nums text-transparent">
+        {value}
+      </p>
+      {barPct !== null && (
+        <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full transition-all duration-700"
+            style={{
+              width: `${Math.max(barPct, barPct > 0 ? 4 : 0)}%`,
+              background: 'linear-gradient(90deg, var(--bar-gradient-start), var(--bar-gradient-end))',
+            }}
+          />
+        </div>
+      )}
       {metrics.length > 0 && (
         <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-2.5">
           {metrics.map((m) => (
@@ -86,18 +111,26 @@ export function FunnelStage({ label, value, metrics = [], highlight = false }) {
           ))}
         </div>
       )}
-    </div>
+    </Tag>
   )
 }
 
 /** The arrow + conversion-rate connector between two funnel stages. */
 export function FunnelConnector({ ratePct, caption }) {
+  const weak = ratePct < 100
   return (
-    <div className="flex w-[84px] shrink-0 flex-col items-center justify-center px-1 text-center">
-      <span className="text-[19px] font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{ratePct}%</span>
-      <span className="my-0.5 text-[var(--studio-primary)]" aria-hidden>
-        &#9656;
+    <div className="flex w-[92px] shrink-0 flex-col items-center justify-center gap-1 px-1 text-center">
+      <span
+        className={`rounded-full px-2 py-0.5 text-[12.5px] font-bold tabular-nums ${
+          weak ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
+        }`}
+      >
+        {ratePct}%
       </span>
+      <div className="flex w-full items-center text-[var(--studio-primary)]" aria-hidden>
+        <span className="h-px flex-1 bg-[color-mix(in_srgb,var(--studio-primary)_40%,transparent)]" />
+        <span className="-ml-0.5 text-[11px] leading-none">&#9656;</span>
+      </div>
       {caption && <span className="text-[9px] leading-tight text-muted-foreground">{caption}</span>}
     </div>
   )
