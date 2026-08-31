@@ -136,7 +136,7 @@ export default function WorkflowStageMultiSelect({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={searchPlaceholder}
-              className="h-9 w-full rounded-md border border-border bg-muted/30 px-3 text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]"
+              className="h-7 w-full rounded-md border border-border bg-muted/30 px-2.5 text-[11px] text-foreground outline-none focus:border-[var(--studio-primary)] transition-colors placeholder:text-muted-foreground/50"
             />
           </div>
           <div className="max-h-52 overflow-y-auto">

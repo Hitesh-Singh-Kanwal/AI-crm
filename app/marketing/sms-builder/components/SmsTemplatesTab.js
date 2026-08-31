@@ -9,7 +9,6 @@ import {
   Pencil,
   Eye,
   Plus,
-  Search,
   Sparkles,
   Tags,
   Trash2,
@@ -18,7 +17,7 @@ import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import Switch from '@/components/ui/switch'
@@ -406,15 +405,12 @@ export default function SmsTemplatesTab({ onCreateNew, dataVersion = 0, onDataCh
 
           {view === 'categories' ? (
             <>
-              <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search categories…"
-                  value={categorySearch}
-                  onChange={(e) => setCategorySearch(e.target.value)}
-                  className="pl-9 rounded-lg"
-                />
-              </div>
+              <SearchInput
+                className="max-w-md"
+                placeholder="Search categories…"
+                value={categorySearch}
+                onChange={(e) => setCategorySearch(e.target.value)}
+              />
 
               {categoriesLoading && (
                 <div className="flex flex-col items-center justify-center py-16">
@@ -494,15 +490,12 @@ export default function SmsTemplatesTab({ onCreateNew, dataVersion = 0, onDataCh
             <>
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
-                  <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search by name or message…"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9 rounded-lg"
-                    />
-                  </div>
+                  <SearchInput
+                    className="flex-1 max-w-md"
+                    placeholder="Search by name or message…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
                   <div className="flex flex-col sm:flex-row gap-2 flex-1 lg:flex-initial">
                     <Select
                       value={statusFilter}

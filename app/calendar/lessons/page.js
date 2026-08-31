@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Plus, MoreHorizontal } from 'lucide-react'
+import { Plus, MoreHorizontal } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -139,15 +139,12 @@ export default function LessonsPage() {
 
         {/* Search + Add */}
         <div className="flex items-center justify-between gap-3 mb-6">
-          <div className="relative w-[220px] shrink-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search lessons…"
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-              className="pl-9 h-9 rounded-lg bg-background text-sm placeholder:text-muted-foreground"
-            />
-          </div>
+          <SearchInput
+            className="w-[220px] shrink-0"
+            placeholder="Search lessons…"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+          />
           <Button
             className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
             onClick={openCreate}

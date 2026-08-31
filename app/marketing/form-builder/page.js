@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck, Image, Volume2, Calculator, EyeOff, Link2, Code2, ExternalLink } from 'lucide-react'
+import SearchInput from '@/components/ui/search-input'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -3023,15 +3024,12 @@ ${getFormPhoneExportRuntimeScript()}
             </div>
 
             {/* Search */}
-            <div className="relative max-w-sm">
-              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search forms…"
-                value={formsSearch}
-                onChange={(e) => setFormsSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
+            <SearchInput
+              className="max-w-sm"
+              placeholder="Search forms…"
+              value={formsSearch}
+              onChange={(e) => setFormsSearch(e.target.value)}
+            />
 
             {formsLoading && (
               <div className="flex items-center justify-center py-16">

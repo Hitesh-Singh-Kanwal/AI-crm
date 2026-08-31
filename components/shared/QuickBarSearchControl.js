@@ -12,7 +12,7 @@ import {
 } from '@/lib/lead-flat-filters'
 
 const inputClass =
-  'h-11 w-full rounded-xl border border-border bg-background text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)]'
+  'h-11 w-full rounded-xl border border-border bg-background text-[13px] text-foreground outline-none focus:border-[var(--studio-primary)] transition-colors placeholder:text-muted-foreground/50'
 
 const excludeBtnClass =
   'inline-flex h-11 shrink-0 items-center rounded-xl border border-border bg-background px-4 text-[12px] font-semibold text-foreground hover:bg-muted/40'

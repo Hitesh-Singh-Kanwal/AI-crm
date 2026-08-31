@@ -908,6 +908,30 @@ export default function MiniStudentPanel({
                 </button>
               </div>
 
+              {/* Lessons this student has booked with nothing paying for them.
+                  Counted across the whole list, not just the current filter, so
+                  it stays visible while browsing past appointments. */}
+              {(() => {
+                const unallocated = appointments.filter(
+                  (a) =>
+                    a.allocation?.status === "unallocated" &&
+                    a.status === "scheduled",
+                ).length;
+                if (!unallocated) return null;
+                return (
+                  <div className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2">
+                    <p className="text-[11px] font-semibold text-warning">
+                      {unallocated} unallocated lesson
+                      {unallocated === 1 ? "" : "s"}
+                    </p>
+                    <p className="text-[10px] text-warning/90 leading-relaxed mt-0.5">
+                      Booked with no package behind them. The next eligible
+                      package purchased claims them oldest-first.
+                    </p>
+                  </div>
+                );
+              })()}
+
               {loadingAppts ? (
                 <p className="text-[12px] text-muted-foreground animate-pulse">
                   Loading…
@@ -931,11 +955,18 @@ export default function MiniStudentPanel({
                         <p className="text-[12px] font-semibold text-foreground truncate">
                           {appt.title}
                         </p>
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${statusColor(appt.status)}`}
-                        >
-                          {appt.status}
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {appt.allocation?.status === "unallocated" && (
+                            <span className="rounded-full bg-warning/20 px-2 py-0.5 text-[9px] font-bold uppercase text-warning">
+                              Unallocated
+                            </span>
+                          )}
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${statusColor(appt.status)}`}
+                          >
+                            {appt.status}
+                          </span>
+                        </div>
                       </div>
                       <p className="text-[11px] text-muted-foreground">
                         {formatStudioDate(appt.startDateTime, studioTz)}

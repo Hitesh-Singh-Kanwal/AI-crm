@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, ChevronRight } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { getInitials, formatCurrency, formatDate } from '@/lib/utils'
@@ -63,15 +63,12 @@ export default function TeacherCommissionsPage() {
           <SummaryCard label="Total Revenue" value={formatCurrency(totals.revenue)} />
         </section>
 
-        <div className="relative max-w-xs">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search teachers…"
-            className="pl-9 h-9 text-[13px]"
-          />
-        </div>
+        <SearchInput
+          className="max-w-xs"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search teachers…"
+        />
 
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1.2fr_1.4fr_auto] items-center gap-3 border-b border-border bg-muted/40 px-5 py-2.5 text-[12px] font-semibold text-muted-foreground">

@@ -1,12 +1,12 @@
 'use client'
 
-import { Phone, Plus, Copy, Trash2, Tags, Pencil, Search, Eye, Heart } from 'lucide-react'
+import { Phone, Plus, Copy, Trash2, Tags, Pencil, Eye, Heart } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { cn } from '@/lib/utils'
 import Switch from '@/components/ui/switch'
 import CategoriesDialog from './CategoriesDialog'
@@ -241,15 +241,12 @@ export default function ScriptsTab() {
       />
       <ScriptPreviewDialog open={!!previewScriptId} onClose={() => setPreviewScriptId(null)} scriptId={previewScriptId} />
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search scripts…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <SearchInput
+        className="max-w-sm"
+        placeholder="Search scripts…"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      />
 
       {loading && (
         <div className="flex flex-col items-center justify-center py-16">

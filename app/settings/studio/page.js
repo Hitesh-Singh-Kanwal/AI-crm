@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, Building2, MapPin, Phone, Mail } from 'lucide-react'
+import { Building2, MapPin, Phone, Mail } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Badge } from '@/components/ui/badge'
 import StyledSelect from '@/components/shared/StyledSelect'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
@@ -200,15 +201,12 @@ export default function LocationsPage() {
           </div>
 
           <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end md:w-auto md:flex-nowrap md:gap-4">
-            <div className="relative w-full sm:w-[360px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name, city, or email..."
-                className="pl-9"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+            <SearchInput
+              className="w-full sm:w-[360px]"
+              placeholder="Search by name, city, or email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
 
             <StyledSelect
               value={statusFilter}

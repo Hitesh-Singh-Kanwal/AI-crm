@@ -231,6 +231,11 @@ function buildColorMap(instructors) {
 function deriveEffectiveStatus(appt) {
   const explicit = appt.status;
   if (explicit && explicit !== "scheduled") return explicit;
+  // An unallocated lesson is deliberately held back from completion, on the
+  // server (calendarEvent.scheduler.js) and here. Showing a past one as
+  // "completed" would hide the very thing staff have to act on: a delivered
+  // lesson that no package has paid for.
+  if (appt.allocation?.status === "unallocated") return explicit || "scheduled";
   if (appt.endDateTime && new Date(appt.endDateTime) < new Date()) return "completed";
   return explicit || "scheduled";
 }
@@ -264,12 +269,34 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
     customerIds.forEach((cid) => {
       const key = `${cid}::${packageRefId}::${serviceCode}`;
       if (!pkgSessionOrder[key]) pkgSessionOrder[key] = [];
-      pkgSessionOrder[key].push({ id: String(appt._id), date: new Date(appt.startDateTime) });
+      pkgSessionOrder[key].push({
+        id: String(appt._id),
+        date: new Date(appt.startDateTime),
+        sessionNumber:
+          typeof pkgCharge.sessionNumber === "number"
+            ? pkgCharge.sessionNumber
+            : null,
+      });
     });
   });
 
   // Sort each group chronologically
   Object.values(pkgSessionOrder).forEach((arr) => arr.sort((a, b) => a.date - b.date));
+
+  // Credit pools whose stamped session numbers cannot be right, because two
+  // events in the same pool claim the same position.
+  //
+  // Bookings made before the backend took its position from the same atomic
+  // operation as the session deduction could observe each other's increments,
+  // and a batch of slots booked together came back sharing one number — five
+  // lessons reading "5 Paid" instead of counting down. Those stamps are still
+  // in the database, so the ordering they were meant to express is recovered
+  // here from the calendar order instead, which is what they should have said.
+  const untrustedPools = new Set();
+  Object.entries(pkgSessionOrder).forEach(([key, arr]) => {
+    const stamped = arr.map((e) => e.sessionNumber).filter((n) => n != null);
+    if (new Set(stamped).size !== stamped.length) untrustedPools.add(key);
+  });
 
   return appointments.map((appt) => {
     const teacherId = String(
@@ -429,13 +456,28 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
     {
       const pkgCharge2 = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
       if (pkgCharge2) {
+        // Must match the packageRefId resolution used to build pkgSessionOrder
+        // above — customerPackageID (direct-purchase) or enrollmentID
+        // (curriculum-enrollment), whichever this charge carries.
+        const packageRefId2 = String(
+          pkgCharge2.customerPackageID?._id ?? pkgCharge2.customerPackageID ??
+          pkgCharge2.enrollmentID?._id ?? pkgCharge2.enrollmentID ?? "",
+        );
+        const serviceCode2 = pkgCharge2.serviceCode ?? "";
+        const customerIds2 = Array.isArray(appt.customerIDs) ? appt.customerIDs.map((c) => String(c._id ?? c)) : [];
+        // Duplicate stamps anywhere in this pool mean none of them can be
+        // trusted to order it — see untrustedPools above.
+        const poolIsTrusted = !customerIds2.some((cid) =>
+          untrustedPools.has(`${cid}::${packageRefId2}::${serviceCode2}`),
+        );
+
         // The backend stamps each package-funded charge with its true position
         // in the credit pool at booking time (baseline sessionsUsed + this
         // occurrence's own share — see computeSessionBaselines in
         // calendarEvent.controller.js). That's authoritative and immune to
         // this fetch's date window, unlike the client-side fallback below —
-        // always prefer it when present.
-        if (typeof pkgCharge2.sessionNumber === "number") {
+        // prefer it whenever it's present and its pool is self-consistent.
+        if (typeof pkgCharge2.sessionNumber === "number" && poolIsTrusted) {
           pkgSessionNumber = pkgCharge2.sessionNumber;
         } else {
           // Fallback for events booked before the backend started stamping
@@ -445,16 +487,6 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
           // bookings span further than it (e.g. a long recurring series) can
           // make this undercount, since it can't tell "not visible" apart from
           // "didn't happen yet".
-          //
-          // Must match the packageRefId resolution used to build pkgSessionOrder
-          // above — customerPackageID (direct-purchase) or enrollmentID
-          // (curriculum-enrollment), whichever this charge carries.
-          const packageRefId2 = String(
-            pkgCharge2.customerPackageID?._id ?? pkgCharge2.customerPackageID ??
-            pkgCharge2.enrollmentID?._id ?? pkgCharge2.enrollmentID ?? "",
-          );
-          const serviceCode2 = pkgCharge2.serviceCode ?? "";
-          const customerIds2 = Array.isArray(appt.customerIDs) ? appt.customerIDs.map((c) => String(c._id ?? c)) : [];
           for (const cid of customerIds2) {
             const key = `${cid}::${packageRefId2}::${serviceCode2}`;
             const order = pkgSessionOrder[key];
@@ -555,6 +587,9 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
         isTodo: Boolean(appt.todoID) || appt.type === "event",
         status: appt.status,
         effectiveStatus,
+        // Booked with no program to pay for it — flagged on the chip so it is
+        // visible at a glance rather than only inside the detail panel.
+        isUnallocated: appt.allocation?.status === "unallocated",
         color: isCancelled ? "hsl(var(--muted-foreground))" : isCompleted ? color : color,
         customerNames,
         eventType: appt.type,
@@ -1568,6 +1603,7 @@ function AppointmentTimedEventRows({ event, compact = false }) {
     coveredByMembership,
     studentCount: studentCountProp,
     isTodo,
+    isUnallocated,
   } = ep;
   const cancelled =
     effectiveStatus === "cancelled_no_charge" ||
@@ -1666,6 +1702,14 @@ function AppointmentTimedEventRows({ event, compact = false }) {
       <div
         className={`flex items-center gap-1 shrink-0 mt-auto min-w-0 pt-px ${compact ? "flex-nowrap overflow-hidden pr-[54px]" : "flex-wrap"}`}
       >
+        {isUnallocated && (
+          <span
+            className="shrink-0 inline-flex items-center text-[8px] font-semibold rounded px-1 py-0.5 leading-none bg-warning/25 text-warning"
+            title="Not allocated to a package — nothing has paid for this lesson"
+          >
+            Unallocated
+          </span>
+        )}
         <PaymentStatusBadge collected={paymentCollected} />
         {coveredByMembership && (
           <span className="shrink-0 inline-flex items-center gap-0.5 text-[8px] font-semibold rounded px-1 py-0.5 leading-none bg-violet-500/20 text-violet-700 dark:text-violet-300">
@@ -3449,19 +3493,36 @@ function CalendarPageInner() {
   });
 
   useEffect(() => {
-    api.get("/api/organisation/calendar-settings").then((res) => {
-      if (res.success && res.data) {
-        const { slotMins, startMins } = res.data;
-        if (Number.isFinite(slotMins) && slotMins > 0) {
-          setCustomSlotMins(slotMins);
-          try { localStorage.setItem("cal_slotMins", String(slotMins)); } catch {}
+    let cancelled = false;
+    const loadCalendarSettings = () => {
+      api.get("/api/organisation/calendar-settings").then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          const { slotMins, startMins } = res.data;
+          if (Number.isFinite(slotMins) && slotMins > 0) {
+            setCustomSlotMins(slotMins);
+            try { localStorage.setItem("cal_slotMins", String(slotMins)); } catch {}
+          }
+          if (Number.isFinite(startMins) && startMins >= 0) {
+            setSlotAlignMins(startMins);
+            try { localStorage.setItem("cal_startMins", String(startMins)); } catch {}
+          }
+          return;
         }
-        if (Number.isFinite(startMins) && startMins >= 0) {
-          setSlotAlignMins(startMins);
-          try { localStorage.setItem("cal_startMins", String(startMins)); } catch {}
-        }
-      }
-    });
+        // api.get() never rejects — a failed request just resolves with
+        // success:false — so this branch (not a .catch) is what previously ran
+        // silently on failure, leaving slotAlignMins/customSlotMins stuck on
+        // whatever startMins/slotMins happened to be cached in this browser's
+        // localStorage. That's stale relative to the org's real setting (e.g. an
+        // older start time), which shows up as every availability slot being off
+        // by a fixed offset for anyone whose browser hasn't refreshed that cache.
+        // Retry once so a transient failure doesn't leave the stale value in place.
+        console.error("Failed to load calendar settings:", res.error);
+        setTimeout(() => { if (!cancelled) loadCalendarSettings(); }, 3000);
+      });
+    };
+    loadCalendarSettings();
+    return () => { cancelled = true; };
   }, []);
 
   // slotDuration string for FullCalendar (HH:MM:SS)

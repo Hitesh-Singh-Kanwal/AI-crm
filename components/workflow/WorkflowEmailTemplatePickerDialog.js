@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Eye, FolderOpen, Mail, Search } from 'lucide-react'
+import { ArrowLeft, Eye, FolderOpen, Mail } from 'lucide-react'
+import SearchInput from '@/components/ui/search-input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
@@ -238,16 +239,12 @@ export default function WorkflowEmailTemplatePickerDialog({
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-6">
           {view === 'categories' ? (
             <>
-              <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={categorySearch}
-                  onChange={(e) => setCategorySearch(e.target.value)}
-                  placeholder="Search categories…"
-                  className="h-11 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-[14px] outline-none focus:border-[var(--studio-primary)]"
-                />
-              </div>
+              <SearchInput
+                className="max-w-md"
+                value={categorySearch}
+                onChange={(e) => setCategorySearch(e.target.value)}
+                placeholder="Search categories…"
+              />
 
               {categoriesLoading ? (
                 <div className="flex flex-1 items-center justify-center py-12">
@@ -310,16 +307,12 @@ export default function WorkflowEmailTemplatePickerDialog({
                   <ArrowLeft className="h-4 w-4" />
                   All categories
                 </button>
-                <div className="relative min-w-0 flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search templates in this category…"
-                    className="h-11 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-[14px] outline-none focus:border-[var(--studio-primary)]"
-                  />
-                </div>
+                <SearchInput
+                  className="min-w-0 flex-1 max-w-md"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search templates in this category…"
+                />
               </div>
 
               {loading ? (

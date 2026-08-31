@@ -3,8 +3,8 @@
 import React, { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Trash, Plus, X, Search } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { Trash, Plus, X } from 'lucide-react'
+import SearchInput from '@/components/ui/search-input'
 
 export default function RolesList({ roles, loading, selectedRoleId, onSelect, onDelete, onCreate }) {
   const [query, setQuery] = useState('')
@@ -30,15 +30,12 @@ export default function RolesList({ roles, loading, selectedRoleId, onSelect, on
         </div>
       </div>
 
-      <div className="relative mb-3">
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search roles..."
-          className="pl-9"
-        />
-        <Search className="absolute left-6 top-3.5 h-4 w-4 text-muted-foreground" />
-      </div>
+      <SearchInput
+        className="mb-3"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search roles..."
+      />
 
       <div className="overflow-y-auto space-y-2" style={{ maxHeight: '64vh' }}>
         {loading && <p className="text-sm text-muted-foreground">Loading...</p>}

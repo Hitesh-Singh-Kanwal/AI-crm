@@ -1,8 +1,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarClock, CheckCircle2, CreditCard, PhoneCall, Search, Sparkles, Users } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { CalendarClock, CheckCircle2, CreditCard, PhoneCall, Sparkles, Users } from 'lucide-react'
+import SearchInput from '@/components/ui/search-input'
 import { cn } from '@/lib/utils'
 import { formatDate, formatMoney, statusClass } from './billingData'
 
@@ -32,15 +32,12 @@ export default function CustomersTab({ customers }) {
             <h2 className="text-sm font-semibold text-foreground">Studio Customers</h2>
             <p className="text-xs text-muted-foreground">Studios using AI agent + CRM as a service</p>
           </div>
-          <div className="relative w-full sm:w-[300px]">
-            <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search studio, owner, email, plan..."
-              className="pl-9"
-            />
-          </div>
+          <SearchInput
+            className="w-full sm:w-[300px]"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search studio, owner, email, plan..."
+          />
         </div>
 
         <div className="space-y-2">

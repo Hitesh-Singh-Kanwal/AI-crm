@@ -1,12 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Clock3, ExternalLink, FileText, HardDrive, Pencil, Search, Trash2, Upload } from 'lucide-react'
+import { Clock3, ExternalLink, FileText, HardDrive, Pencil, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
@@ -247,15 +247,12 @@ export default function KnowledgeBaseTab() {
         onSaved={fetchFiles}
       />
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search files…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <SearchInput
+        className="max-w-sm"
+        placeholder="Search files…"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      />
 
       <Card
         className={cn(

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
-import { Search, Plus, MoreHorizontal, FileText, GripVertical } from 'lucide-react'
+import { Plus, MoreHorizontal, FileText, GripVertical } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   DndContext,
@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import MainLayout from '@/components/layout/MainLayout'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -306,15 +306,12 @@ function ServicesTab() {
       </div>
 
       <div className="flex items-center justify-between gap-3">
-        <div className="relative w-[220px] shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={`Search ${serviceType} services…`}
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-            className="pl-9 h-9 rounded-lg bg-background text-sm"
-          />
-        </div>
+        <SearchInput
+          className="w-[220px] shrink-0"
+          placeholder={`Search ${serviceType} services…`}
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+        />
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
             {totalCount} {totalCount === 1 ? 'service' : 'services'}
@@ -442,15 +439,12 @@ function LessonsTab() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
-        <div className="relative w-[220px] shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search lessons…"
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-            className="pl-9 h-9 rounded-lg bg-background text-sm"
-          />
-        </div>
+        <SearchInput
+          className="w-[220px] shrink-0"
+          placeholder="Search lessons…"
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+        />
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
             {totalCount} {totalCount === 1 ? 'lesson' : 'lessons'}
@@ -620,15 +614,12 @@ function PackagesTab() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
-        <div className="relative w-[220px] shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search packages…"
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-            className="pl-9 h-9 rounded-lg bg-background text-sm"
-          />
-        </div>
+        <SearchInput
+          className="w-[220px] shrink-0"
+          placeholder="Search packages…"
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+        />
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
             {totalCount} {totalCount === 1 ? 'package' : 'packages'}
@@ -815,15 +806,12 @@ function MembershipsTab() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
-        <div className="relative w-[220px] shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search memberships…"
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-            className="pl-9 h-9 rounded-lg bg-background text-sm"
-          />
-        </div>
+        <SearchInput
+          className="w-[220px] shrink-0"
+          placeholder="Search memberships…"
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+        />
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
             {totalCount} {totalCount === 1 ? 'membership' : 'memberships'}
@@ -948,15 +936,12 @@ function ToDosTab() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
-        <div className="relative w-[220px] shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search to-dos…"
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-            className="pl-9 h-9 rounded-lg bg-background text-sm"
-          />
-        </div>
+        <SearchInput
+          className="w-[220px] shrink-0"
+          placeholder="Search to-dos…"
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+        />
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
             {totalCount} {totalCount === 1 ? 'to-do' : 'to-dos'}
