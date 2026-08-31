@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Search, Mail, UserCog, MoreHorizontal } from 'lucide-react'
+import { Mail, UserCog, MoreHorizontal } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import StyledSelect from '@/components/shared/StyledSelect'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
@@ -289,15 +290,12 @@ export default function UsersPage() {
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4">
-          <div className="relative flex-1 max-w-full sm:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name or email..."
-              className="pl-9"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+          <SearchInput
+            className="flex-1 max-w-full sm:max-w-md"
+            placeholder="Search by name or email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
           <StyledSelect
             value={roleFilter}
             onChange={(value) => {

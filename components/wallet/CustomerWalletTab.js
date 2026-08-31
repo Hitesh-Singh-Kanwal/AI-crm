@@ -359,13 +359,13 @@ export default function CustomerWalletTab({ customerID }) {
             Reference ID
           </label>
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
             <input
               type="text"
               value={refSearch}
               onChange={(e) => setRefSearch(e.target.value)}
               placeholder="Search by reference ID"
-              className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-2.5 text-[12px] outline-none focus:border-primary"
+              className="h-8 w-full rounded-md border border-border bg-muted/30 pl-8 pr-2.5 text-[12px] text-foreground outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/50"
             />
           </div>
         </div>

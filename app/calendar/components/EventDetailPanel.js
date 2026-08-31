@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ChevronDown,
   ArrowLeft,
   Pencil,
@@ -135,6 +136,30 @@ const STATUS_META = {
     label: "No Show – Charged",
   },
 };
+
+// An unallocated lesson is real and scheduled but paid for by nothing. It must
+// never read as an ordinary booking, and — unlike every other scheduled event —
+// it does not silently become "Completed" once its time passes.
+function isUnallocated(event) {
+  return event?.allocation?.status === "unallocated";
+}
+
+// One stable id for a funding option regardless of which kind it is — the three
+// id fields are mutually exclusive.
+function fundingKey(t) {
+  return String(
+    t.enrollmentID ?? t.customerPackageID ?? t.customerMembershipID ?? "",
+  );
+}
+
+function UnallocatedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
+      <AlertTriangle className="h-3 w-3" />
+      Unallocated
+    </span>
+  );
+}
 
 function StatusBadge({ status }) {
   const meta = STATUS_META[status];
@@ -1456,6 +1481,21 @@ export default function EventDetailPanel({
   const [deleteScope, setDeleteScope] = useState("this"); // 'this' | 'all'
   const [selectedStudentId, setSelectedStudentId] = useState(null);
   const [selectedStudentName, setSelectedStudentName] = useState("");
+  // Unallocated-lesson flow: `allocating` opens the package picker,
+  // `allocationTargets` is null until the fetch lands (so the panel can show a
+  // loading state), and `overridePrompt` holds the retry for a comp.
+  const [allocating, setAllocating] = useState(false);
+  const [allocationTargets, setAllocationTargets] = useState(null);
+  const [overridePrompt, setOverridePrompt] = useState(null);
+  const [overrideReason, setOverrideReason] = useState("");
+  // Rebooking a cancelled lesson the student can no longer fund hits the same
+  // 409 as the original booking, so it gets the same confirm-and-retry.
+  const [rebookPrompt, setRebookPrompt] = useState(null);
+  // Which package/membership funds this lesson, and what else could. Loaded
+  // when the edit form opens; null while in flight.
+  const [fundingOptions, setFundingOptions] = useState(null);
+  const [fundingChoice, setFundingChoice] = useState("");
+  const [fundingBusy, setFundingBusy] = useState(false);
   const isRecurring = Boolean(event.recurrenceGroupID);
   // Group Class appointments (type "lesson") carry a multi-student roster
   // managed via GroupStudentRoster — the single-customer field/payload below
@@ -1508,6 +1548,52 @@ export default function EventDetailPanel({
   };
 
   const [form, setForm] = useState(() => buildFormFromEvent(event));
+
+  // Only private appointments have a single funding source to show. A group
+  // class charges each student on the roster separately, so its funding is
+  // managed per-student from the roster view, not from this one field.
+  const fundingEditable = !isGroupClass && event?.type !== "event";
+
+  useEffect(() => {
+    if (!isEditing || !fundingEditable || !event?._id) {
+      setFundingOptions(null);
+      setFundingChoice("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const res = await api.get(`/api/calendar/${event._id}/allocation-targets`);
+      if (cancelled) return;
+      const targets = res.success && Array.isArray(res.data) ? res.data : [];
+      setFundingOptions(targets);
+      setFundingChoice(fundingKey(targets.find((t) => t.current) ?? {}) || "");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing, fundingEditable, event?._id]);
+
+  // Moving the lesson to another program deducts from the new one and returns
+  // the session to the old, so it is applied on its own rather than folded into
+  // the form's PUT — a failed move must not silently drop the other edits.
+  const applyFundingChange = async () => {
+    const target = (fundingOptions ?? []).find(
+      (t) => fundingKey(t) === fundingChoice,
+    );
+    if (!target || target.current) return true;
+    setFundingBusy(true);
+    const res = await api.post(`/api/calendar/${event._id}/allocate`, {
+      enrollmentID: target.enrollmentID,
+      customerPackageID: target.customerPackageID,
+      customerMembershipID: target.customerMembershipID,
+    });
+    setFundingBusy(false);
+    if (!res.success) {
+      setError(res.error || "Failed to change the package for this lesson.");
+      return false;
+    }
+    return true;
+  };
 
   // This panel stays mounted across event selections (its `open` prop just
   // toggles visibility — see app/calendar/page.js), so `useState`'s initial
@@ -1616,28 +1702,123 @@ export default function EventDetailPanel({
       isRecurring && updateScope === "all"
         ? `/api/calendar/${event._id}?updateAll=true`
         : `/api/calendar/${event._id}`;
+    // Funding first: if it fails the user keeps the open form and their other
+    // edits, rather than having them saved against the wrong package.
+    if (fundingChoice && !(await applyFundingChange())) {
+      setIsSaving(false);
+      return;
+    }
+
     const result = await api.put(url, payload);
     if (result.success) {
       setIsEditing(false);
       onUpdated?.();
+    } else if (result.errorData?.needsAllocationOverride) {
+      setOverridePrompt({
+        retry: (reason) =>
+          api.put(url, {
+            ...payload,
+            allocationOverride: true,
+            allocationOverrideReason: reason || undefined,
+          }),
+      });
+    } else if (result.errorData?.needsUnallocatedConfirm) {
+      setRebookPrompt({
+        message: result.error,
+        retry: () => api.put(url, { ...payload, allowUnallocated: true }),
+      });
     } else {
       setError(result.error || "Failed to update event.");
     }
     setIsSaving(false);
   };
 
+  const confirmRebookUnallocated = async () => {
+    const prompt = rebookPrompt;
+    if (!prompt) return;
+    setRebookPrompt(null);
+    setIsSaving(true);
+    const res = await prompt.retry();
+    if (res.success) {
+      setIsEditing(false);
+      onUpdated?.();
+    } else {
+      setError(res.error || "Failed to update event.");
+    }
+    setIsSaving(false);
+  };
+
   const handleQuickStatus = async (newStatus) => {
     setError(null);
+    setOverridePrompt(null);
     setIsSaving(true);
-    const result = await api.put(`/api/calendar/${event._id}`, {
-      status: newStatus,
-    });
+    const body = { status: newStatus };
+    const result = await api.put(`/api/calendar/${event._id}`, body);
     if (result.success) {
       onUpdated?.();
       onClose();
+    } else if (result.errorData?.needsAllocationOverride) {
+      // Completing a lesson no program paid for is a comp, and needs both a
+      // deliberate confirmation and the permission to make one.
+      setOverridePrompt({
+        retry: (reason) =>
+          api.put(`/api/calendar/${event._id}`, {
+            ...body,
+            allocationOverride: true,
+            allocationOverrideReason: reason || undefined,
+          }),
+      });
     } else {
       setError(result.error || "Failed to update status.");
     }
+    setIsSaving(false);
+  };
+
+  // Load the packages this unallocated lesson could be attached to, on demand.
+  const openAllocation = async () => {
+    setError(null);
+    setAllocating(true);
+    setAllocationTargets(null);
+    const res = await api.get(`/api/calendar/${event._id}/allocation-targets`);
+    if (res.success) {
+      setAllocationTargets(res.data || []);
+    } else {
+      setError(res.error || "Failed to load packages.");
+      setAllocating(false);
+    }
+  };
+
+  const allocateTo = async (target) => {
+    setError(null);
+    setIsSaving(true);
+    const res = await api.post(`/api/calendar/${event._id}/allocate`, {
+      enrollmentID: target.enrollmentID,
+      customerPackageID: target.customerPackageID,
+      customerMembershipID: target.customerMembershipID,
+    });
+    if (res.success) {
+      setAllocating(false);
+      setAllocationTargets(null);
+      onUpdated?.();
+    } else {
+      setError(res.error || "Failed to allocate lesson.");
+    }
+    setIsSaving(false);
+  };
+
+  const confirmOverride = async () => {
+    const prompt = overridePrompt;
+    if (!prompt) return;
+    setOverridePrompt(null);
+    setIsSaving(true);
+    const res = await prompt.retry(overrideReason);
+    if (res.success) {
+      onUpdated?.();
+      onClose();
+    } else {
+      setError(res.error || "Failed to complete lesson.");
+    }
+    setOverrideReason("");
     setIsSaving(false);
   };
 
@@ -1678,7 +1859,16 @@ export default function EventDetailPanel({
               <span className="truncate text-[14px] font-semibold text-foreground">
                 {event.title}
               </span>
-              <StatusBadge status={event.effectiveStatus || event.status} />
+              {/* An unallocated lesson is held out of auto-completion, so
+                  effectiveStatus must not present a past one as Completed. */}
+              <StatusBadge
+                status={
+                  isUnallocated(event)
+                    ? event.status
+                    : event.effectiveStatus || event.status
+                }
+              />
+              {isUnallocated(event) && <UnallocatedBadge />}
             </div>
           )}
           {!selectedStudentId && !isEditing && (
@@ -1782,6 +1972,45 @@ export default function EventDetailPanel({
                         onChange={(v) => setField("customerID", v)}
                         options={customerOptions}
                       />
+                    </Field>
+                  )}
+                  {fundingEditable && (
+                    <Field label="Package / Membership">
+                      {fundingOptions === null ? (
+                        <p className="text-[11px] text-muted-foreground animate-pulse">
+                          Loading…
+                        </p>
+                      ) : fundingOptions.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          {isUnallocated(event)
+                            ? "Unallocated — no active package covers this lesson yet."
+                            : "No package or membership can be selected for this lesson."}
+                        </p>
+                      ) : (
+                        <>
+                          <Select
+                            value={fundingChoice}
+                            onChange={setFundingChoice}
+                            options={fundingOptions.map((t) => ({
+                              value: fundingKey(t),
+                              label: t.current ? `${t.label} (current)` : t.label,
+                            }))}
+                          />
+                          {(() => {
+                            const chosen = fundingOptions.find(
+                              (t) => fundingKey(t) === fundingChoice,
+                            );
+                            if (!fundingChoice || chosen?.current) return null;
+                            return (
+                              <p className="mt-1 text-[10px] text-warning leading-relaxed">
+                                Saving moves this lesson onto that program: a
+                                session is deducted from it and returned to the
+                                one funding it now.
+                              </p>
+                            );
+                          })()}
+                        </>
+                      )}
                     </Field>
                   )}
                   <Field label="Notes">
@@ -2069,6 +2298,159 @@ export default function EventDetailPanel({
               <>
                 {/* Quick record-payment button — hidden for pay_per_session (auto-charged at booking) */}
 
+                {/* Unallocated lesson — nothing has paid for this yet */}
+                {isUnallocated(event) && (
+                  <div className="space-y-2 rounded-xl border border-warning/30 bg-warning/5 p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-semibold text-warning">
+                          Not allocated to a package
+                        </p>
+                        <p className="text-[11px] text-warning/90 leading-relaxed mt-0.5">
+                          This lesson isn&apos;t charged to anything. The next
+                          eligible package the student buys will claim it
+                          automatically, or you can allocate it now.
+                        </p>
+                      </div>
+                    </div>
+
+                    {!allocating ? (
+                      <button
+                        type="button"
+                        onClick={openAllocation}
+                        disabled={isSaving}
+                        className="h-8 px-3 rounded-lg bg-warning text-[11px] font-semibold text-warning-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
+                      >
+                        Allocate to a package
+                      </button>
+                    ) : allocationTargets === null ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Loading packages…
+                      </p>
+                    ) : allocationTargets.length === 0 ? (
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] text-muted-foreground">
+                          No active package can cover this lesson yet.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setAllocating(false)}
+                          className="text-[11px] font-medium text-brand hover:underline"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {allocationTargets.map((t) => (
+                          <button
+                            key={
+                              t.enrollmentID ||
+                              t.customerPackageID ||
+                              t.customerMembershipID
+                            }
+                            type="button"
+                            onClick={() => allocateTo(t)}
+                            disabled={isSaving}
+                            className="w-full flex items-center justify-between rounded-lg border border-border bg-background px-2.5 py-2 text-left hover:bg-muted/40 disabled:opacity-50 transition-colors"
+                          >
+                            <span className="text-[11px] font-medium truncate">
+                              {t.label}
+                            </span>
+                          </button>
+                        ))}
+                        {/* allocateTo() sets `error` on failure, but the
+                            component's only other render of it lives in the
+                            scrollable body above, out of view of this footer
+                            block — surface it here too so a rejected
+                            allocation (wrong customer, service mismatch, no
+                            sessions left, etc.) doesn't look like a no-op. */}
+                        {error && (
+                          <p className="text-[11px] text-destructive">{error}</p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setAllocating(false)}
+                          className="text-[11px] font-medium text-muted-foreground hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Rebooking a lesson no program can fund any more */}
+                {rebookPrompt && (
+                  <div className="space-y-2 rounded-xl border border-warning/30 bg-warning/5 p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-warning leading-relaxed">
+                        {rebookPrompt.message}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={confirmRebookUnallocated}
+                        disabled={isSaving}
+                        className="h-8 px-3 rounded-lg bg-warning text-[11px] font-semibold text-warning-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
+                      >
+                        Rebook unallocated
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRebookPrompt(null)}
+                        className="h-8 px-3 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Completing an unallocated lesson writes it off as a comp */}
+                {overridePrompt && (
+                  <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                    <p className="text-[12px] font-semibold text-destructive">
+                      Complete without a package?
+                    </p>
+                    <p className="text-[11px] text-destructive/90 leading-relaxed">
+                      No package or membership paid for this lesson. Completing
+                      it now records it as a comped session — no sessions are
+                      deducted and no revenue is recorded.
+                    </p>
+                    <input
+                      type="text"
+                      value={overrideReason}
+                      onChange={(e) => setOverrideReason(e.target.value)}
+                      placeholder="Reason (optional)"
+                      className="w-full h-8 rounded-lg border border-border bg-background px-2.5 text-[11px] text-foreground placeholder:text-muted-foreground"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={confirmOverride}
+                        disabled={isSaving}
+                        className="h-8 px-3 rounded-lg bg-destructive text-[11px] font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                      >
+                        Complete as comp
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOverridePrompt(null);
+                          setOverrideReason("");
+                        }}
+                        className="h-8 px-3 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Quick status actions — only shown when event is still scheduled */}
                 {event.effectiveStatus === "scheduled" ||
                 event.status === "scheduled" ? (
@@ -2077,6 +2459,19 @@ export default function EventDetailPanel({
                       Mark as
                     </p>
                     <div className="grid grid-cols-2 gap-1.5">
+                      {/* Unallocated lessons are never auto-completed, so they
+                          need an explicit way out — either allocate above, or
+                          complete as a comp if permitted. */}
+                      {isUnallocated(event) && (
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStatus("completed")}
+                          disabled={isSaving}
+                          className="col-span-2 h-9 rounded-lg border border-success/30 bg-background text-[11px] font-semibold text-success hover:bg-success/10 disabled:opacity-50 transition-colors"
+                        >
+                          Completed
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleQuickStatus("cancelled_no_charge")}

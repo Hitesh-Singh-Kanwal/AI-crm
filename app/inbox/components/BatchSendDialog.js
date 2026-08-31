@@ -1,10 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, X, MessageSquare, Mail, Send, Clock, UserRound, GraduationCap, Users, LayoutTemplate } from 'lucide-react'
+import { X, MessageSquare, Mail, Send, Clock, UserRound, GraduationCap, Users, LayoutTemplate } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -406,15 +407,11 @@ export default function BatchSendDialog({
               </div>
             )}
 
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={meta.searchPlaceholder}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
+            <SearchInput
+              placeholder={meta.searchPlaceholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
 
             <div className="rounded-xl border border-border overflow-hidden">
               <div className="px-3 py-2 border-b border-border bg-muted/40 flex items-center justify-between gap-2">

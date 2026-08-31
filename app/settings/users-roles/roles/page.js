@@ -1,9 +1,10 @@
 'use client'
 
 import React, { useEffect, useState, useMemo } from 'react'
-import { Search, Shield, Edit, Trash, MoreHorizontal, ChevronDown, ChevronRight, CalendarDays, Headphones } from 'lucide-react'
+import { Shield, Edit, Trash, MoreHorizontal, ChevronDown, ChevronRight, CalendarDays, Headphones } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Button } from '@/components/ui/button'
 import StyledSelect from '@/components/shared/StyledSelect'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
@@ -319,15 +320,12 @@ export default function RolesPage() {
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4">
-          <div className="relative flex-1 max-w-full sm:max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search roles..."
-              className="pl-9"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+          <SearchInput
+            className="flex-1 max-w-full sm:max-w-md"
+            placeholder="Search roles..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
           <div className="relative w-full sm:w-40">
             {!showCustomLimit ? (
               <StyledSelect

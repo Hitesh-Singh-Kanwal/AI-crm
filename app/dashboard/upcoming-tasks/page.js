@@ -7,7 +7,6 @@ import {
   CheckSquare,
   PhoneCall,
   Headphones,
-  Search,
   RotateCw,
   ArrowUpDown,
   SlidersHorizontal,
@@ -18,6 +17,7 @@ import MainLayout from '@/components/layout/MainLayout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { formatDate, cn } from '@/lib/utils'
 import { useUpcomingTasks } from '@/lib/hooks/useUpcomingTasks'
@@ -222,18 +222,15 @@ export default function UpcomingTasksPage() {
       <div className="space-y-5 py-2">
         <div className="rounded-xl border border-border bg-card p-4 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[220px]">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                  setCurrentPage(1)
-                }}
-                placeholder="Search by title, contact, assignee…"
-                className="pl-9 h-9 text-[13px] rounded-lg"
-              />
-            </div>
+            <SearchInput
+              className="flex-1 min-w-[220px]"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setCurrentPage(1)
+              }}
+              placeholder="Search by title, contact, assignee…"
+            />
             <button
               type="button"
               onClick={() => setShowMoreFilters((prev) => !prev)}

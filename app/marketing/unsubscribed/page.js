@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, MailX, RefreshCw, Search, RotateCcw } from 'lucide-react'
+import { Loader2, MailX, RefreshCw, RotateCcw } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import {
   Table,
   TableBody,
@@ -100,15 +100,12 @@ export default function UnsubscribedEmailsPage() {
     >
       <div className="flex flex-col gap-4 h-full min-h-0">
         <form onSubmit={onSearch} className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px] max-w-md">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by email…"
-              className="pl-9 h-9"
-            />
-          </div>
+          <SearchInput
+            className="flex-1 min-w-[200px] max-w-md"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by email…"
+          />
           <Button type="submit" size="sm" variant="secondary" className="h-9">
             Search
           </Button>

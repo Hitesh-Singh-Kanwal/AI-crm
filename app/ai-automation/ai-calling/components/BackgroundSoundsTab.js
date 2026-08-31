@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Music2, Pause, Pencil, Play, Search, Trash2, Upload, Loader2 } from 'lucide-react'
+import { Music2, Pause, Pencil, Play, Trash2, Upload, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import api, { getApiBaseUrl } from '@/lib/api'
@@ -296,15 +297,12 @@ export default function BackgroundSoundsTab() {
         onUploaded={() => fetchSounds()}
       />
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search sounds…"
-          className="pl-9 h-9"
-        />
-      </div>
+      <SearchInput
+        className="max-w-sm"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder="Search sounds…"
+      />
 
       {loading && (
         <div className="flex items-center justify-center py-16">

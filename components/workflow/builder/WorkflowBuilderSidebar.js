@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Lock, Plus, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Lock, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { PALETTE_CATEGORIES } from '@/components/workflow/builder/constants'
@@ -12,7 +12,7 @@ import {
   isPaletteCategoryUnlocked,
 } from '@/lib/workflow-contact'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 
 const DRAG_TYPE = 'application/workflow-builder-node'
 
@@ -116,15 +116,12 @@ export default function WorkflowBuilderSidebar() {
 
       {!sidebarCollapsed && (
         <div className="space-y-3 border-b border-border/80 p-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search steps…"
-              className="h-9 border-border bg-card pl-9 text-[13px]"
-            />
-          </div>
+          <SearchInput
+            inputClassName="bg-card"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search steps…"
+          />
           <div className="flex flex-wrap gap-1.5">
             {[
               { id: 'all', label: 'All' },

@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, PhoneCall, Users, UserPlus, AlarmClock, CalendarClock, CalendarCheck2 } from 'lucide-react'
+import { PhoneCall, Users, UserPlus, AlarmClock, CalendarClock, CalendarCheck2 } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import {
   Table,
   TableBody,
@@ -281,15 +282,11 @@ export default function CallbackReportPage() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="w-full max-w-xs">
               <label className="block text-xs font-medium text-muted-foreground mb-1">Search</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={tab === 'leads' ? 'Search leads…' : 'Search customers…'}
-                  className="pl-9 h-9 text-[13px]"
-                />
-              </div>
+              <SearchInput
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={tab === 'leads' ? 'Search leads…' : 'Search customers…'}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Callback from</label>

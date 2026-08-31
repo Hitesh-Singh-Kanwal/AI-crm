@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, MoreHorizontal, Trash2, Pencil, X, ChevronDown, CalendarDays, User } from 'lucide-react'
+import { Plus, MoreHorizontal, Trash2, Pencil, X, ChevronDown, CalendarDays, User } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { Badge } from '@/components/ui/badge'
@@ -383,15 +383,12 @@ export default function TeachersPage() {
 
         {/* Filters */}
         <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search teachers…"
-              className="pl-9 h-9 text-[13px]"
-            />
-          </div>
+          <SearchInput
+            className="flex-1 max-w-xs"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search teachers…"
+          />
           <div className="relative">
             <select
               value={statusFilter}

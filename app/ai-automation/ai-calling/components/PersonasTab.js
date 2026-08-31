@@ -1,12 +1,13 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Check, Copy, Heart, Mic, Pencil, Search, Trash2, User, Volume2 } from 'lucide-react'
+import { Check, Copy, Heart, Mic, Pencil, Trash2, User, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
@@ -335,15 +336,12 @@ export default function PersonasTab({
         ElevenLabs voice personas are shared across every studio. Duplicate or customize to save a copy for your location.
       </p>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by voice, voiceId, model, provider, gender, description…"
-          value={searchQuery}
-          onChange={(e) => onSearchQueryChange?.(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <SearchInput
+        className="max-w-sm"
+        placeholder="Search by voice, voiceId, model, provider, gender, description…"
+        value={searchQuery}
+        onChange={(e) => onSearchQueryChange?.(e.target.value)}
+      />
 
       {personasLoading && (
         <div className="flex flex-col items-center justify-center py-16">

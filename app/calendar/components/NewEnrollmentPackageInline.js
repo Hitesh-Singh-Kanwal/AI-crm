@@ -438,11 +438,20 @@ export default function NewEnrollmentPackageInline({
       setError("Please select a package.");
       return;
     }
-    if (form.services.length === 0 || total <= 0) {
-      setError("Add at least one chargeable service.");
+    if (form.services.length === 0) {
+      setError("Add at least one service.");
       return;
     }
-    if (form.billingType === "payment_plan") {
+    if (total < 0) {
+      setError("Total can't be negative — adjust the discounts.");
+      return;
+    }
+    // A fully-discounted / free package has nothing to collect or schedule, so
+    // force it onto the one-time path and skip the billing-schedule checks.
+    if (total === 0 && form.billingType !== "one_time") {
+      setForm((p) => ({ ...p, billingType: "one_time" }));
+    }
+    if (total > 0 && form.billingType === "payment_plan") {
       const { installmentMode, numberOfInstallments, installmentAmount, frequency, startDate } = form.billing;
       if (!frequency || !startDate) {
         setError("Fill all payment plan fields.");
@@ -453,7 +462,7 @@ export default function NewEnrollmentPackageInline({
         return;
       }
     }
-    if (form.billingType === "flexible") {
+    if (total > 0 && form.billingType === "flexible") {
       if (form.billing.scheduleMode === "custom") {
         const valid = form.billing.customInstallments.filter((c) => c.dueDate && Number(c.amount) > 0);
         if (valid.length === 0) {
@@ -1133,7 +1142,11 @@ export default function NewEnrollmentPackageInline({
                 <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
               </div>
 
-              {form.billingType === "pay_per_session" ? (
+              {total === 0 ? (
+                <p className="text-[11px] text-muted-foreground">
+                  This package is free — there is nothing to collect.
+                </p>
+              ) : form.billingType === "pay_per_session" ? (
                 <p className="text-[11px] text-muted-foreground">
                   No upfront payment. A charge is recorded automatically each time a session is booked.
                 </p>

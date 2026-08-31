@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   CalendarDays,
   ChevronDown,
@@ -436,6 +437,95 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
   );
 }
 
+// ─── Unallocated booking: service picker with no package behind it ───────────
+//
+// Shown when the student has nothing left to book against. The lesson is still
+// created as a normal lesson, but it deducts from no balance and stays
+// unallocated until they buy a package — which claims it automatically. Staff
+// still have to pick the service, because that is what decides which package
+// can later fund it.
+function UnallocatedServicePicker({
+  reason,
+  allServices,
+  selectedServiceId,
+  onServiceSelect,
+  onOpenEnrollmentWizard,
+}) {
+  if (allServices.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+        <p className="text-[11px] text-muted-foreground">
+          No services available for this booking type.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-warning/30 bg-warning/5 p-3 space-y-2.5">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+        <p className="text-[11px] text-warning leading-relaxed">
+          {reason} You can still book ahead — pick a service below. Nothing is
+          charged now, and the next package purchased will claim these lessons
+          automatically.
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <FieldLabel>Service</FieldLabel>
+        <div className="space-y-1.5">
+          {allServices.map((svc) => {
+            const isSelected = selectedServiceId === String(svc._id);
+            return (
+              <div
+                key={String(svc._id)}
+                onClick={() => onServiceSelect(String(svc._id), svc.color)}
+                className={[
+                  "flex items-center justify-between rounded-lg px-2.5 py-2 cursor-pointer border transition-colors",
+                  isSelected
+                    ? "border-brand bg-brand/10"
+                    : "border-border bg-background hover:bg-muted/40",
+                ].join(" ")}
+              >
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {svc.color && (
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ background: svc.color }}
+                    />
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium truncate">
+                      {svc.serviceName || svc.serviceCode}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Unallocated — no package charged
+                    </p>
+                  </div>
+                </div>
+                {svc.price > 0 && (
+                  <span className="text-[11px] font-semibold text-foreground ml-2 shrink-0">
+                    ${svc.price.toFixed(2)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onOpenEnrollmentWizard?.(true)}
+        className="flex items-center gap-1 text-[11px] font-medium text-brand hover:underline"
+      >
+        <Plus className="h-3 w-3" /> Or sell a package now
+      </button>
+    </div>
+  );
+}
+
 // ─── Enrollment → Package → Service selector ──────────────────────────────────
 
 function EnrollmentServiceSelector({
@@ -450,42 +540,60 @@ function EnrollmentServiceSelector({
 }) {
   if (!customerId) return null;
 
+  // An unallocated booking must not carry any package/enrollment selection, or
+  // the backend funds the session from that enrollment's credits. Clear the
+  // enrollment (and, via onServiceSelect, the membership) before selecting.
+  const handleUnallocatedServiceSelect = (serviceId, color) => {
+    onEnrollmentSelect("");
+    onServiceSelect(serviceId, color);
+  };
+
   const activeEnrollments = enrollments.filter(
     (e) => e.status === "active" && e.package?.status !== "cancelled",
   );
 
   if (enrollments.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">
-        <p className="text-[11px] text-muted-foreground">
-          No enrollments found for this student.
-        </p>
-        <button
-          type="button"
-          onClick={() => onOpenEnrollmentWizard?.(true)}
-          className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand hover:underline mx-auto"
-        >
-          <Plus className="h-3 w-3" /> Add enrollment
-        </button>
-      </div>
+      <UnallocatedServicePicker
+        reason="This student has no enrollments yet."
+        allServices={allServices}
+        selectedServiceId={selectedServiceId}
+        onServiceSelect={handleUnallocatedServiceSelect}
+        onOpenEnrollmentWizard={onOpenEnrollmentWizard}
+      />
     );
   }
 
   if (activeEnrollments.length === 0) {
     return (
-      <div className="rounded-xl border border-warning/20 bg-warning/10 p-3 text-center">
-        <p className="text-[11px] text-warning">
-          No active enrollments with a package. Add a package to an enrollment
-          first.
-        </p>
-        <button
-          type="button"
-          onClick={() => onOpenEnrollmentWizard?.(true)}
-          className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand hover:underline mx-auto"
-        >
-          <Plus className="h-3 w-3" /> Add enrollment
-        </button>
-      </div>
+      <UnallocatedServicePicker
+        reason="This student has no active package."
+        allServices={allServices}
+        selectedServiceId={selectedServiceId}
+        onServiceSelect={handleUnallocatedServiceSelect}
+        onOpenEnrollmentWizard={onOpenEnrollmentWizard}
+      />
+    );
+  }
+
+  // Enrollments exist but every one of them is out of sessions for the services
+  // in this tab — the exact case this feature is for.
+  const anySessionsLeft = activeEnrollments.some((e) =>
+    (e.package?.services ?? []).some(
+      (svc) =>
+        svc.sessionsRemaining > 0 &&
+        allServices.some((cat) => cat.serviceCode === svc.serviceCode),
+    ),
+  );
+  if (!anySessionsLeft) {
+    return (
+      <UnallocatedServicePicker
+        reason="This student has used every session in their package."
+        allServices={allServices}
+        selectedServiceId={selectedServiceId}
+        onServiceSelect={handleUnallocatedServiceSelect}
+        onOpenEnrollmentWizard={onOpenEnrollmentWizard}
+      />
     );
   }
 
@@ -1965,6 +2073,9 @@ export default function AppointmentComposerPanel({
   const [showEnrollmentWizard, setShowEnrollmentWizard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
+  // Set when the backend answers 409 needsUnallocatedConfirm — holds everything
+  // needed to re-post just the uncovered slots once staff confirm.
+  const [unallocatedPrompt, setUnallocatedPrompt] = useState(null);
 
   useEffect(() => {
     if (!open) return;
@@ -1978,6 +2089,9 @@ export default function AppointmentComposerPanel({
       : "";
     setForm({
       ...EMPTY_FORM,
+      // Prefill the Group Class location with the user's active studio so it
+      // doesn't have to be re-picked; still editable via the Location field.
+      location_id: getEffectiveBranch() || "",
       date: initialDate || "",
       start_time: initialTime || "",
       end_time: seededEndTime,
@@ -2319,6 +2433,7 @@ export default function AppointmentComposerPanel({
 
   const handleSave = async () => {
     setError(null);
+    setUnallocatedPrompt(null);
     setIsSaving(true);
 
     // Derive Package template ID and check billing type from selected enrollment
@@ -2490,6 +2605,56 @@ export default function AppointmentComposerPanel({
     const results = await Promise.all(
       payloads.map((p) => api.post("/api/calendar", p)),
     );
+
+    // The backend refuses to book a lesson no program covers until staff say so.
+    // Only the slots that actually came back needing confirmation are retried —
+    // on a partially covered booking the others are already created, and
+    // re-posting them would duplicate the lesson.
+    const needsConfirm = results
+      .map((r, i) => ({ r, i }))
+      .filter(({ r }) => !r.success && r.errorData?.needsUnallocatedConfirm);
+
+    if (needsConfirm.length > 0) {
+      setUnallocatedPrompt({
+        message: needsConfirm[0].r.error,
+        count: needsConfirm.length,
+        payloads,
+        results,
+        indexes: needsConfirm.map(({ i }) => i),
+      });
+      setIsSaving(false);
+      return;
+    }
+
+    finishSave(results);
+  };
+
+  // Re-post only the slots that need confirming, merge them back into the
+  // original result set, and finish as though they had succeeded first time.
+  const confirmUnallocated = async () => {
+    const prompt = unallocatedPrompt;
+    if (!prompt) return;
+    setUnallocatedPrompt(null);
+    setIsSaving(true);
+    setError(null);
+
+    const retried = await Promise.all(
+      prompt.indexes.map((i) =>
+        api.post("/api/calendar", {
+          ...prompt.payloads[i],
+          allowUnallocated: true,
+        }),
+      ),
+    );
+    const merged = [...prompt.results];
+    prompt.indexes.forEach((slotIndex, k) => {
+      merged[slotIndex] = retried[k];
+    });
+
+    finishSave(merged);
+  };
+
+  const finishSave = (results) => {
     const firstFailure = results.find((r) => !r.success);
 
     if (!firstFailure) {
@@ -2745,6 +2910,34 @@ export default function AppointmentComposerPanel({
         {error && (
           <div className="shrink-0 mx-5 mb-2 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-[12px] text-destructive">
             {error}
+          </div>
+        )}
+
+        {/* Unallocated confirmation — the booking is refused until staff say yes */}
+        {unallocatedPrompt && (
+          <div className="shrink-0 mx-5 mb-2 rounded-lg bg-warning/10 border border-warning/30 px-3 py-2.5">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+              <p className="text-[12px] text-warning leading-relaxed">
+                {unallocatedPrompt.message}
+              </p>
+            </div>
+            <div className="mt-2.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={confirmUnallocated}
+                className="h-8 px-3 rounded-lg bg-warning text-[11px] font-semibold text-warning-foreground hover:opacity-90 transition-opacity"
+              >
+                Book unallocated
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnallocatedPrompt(null)}
+                className="h-8 px-3 rounded-lg border border-border bg-background text-[11px] font-semibold text-foreground hover:bg-muted/40 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 

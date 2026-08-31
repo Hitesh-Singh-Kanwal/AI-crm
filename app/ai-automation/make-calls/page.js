@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Search, PhoneCall, ListChecks, CheckCircle2, User, FileText, Bot } from 'lucide-react'
+import { PhoneCall, ListChecks, CheckCircle2, User, FileText, Bot } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -659,18 +660,15 @@ export default function MakeCallsPage() {
                 </div>
 
                 <div className="flex items-center justify-between gap-2">
-                  <div className="relative w-full">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input
-                      placeholder="Search contacts"
-                      value={wizardLeadsSearch}
-                      onChange={(e) => {
-                        setWizardLeadsPage(1)
-                        setWizardLeadsSearch(e.target.value)
-                      }}
-                      className="pl-8 h-8 rounded-lg bg-background text-xs placeholder:text-muted-foreground"
-                    />
-                  </div>
+                  <SearchInput
+                    className="w-full"
+                    placeholder="Search contacts"
+                    value={wizardLeadsSearch}
+                    onChange={(e) => {
+                      setWizardLeadsPage(1)
+                      setWizardLeadsSearch(e.target.value)
+                    }}
+                  />
                 </div>
 
                 <div className="rounded-xl border border-border bg-muted/20 overflow-hidden">

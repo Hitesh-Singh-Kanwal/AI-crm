@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Select } from '@/components/ui/select'
 import { CATEGORIES, partitionCatalogByFavorites } from '@/lib/reports/reportCatalog'
 import { ReportFavoriteStar } from '@/components/reports/ReportFavoriteStar'
@@ -82,12 +82,11 @@ export default function ReportsCatalog({
           <label htmlFor="report-search" className="text-xs text-muted-foreground">
             Search
           </label>
-          <Input
+          <SearchInput
             id="report-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search reports…"
-            className="h-9"
           />
         </div>
         <div className="flex flex-col gap-1">

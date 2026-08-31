@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, MessageSquare, Mail, UserRound, GraduationCap, Users } from 'lucide-react'
+import { MessageSquare, Mail, UserRound, GraduationCap, Users } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import SearchInput from '@/components/ui/search-input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
@@ -143,16 +143,12 @@ export default function NewConversationDialog({
         </DialogHeader>
 
         <div className="mt-4 space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={meta.searchPlaceholder}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-              autoFocus
-            />
-          </div>
+          <SearchInput
+            placeholder={meta.searchPlaceholder}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            autoFocus
+          />
 
           <div className="rounded-xl border border-border overflow-hidden">
             <div className="px-3 py-2 border-b border-border bg-muted/40 flex items-center justify-between gap-2">
