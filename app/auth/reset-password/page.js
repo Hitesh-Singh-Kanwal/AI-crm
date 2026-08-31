@@ -69,9 +69,21 @@ function ResetPasswordContent() {
           <div className="mx-auto h-10 w-10 rounded-lg bg-[var(--studio-primary)] flex items-center justify-center mb-3">
             <span className="text-white font-medium">DA</span>
           </div>
-          <h2 className="text-2xl font-semibold text-foreground">Reset password</h2>
-          <p className="text-sm text-muted-foreground mt-1">Set a new password for your account.</p>
+          <h2 className="text-2xl font-semibold text-foreground">
+            {token ? 'Set your password' : 'Reset password'}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {token
+              ? 'Choose a password to activate your account or update your login.'
+              : 'Set a new password for your account.'}
+          </p>
         </div>
+
+        {!token ? (
+          <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg mb-4">
+            Missing invite or reset link. Open the link from your email, or ask your admin to resend the invite.
+          </div>
+        ) : null}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

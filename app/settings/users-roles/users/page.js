@@ -34,6 +34,7 @@ import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { getInitials, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { getUserInviteStatusMeta } from '@/lib/user-invite-status'
 
 const roleColors = {
   'Super Admin': 'badge-error',
@@ -61,6 +62,7 @@ export default function UsersPage() {
   const [limit, setLimit] = useState(10) // Items per page (default: 10)
   const [customLimit, setCustomLimit] = useState('')
   const [showCustomLimit, setShowCustomLimit] = useState(false)
+  const [resendingInviteId, setResendingInviteId] = useState(null)
   const canWriteUsers = hasPermission('settings', 'users', 'write')
   const canDeleteUsers = hasPermission('settings', 'users', 'delete')
   const toast = useToast()
@@ -241,6 +243,42 @@ export default function UsersPage() {
     } catch (e) {
       console.error(e)
       toast.error({ title: 'Error', message: 'Unexpected error' })
+    }
+  }
+
+  async function handleResendInvite(user) {
+    const userId = user?._id || user?.id
+    if (!userId) return
+    setResendingInviteId(userId)
+    try {
+      const result = await api.post(`/api/user/${userId}/resend-invite`, {})
+      if (result.success) {
+        toast.success({
+          title: 'Invite resent',
+          message: `A new invite was sent to ${user.email || 'the user'}.`,
+        })
+        const updated = result.data
+        if (updated) {
+          setUsersList((prev) =>
+            prev.map((u) => ((u._id || u.id) === userId ? { ...u, ...updated } : u)),
+          )
+          setSelectedUser((prev) =>
+            prev && (prev._id || prev.id) === userId ? { ...prev, ...updated } : prev,
+          )
+        } else {
+          loadUsers()
+        }
+      } else {
+        toast.error({
+          title: 'Resend failed',
+          message: result.error || result.message || 'Unable to resend invite',
+        })
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error({ title: 'Error', message: 'Unexpected error while resending invite' })
+    } finally {
+      setResendingInviteId(null)
     }
   }
 
@@ -458,12 +496,21 @@ export default function UsersPage() {
                       </div>
                     </TableCell>
                     <TableCell className="py-3 px-4">
-                      <Badge
-                        variant={user.status?.toLowerCase() === 'active' ? 'success' : 'error'}
-                        className="text-xs"
-                      >
-                        {user.status}
-                      </Badge>
+                      {(() => {
+                        const meta = getUserInviteStatusMeta(user)
+                        return (
+                          <div className="space-y-0.5">
+                            <Badge variant={meta.variant} className="text-xs capitalize">
+                              {meta.label}
+                            </Badge>
+                            {meta.isInvited && user.inviteExpiresAt && !meta.isExpired ? (
+                              <p className="text-[10px] text-muted-foreground">
+                                Expires {formatDate(user.inviteExpiresAt)}
+                              </p>
+                            ) : null}
+                          </div>
+                        )
+                      })()}
                     </TableCell>
                     <TableCell className="py-3 px-4 text-sm text-muted-foreground">
                       {user.createdAt ? formatDate(user.createdAt) : 'N/A'}
@@ -480,7 +527,7 @@ export default function UsersPage() {
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuContent align="end" className="w-44">
                             <DropdownMenuItem
                               onClick={() => {
                                 setSelectedUserId(user._id || user.id)
@@ -488,6 +535,18 @@ export default function UsersPage() {
                             >
                               View
                             </DropdownMenuItem>
+                            {canWriteUsers && getUserInviteStatusMeta(user).isInvited && (
+                              <DropdownMenuItem
+                                disabled={resendingInviteId === (user._id || user.id)}
+                                onClick={() => handleResendInvite(user)}
+                              >
+                                {resendingInviteId === (user._id || user.id)
+                                  ? 'Resending…'
+                                  : getUserInviteStatusMeta(user).isExpired
+                                    ? 'Resend expired invite'
+                                    : 'Resend invite'}
+                              </DropdownMenuItem>
+                            )}
                             {canWriteUsers && (
                               <DropdownMenuItem
                                 onClick={() => {
@@ -623,9 +682,20 @@ export default function UsersPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Status:</span>
-                    <Badge variant={selectedUser.status?.toLowerCase() === 'active' ? 'success' : 'error'}>
-                      {selectedUser.status}
-                    </Badge>
+                    {(() => {
+                      const meta = getUserInviteStatusMeta(selectedUser)
+                      return (
+                        <div className="text-right space-y-0.5">
+                          <Badge variant={meta.variant}>{meta.label}</Badge>
+                          {meta.isInvited && selectedUser.inviteExpiresAt ? (
+                            <p className="text-[10px] text-muted-foreground">
+                              {meta.isExpired ? 'Expired' : 'Expires'}{' '}
+                              {formatDate(selectedUser.inviteExpiresAt)}
+                            </p>
+                          ) : null}
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Show on Calendar:</span>
@@ -650,7 +720,22 @@ export default function UsersPage() {
                 </div>
 
                 {(canWriteUsers || canDeleteUsers) && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    {canWriteUsers && getUserInviteStatusMeta(selectedUser).isInvited && (
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        disabled={resendingInviteId === (selectedUser._id || selectedUser.id)}
+                        onClick={() => handleResendInvite(selectedUser)}
+                      >
+                        <Mail className="h-4 w-4 mr-2" />
+                        {resendingInviteId === (selectedUser._id || selectedUser.id)
+                          ? 'Resending…'
+                          : getUserInviteStatusMeta(selectedUser).isExpired
+                            ? 'Resend expired invite'
+                            : 'Resend invite'}
+                      </Button>
+                    )}
                     {canWriteUsers && (
                       <Button
                         variant="outline"

@@ -30,6 +30,7 @@ import { useToast } from '@/components/ui/toast'
 import { getInitials, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { hasPermission } from '@/lib/permissions'
+import { getUserInviteStatusMeta } from '@/lib/user-invite-status'
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -321,6 +322,7 @@ export default function TeachersPage() {
 
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [resendingInviteId, setResendingInviteId] = useState(null)
 
   const toast = useToast()
 
@@ -364,6 +366,32 @@ export default function TeachersPage() {
     setDeleting(false)
   }
 
+  const handleResendInvite = async (teacher) => {
+    const id = teacher?._id
+    if (!id) return
+    setResendingInviteId(id)
+    try {
+      const result = await api.post(`/api/user/${id}/resend-invite`, {})
+      if (result.success) {
+        toast.success(`Invite resent to ${teacher.email || 'teacher'}.`)
+        if (result.data) {
+          setTeachers((prev) =>
+            prev.map((t) => (t._id === id ? { ...t, ...result.data } : t)),
+          )
+        } else {
+          fetchTeachers()
+        }
+      } else {
+        toast.error(result.error || result.message || 'Failed to resend invite.')
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to resend invite.')
+    } finally {
+      setResendingInviteId(null)
+    }
+  }
+
   return (
     <MainLayout>
       <div className="space-y-6 p-6">
@@ -396,6 +424,7 @@ export default function TeachersPage() {
               className="h-9 appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] text-foreground outline-none focus:border-primary"
             >
               <option value="all">All statuses</option>
+              <option value="invited">Invited</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>
@@ -475,12 +504,24 @@ export default function TeachersPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge className={cn(
-                        'text-[11px] capitalize',
-                        teacher.status === 'active' ? 'badge-success' : 'badge-error'
-                      )}>
-                        {teacher.status}
-                      </Badge>
+                      {(() => {
+                        const meta = getUserInviteStatusMeta(teacher)
+                        return (
+                          <div className="space-y-0.5">
+                            <Badge
+                              variant={meta.variant}
+                              className={cn('text-[11px] capitalize', meta.className)}
+                            >
+                              {meta.label}
+                            </Badge>
+                            {meta.isInvited && teacher.inviteExpiresAt && !meta.isExpired ? (
+                              <p className="text-[10px] text-muted-foreground">
+                                Expires {formatDate(teacher.inviteExpiresAt)}
+                              </p>
+                            ) : null}
+                          </div>
+                        )
+                      })()}
                     </TableCell>
                     <TableCell className="text-[12px] text-muted-foreground">
                       {formatDate(teacher.createdAt)}
@@ -501,6 +542,18 @@ export default function TeachersPage() {
                             <CalendarDays className="mr-2 h-3.5 w-3.5" />
                             View on Calendar
                           </DropdownMenuItem>
+                          {canWriteTeachers && getUserInviteStatusMeta(teacher).isInvited && (
+                            <DropdownMenuItem
+                              disabled={resendingInviteId === teacher._id}
+                              onClick={() => handleResendInvite(teacher)}
+                            >
+                              {resendingInviteId === teacher._id
+                                ? 'Resending…'
+                                : getUserInviteStatusMeta(teacher).isExpired
+                                  ? 'Resend expired invite'
+                                  : 'Resend invite'}
+                            </DropdownMenuItem>
+                          )}
                           {canWriteTeachers && (
                             <DropdownMenuItem onClick={() => { setEditingTeacher(teacher); setDialogOpen(true) }}>
                               <Pencil className="mr-2 h-3.5 w-3.5" />
