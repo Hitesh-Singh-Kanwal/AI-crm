@@ -6,11 +6,10 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { ChevronDown, ChevronUp, Plus, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, AlignLeft, AlignCenter, AlignRight, Trash2, ArrowUp, ArrowDown, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
-import { extractLeadReasonsList } from '@/app/marketing/email-builder/emailBuilderApi'
 import {
   DEFAULT_PHONE_COUNTRY_CODE,
   DEFAULT_PHONE_COUNTRY_ISO,
@@ -18,6 +17,7 @@ import {
 } from '@/lib/phone-country-codes'
 import { HEADING_LEVELS } from '@/lib/form-heading-styles'
 import { getGlobalStyleExcludeKey } from '@/lib/form-global-styles'
+import { formatReasonLabel, isSystemLeadReason } from '@/lib/dynamic-list-normalize'
 
 const fontFamilies = [
   'Arial',
@@ -47,6 +47,9 @@ export default function StylePanel({
   onStyleChange,
   onFieldUpdate,
   onLeadReasonsRefresh,
+  leadReasons = [],
+  reasonsLocationID = null,
+  reasonOptionsBaseline = [],
   globalStyleExcludeKeys = [],
   onToggleGlobalExclude,
 }) {
@@ -60,6 +63,7 @@ export default function StylePanel({
   })
   const [newReasonName, setNewReasonName] = useState('')
   const [addingReason, setAddingReason] = useState(false)
+  const [deletingReasonId, setDeletingReasonId] = useState(null)
 
   if (!field) {
     return (
@@ -178,9 +182,19 @@ export default function StylePanel({
   const handleAddReason = async () => {
     const name = newReasonName.trim()
     if (!name || addingReason) return
+    if (!reasonsLocationID) {
+      toast.error({
+        title: 'Branch required',
+        message: 'Select a studio for this form (or in the navbar) before adding a reason.',
+      })
+      return
+    }
     setAddingReason(true)
     try {
-      const result = await api.post('/api/lead-reasons', { name })
+      const result = await api.post('/api/lead-reasons', {
+        name,
+        locationID: reasonsLocationID,
+      })
       if (!result.success) {
         toast.error({
           title: 'Could not add reason',
@@ -188,27 +202,202 @@ export default function StylePanel({
         })
         return
       }
-      toast.success({ title: 'Reason added', message: `"${name}" is now available in the dropdown.` })
+      const created = result.data || {}
+      const value = created.reasonCode || created._id || created.name || name
+      const label = formatReasonLabel(value, leadReasons)
+      const existing = Array.isArray(field.options) ? field.options : []
+      const already = existing.some(
+        (o) => String(o.value).toLowerCase() === String(value).toLowerCase(),
+      )
+      handleFieldUpdate({
+        ...field,
+        optionsLocked: false,
+        reasonsLocationID,
+        options: already
+          ? existing
+          : [...existing, { label, value }],
+      })
+      toast.success({ title: 'Reason added', message: `"${label}" is now on this form.` })
       setNewReasonName('')
       if (onLeadReasonsRefresh) {
         await onLeadReasonsRefresh()
-      } else {
-        // Fallback: refresh options on this field from GET if parent didn't pass a refresh handler.
-        const listResult = await api.get('/api/lead-reasons')
-        if (listResult.success) {
-          const reasons = extractLeadReasonsList(listResult)
-          const options = reasons.map((r) => ({
-            label: r.name,
-            value: r.reasonCode || r._id || r.name,
-          }))
-          handleFieldUpdate({ ...field, options })
-        }
       }
     } catch (e) {
       console.error(e)
       toast.error({ title: 'Error', message: 'Could not add reason.' })
     } finally {
       setAddingReason(false)
+    }
+  }
+
+  const catalogReasonOptions = (leadReasons || []).map((r) => {
+    const value = r.reasonCode || r._id || r.name
+    return {
+      value,
+      label: formatReasonLabel(value, leadReasons),
+      _id: r._id,
+      isSystem: isSystemLeadReason(r),
+    }
+  })
+
+  /** Selected options (in form order) + unchecked catalog items after them. */
+  const reasonPickerRows = (() => {
+    const isPlaceholder = (opt) => {
+      const value = String(opt?.value ?? '').trim()
+      const label = String(opt?.label ?? '').trim()
+      if (!value && !label) return true
+      const normalized = (value || label).toLowerCase().replace(/\s+/g, ' ')
+      return (
+        normalized === 'select reason' ||
+        normalized === 'select an option' ||
+        /^select(\s+\w+)?$/i.test(normalized)
+      )
+    }
+    const byValue = new Map(
+      catalogReasonOptions.map((o) => [String(o.value).toLowerCase(), o]),
+    )
+    const selected = (Array.isArray(field.options) ? field.options : []).filter(
+      (o) => !isPlaceholder(o),
+    )
+    const selectedKeys = new Set(selected.map((o) => String(o.value).toLowerCase()))
+    const rows = selected.map((opt) => {
+      const key = String(opt.value).toLowerCase()
+      const catalog = byValue.get(key)
+      return {
+        value: opt.value,
+        label: formatReasonLabel(opt.value || opt.label, leadReasons),
+        selected: true,
+        _id: catalog?._id,
+        isSystem: catalog ? catalog.isSystem : isSystemLeadReason(opt),
+      }
+    })
+    catalogReasonOptions.forEach((opt) => {
+      if (isPlaceholder(opt)) return
+      if (selectedKeys.has(String(opt.value).toLowerCase())) return
+      rows.push({ ...opt, selected: false })
+    })
+    return rows
+  })()
+
+  const setReasonOptions = (options) => {
+    const isPlaceholder = (opt) => {
+      const value = String(opt?.value ?? '').trim()
+      const label = String(opt?.label ?? '').trim()
+      if (!value && !label) return true
+      const normalized = (value || label).toLowerCase().replace(/\s+/g, ' ')
+      return (
+        normalized === 'select reason' ||
+        normalized === 'select an option' ||
+        /^select(\s+\w+)?$/i.test(normalized)
+      )
+    }
+    const nextOptions = (options || [])
+      .filter((o) => !isPlaceholder(o))
+      .map((o) => ({
+        value: o.value,
+        label: formatReasonLabel(o.value || o.label, leadReasons),
+      }))
+    const values = new Set(nextOptions.map((o) => String(o.value)))
+    const nextDefault =
+      field.defaultValue != null &&
+      field.defaultValue !== '' &&
+      values.has(String(field.defaultValue))
+        ? field.defaultValue
+        : undefined
+    handleFieldUpdate({
+      ...field,
+      optionsLocked: false,
+      reasonsLocationID,
+      options: nextOptions,
+      defaultValue: nextDefault,
+      submitHidden: nextDefault ? field.submitHidden : false,
+    })
+  }
+
+  const toggleReasonSelected = (value, checked) => {
+    const key = String(value).toLowerCase()
+    const current = Array.isArray(field.options) ? [...field.options] : []
+    if (checked) {
+      if (current.some((o) => String(o.value).toLowerCase() === key)) return
+      const fromCatalog = catalogReasonOptions.find(
+        (o) => String(o.value).toLowerCase() === key,
+      )
+      const fromRow = reasonPickerRows.find((o) => String(o.value).toLowerCase() === key)
+      const nextOpt = fromCatalog || fromRow || { value, label: formatReasonLabel(value, leadReasons) }
+      setReasonOptions([...current, { value: nextOpt.value, label: nextOpt.label }])
+      return
+    }
+    setReasonOptions(current.filter((o) => String(o.value).toLowerCase() !== key))
+  }
+
+  const moveReasonOption = (index, direction) => {
+    const options = [...(field.options || [])]
+    const target = index + direction
+    if (target < 0 || target >= options.length) return
+    ;[options[index], options[target]] = [options[target], options[index]]
+    setReasonOptions(options)
+  }
+
+  const resetReasonOptionsToPrevious = () => {
+    const baseline = Array.isArray(reasonOptionsBaseline) ? reasonOptionsBaseline : []
+    if (baseline.length > 0) {
+      setReasonOptions(baseline)
+      toast.success({
+        title: 'Options restored',
+        message: 'Reason selections and order reset to the previous setup.',
+      })
+      return
+    }
+    // New form / no snapshot yet → all catalog reasons selected
+    if (catalogReasonOptions.length > 0) {
+      setReasonOptions(catalogReasonOptions)
+      toast.success({
+        title: 'Options restored',
+        message: 'All studio reasons selected in catalog order.',
+      })
+      return
+    }
+    toast.error({
+      title: 'Nothing to restore',
+      message: 'No previous reason setup is available for this form yet.',
+    })
+  }
+
+  const handleDeleteReasonFromCatalog = async (opt) => {
+    if (!opt?._id || opt.isSystem || isSystemLeadReason(opt)) {
+      toast.error({
+        title: 'Cannot delete',
+        message: 'Built-in reasons are available for every studio and cannot be deleted.',
+      })
+      return
+    }
+    if (
+      !window.confirm(
+        `Delete "${opt.label}" from this studio's reason list? This cannot be undone.`,
+      )
+    ) {
+      return
+    }
+    setDeletingReasonId(String(opt._id))
+    try {
+      const result = await api.delete(`/api/lead-reasons/${opt._id}`)
+      if (!result.success) {
+        toast.error({
+          title: 'Could not delete',
+          message: result.error || result.message || 'Please try again.',
+        })
+        return
+      }
+      const key = String(opt.value).toLowerCase()
+      const current = Array.isArray(field.options) ? field.options : []
+      setReasonOptions(current.filter((o) => String(o.value).toLowerCase() !== key))
+      toast.success({ title: 'Reason deleted', message: `"${opt.label}" was removed.` })
+      if (onLeadReasonsRefresh) await onLeadReasonsRefresh()
+    } catch (e) {
+      console.error(e)
+      toast.error({ title: 'Error', message: 'Could not delete reason.' })
+    } finally {
+      setDeletingReasonId(null)
     }
   }
 
@@ -229,7 +418,11 @@ export default function StylePanel({
   const optionsLocked =
     Boolean(field.locked) ||
     Boolean(field.optionsLocked) ||
-    ['locationID', 'reason', 'utm_source'].includes(field.name)
+    ['locationID', 'utm_source'].includes(field.name)
+
+  const isReasonField = field.name === 'reason'
+  // Reason options are form-curated (reorder/remove) — never treat as fully locked.
+  const selectOptionsLocked = isReasonField ? false : optionsLocked
 
   const isLeadProperty =
     field.propertyKind === 'lead' ||
@@ -431,14 +624,132 @@ export default function StylePanel({
             {(field.type === 'select' || field.type === 'checkbox') && (
               <div className="space-y-2.5">
                 <Label className="text-xs text-muted-foreground font-medium">Options</Label>
-                {optionsLocked ? (
+                {isReasonField ? (
                   <div className="space-y-2.5">
-                    {field.name === 'reason' && (
-                      <p className="text-xs text-muted-foreground">
-                        Options come from your lead reasons. Add a new one below to use it in this
-                        form.
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Check reasons to show on this form. Built-in reasons cannot be deleted; custom
+                      ones can. Use arrows to set order
+                      {reasonsLocationID ? '' : ' — pick a studio first'}.
+                    </p>
+                    <div className="space-y-1.5 rounded-md border border-border p-2 max-h-64 overflow-y-auto">
+                      {reasonPickerRows.length > 0 ? (
+                        reasonPickerRows.map((opt) => {
+                          const selectedIndex = (field.options || []).findIndex(
+                            (o) => String(o.value) === String(opt.value),
+                          )
+                          const isSelected = selectedIndex >= 0
+                          const canDelete =
+                            Boolean(opt._id) && !opt.isSystem && !isSystemLeadReason(opt)
+                          return (
+                            <div
+                              key={opt.value || opt.label}
+                              className="flex items-center gap-1.5 rounded-md bg-muted/30 px-2 py-1.5"
+                            >
+                              <input
+                                type="checkbox"
+                                className="h-3.5 w-3.5 shrink-0 rounded border-border"
+                                checked={isSelected}
+                                onChange={(e) =>
+                                  toggleReasonSelected(opt.value, e.target.checked)
+                                }
+                                aria-label={`Include ${opt.label}`}
+                              />
+                              <span className="min-w-0 flex-1 text-xs font-medium text-foreground truncate">
+                                {opt.label}
+                                {opt.isSystem ? (
+                                  <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+                                    (built-in)
+                                  </span>
+                                ) : null}
+                              </span>
+                              {isSelected ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    title="Move up"
+                                    disabled={selectedIndex === 0}
+                                    onClick={() => moveReasonOption(selectedIndex, -1)}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:text-foreground disabled:opacity-40"
+                                  >
+                                    <ArrowUp className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="Move down"
+                                    disabled={
+                                      selectedIndex === (field.options || []).length - 1
+                                    }
+                                    onClick={() => moveReasonOption(selectedIndex, 1)}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:text-foreground disabled:opacity-40"
+                                  >
+                                    <ArrowDown className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              ) : null}
+                              {canDelete ? (
+                                <button
+                                  type="button"
+                                  title="Delete from studio catalog"
+                                  disabled={deletingReasonId === String(opt._id)}
+                                  onClick={() => handleDeleteReasonFromCatalog(opt)}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:text-destructive disabled:opacity-40"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              ) : null}
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <p className="px-1 py-2 text-xs text-muted-foreground">
+                          No reasons for this studio yet — add one below.
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={resetReasonOptionsToPrevious}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                      Reset to previous setup
+                    </Button>
+                    <div className="space-y-2 rounded-md border border-dashed border-border p-2.5">
+                      <Label className="text-xs text-muted-foreground font-medium">
+                        Add new reason
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={newReasonName}
+                          onChange={(e) => setNewReasonName(e.target.value)}
+                          placeholder="e.g. Wedding, Birthday…"
+                          disabled={addingReason}
+                          className="flex-1 border-border bg-background text-sm h-9"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handleAddReason()
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9 shrink-0"
+                          onClick={handleAddReason}
+                          disabled={addingReason || !newReasonName.trim()}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          {addingReason ? 'Adding…' : 'Add'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : selectOptionsLocked ? (
+                  <div className="space-y-2.5">
                     {field.name === 'locationID' && (
                       <p className="text-xs text-muted-foreground">
                         Options are loaded from your active studios/locations. The selected value is
@@ -459,45 +770,10 @@ export default function StylePanel({
                         <li>
                           {field.name === 'locationID'
                             ? 'No studios available'
-                            : field.name === 'reason'
-                              ? 'No reasons yet — add one below.'
-                              : 'No options available'}
+                            : 'No options available'}
                         </li>
                       )}
                     </ul>
-                    {field.name === 'reason' && (
-                      <div className="space-y-2 rounded-md border border-dashed border-border p-2.5">
-                        <Label className="text-xs text-muted-foreground font-medium">
-                          Add new reason
-                        </Label>
-                        <div className="flex gap-2">
-                          <Input
-                            value={newReasonName}
-                            onChange={(e) => setNewReasonName(e.target.value)}
-                            placeholder="e.g. Wedding, Birthday…"
-                            disabled={addingReason}
-                            className="flex-1 border-border bg-background text-sm h-9"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                handleAddReason()
-                              }
-                            }}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-9 shrink-0"
-                            onClick={handleAddReason}
-                            disabled={addingReason || !newReasonName.trim()}
-                          >
-                            <Plus className="h-3.5 w-3.5 mr-1" />
-                            {addingReason ? 'Adding…' : 'Add'}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <>

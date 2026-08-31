@@ -18,7 +18,7 @@ import { formatDate, cn } from '@/lib/utils'
 import StylePanel from '@/components/forms/StylePanel'
 import GlobalStylePanel from '@/components/forms/GlobalStylePanel'
 import GlobalLoader from '@/components/shared/GlobalLoader'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, getEffectiveBranch } from '@/lib/auth'
 import { hasPermission } from '@/lib/permissions'
 import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -44,6 +44,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { extractLeadReasonsList } from '../email-builder/emailBuilderApi'
 import { SOURCE_OPTIONS } from '@/lib/dynamic-list-constants'
+import { formatReasonLabel } from '@/lib/dynamic-list-normalize'
 import {
   DynamicCaptcha,
   getCaptchaExportMarkup,
@@ -123,7 +124,7 @@ const LEAD_PROPERTIES = [
     name: 'reason',
     label: 'Reason',
     type: 'select',
-    placeholder: 'Select reason',
+    placeholder: 'Select Reason',
     icon: Hash,
     optionsFrom: 'reasons',
     frequentlyUsed: true,
@@ -238,10 +239,25 @@ const templateFields = {
 }
 
 function buildReasonOptions(leadReasons = []) {
-  return (leadReasons || []).map((r) => ({
-    label: r.name,
-    value: r.reasonCode || r._id || r.name,
+  return (leadReasons || []).map((r) => {
+    const value = r.reasonCode || r._id || r.name
+    return {
+      label: formatReasonLabel(value, leadReasons),
+      value,
+    }
+  })
+}
+
+function cloneReasonOptions(options = []) {
+  return sanitizeReasonOptions(options).map((o) => ({
+    value: o.value,
+    label: o.label || formatReasonLabel(o.value),
   }))
+}
+
+function getReasonOptionsFromFields(fields = []) {
+  const reasonField = (fields || []).find((f) => f?.name === 'reason')
+  return cloneReasonOptions(reasonField?.options)
 }
 
 function buildStudioOptions(locations = []) {
@@ -249,6 +265,36 @@ function buildStudioOptions(locations = []) {
     label: loc.name || 'Unnamed location',
     value: String(loc._id),
   }))
+}
+
+/** Studio used when loading/creating lead reasons for the form builder. */
+function resolveReasonsLocationID(formLocationID) {
+  if (
+    formLocationID &&
+    formLocationID !== ALL_BRANCHES_VALUE &&
+    Array.isArray(formLocationID) &&
+    formLocationID.length === 1
+  ) {
+    return String(formLocationID[0])
+  }
+  if (
+    formLocationID &&
+    formLocationID !== ALL_BRANCHES_VALUE &&
+    typeof formLocationID === 'string'
+  ) {
+    return String(formLocationID)
+  }
+  const branch = getEffectiveBranch()
+  if (branch) return String(branch)
+  if (Array.isArray(formLocationID) && formLocationID.length > 0) {
+    return String(formLocationID[0])
+  }
+  return null
+}
+
+function leadReasonsUrl(locationID) {
+  if (!locationID) return '/api/lead-reasons'
+  return `/api/lead-reasons?locationID=${encodeURIComponent(locationID)}`
 }
 
 function resolvePropertyOptions(prop, leadReasons = [], locations = []) {
@@ -271,7 +317,7 @@ function createLeadPropertyField(prop, { leadReasons = [], locations = [], locke
     propertyKind: 'lead',
     styles: {},
     options: prop.type === 'select' || prop.type === 'checkbox' ? options : undefined,
-    optionsLocked: Boolean(prop.options || prop.optionsFrom),
+    optionsLocked: prop.name === 'reason' ? false : Boolean(prop.options || prop.optionsFrom),
     ...(prop.defaultCountryCode ? { defaultCountryCode: prop.defaultCountryCode } : {}),
     ...(prop.defaultCountryIso ? { defaultCountryIso: prop.defaultCountryIso } : {}),
   }
@@ -524,6 +570,35 @@ function getFieldPropertyName(field) {
     .replace(/\s+/g, '_')
 }
 
+function getSelectPlaceholder(field) {
+  if (field?.placeholder && String(field.placeholder).trim()) {
+    return String(field.placeholder).trim()
+  }
+  if (field?.name === 'reason') return 'Select Reason'
+  if (field?.name === 'locationID') return 'Select studio'
+  if (field?.name === 'utm_source') return 'Select source'
+  return 'Select an option'
+}
+
+/** Empty / prompt options like "Select Reason" — not real reason choices. */
+function isSelectPlaceholderOption(opt) {
+  const value = String(opt?.value ?? '').trim()
+  const label = String(opt?.label ?? '').trim()
+  if (!value && !label) return true
+  const normalized = (value || label).toLowerCase().replace(/\s+/g, ' ')
+  return (
+    normalized === 'select reason' ||
+    normalized === 'select an option' ||
+    normalized === 'select studio' ||
+    normalized === 'select source' ||
+    /^select(\s+\w+)?$/i.test(normalized)
+  )
+}
+
+function sanitizeReasonOptions(options = []) {
+  return (options || []).filter((o) => !isSelectPlaceholderOption(o))
+}
+
 function getFieldDefaultDisplayLabel(field) {
   const value = field?.defaultValue
   if (value == null || value === '') return ''
@@ -624,7 +699,7 @@ function SortableFieldItem({ field, isSelected, onSelect, onRemove, globalStyles
           disabled
           defaultValue={field.defaultValue || ''}
         >
-          <option value="">{field.placeholder || 'Select an option'}</option>
+          <option value="">{getSelectPlaceholder(field)}</option>
           {(field.options || []).map((opt) => (
             <option key={opt.value || opt.label} value={opt.value || opt.label}>
               {opt.label || opt.value}
@@ -1254,6 +1329,8 @@ function FormsPageInner() {
   const [cloningFormId, setCloningFormId] = useState(null)
   const [leadReasons, setLeadReasons] = useState([])
   const [locations, setLocations] = useState([])
+  // Snapshot of reason options at open/save — used by StylePanel "Reset"
+  const [reasonOptionsBaseline, setReasonOptionsBaseline] = useState([])
 
   // Backend-required hidden fields injected into exported HTML
   const organisationID = user?.organisationID || ''
@@ -1304,8 +1381,9 @@ function FormsPageInner() {
     let cancelled = false
     ;(async () => {
       try {
+        const locationID = resolveReasonsLocationID(formLocationID)
         const [reasonsResult, locationsResult] = await Promise.all([
-          api.get('/api/lead-reasons'),
+          api.get(leadReasonsUrl(locationID)),
           api.get('/api/location?limit=200'),
         ])
         if (cancelled) return
@@ -1325,19 +1403,30 @@ function FormsPageInner() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [formLocationID])
 
   const refreshLeadReasons = useCallback(async () => {
     try {
-      const result = await api.get('/api/lead-reasons')
+      const locationID = resolveReasonsLocationID(formLocationID)
+      const result = await api.get(leadReasonsUrl(locationID))
       if (!result.success) return
       setLeadReasons(extractLeadReasonsList(result))
     } catch (e) {
       console.error(e)
     }
-  }, [])
+  }, [formLocationID])
+
+  // When the navbar branch changes under All branches, reload location-scoped reasons.
+  useEffect(() => {
+    const onBranchChange = () => {
+      refreshLeadReasons()
+    }
+    window.addEventListener('branch-change', onBranchChange)
+    return () => window.removeEventListener('branch-change', onBranchChange)
+  }, [refreshLeadReasons])
 
   useEffect(() => {
+    const reasonsLocationID = resolveReasonsLocationID(formLocationID)
     const reasonOptions = buildReasonOptions(leadReasons)
     const studioOptions = buildStudioOptions(locations)
     const optsKey = (opts) =>
@@ -1347,19 +1436,49 @@ function FormsPageInner() {
       let changed = false
       let next = prev.map((f) => {
         if (f.name === 'reason') {
-          if (
-            f.type === 'select' &&
-            f.optionsLocked &&
-            optsKey(f.options) === optsKey(reasonOptions)
-          ) {
-            return f
+          const existing = Array.isArray(f.options) ? f.options : []
+          // Only reseed when the studio actually changed. Missing stamp (import /
+          // first paint) must keep curated options — otherwise reopen wipes order.
+          const locationChanged =
+            f.reasonsLocationID != null &&
+            f.reasonsLocationID !== '' &&
+            String(f.reasonsLocationID) !== String(reasonsLocationID || '')
+
+          if (existing.length > 0 && !locationChanged) {
+            const refreshed = sanitizeReasonOptions(existing).map((opt) => ({
+              value: opt.value,
+              label: formatReasonLabel(opt.value || opt.label, leadReasons),
+            }))
+            if (
+              f.type === 'select' &&
+              f.optionsLocked === false &&
+              String(f.reasonsLocationID || '') === String(reasonsLocationID || '') &&
+              optsKey(f.options) === optsKey(refreshed)
+            ) {
+              return f
+            }
+            changed = true
+            return {
+              ...f,
+              type: 'select',
+              propertyKind: f.propertyKind || 'lead',
+              optionsLocked: false,
+              reasonsLocationID,
+              placeholder: f.placeholder?.trim() ? f.placeholder : 'Select Reason',
+              options: refreshed,
+            }
           }
+
+          if (!reasonOptions.length && !locationChanged) return f
+
           changed = true
           return {
             ...f,
             type: 'select',
             propertyKind: f.propertyKind || 'lead',
-            optionsLocked: true,
+            optionsLocked: false,
+            reasonsLocationID,
+            placeholder: f.placeholder?.trim() ? f.placeholder : 'Select Reason',
             options: reasonOptions,
           }
         }
@@ -1427,7 +1546,7 @@ function FormsPageInner() {
 
       return changed ? next : prev
     })
-  }, [leadReasons, locations, builderFormType])
+  }, [leadReasons, locations, builderFormType, formLocationID])
 
   // Always strip phone-widget helper fields from builder state
   useEffect(() => {
@@ -1523,6 +1642,7 @@ function FormsPageInner() {
           title: editingFormId ? 'Updated' : 'Saved',
           message: editingFormId ? 'Form updated successfully.' : 'Form created successfully.',
         })
+        setReasonOptionsBaseline(getReasonOptionsFromFields(fieldsToSave))
         fetchForms()
         // Stay in the builder after update so edits are not lost from a bad re-import
         if (!editingFormId && savedId) {
@@ -1620,7 +1740,9 @@ function FormsPageInner() {
     setFormDescription('')
     setFormLocationID([])
     setEditingFormId(null)
-    setFormFields(buildInitialFormFields(type, leadReasons, locations))
+    const fields = buildInitialFormFields(type, leadReasons, locations)
+    setFormFields(fields)
+    setReasonOptionsBaseline(getReasonOptionsFromFields(fields))
     setSelectedField(null)
     setSubmitButton({
       id: 'submit-button',
@@ -1774,10 +1896,16 @@ function FormsPageInner() {
     const options = []
     if (type === 'select') {
       control.querySelectorAll('option').forEach((opt) => {
-        const value = (opt.getAttribute('value') || opt.textContent || '').trim()
-        const label = (opt.textContent || value).trim()
-        if (!value) return
-        options.push({ label, value })
+        // Keep empty-value prompt options out of field.options (e.g. "Select Reason").
+        if (opt.hasAttribute('value') && String(opt.getAttribute('value') || '').trim() === '') {
+          return
+        }
+        const label = (opt.textContent || '').trim()
+        const value = String(
+          opt.hasAttribute('value') ? opt.getAttribute('value') ?? '' : label || ''
+        ).trim()
+        if (!value || isSelectPlaceholderOption({ value, label })) return
+        options.push({ label: label || value, value })
       })
     }
 
@@ -2032,6 +2160,8 @@ function FormsPageInner() {
         if (f?.name) inferredByName.set(f.name, f)
       })
 
+      const importReasonsLocationID = resolveReasonsLocationID(locIds)
+
       const mergedBase = baseFields.map((base) => {
         if (!base?.name || !inferredByName.has(base.name)) return base
         const imp = inferredByName.get(base.name)
@@ -2052,11 +2182,18 @@ function FormsPageInner() {
             ? { defaultCountryIso: imp.defaultCountryIso || base.defaultCountryIso }
             : {}),
           options:
-            base.optionsLocked || base.name === 'locationID' || base.name === 'reason'
-              ? base.options
-              : imp.options?.length
-                ? imp.options
-                : base.options,
+            base.name === 'reason'
+              ? sanitizeReasonOptions(
+                  imp.options?.length ? imp.options : base.options
+                )
+              : base.optionsLocked || base.name === 'locationID'
+                ? base.options
+                : imp.options?.length
+                  ? imp.options
+                  : base.options,
+          ...(base.name === 'reason' && importReasonsLocationID
+            ? { reasonsLocationID: importReasonsLocationID }
+            : {}),
         }
       })
 
@@ -2077,6 +2214,7 @@ function FormsPageInner() {
       ])
 
       setFormFields(pinHeadingsToTop(nextFields))
+      setReasonOptionsBaseline(getReasonOptionsFromFields(nextFields))
       const meta = parseGlobalStylesMeta(htmlCode)
       // Always replace — form CSS is per-form and must not carry over from the previous form
       setGlobalStyles(meta.styles && typeof meta.styles === 'object' ? { ...meta.styles } : {})
@@ -2399,7 +2537,7 @@ function FormsPageInner() {
         ${field.required ? 'required' : ''}
         style="${styleString}"
       >
-        <option value="">${escapeHtmlAttr(field.placeholder || 'Select an option')}</option>
+        <option value="">${escapeHtmlAttr(getSelectPlaceholder(field))}</option>
         ${optsHtml}
       </select>`
     } else if (field.type === 'checkbox') {
@@ -2937,7 +3075,7 @@ ${getFormPhoneExportRuntimeScript()}
             className="w-full focus:outline-none focus:ring-2 focus:ring-brand"
             defaultValue={field.defaultValue || ''}
           >
-            <option value="">{field.placeholder || 'Select an option'}</option>
+            <option value="">{getSelectPlaceholder(field)}</option>
             {(field.options || []).map((opt) => (
               <option key={opt.value || opt.label} value={opt.value || opt.label}>
                 {opt.label || opt.value}
@@ -3699,6 +3837,9 @@ ${getFormPhoneExportRuntimeScript()}
                         onStyleChange={handleFieldUpdate}
                         onFieldUpdate={handleFieldUpdate}
                         onLeadReasonsRefresh={refreshLeadReasons}
+                        leadReasons={leadReasons}
+                        reasonsLocationID={resolveReasonsLocationID(formLocationID)}
+                        reasonOptionsBaseline={reasonOptionsBaseline}
                         globalStyleExcludeKeys={globalStyleExcludeKeys}
                         onToggleGlobalExclude={(excludeKey, excluded) => {
                           setGlobalStyleExcludeKeys((prev) => {
