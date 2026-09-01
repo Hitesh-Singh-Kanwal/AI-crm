@@ -14,8 +14,14 @@ import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/Locati
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
+import { getEffectiveBranch } from '@/lib/auth'
 import { extractSmsCategoriesList } from '../smsBuilderApi'
 import { SMS_VARIABLES, previewMessage } from './constants'
+
+function defaultStudioIds() {
+  const branch = getEffectiveBranch()
+  return branch ? [String(branch)] : []
+}
 
 export default function SmsCreatorTab({ initialTemplate, onCreated, onBack, dataVersion = 0 }) {
   const toast = useToast()
@@ -32,7 +38,7 @@ export default function SmsCreatorTab({ initialTemplate, onCreated, onBack, data
         ? initialTemplate.locationID.map((l) => l?._id || l).filter(Boolean)
         : initialTemplate?.locationID?._id || initialTemplate?.locationID
           ? [initialTemplate.locationID?._id || initialTemplate.locationID]
-          : []
+          : defaultStudioIds()
   )
   const [message, setMessage] = useState(initialTemplate?.message || '')
   const [saving, setSaving] = useState(false)

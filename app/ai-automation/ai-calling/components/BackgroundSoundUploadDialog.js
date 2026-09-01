@@ -14,7 +14,7 @@ import {
   clampBackgroundSoundVolume,
   formatBackgroundSoundVolumeLabel,
 } from '@/lib/backgroundSound'
-import { hasLocationSelection, toLocationPayload } from './locationScope'
+import { hasLocationSelection, toLocationPayload, initLocationID } from './locationScope'
 
 const MAX_AUDIO_BYTES = 5 * 1024 * 1024
 const ALLOWED_AUDIO_EXT = /\.(mp3|wav|ogg|m4a|webm)$/i
@@ -96,7 +96,7 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
     setDescription('')
     setFile(null)
     setVolume(DEFAULT_BACKGROUND_SOUND_VOLUME)
-    setLocationID([])
+    setLocationID(initLocationID(null))
     if (fileInputRef.current) fileInputRef.current.value = ''
   }, [open])
 

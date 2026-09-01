@@ -273,7 +273,7 @@ export default function PersonasTab({
     setModalOpen(false)
     setTargetPersona(null)
     setModalMode(null)
-    setLocationID([])
+    setLocationID(initLocationID(null))
   }
 
   const handleModalSave = async () => {

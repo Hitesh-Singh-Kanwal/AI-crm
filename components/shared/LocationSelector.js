@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Building2, ChevronDown } from 'lucide-react'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { getEffectiveBranch } from '@/lib/auth'
 
 const ALL = 'all'
 
@@ -15,6 +16,11 @@ export default function LocationSelector({
   showAllOption = false,
   /** Marketing: pick every studio the user can access */
   allowAllBranches = false,
+  /**
+   * When empty, pre-select the studio already chosen in the navbar branch switcher.
+   * Runs once per mount so the user can still clear / change afterward.
+   */
+  preselectActiveBranch = true,
   filterActiveOnly = true,
   className = '',
   multiple = false,
@@ -26,6 +32,7 @@ export default function LocationSelector({
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
   const buttonRef = useRef(null)
   const dropdownRef = useRef(null)
+  const didAutoSelectRef = useRef(false)
 
   useEffect(() => {
     loadLocations()
@@ -39,7 +46,7 @@ export default function LocationSelector({
           setDropdownPosition({
             top: buttonRect.bottom + 4,
             left: buttonRect.left,
-            width: buttonRect.width
+            width: buttonRect.width,
           })
         }
       }
@@ -64,7 +71,7 @@ export default function LocationSelector({
         let locs = result.data || []
 
         if (filterActiveOnly) {
-          locs = locs.filter(loc => loc.status?.toLowerCase() === 'active')
+          locs = locs.filter((loc) => loc.status?.toLowerCase() === 'active')
         }
 
         setLocations(locs)
@@ -91,21 +98,56 @@ export default function LocationSelector({
     ? locations.filter((loc) => selectedIds.includes(String(loc._id)))
     : locations.find((loc) => String(loc._id) === String(value))
 
-  // Single accessible location → auto-select and skip the dropdown.
+  // Auto-select: single studio, or exactly the navbar branch when empty.
   useEffect(() => {
-    if (loading || locations.length !== 1) return
-    if (allowAllBranches && isAllBranches) return
+    if (loading || locations.length === 0) return
+    if (allowAllBranches && isAllBranches) {
+      didAutoSelectRef.current = true
+      return
+    }
 
-    const only = locations[0]
-    const onlyId = String(only._id)
     const hasSelection = isMultiple ? selectedIds.length > 0 : Boolean(value) && value !== ALL
-    if (hasSelection) return
+    if (hasSelection) {
+      didAutoSelectRef.current = true
+      return
+    }
+    if (didAutoSelectRef.current) return
 
-    if (isMultiple) onChange([onlyId])
-    else onChange(onlyId)
-    onChangeObject?.(only)
+    const apply = (loc) => {
+      if (!loc) return
+      didAutoSelectRef.current = true
+      const id = String(loc._id)
+      // Always a single studio — never preselect multiple.
+      if (isMultiple) onChange([id])
+      else onChange(id)
+      onChangeObject?.(loc)
+    }
+
+    if (preselectActiveBranch) {
+      const branchId = getEffectiveBranch()
+      if (branchId) {
+        const match = locations.find((loc) => String(loc._id) === String(branchId))
+        if (match) {
+          apply(match)
+          return
+        }
+      }
+    }
+
+    if (locations.length === 1) {
+      apply(locations[0])
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, locations, isMultiple, selectedIds.length, value, allowAllBranches, isAllBranches])
+  }, [
+    loading,
+    locations,
+    isMultiple,
+    selectedIds.length,
+    value,
+    allowAllBranches,
+    isAllBranches,
+    preselectActiveBranch,
+  ])
 
   if (!loading && locations.length === 1 && !allowAllBranches) {
     const only = locations[0]
@@ -134,10 +176,12 @@ export default function LocationSelector({
     : isAllBranches
       ? 'All branches'
       : isMultiple
-        ? (selectedLocations && selectedLocations.length > 0
-            ? selectedLocations.map((s) => s.name).join(', ')
-            : placeholder)
-        : (selectedLocations ? selectedLocations.name : placeholder)
+        ? selectedLocations && selectedLocations.length > 0
+          ? selectedLocations.map((s) => s.name).join(', ')
+          : placeholder
+        : selectedLocations
+          ? selectedLocations.name
+          : placeholder
 
   const showPlaceholderStyle =
     !loading &&
@@ -168,22 +212,24 @@ export default function LocationSelector({
             {label}
           </span>
         </div>
-        <ChevronDown className={cn('h-4 w-4 text-muted-foreground shrink-0 transition-transform', open && 'rotate-180')} />
+        <ChevronDown
+          className={cn(
+            'h-4 w-4 text-muted-foreground shrink-0 transition-transform',
+            open && 'rotate-180'
+          )}
+        />
       </button>
 
       {open && (
         <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setOpen(false)}
-          />
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div
             ref={dropdownRef}
             className="fixed z-30 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto overflow-x-hidden"
             style={{
               top: `${dropdownPosition.top}px`,
               left: `${dropdownPosition.left}px`,
-              width: `${dropdownPosition.width}px`
+              width: `${dropdownPosition.width}px`,
             }}
           >
             {allowAllBranches && locations.length > 1 && (
@@ -191,6 +237,7 @@ export default function LocationSelector({
                 <button
                   type="button"
                   onClick={() => {
+                    didAutoSelectRef.current = true
                     onChange(ALL)
                     setOpen(false)
                   }}
@@ -210,12 +257,16 @@ export default function LocationSelector({
                 <button
                   type="button"
                   onClick={() => {
+                    didAutoSelectRef.current = true
                     onChange(isMultiple ? [] : null)
                     setOpen(false)
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors',
-                    ((!isMultiple && !value) || (isMultiple && (!value || value.length === 0))) && !isAllBranches && 'bg-brand/10 text-brand font-medium'
+                    ((!isMultiple && !value) ||
+                      (isMultiple && (!value || value.length === 0))) &&
+                      !isAllBranches &&
+                      'bg-brand/10 text-brand font-medium'
                   )}
                 >
                   <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -234,6 +285,7 @@ export default function LocationSelector({
                   key={location._id}
                   type="button"
                   onClick={() => {
+                    didAutoSelectRef.current = true
                     const locationId = String(location._id)
                     if (isMultiple) {
                       const current = isAllBranches ? [] : selectedIds.slice()
@@ -267,9 +319,11 @@ export default function LocationSelector({
                       </div>
                     )}
                   </div>
-                  {!isAllBranches && isMultiple && selectedIds.includes(String(location._id)) && (
-                    <div className="ml-2 text-sm text-brand">✓</div>
-                  )}
+                  {!isAllBranches &&
+                    isMultiple &&
+                    selectedIds.includes(String(location._id)) && (
+                      <div className="ml-2 text-sm text-brand">✓</div>
+                    )}
                 </button>
               ))
             )}

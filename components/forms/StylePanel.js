@@ -119,6 +119,7 @@ export default function StylePanel({
                 ...field,
                 defaultValue: nextValue || undefined,
                 submitHidden: nextValue ? field.submitHidden : false,
+                ...(field.name === 'locationID' ? { studioDefaultSeeded: true } : {}),
               })
             }}
           >

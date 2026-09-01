@@ -9,6 +9,7 @@ import LocationSelector from '@/components/shared/LocationSelector'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
 import { studioWallTimeToUtcISO } from '@/lib/studio-time'
+import { getEffectiveBranch } from '@/lib/auth'
 
 const DEFAULT_DURATION_MINUTES = 30
 
@@ -16,6 +17,10 @@ function defaultDueDate() {
   const d = new Date()
   d.setDate(d.getDate() + 1)
   return d.toISOString().slice(0, 10)
+}
+
+function defaultStudioId() {
+  return getEffectiveBranch() || ''
 }
 
 /**
@@ -33,7 +38,7 @@ export default function CreateTaskDialog({ onCreated, compact = false }) {
   const [dueDate, setDueDate] = useState(defaultDueDate())
   const [dueTime, setDueTime] = useState('09:00')
   const [assignedTo, setAssignedTo] = useState('')
-  const [locationID, setLocationID] = useState('')
+  const [locationID, setLocationID] = useState(() => defaultStudioId())
   const [locationTz, setLocationTz] = useState(null)
   const [notes, setNotes] = useState('')
   const [staff, setStaff] = useState([])
@@ -57,7 +62,7 @@ export default function CreateTaskDialog({ onCreated, compact = false }) {
     setDueDate(defaultDueDate())
     setDueTime('09:00')
     setAssignedTo('')
-    setLocationID('')
+    setLocationID(defaultStudioId())
     setLocationTz(null)
     setNotes('')
   }
