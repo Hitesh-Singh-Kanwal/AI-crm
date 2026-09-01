@@ -267,6 +267,32 @@ function buildStudioOptions(locations = []) {
   }))
 }
 
+/** Studio IDs this form is scoped to (empty = not constrained / all). */
+function resolveFormStudioScopeIds(formLocationID) {
+  if (formLocationID === ALL_BRANCHES_VALUE) return []
+  if (Array.isArray(formLocationID)) {
+    return formLocationID.map(String).filter(Boolean)
+  }
+  if (formLocationID && formLocationID !== ALL_BRANCHES_VALUE) {
+    return [String(formLocationID)]
+  }
+  const branch = getEffectiveBranch()
+  return branch ? [String(branch)] : []
+}
+
+/**
+ * Studio field options: when a navbar branch (or specific form studios) is set,
+ * only those studios appear — not the full org list.
+ */
+function buildStudioOptionsForForm(locations = [], formLocationID) {
+  const all = buildStudioOptions(locations)
+  if (formLocationID === ALL_BRANCHES_VALUE) return all
+  const scopeIds = resolveFormStudioScopeIds(formLocationID)
+  if (!scopeIds.length) return all
+  const scoped = all.filter((o) => scopeIds.includes(String(o.value)))
+  return scoped.length ? scoped : all
+}
+
 /** Studio used when loading/creating lead reasons for the form builder. */
 function resolveReasonsLocationID(formLocationID) {
   if (
@@ -304,8 +330,23 @@ function resolvePropertyOptions(prop, leadReasons = [], locations = []) {
   return []
 }
 
-function createLeadPropertyField(prop, { leadReasons = [], locations = [], locked = false, required = false } = {}) {
-  const options = resolvePropertyOptions(prop, leadReasons, locations)
+function createLeadPropertyField(prop, { leadReasons = [], locations = [], locked = false, required = false, formLocationID } = {}) {
+  const options =
+    prop?.name === 'locationID'
+      ? buildStudioOptionsForForm(locations, formLocationID)
+      : resolvePropertyOptions(prop, leadReasons, locations)
+  const scopeIds = prop?.name === 'locationID' ? resolveFormStudioScopeIds(formLocationID) : []
+  const branch = getEffectiveBranch()
+  const studioDefault =
+    prop?.name === 'locationID'
+      ? scopeIds.length === 1
+        ? scopeIds[0]
+        : branch && options.some((o) => String(o.value) === String(branch))
+          ? String(branch)
+          : options.length === 1
+            ? String(options[0].value)
+            : undefined
+      : undefined
   return {
     id: `lead-${prop.name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     type: prop.type,
@@ -318,6 +359,9 @@ function createLeadPropertyField(prop, { leadReasons = [], locations = [], locke
     styles: {},
     options: prop.type === 'select' || prop.type === 'checkbox' ? options : undefined,
     optionsLocked: prop.name === 'reason' ? false : Boolean(prop.options || prop.optionsFrom),
+    ...(studioDefault
+      ? { defaultValue: studioDefault, studioDefaultSeeded: true }
+      : {}),
     ...(prop.defaultCountryCode ? { defaultCountryCode: prop.defaultCountryCode } : {}),
     ...(prop.defaultCountryIso ? { defaultCountryIso: prop.defaultCountryIso } : {}),
   }
@@ -578,6 +622,35 @@ function getSelectPlaceholder(field) {
   if (field?.name === 'locationID') return 'Select studio'
   if (field?.name === 'utm_source') return 'Select source'
   return 'Select an option'
+}
+
+/**
+ * Thank-you redirects must be absolute. Values like `www.example.com` without a
+ * scheme are treated as relative paths by the browser and get appended to the
+ * current page URL.
+ */
+function normalizeStandaloneRedirectUrl(raw) {
+  let url = String(raw || '').trim()
+  if (!url) return ''
+
+  // If a previous relative resolve already mangled it, prefer the last http(s) URL.
+  const embedded = url.match(/https?:\/\/[^\s"']+/gi)
+  if (embedded && embedded.length > 1) {
+    url = embedded[embedded.length - 1]
+  }
+
+  // Recover paths that absorbed a www.* host as a relative segment, e.g.
+  // https://site.com/studio/form/www.example.com → https://www.example.com
+  const wwwTail = url.match(
+    /^(https?:\/\/.+)\/(www\.[a-z0-9.-]+\.[a-z]{2,})(\/.*)?$/i
+  )
+  if (wwwTail) {
+    url = `https://${wwwTail[2]}${wwwTail[3] || ''}`
+  }
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url)) return url
+  if (url.startsWith('//')) return `https:${url}`
+  return `https://${url.replace(/^\/+/, '')}`
 }
 
 /** Empty / prompt options like "Select Reason" — not real reason choices. */
@@ -1316,7 +1389,10 @@ function FormsPageInner() {
   // Builder form metadata
   const [formName, setFormName] = useState('')
   const [formDescription, setFormDescription] = useState('')
-  const [formLocationID, setFormLocationID] = useState([]) // 'all' | string[]
+  const [formLocationID, setFormLocationID] = useState(() => {
+    const branch = getEffectiveBranch()
+    return branch ? [String(branch)] : []
+  }) // 'all' | string[]
 
   const [editingFormId, setEditingFormId] = useState(null)
   const [savingForm, setSavingForm] = useState(false)
@@ -1428,7 +1504,7 @@ function FormsPageInner() {
   useEffect(() => {
     const reasonsLocationID = resolveReasonsLocationID(formLocationID)
     const reasonOptions = buildReasonOptions(leadReasons)
-    const studioOptions = buildStudioOptions(locations)
+    const studioOptions = buildStudioOptionsForForm(locations, formLocationID)
     const optsKey = (opts) =>
       JSON.stringify((opts || []).map((o) => [o.value, o.label]))
 
@@ -1484,11 +1560,50 @@ function FormsPageInner() {
         }
         if (f.name === 'locationID') {
           const nextLabel = f.label === 'locationID' ? 'Studio' : f.label || 'Studio'
+          const scopeIds = resolveFormStudioScopeIds(formLocationID)
+          const branch = getEffectiveBranch()
+          // Prefer the single scoped studio, else navbar branch, when seeding.
+          const preferredDefault =
+            scopeIds.length === 1
+              ? scopeIds[0]
+              : branch && studioOptions.some((o) => String(o.value) === String(branch))
+                ? String(branch)
+                : studioOptions.length === 1
+                  ? String(studioOptions[0].value)
+                  : null
+
+          let nextDefault = f.defaultValue
+          let seeded = Boolean(f.studioDefaultSeeded)
+
+          // Always keep default on the only available studio when scope is a single branch.
+          if (scopeIds.length === 1 && preferredDefault) {
+            nextDefault = preferredDefault
+            seeded = true
+          } else if (
+            !seeded &&
+            (nextDefault == null || String(nextDefault).trim() === '') &&
+            preferredDefault
+          ) {
+            nextDefault = preferredDefault
+            seeded = true
+          } else if (nextDefault != null && String(nextDefault).trim() !== '') {
+            // Drop defaults that are no longer in the scoped options.
+            if (
+              studioOptions.length &&
+              !studioOptions.some((o) => String(o.value) === String(nextDefault))
+            ) {
+              nextDefault = preferredDefault || undefined
+            }
+            seeded = true
+          }
+
           if (
             f.type === 'select' &&
             f.optionsLocked &&
             f.label === nextLabel &&
-            optsKey(f.options) === optsKey(studioOptions)
+            optsKey(f.options) === optsKey(studioOptions) &&
+            String(f.defaultValue || '') === String(nextDefault || '') &&
+            Boolean(f.studioDefaultSeeded) === seeded
           ) {
             return f
           }
@@ -1502,6 +1617,8 @@ function FormsPageInner() {
             optionsLocked: true,
             hidden: false,
             options: studioOptions,
+            defaultValue: nextDefault,
+            studioDefaultSeeded: seeded,
           }
         }
         if (f.name === 'utm_source') {
@@ -1738,7 +1855,8 @@ function FormsPageInner() {
     setBuilderFormType(type)
     setFormName('')
     setFormDescription('')
-    setFormLocationID([])
+    const branch = getEffectiveBranch()
+    setFormLocationID(branch ? [String(branch)] : [])
     setEditingFormId(null)
     const fields = buildInitialFormFields(type, leadReasons, locations)
     setFormFields(fields)
@@ -1976,7 +2094,7 @@ function FormsPageInner() {
 
         const redirectMeta =
           doc.querySelector('meta[name="cadance-redirect-url"]')?.getAttribute('content') || ''
-        setRedirectUrl(String(redirectMeta || '').trim())
+        setRedirectUrl(normalizeStandaloneRedirectUrl(redirectMeta))
 
         const submitEl = formEl?.querySelector('button[type="submit"], input[type="submit"]')
         const submitLabel = submitEl
@@ -2641,7 +2759,7 @@ function FormsPageInner() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  ${redirectUrl.trim() ? `<meta name="cadance-redirect-url" content="${String(redirectUrl.trim()).replace(/"/g, '&quot;')}">` : ''}
+  ${normalizeStandaloneRedirectUrl(redirectUrl) ? `<meta name="cadance-redirect-url" content="${String(normalizeStandaloneRedirectUrl(redirectUrl)).replace(/"/g, '&quot;')}">` : ''}
   <title>Form</title>
   <style>
     * {
@@ -2800,17 +2918,31 @@ ${gtagScript}
 ${getCaptchaExportRuntimeScript()}
 ${getFormPhoneExportRuntimeScript()}
     (function() {
-      var REDIRECT_URL = ${JSON.stringify(String(redirectUrl || '').trim())};
+      var REDIRECT_URL = ${JSON.stringify(normalizeStandaloneRedirectUrl(redirectUrl))};
+
+      function toAbsoluteRedirect(url) {
+        if (!url) return '';
+        var s = String(url).trim();
+        if (!s) return '';
+        var matches = s.match(/https?:\\/\\/[^\\s"']+/gi);
+        if (matches && matches.length > 1) s = matches[matches.length - 1];
+        var wwwTail = s.match(/^(https?:\\/\\/.+)\\/(www\\.[a-z0-9.-]+\\.[a-z]{2,})(\\/.*)?$/i);
+        if (wwwTail) s = 'https://' + wwwTail[2] + (wwwTail[3] || '');
+        if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return s;
+        if (s.indexOf('//') === 0) return 'https:' + s;
+        return 'https://' + s.replace(/^\\/+/, '');
+      }
 
       function goToRedirect() {
-        if (!REDIRECT_URL) return false;
+        var target = toAbsoluteRedirect(REDIRECT_URL);
+        if (!target) return false;
         try {
           var w = window.top || window;
-          w.location.href = REDIRECT_URL;
+          w.location.assign(target);
           return true;
         } catch (e) {
           try {
-            window.location.href = REDIRECT_URL;
+            window.location.assign(target);
             return true;
           } catch (e2) {
             return false;
@@ -3441,8 +3573,11 @@ ${getFormPhoneExportRuntimeScript()}
               placeholder="Thank-you redirect URL (optional)"
               value={redirectUrl}
               onChange={(e) => setRedirectUrl(e.target.value)}
+              onBlur={() => {
+                setRedirectUrl((prev) => normalizeStandaloneRedirectUrl(prev))
+              }}
               className="min-w-[280px] max-w-md"
-              title="After a successful submit, visitors are sent to this page"
+              title="After a successful submit, visitors are sent to this page (full URL, e.g. https://example.com/thanks)"
             />
             <div
               id="form-builder-location"
@@ -3454,14 +3589,48 @@ ${getFormPhoneExportRuntimeScript()}
                   'ring-2 ring-amber-400 ring-offset-1'
               )}
             >
-              <LocationSelector
-                value={formLocationID}
-                onChange={setFormLocationID}
-                multiple
-                allowAllBranches
-                showAllOption={false}
-                placeholder="Studio(s) required…"
-              />
+              {(() => {
+                const activeBranch = getEffectiveBranch()
+                // Navbar branch selected → only that one studio is preselected (single-select).
+                // Navbar "All branches" → multi-select as before.
+                if (activeBranch) {
+                  const singleValue =
+                    formLocationID === ALL_BRANCHES_VALUE
+                      ? ALL_BRANCHES_VALUE
+                      : Array.isArray(formLocationID)
+                        ? formLocationID[0] || String(activeBranch)
+                        : formLocationID || String(activeBranch)
+                  return (
+                    <LocationSelector
+                      value={singleValue}
+                      onChange={(v) => {
+                        if (v === ALL_BRANCHES_VALUE) {
+                          setFormLocationID(ALL_BRANCHES_VALUE)
+                          return
+                        }
+                        const id = Array.isArray(v) ? v[0] : v
+                        setFormLocationID(id ? [String(id)] : [])
+                      }}
+                      multiple={false}
+                      allowAllBranches
+                      showAllOption={false}
+                      preselectActiveBranch
+                      placeholder="Studio required…"
+                    />
+                  )
+                }
+                return (
+                  <LocationSelector
+                    value={formLocationID}
+                    onChange={setFormLocationID}
+                    multiple
+                    allowAllBranches
+                    showAllOption={false}
+                    preselectActiveBranch
+                    placeholder="Studio(s) required…"
+                  />
+                )
+              })()}
             </div>
             {editingFormId && (
               <span className="text-xs text-muted-foreground italic">Editing existing form</span>

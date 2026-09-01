@@ -364,7 +364,10 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [locationID, setLocationID] = useState([]);
+  const [locationID, setLocationID] = useState(() => {
+    const branch = getEffectiveBranch();
+    return branch ? [String(branch)] : [];
+  });
   const [error, setError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
 

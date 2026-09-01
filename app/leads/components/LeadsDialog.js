@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { UserPlus, CalendarClock, Trash2, StickyNote, Send } from 'lucide-react'
 import api from '@/lib/api'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, getEffectiveBranch } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
 import { cn, formatDateTime } from '@/lib/utils'
 import LocationSelector from '@/components/shared/LocationSelector'
@@ -20,6 +20,11 @@ const bookingStatusOptions = [
   { value: 'Not Booked', label: 'Not Booked' },
   { value: 'Booked', label: 'Booked' },
 ]
+
+function defaultLeadLocationIDs() {
+  const branch = getEffectiveBranch()
+  return branch ? [String(branch)] : []
+}
 
 const emptyLead = {
   name: '',
@@ -36,6 +41,10 @@ const emptyLead = {
   agentFollowupEnabled: true,
   callbackDate: '',
   notes: '',
+}
+
+function createEmptyLead() {
+  return { ...emptyLead, locationID: defaultLeadLocationIDs() }
 }
 
 const toDateInputValue = (value) => (value ? String(value).slice(0, 10) : '')
@@ -115,7 +124,7 @@ export default function LeadsDialog({
         }
       }
     } else {
-      setEditingLead({ ...emptyLead })
+      setEditingLead(createEmptyLead())
       setMode('create')
     }
   }, [open, initialLeadId, leads, viewOnly])
@@ -126,7 +135,7 @@ export default function LeadsDialog({
   }
 
   function openCreate() {
-    setEditingLead({ ...emptyLead })
+    setEditingLead(createEmptyLead())
     setMode('create')
   }
 

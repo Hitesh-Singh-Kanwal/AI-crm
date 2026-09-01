@@ -263,7 +263,7 @@ export default function AiAssistTab() {
     setSuccessEvaluationEnabled(true)
     setSuccessEvaluationPrompt(DEFAULT_SUCCESS_EVALUATION_PROMPT)
     setSuccessEvaluationRubric(DEFAULT_SUCCESS_EVALUATION_RUBRIC)
-    setLocationID([])
+    setLocationID(initLocationID(null))
   }
 
   const syncVoiceTuningFromPersona = useCallback((persona) => {

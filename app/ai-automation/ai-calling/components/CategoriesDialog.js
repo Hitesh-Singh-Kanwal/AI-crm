@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import api from '@/lib/api'
-import { hasLocationSelection, toLocationPayload } from './locationScope'
+import { hasLocationSelection, toLocationPayload, initLocationID } from './locationScope'
 
 function normalizeCategoryName(name) {
   return (name || '').trim()
@@ -53,7 +53,7 @@ export default function CategoriesDialog({ open, onClose }) {
   useEffect(() => {
     if (!open) return
     setNewName('')
-    setLocationID([])
+    setLocationID(initLocationID(null))
     setEditingId(null)
     setEditingName('')
     fetchCategories()

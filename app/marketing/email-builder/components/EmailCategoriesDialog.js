@@ -11,13 +11,19 @@ import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import { extractCategoriesList } from '../emailBuilderApi'
+import { getEffectiveBranch } from '@/lib/auth'
+
+function defaultStudioIds() {
+  const branch = getEffectiveBranch()
+  return branch ? [String(branch)] : []
+}
 
 export default function EmailCategoriesDialog({ open, onClose, onChanged }) {
   const toast = useToast()
   const [loading, setLoading] = useState(false)
   const [categories, setCategories] = useState([])
   const [error, setError] = useState(null)
-  const [locationID, setLocationID] = useState([])
+  const [locationID, setLocationID] = useState(() => defaultStudioIds())
 
   const [newName, setNewName] = useState('')
   const [saving, setSaving] = useState(false)

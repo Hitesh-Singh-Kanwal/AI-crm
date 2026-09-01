@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import LocationSelector from '@/components/shared/LocationSelector'
 import api from '@/lib/api'
-import { appendLocationFields, hasLocationSelection } from './locationScope'
+import { appendLocationFields, hasLocationSelection, initLocationID } from './locationScope'
 
 function normalize(v) {
   return (v || '').trim()
@@ -22,7 +22,7 @@ export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded })
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [file, setFile] = useState(null)
-  const [locationID, setLocationID] = useState([])
+  const [locationID, setLocationID] = useState(() => initLocationID(null))
 
   const canUpload = useMemo(
     () => !!file && !!normalize(name) && !!normalize(description) && hasLocationSelection(locationID),
@@ -35,7 +35,7 @@ export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded })
     setName('')
     setDescription('')
     setFile(null)
-    setLocationID([])
+    setLocationID(initLocationID(null))
   }, [open])
 
   async function handleUpload() {

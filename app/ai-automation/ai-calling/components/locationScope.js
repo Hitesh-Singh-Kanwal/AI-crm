@@ -1,14 +1,18 @@
 import { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
+import { getEffectiveBranch } from '@/lib/auth'
 
 /** Prefill LocationSelector from an API entity with allLocations / locationID. */
 export function initLocationID(entity) {
   if (entity?.allLocations) return ALL_BRANCHES_VALUE
-  if (Array.isArray(entity?.locationID)) {
+  if (Array.isArray(entity?.locationID) && entity.locationID.length > 0) {
     return entity.locationID.map((l) => l?._id || l).filter(Boolean)
   }
   if (entity?.locationID?._id || entity?.locationID) {
     return [entity.locationID?._id || entity.locationID]
   }
+  // Create / empty entity → navbar branch
+  const branch = getEffectiveBranch()
+  if (branch) return [String(branch)]
   return []
 }
 
