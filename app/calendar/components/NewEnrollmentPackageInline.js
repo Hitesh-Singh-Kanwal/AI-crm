@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { useCloverConnection } from "@/app/settings/payments/clover/useCloverConnection";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
 import { toast } from "@/components/ui/toast";
+import SearchableSelect from "@/components/ui/searchable-select";
 
 import { PAYMENT_METHODS, PURCHASE_METHODS, TIP_METHODS } from "@/lib/paymentMethods";
 
@@ -34,6 +35,7 @@ const BLANK_FORM = {
     dueDate: "",
     collectNow: true,
     collectAmount: "",
+    collectDate: todayISO(),
     useWallet: false,
     walletAmount: "",
   },
@@ -174,6 +176,9 @@ export default function NewEnrollmentPackageInline({
     purchaseDate: todayISO(),
   }));
   const [step, setStep] = useState(1);
+  // Once staff edit the payment date by hand we stop steering it from the
+  // schedule — until then it tracks the first installment's due date (or today).
+  const [collectDateTouched, setCollectDateTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [catalogServices, setCatalogServices] = useState([]);
@@ -403,6 +408,24 @@ export default function NewEnrollmentPackageInline({
       )
     : 0;
   const collectsFirstInstallment = form.billingType === "payment_plan" || scheduledFlexible;
+
+  // The payment being collected now settles the first scheduled installment, so
+  // its recorded date defaults to that installment's due date rather than today.
+  // A plain one-time / flexible payment has no schedule and defaults to today.
+  const firstScheduledFlexDate = scheduledFlexible
+    ? [...form.billing.customInstallments]
+        .filter((c) => c.dueDate && Number(c.amount) > 0)
+        .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0]?.dueDate || ""
+    : "";
+  const defaultCollectDate =
+    form.billingType === "payment_plan"
+      ? form.billing.startDate || todayISO()
+      : scheduledFlexible
+        ? firstScheduledFlexDate || todayISO()
+        : todayISO();
+  const effectiveCollectDate = collectDateTouched
+    ? form.billing.collectDate
+    : defaultCollectDate;
   // One-time payments have nothing to split — the amount collected now is
   // always the full payable balance, so the field is locked the same way a
   // first installment amount is (that one's fixed by the schedule instead).
@@ -502,6 +525,7 @@ export default function NewEnrollmentPackageInline({
         ...form.billing,
         collectNow: collect,
         collectAmount: collect ? Number(form.billing.collectAmount) : 0,
+        collectDate: effectiveCollectDate || undefined,
       },
     };
     if (form.tip.enabled && form.tip.amount && form.teacherID) {
@@ -544,23 +568,12 @@ export default function NewEnrollmentPackageInline({
             <label className="text-[11px] font-medium text-muted-foreground">
               Teacher
             </label>
-            <div className="relative">
-              <select
-                value={form.teacherID}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, teacherID: e.target.value }))
-                }
-                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px]"
-              >
-                <option value="">Select teacher…</option>
-                {teacherOptions.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            </div>
+            <SearchableSelect
+              value={form.teacherID}
+              onChange={(v) => setForm((p) => ({ ...p, teacherID: v }))}
+              options={teacherOptions}
+              placeholder="Select teacher…"
+            />
 
             <label className="text-[11px] font-medium text-muted-foreground">
               Label (optional)
@@ -577,21 +590,15 @@ export default function NewEnrollmentPackageInline({
             <label className="text-[11px] font-medium text-muted-foreground">
               Package
             </label>
-            <div className="relative">
-              <select
-                value={form.packageID}
-                onChange={(e) => handlePkgChange(e.target.value)}
-                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px]"
-              >
-                <option value="">Select package…</option>
-                {packageTemplates.map((p) => (
-                  <option key={p._id} value={p._id}>
-                    {p.packageName}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            </div>
+            <SearchableSelect
+              value={form.packageID}
+              onChange={(v) => handlePkgChange(v)}
+              options={packageTemplates.map((p) => ({
+                value: p._id,
+                label: p.packageName,
+              }))}
+              placeholder="Select package…"
+            />
             {selectedPkg && (
               <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
                 <p className="text-[12px] font-medium text-foreground">
@@ -1219,6 +1226,23 @@ export default function NewEnrollmentPackageInline({
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                       </div>
+                    </div>
+                  )}
+                  {form.billing.collectNow && (
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground">Payment date</label>
+                      <input
+                        type="date"
+                        value={effectiveCollectDate}
+                        onChange={(e) => {
+                          setCollectDateTouched(true);
+                          setForm((p) => ({
+                            ...p,
+                            billing: { ...p.billing, collectDate: e.target.value },
+                          }));
+                        }}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] outline-none focus:border-primary"
+                      />
                     </div>
                   )}
                   {collectFromWallet && (

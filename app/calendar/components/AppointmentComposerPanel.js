@@ -15,6 +15,7 @@ import {
 import api from "@/lib/api";
 import { getEffectiveBranch } from "@/lib/auth";
 import { studioWallTimeToUtcISO } from "@/lib/studio-time";
+import { toStudioLocalDate } from "@/lib/studioLocalDate";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MultiSelectCheckboxDropdown from "@/components/shared/MultiSelectCheckboxDropdown";
 import NewEnrollmentPackageInline from "@/app/calendar/components/NewEnrollmentPackageInline";
@@ -40,22 +41,37 @@ function addMinutes(timeStr, minutesToAdd) {
   return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
 }
 
-/** `/api/calendar` expects `start`/`end`, not `date`. Local calendar day bounds (ISO). */
-function localCalendarDayQueryRange(dateStr) {
+/**
+ * `/api/calendar` expects `start`/`end`, not `date`. Bounds for the studio's
+ * calendar day: `startISO`/`endISO` are the real UTC instants to query on, while
+ * `dayStartMs`/`dayEndExclusiveMs` live in the "studio wall-clock as browser
+ * local" space that `toStudioLocalDate` maps event instants into — so the two
+ * are only comparable after that conversion. Without `tz` this is browser-local,
+ * the pre-timezone behaviour.
+ */
+function localCalendarDayQueryRange(dateStr, tz) {
   const [y, mo, d] = String(dateStr).split("-").map(Number);
   if (!y || !mo || !d) return null;
   const dayStart = new Date(y, mo - 1, d, 0, 0, 0, 0);
-  const dayEndInclusive = new Date(y, mo - 1, d, 23, 59, 59, 999);
   const dayEndExclusive = dayStart.getTime() + 86400000;
+  const startISO =
+    studioWallTimeToUtcISO(dateStr, "00:00", tz) || dayStart.toISOString();
+  const endISO =
+    studioWallTimeToUtcISO(dateStr, "23:59", tz) ||
+    new Date(y, mo - 1, d, 23, 59, 59, 999).toISOString();
   return {
-    startISO: dayStart.toISOString(),
-    endISO: dayEndInclusive.toISOString(),
+    startISO,
+    endISO,
     dayStartMs: dayStart.getTime(),
     dayEndExclusiveMs: dayEndExclusive,
   };
 }
 
-/** Clip booking [evStart,evEnd) to this local day → minutes from midnight [start,end). */
+/**
+ * Clip booking [evStart,evEnd) to this studio day → minutes from midnight
+ * [start,end). `evStart`/`evEnd` must already be mapped into studio wall-clock
+ * space (via `toStudioLocalDate`) so their getters line up with `dayStartMs`.
+ */
 function clipIntervalToLocalDay(evStart, evEnd, dayStartMs, dayEndExclusiveMs) {
   const s = Math.max(evStart.getTime(), dayStartMs);
   const e = Math.min(evEnd.getTime(), dayEndExclusiveMs);
@@ -1292,14 +1308,15 @@ function AvailabilityPicker({
   dayEndMin,
   selectedSlots,
   onToggleSlot,
+  studioTz,
 }) {
-  /** Merged busy intervals for `date`, minutes from local midnight */
+  /** Merged busy intervals for `date`, minutes from studio midnight */
   const [busyIntervalsMin, setBusyIntervalsMin] = useState([]);
   const [blockingEventCount, setBlockingEventCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const range = localCalendarDayQueryRange(date);
+    const range = localCalendarDayQueryRange(date, studioTz);
     if (!instructorId || !range) {
       setBusyIntervalsMin([]);
       setBlockingEventCount(0);
@@ -1309,7 +1326,7 @@ function AvailabilityPicker({
     const qs = new URLSearchParams({
       teacherID: String(instructorId),
       /* Widen start by 1d so lessons that began yesterday but end today are returned */
-      start: new Date(range.dayStartMs - 86400000).toISOString(),
+      start: new Date(new Date(range.startISO).getTime() - 86400000).toISOString(),
       end: range.endISO,
       limit: "500",
     });
@@ -1328,7 +1345,15 @@ function AvailabilityPicker({
           const st = ev.startDateTime ? new Date(ev.startDateTime) : null;
           const en = ev.endDateTime ? new Date(ev.endDateTime) : null;
           if (!st || !en || !(en > st)) continue;
-          const clipped = clipIntervalToLocalDay(st, en, range.dayStartMs, range.dayEndExclusiveMs);
+          // Map the instant into studio wall-clock space so a booking lands on
+          // the same minutes-from-midnight the calendar grid shows it at — a
+          // browser in a different timezone would otherwise clip it elsewhere.
+          const clipped = clipIntervalToLocalDay(
+            toStudioLocalDate(st, studioTz),
+            toStudioLocalDate(en, studioTz),
+            range.dayStartMs,
+            range.dayEndExclusiveMs,
+          );
           if (clipped && clipped.end > clipped.start) {
             intervals.push(clipped);
             blocking += 1;
@@ -1342,7 +1367,7 @@ function AvailabilityPicker({
         setBlockingEventCount(0);
       })
       .finally(() => setLoading(false));
-  }, [instructorId, date]);
+  }, [instructorId, date, studioTz]);
 
   const availableSlots = useMemo(() => {
     const bookingDur = Math.max(15, Number(duration) || 50);
@@ -1698,6 +1723,7 @@ function WhenSection({
   slotStepMins,
   slotAlignMins,
   dayEndMin,
+  studioTz,
 }) {
   function handleToggleSlot(slot) {
     const current = form.selected_time_slots || [];
@@ -1731,6 +1757,7 @@ function WhenSection({
         dayEndMin={dayEndMin}
         selectedSlots={form.selected_time_slots}
         onToggleSlot={handleToggleSlot}
+        studioTz={studioTz}
       />
     </div>
   );
@@ -1790,6 +1817,7 @@ function AppointmentFields({
   slotStepMins,
   slotAlignMins,
   dayEndMin,
+  studioTz,
   suggestedAmount,
   onNewCustomer,
   onOpenEnrollmentWizard,
@@ -1841,6 +1869,7 @@ function AppointmentFields({
         slotStepMins={slotStepMins}
         slotAlignMins={slotAlignMins}
         dayEndMin={dayEndMin}
+        studioTz={studioTz}
       />
       <div className="space-y-3">
         <SectionDivider label="Notes & Payment" />
@@ -1906,6 +1935,7 @@ function GroupClassFields({
   slotStepMins,
   slotAlignMins,
   dayEndMin,
+  studioTz,
 }) {
   return (
     <div className="space-y-4">
@@ -1956,6 +1986,7 @@ function GroupClassFields({
         slotStepMins={slotStepMins}
         slotAlignMins={slotAlignMins}
         dayEndMin={dayEndMin}
+        studioTz={studioTz}
       />
       <div className="space-y-3">
         <SectionDivider label="Notes" />
@@ -1980,6 +2011,7 @@ function ToDoFields({
   slotStepMins,
   slotAlignMins,
   dayEndMin,
+  studioTz,
 }) {
   function handleTodoChange(id) {
     setField("todo_id", id);
@@ -2035,6 +2067,7 @@ function ToDoFields({
         slotStepMins={slotStepMins}
         slotAlignMins={slotAlignMins}
         dayEndMin={dayEndMin}
+        studioTz={studioTz}
       />
       <div className="space-y-3">
         <SectionDivider label="Notes" />
@@ -2333,6 +2366,7 @@ export default function AppointmentComposerPanel({
       const payRes = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
         installmentIndex: firstPending,
         method,
+        paymentDate: billing.collectDate || undefined,
       });
       if (!payRes.success) {
         console.error("pay-installment failed", payRes);
@@ -2348,6 +2382,7 @@ export default function AppointmentComposerPanel({
         type: "package_purchase",
         amount: Number(billing.collectAmount),
         method,
+        paymentDate: billing.collectDate || undefined,
       });
       return payRes.data?.checkoutUrl || null;
     }
@@ -2391,6 +2426,7 @@ export default function AppointmentComposerPanel({
         payload.billingType === "one_time"
           ? {
               method: payload.billing?.method || "cash",
+              collectDate: payload.billing?.collectDate || undefined,
             }
           : payload.billingType === "payment_plan"
             ? {
@@ -2748,6 +2784,7 @@ export default function AppointmentComposerPanel({
     slotStepMins,
     slotAlignMins,
     dayEndMin,
+    studioTz,
     suggestedAmount,
     packageOptions,
     packageTemplates,
@@ -2816,6 +2853,7 @@ export default function AppointmentComposerPanel({
           slotStepMins={slotStepMins}
           slotAlignMins={slotAlignMins}
           dayEndMin={dayEndMin}
+          studioTz={studioTz}
         />
       );
     if (activeTab === "To Do")
@@ -2830,6 +2868,7 @@ export default function AppointmentComposerPanel({
           slotStepMins={slotStepMins}
           slotAlignMins={slotAlignMins}
           dayEndMin={dayEndMin}
+          studioTz={studioTz}
         />
       );
     return null;
@@ -2851,6 +2890,7 @@ export default function AppointmentComposerPanel({
     allServices,
     enrollments,
     rawCustomers,
+    studioTz,
   ]);
 
   const slotCount = form.selected_time_slots?.length ?? 0;

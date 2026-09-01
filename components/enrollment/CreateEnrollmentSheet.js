@@ -171,6 +171,7 @@ export default function CreateEnrollmentSheet({
         payload.billingType === 'one_time'
           ? {
               method: payload.billing?.method || 'cash',
+              collectDate: payload.billing?.collectDate || undefined,
               ...(payload.billing?.useWallet && Number(payload.billing?.walletAmount) > 0
                 ? { walletAmount: Number(payload.billing.walletAmount) }
                 : {}),
@@ -244,6 +245,7 @@ export default function CreateEnrollmentSheet({
         const payRes = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
           installmentIndex: firstPending,
           method,
+          paymentDate: payload.billing?.collectDate || undefined,
         })
         if (!payRes?.success) {
           setError(payRes?.error || 'Enrollment created but first installment payment failed.')
@@ -259,6 +261,7 @@ export default function CreateEnrollmentSheet({
         type: 'package_purchase',
         amount: collectAmount,
         method,
+        paymentDate: payload.billing?.collectDate || undefined,
       })
       if (!payRes?.success) {
         setError(payRes?.error || 'Enrollment created but initial payment failed.')
