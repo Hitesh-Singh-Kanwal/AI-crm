@@ -92,7 +92,7 @@ export default function EmailPreviewFrame({
   ) : null
 
   const desktopPreview = (
-    <div className="mx-auto w-full max-w-[640px] transition-all duration-200">
+    <div className="mx-auto w-full max-w-[760px] transition-all duration-200">
       <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md">
         <div className="space-y-1 border-b border-slate-100 bg-slate-50/95 px-3 py-2">
           <div className="flex items-center gap-3">

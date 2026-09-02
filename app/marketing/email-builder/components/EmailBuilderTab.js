@@ -126,7 +126,7 @@ function blockToHtml(block) {
       const src = String(block.content || '').trim()
       const safeSrc = src ? escapeHtml(src) : ''
       return safeSrc
-        ? `<img alt="Image" src="${safeSrc}" width="600" data-crm-img="1" style="${style || 'display:block;width:100%;max-width:100%;height:auto;border:0;'}"/>`
+        ? `<img alt="Image" src="${safeSrc}" width="720" data-crm-img="1" style="${style || 'display:block;width:100%;max-width:100%;height:auto;border:0;'}"/>`
         : `<div style="${style}">[Image]</div>`
     }
     case 'video': {

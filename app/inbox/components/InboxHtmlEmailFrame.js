@@ -22,7 +22,7 @@ export function isRichEmailHtml(html) {
 /**
  * Plain / lightly marked-up text emails — including CRM outbound HTML chrome
  * and studio footers with inline styles. These should render as a padded text
- * card in the inbox, not a scaled 600px template iframe.
+ * card in the inbox, not a scaled template iframe.
  */
 export function isPlainTextEmailHtml(html) {
   const raw = String(html || '').trim()
@@ -60,10 +60,10 @@ export function shouldRenderEmailAsRichHtml(html) {
 }
 
 /**
- * Standard email design width. Media queries are disabled in preview, so 600
- * stays edge-to-edge (no side letterboxing from a wider canvas).
+ * Standard email design width (matches backend EMAIL_CONTENT_MAX_WIDTH).
+ * Media queries are disabled in preview so this stays edge-to-edge.
  */
-export const EMAIL_DESIGN_WIDTH = 600
+export const EMAIL_DESIGN_WIDTH = 720
 
 /**
  * Disable @media blocks in preview so mobile styles never reflow the canvas.

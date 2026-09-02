@@ -327,10 +327,9 @@ export function ensureFluidEmailMedia(html) {
     } else {
       a += ` style="${mergeStyle('')}"`
     }
-    if (forceFull && !/\bwidth\s*=/i.test(a)) a += ' width="600"'
+    if (forceFull && !/\bwidth\s*=/i.test(a)) a += ' width="720"'
     return `<img${a}>`
   })
 
-  out = out.replace(/max-width:\s*560px/gi, 'max-width:100%')
   return out
 }

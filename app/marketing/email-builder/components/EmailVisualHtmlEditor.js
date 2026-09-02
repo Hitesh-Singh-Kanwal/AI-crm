@@ -78,7 +78,7 @@ function buildImgHtml(url, alignId = 'center') {
   const safeUrl = String(url).replaceAll('"', '%22')
   // Only "Full" is stamped as full-bleed so fluid rewriter won't stretch logos.
   if (alignId === 'full') {
-    return `<img src="${safeUrl}" alt="Image" width="600" data-crm-img="1" style="${align.style}" />`
+    return `<img src="${safeUrl}" alt="Image" width="720" data-crm-img="1" style="${align.style}" />`
   }
   return `<img src="${safeUrl}" alt="Image" data-crm-img="auto" style="${align.style}" />`
 }
@@ -223,7 +223,7 @@ export default function EmailVisualHtmlEditor({
   <meta charset="utf-8" />
   <style>
     html, body { margin: 0; padding: 24px; font-family: Arial, Helvetica, sans-serif; line-height: 1.55; color: #0f172a; background: #fff; }
-    body { min-height: 420px; outline: none; max-width: 640px; margin: 0 auto; }
+    body { min-height: 420px; outline: none; max-width: 720px; margin: 0 auto; }
     img { max-width: 100%; height: auto; cursor: pointer; }
     img[data-crm-img="1"] { width: 100%; }
     table { max-width: 100%; }
@@ -378,7 +378,7 @@ export default function EmailVisualHtmlEditor({
     selectedImg.setAttribute('data-crm-selected', '1')
     if (alignId === 'full') {
       selectedImg.setAttribute('data-crm-img', '1')
-      selectedImg.setAttribute('width', '600')
+      selectedImg.setAttribute('width', '720')
     } else {
       selectedImg.setAttribute('data-crm-img', 'auto')
       selectedImg.removeAttribute('width')
