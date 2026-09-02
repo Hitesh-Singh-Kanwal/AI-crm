@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, CheckCircle, Lock, Brain, Zap, DollarSign, Loader2, CheckCircle2, Eye, Sparkles, Crown, Settings2, ChevronDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, CheckCircle, Lock, Brain, Zap, DollarSign, Loader2, CheckCircle2, Eye, Sparkles, Crown, Settings2, ChevronDown, Tags, Wrench } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -334,30 +334,102 @@ function modelLabel(value) {
   return SMS_MODELS.find((m) => m.value === value)?.label || LEGACY_SMS_MODEL_LABELS[value] || value
 }
 
-function ModelSelector() {
+// ─── Agent setup: architecture (step 1) + model for that architecture (step 2) ──
+
+// Temporarily OpenAI-only (cheap / balanced / premium) while only an OpenAI
+// key is configured — mirrors TEXT_AGENT_MODELS in aiSettings.model.js on the
+// backend. claude-sonnet-5 and gemini-3.6-flash are already fully wired
+// server-side; add them back here once Anthropic/Google keys exist.
+const TEXT_AGENT_MODELS = [
+  {
+    value: 'gpt-5.6-luna',
+    label: 'GPT-5.6 Luna',
+    provider: 'OpenAI',
+    icon: DollarSign,
+    iconClass: 'text-warning',
+    price: '$0.20 / $1.20 per 1M tokens',
+  },
+  {
+    value: 'gpt-5.6-terra',
+    label: 'GPT-5.6 Terra',
+    provider: 'OpenAI',
+    icon: Sparkles,
+    iconClass: 'text-primary',
+    price: '$2 / $12 per 1M tokens',
+  },
+  {
+    value: 'gpt-5.6-sol',
+    label: 'GPT-5.6 Sol',
+    provider: 'OpenAI',
+    icon: Crown,
+    iconClass: 'text-brand',
+    price: '$5 / $30 per 1M tokens',
+  },
+]
+
+function textAgentModelLabel(value) {
+  return TEXT_AGENT_MODELS.find((m) => m.value === value)?.label || value
+}
+
+function AgentSetupSelector() {
   const toast = useToast()
-  const [selectedModel, setSelectedModel] = useState(null)
+  const [textAgentMode, setTextAgentMode] = useState(null)
+  const [smsModel, setSmsModel] = useState(null)
+  const [textAgentModel, setTextAgentModel] = useState(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
     api.get('/api/ai-settings')
-      .then((r) => { if (r.success) setSelectedModel(r.data?.smsModel || 'gpt-4o') })
-      .catch(() => setSelectedModel('gpt-4o'))
+      .then((r) => {
+        if (r.success) {
+          setTextAgentMode(r.data?.textAgentMode || 'legacy_tags')
+          setSmsModel(r.data?.smsModel || 'gpt-4o')
+          setTextAgentModel(r.data?.textAgentModel || 'gpt-5.6-terra')
+        }
+      })
+      .catch(() => {
+        setTextAgentMode('legacy_tags')
+        setSmsModel('gpt-4o')
+        setTextAgentModel('gpt-5.6-terra')
+      })
       .finally(() => setLoading(false))
   }, [])
 
-  const handleSave = async (value) => {
-    if (value === selectedModel) return
+  const saveMode = async (value) => {
+    if (value === textAgentMode) return
+    setSaving(true)
+    try {
+      const result = await api.put('/api/ai-settings', { textAgentMode: value })
+      if (result.success) {
+        setTextAgentMode(result.data?.textAgentMode || value)
+        toast.success({
+          title: 'Agent architecture updated',
+          message: value === 'tool_calling'
+            ? 'This studio now runs the new tool-calling agent.'
+            : 'This studio is back on the old tag-based agent.',
+        })
+      } else {
+        toast.error({ title: 'Error', message: result.error || 'Unable to update agent architecture' })
+      }
+    } catch {
+      toast.error({ title: 'Error', message: 'Unexpected error' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveSmsModel = async (value) => {
+    if (value === smsModel) return
     setSaving(true)
     try {
       const result = await api.put('/api/ai-settings', { smsModel: value })
       if (result.success) {
-        setSelectedModel(result.data?.smsModel || value)
+        setSmsModel(result.data?.smsModel || value)
         toast.success({
           title: 'Model updated',
-          message: `SMS agent will now use ${modelLabel(result.data?.smsModel || value)}`,
+          message: `Old agent will now use ${modelLabel(result.data?.smsModel || value)}`,
         })
       } else {
         toast.error({ title: 'Error', message: result.error || 'Unable to update model' })
@@ -369,9 +441,30 @@ function ModelSelector() {
     }
   }
 
-  const selectedMeta = SMS_MODELS.find((m) => m.value === selectedModel)
-  const SelectedIcon = selectedMeta?.icon || Settings2
-  const isLegacy = Boolean(selectedModel) && !selectedMeta && !loading
+  const saveTextAgentModel = async (value) => {
+    if (value === textAgentModel) return
+    setSaving(true)
+    try {
+      const result = await api.put('/api/ai-settings', { textAgentModel: value })
+      if (result.success) {
+        setTextAgentModel(result.data?.textAgentModel || value)
+        toast.success({
+          title: 'Model updated',
+          message: `New agent will now use ${textAgentModelLabel(result.data?.textAgentModel || value)}`,
+        })
+      } else {
+        toast.error({ title: 'Error', message: result.error || 'Unable to update model' })
+      }
+    } catch {
+      toast.error({ title: 'Error', message: 'Unexpected error' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const isToolCalling = textAgentMode === 'tool_calling'
+  const smsModelMeta = SMS_MODELS.find((m) => m.value === smsModel)
+  const smsModelIsUnlisted = Boolean(smsModel) && !smsModelMeta && !loading
 
   return (
     <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-sm">
@@ -384,19 +477,25 @@ function ModelSelector() {
             )}>
               {loading
                 ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                : <SelectedIcon className={cn('h-4 w-4', selectedMeta ? selectedMeta.iconClass : 'text-muted-foreground')} />}
+                : isToolCalling
+                  ? <Wrench className="h-4 w-4 text-primary" />
+                  : <Tags className="h-4 w-4 text-muted-foreground" />}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground">Texting model</p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="text-sm font-semibold text-foreground">Agent setup</p>
+                {isToolCalling && (
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                    Testing
+                  </span>
+                )}
+              </div>
               <p className="truncate text-xs text-muted-foreground">
                 {loading
                   ? 'Loading…'
-                  : (
-                    <>
-                      Using <span className="font-medium text-foreground">{modelLabel(selectedModel)}</span>
-                      {selectedMeta?.price ? ` · ${selectedMeta.price}` : null}
-                    </>
-                  )}
+                  : isToolCalling
+                    ? <>New (tool-calling) · <span className="font-medium text-foreground">{textAgentModelLabel(textAgentModel)}</span></>
+                    : <>Old (legacy, tag-based) · <span className="font-medium text-foreground">{modelLabel(smsModel)}</span></>}
               </p>
             </div>
           </div>
@@ -423,82 +522,194 @@ function ModelSelector() {
 
         {open && (
           <div className="mt-4 border-t border-border/80 pt-4">
-            <p className="mb-3 text-xs text-muted-foreground">
-              Change takes effect on the next conversation. Prices are OpenAI list rates
-              (input / output per 1M tokens). Typical text ≈ 4,000 input + 100 output tokens.
+            <p className="mb-4 text-xs text-muted-foreground">
+              Pick the architecture first — that decides which model list applies below it.
+              Change takes effect on this studio&apos;s next conversation. Use this to compare
+              the two before deciding which to keep.
             </p>
-            {isLegacy && (
-              <p className="mb-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-muted-foreground">
-                This studio is still on <span className="font-medium text-foreground">{modelLabel(selectedModel)}</span> from the previous list.
-                Choose a model below to switch.
+
+            {/* Step 1: architecture */}
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Step 1 · Architecture
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => saveMode('legacy_tags')}
+                className={cn(
+                  'group relative flex flex-col gap-2 rounded-xl border p-4 text-left transition-all duration-150',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  textAgentMode === 'legacy_tags'
+                    ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
+                    : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
+                  saving && 'cursor-not-allowed opacity-60',
+                )}
+              >
+                {textAgentMode === 'legacy_tags' && (
+                  <span className="absolute right-3 top-3">
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                  </span>
+                )}
+                <div className="flex items-center gap-2 pr-6">
+                  <Tags className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold text-foreground">Old (legacy, tag-based)</span>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Current production default. Booking, payment, reschedule, and cancel actions are
+                  driven by rules and text tags in the prompt.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => saveMode('tool_calling')}
+                className={cn(
+                  'group relative flex flex-col gap-2 rounded-xl border p-4 text-left transition-all duration-150',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  textAgentMode === 'tool_calling'
+                    ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
+                    : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
+                  saving && 'cursor-not-allowed opacity-60',
+                )}
+              >
+                {textAgentMode === 'tool_calling' && (
+                  <span className="absolute right-3 top-3">
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                  </span>
+                )}
+                <div className="flex items-center gap-2 pr-6">
+                  <Wrench className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold text-foreground">New (tool-calling)</span>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Model owns the conversation and calls tools only to check availability, send
+                  payment links, reschedule, or cancel.
+                </p>
+              </button>
+            </div>
+
+            {/* Step 2: model for whichever architecture is selected above */}
+            <div className="mt-5">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Step 2 · Model for the {isToolCalling ? 'new' : 'old'} agent
               </p>
-            )}
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {SMS_MODELS.map(({
-                value, label, badge, badgeClass, description, icon: Icon, iconClass,
-                price, perText, speed, pros, cons,
-              }) => {
-                const isSelected = selectedModel === value
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => handleSave(value)}
-                    className={cn(
-                      'group relative flex flex-col gap-3 rounded-xl border p-4 text-left transition-all duration-150',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                      isSelected
-                        ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
-                        : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
-                      saving && 'cursor-not-allowed opacity-60',
-                    )}
-                  >
-                    {isSelected && (
-                      <span className="absolute right-3 top-3">
-                        <CheckCircle2 className="h-4 w-4 text-primary" />
-                      </span>
-                    )}
-                    <div className="flex items-start gap-3 pr-6">
-                      <div className={cn(
-                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-                        isSelected ? 'bg-primary/10' : 'bg-muted',
-                      )}>
-                        <Icon className={cn('h-4 w-4', isSelected ? 'text-primary' : iconClass)} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-sm font-semibold text-foreground">{label}</span>
-                          <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', badgeClass)}>
-                            {badge}
+
+              {isToolCalling ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {TEXT_AGENT_MODELS.map(({ value, label, provider, icon: Icon, iconClass, price }) => {
+                    const isSelected = textAgentModel === value
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        disabled={saving}
+                        onClick={() => saveTextAgentModel(value)}
+                        className={cn(
+                          'group relative flex flex-col gap-2 rounded-xl border p-3 text-left transition-all duration-150',
+                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                          isSelected
+                            ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
+                            : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
+                          saving && 'cursor-not-allowed opacity-60',
+                        )}
+                      >
+                        {isSelected && (
+                          <span className="absolute right-3 top-3">
+                            <CheckCircle2 className="h-4 w-4 text-primary" />
                           </span>
+                        )}
+                        <div className="flex items-center gap-2 pr-6">
+                          <Icon className={cn('h-4 w-4', isSelected ? 'text-primary' : iconClass)} />
+                          <span className="text-sm font-semibold text-foreground">{label}</span>
                         </div>
-                        <p className="mt-1 text-[11px] font-medium text-foreground">{price}</p>
-                        <p className="text-[11px] text-muted-foreground">{perText} · {speed}</p>
-                      </div>
-                    </div>
-                    <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-success">Pros</p>
-                        <ul className="mt-1 space-y-0.5">
-                          {pros.map((item) => (
-                            <li key={item} className="text-[11px] leading-snug text-muted-foreground">• {item}</li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-warning">Cons</p>
-                        <ul className="mt-1 space-y-0.5">
-                          {cons.map((item) => (
-                            <li key={item} className="text-[11px] leading-snug text-muted-foreground">• {item}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
+                        <p className="text-[11px] text-muted-foreground">{provider}</p>
+                        <p className="text-[11px] font-medium text-foreground">{price}</p>
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <>
+                  {smsModelIsUnlisted && (
+                    <p className="mb-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-muted-foreground">
+                      This studio is still on <span className="font-medium text-foreground">{modelLabel(smsModel)}</span> from
+                      an older list. Choose a model below to switch.
+                    </p>
+                  )}
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {SMS_MODELS.map(({
+                      value, label, badge, badgeClass, description, icon: Icon, iconClass,
+                      price, perText, speed, pros, cons,
+                    }) => {
+                      const isSelected = smsModel === value
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={saving}
+                          onClick={() => saveSmsModel(value)}
+                          className={cn(
+                            'group relative flex flex-col gap-3 rounded-xl border p-4 text-left transition-all duration-150',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                            isSelected
+                              ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
+                              : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
+                            saving && 'cursor-not-allowed opacity-60',
+                          )}
+                        >
+                          {isSelected && (
+                            <span className="absolute right-3 top-3">
+                              <CheckCircle2 className="h-4 w-4 text-primary" />
+                            </span>
+                          )}
+                          <div className="flex items-start gap-3 pr-6">
+                            <div className={cn(
+                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+                              isSelected ? 'bg-primary/10' : 'bg-muted',
+                            )}>
+                              <Icon className={cn('h-4 w-4', isSelected ? 'text-primary' : iconClass)} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-sm font-semibold text-foreground">{label}</span>
+                                <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', badgeClass)}>
+                                  {badge}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-[11px] font-medium text-foreground">{price}</p>
+                              <p className="text-[11px] text-muted-foreground">{perText} · {speed}</p>
+                            </div>
+                          </div>
+                          <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-success">Pros</p>
+                              <ul className="mt-1 space-y-0.5">
+                                {pros.map((item) => (
+                                  <li key={item} className="text-[11px] leading-snug text-muted-foreground">• {item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-warning">Cons</p>
+                              <ul className="mt-1 space-y-0.5">
+                                {cons.map((item) => (
+                                  <li key={item} className="text-[11px] leading-snug text-muted-foreground">• {item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="mt-3 text-[11px] text-muted-foreground">
+                    Prices are OpenAI list rates (input / output per 1M tokens). Typical text ≈ 4,000 input + 100 output tokens.
+                  </p>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -621,9 +832,9 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
           />
         </div>
 
-        {/* Model selector */}
+        {/* Agent setup: architecture, then the model list for whichever is chosen */}
         <div className="mb-6">
-          <ModelSelector />
+          <AgentSetupSelector />
         </div>
 
         {/* Toolbar */}
