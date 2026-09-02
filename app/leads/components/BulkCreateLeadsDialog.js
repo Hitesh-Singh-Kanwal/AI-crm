@@ -47,6 +47,7 @@ export default function BulkCreateLeadsDialog({ open, onClose, onRefresh }) {
       }
 
       const lead = {}
+      const addr = {}
       headers.forEach((header, index) => {
         const value = values[index]
         if (header === 'name') lead.name = value
@@ -54,6 +55,14 @@ export default function BulkCreateLeadsDialog({ open, onClose, onRefresh }) {
         else if (header === 'phonenumber' || header === 'phone') lead.phoneNumber = value
         else if (header === 'location') lead.location = value
         else if (header === 'stage') lead.stage = value || 'new'
+        else if (header === 'reason') lead.reason = value || ''
+        else if (header === 'dateofbirth' || header === 'date of birth') lead.dateOfBirth = value || undefined
+        else if (header === 'gender') lead.gender = (value || '').trim().toLowerCase() || undefined
+        else if (header === 'street') addr.street = value || ''
+        else if (header === 'city') addr.city = value || ''
+        else if (header === 'state') addr.state = value || ''
+        else if (header === 'zipcode' || header === 'zip code' || header === 'zip') addr.zipCode = value || ''
+        else if (header === 'country') addr.country = value || ''
         else if (header === 'bookingstatus' || header === 'booking status') lead.bookingStatus = value || 'Not Booked'
         else if (header === 'assignedhumanagent' || header === 'assigned human agent') lead.assignedHumanAgent = value || ''
         else if (header === 'assignedaiagent' || header === 'assigned ai agent') lead.assignedAiAgent = value || ''
@@ -62,6 +71,10 @@ export default function BulkCreateLeadsDialog({ open, onClose, onRefresh }) {
 
       if (!lead.name || !lead.email || !lead.phoneNumber || !lead.location) {
         throw new Error(`Row ${i + 1} is missing required fields`)
+      }
+
+      if (addr.street || addr.city || addr.state || addr.zipCode) {
+        lead.address = { ...addr, country: (addr.country || '').trim() || 'USA' }
       }
 
       leads.push(lead)
@@ -124,12 +137,10 @@ export default function BulkCreateLeadsDialog({ open, onClose, onRefresh }) {
   }
 
   const downloadSampleCSV = () => {
-    const sampleCSV = `name,email,phonenumber,location,stage,bookingstatus,assignedhumanagent,assignedaiagent,isescalated
-John Doe,john.doe@example.com,+1234567890,New York,new,Not Booked,agent1@studio.com,ai-agent-001,false
-Jane Smith,jane.smith@example.com,+1987654321,Los Angeles,engaged,Not Booked,agent2@studio.com,ai-agent-002,false
-Bob Johnson,bob.johnson@example.com,+1555555555,Chicago,pending_payment,Booked,agent1@studio.com,,true
-Alice Williams,alice.williams@example.com,+1444444444,Miami,re_engaged,Not Booked,,ai-agent-003,false
-Charlie Brown,charlie.brown@example.com,+1333333333,Seattle,cold,Not Booked,agent3@studio.com,ai-agent-001,false`
+    const sampleCSV = `name,email,phonenumber,location,stage,reason,dateofbirth,gender,street,city,state,zipcode,country,bookingstatus,assignedhumanagent,assignedaiagent,isescalated
+John Doe,john.doe@example.com,+1234567890,New York,new,wedding_dance,1990-01-01,male,123 Main St,New York,NY,10001,USA,Not Booked,agent1@studio.com,ai-agent-001,false
+Jane Smith,jane.smith@example.com,+1987654321,Los Angeles,engaged,,,female,,,,,,Not Booked,agent2@studio.com,ai-agent-002,false
+Bob Johnson,bob.johnson@example.com,+1555555555,Chicago,pending_payment,,,,,,,,,Booked,agent1@studio.com,,true`
 
     const blob = new Blob([sampleCSV], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
@@ -160,16 +171,16 @@ Charlie Brown,charlie.brown@example.com,+1333333333,Seattle,cold,Not Booked,agen
             <label className="block text-sm font-medium mb-2">CSV Format</label>
             <div className="bg-muted/40 border border-border rounded-lg p-3 text-xs font-mono">
               <div className="text-muted-foreground mb-2">Required columns: name, email, phonenumber, location</div>
-              <div className="text-muted-foreground">Optional columns: stage, bookingstatus, assignedhumanagent, assignedaiagent, isescalated</div>
+              <div className="text-muted-foreground">Optional columns: stage, reason, dateofbirth, gender, street, city, state, zipcode, country, bookingstatus, assignedhumanagent, assignedaiagent, isescalated</div>
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-2">Example CSV</label>
             <div className="bg-muted/40 border border-border rounded-lg p-3 text-xs font-mono whitespace-pre-wrap">
-{`name,email,phonenumber,location,stage,bookingstatus
-John Doe,john@example.com,+1234567890,New York,new,Not Booked
-Jane Smith,jane@example.com,+1987654321,Los Angeles,engaged,Booked`}
+{`name,email,phonenumber,location,stage,dateofbirth,gender
+John Doe,john@example.com,+1234567890,New York,new,1990-01-01,male
+Jane Smith,jane@example.com,+1987654321,Los Angeles,engaged,,female`}
             </div>
           </div>
 

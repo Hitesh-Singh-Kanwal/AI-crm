@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { UserPlus, CalendarClock, Trash2, StickyNote, Send } from 'lucide-react'
+import { UserPlus, CalendarClock, Trash2, StickyNote, Send, Users, Pencil } from 'lucide-react'
 import api from '@/lib/api'
 import { getCurrentUser, getEffectiveBranch } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
@@ -21,15 +21,85 @@ const bookingStatusOptions = [
   { value: 'Booked', label: 'Booked' },
 ]
 
+// Mirrors the customer member schema (customer.model.js `memberSchema`) so a
+// lead's couple/family carries over 1:1 when the lead is converted.
+const MEMBER_GENDER_OPTIONS = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Other' },
+  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+]
+
+const emptyMember = {
+  name: '',
+  email: '',
+  phoneNumber: '',
+  dateOfBirth: '',
+  gender: '',
+  relationship: '',
+  notes: '',
+}
+
+function memberFromRecord(member = {}) {
+  return {
+    name: member.name || '',
+    email: member.email || '',
+    phoneNumber: member.phoneNumber || '',
+    dateOfBirth: member.dateOfBirth ? String(member.dateOfBirth).slice(0, 10) : '',
+    gender: member.gender || '',
+    relationship: member.relationship || '',
+    notes: member.notes || '',
+  }
+}
+
+// Trim + drop empty optionals; the backend requires only `name`.
+function sanitizeMember(member = {}) {
+  return {
+    name: (member.name || '').trim(),
+    email: (member.email || '').trim() || undefined,
+    phoneNumber: (member.phoneNumber || '').trim() || undefined,
+    dateOfBirth: member.dateOfBirth ? String(member.dateOfBirth).slice(0, 10) : undefined,
+    gender: member.gender || undefined,
+    relationship: (member.relationship || '').trim() || undefined,
+    notes: (member.notes || '').trim() || undefined,
+  }
+}
+
+function cleanLeadMembers(members) {
+  return (Array.isArray(members) ? members : [])
+    .map(sanitizeMember)
+    .filter((m) => m.name)
+}
+
 function defaultLeadLocationIDs() {
   const branch = getEffectiveBranch()
   return branch ? [String(branch)] : []
+}
+
+function emptyAddress() {
+  return { street: '', city: '', state: '', zipCode: '', country: 'USA' }
+}
+
+// Address only goes on the wire when the person actually gave one — a bare
+// "USA" is the placeholder, not a real address.
+function cleanAddress(address) {
+  const a = address || {}
+  const out = {
+    street: (a.street || '').trim(),
+    city: (a.city || '').trim(),
+    state: (a.state || '').trim(),
+    zipCode: (a.zipCode || '').trim(),
+    country: (a.country || '').trim() || 'USA',
+  }
+  return out.street || out.city || out.state || out.zipCode ? out : undefined
 }
 
 const emptyLead = {
   name: '',
   email: '',
   phoneNumber: '',
+  dateOfBirth: '',
+  gender: '',
   location: '',
   locationID: [],
   stage: 'new',
@@ -41,10 +111,27 @@ const emptyLead = {
   agentFollowupEnabled: true,
   callbackDate: '',
   notes: '',
+  members: [],
 }
 
 function createEmptyLead() {
-  return { ...emptyLead, locationID: defaultLeadLocationIDs() }
+  return {
+    ...emptyLead,
+    locationID: defaultLeadLocationIDs(),
+    address: emptyAddress(),
+    members: [],
+  }
+}
+
+function addressFromRecord(address) {
+  const a = address || {}
+  return {
+    street: a.street || '',
+    city: a.city || '',
+    state: a.state || '',
+    zipCode: a.zipCode || '',
+    country: a.country || 'USA',
+  }
 }
 
 const toDateInputValue = (value) => (value ? String(value).slice(0, 10) : '')
@@ -109,19 +196,35 @@ export default function LeadsDialog({
       const found = leads.find((l) => l._id === initialLeadId)
       if (found) {
         const initialCallbackDate = toDateInputValue(found.callbackDate)
-        setEditingLead({ ...found, callbackDate: initialCallbackDate, notes: Array.isArray(found.notes) ? found.notes : [] })
+        setEditingLead({
+          ...found,
+          callbackDate: initialCallbackDate,
+          dateOfBirth: toDateInputValue(found.dateOfBirth),
+          gender: found.gender || '',
+          address: addressFromRecord(found.address),
+          notes: Array.isArray(found.notes) ? found.notes : [],
+          members: Array.isArray(found.members) ? found.members : [],
+        })
         setSavedCallbackDate(initialCallbackDate)
         setMode(viewOnly ? 'view' : 'edit')
-        if (viewOnly) {
-          // The leads list payload may omit actualReason; fetch the full record to fill it in.
-          api.get(`/api/lead/${initialLeadId}`).then((res) => {
-            if (res?.success && res.data) {
-              setEditingLead((prev) =>
-                prev && prev._id === initialLeadId ? { ...prev, actualReason: res.data.actualReason } : prev
-              )
-            }
-          })
-        }
+        // The leads list payload may omit actualReason / members / personal
+        // details; fetch the full record to fill them in.
+        api.get(`/api/lead/${initialLeadId}`).then((res) => {
+          if (res?.success && res.data) {
+            setEditingLead((prev) =>
+              prev && prev._id === initialLeadId
+                ? {
+                    ...prev,
+                    actualReason: res.data.actualReason,
+                    dateOfBirth: toDateInputValue(res.data.dateOfBirth) || prev.dateOfBirth,
+                    gender: res.data.gender || prev.gender,
+                    address: res.data.address ? addressFromRecord(res.data.address) : prev.address,
+                    members: Array.isArray(res.data.members) ? res.data.members : prev.members || [],
+                  }
+                : prev
+            )
+          }
+        })
       }
     } else {
       setEditingLead(createEmptyLead())
@@ -181,6 +284,9 @@ export default function LeadsDialog({
           name: editingLead.name,
           email: editingLead.email,
           phoneNumber: editingLead.phoneNumber,
+          dateOfBirth: editingLead.dateOfBirth || null,
+          gender: editingLead.gender || null,
+          address: cleanAddress(editingLead.address) ?? emptyAddress(),
           location: editingLead.location,
           locationID: selectedLocationIDs,
           stage: editingLead.stage,
@@ -207,6 +313,10 @@ export default function LeadsDialog({
           organisationID: user?.organisationID,
           agentFollowupEnabled: editingLead.agentFollowupEnabled !== false,
           callbackDate: editingLead.callbackDate || undefined,
+          dateOfBirth: editingLead.dateOfBirth || undefined,
+          gender: editingLead.gender || undefined,
+          address: cleanAddress(editingLead.address),
+          members: cleanLeadMembers(editingLead.members),
         }
         const result = await api.post('/api/lead', payload)
         if (result.success) {
@@ -296,6 +406,31 @@ export default function LeadsDialog({
                 disabled={viewOnly}
                 placeholder="e.g. 8287032815"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Date of Birth</label>
+              <Input
+                type="date"
+                value={editingLead.dateOfBirth || ''}
+                onChange={(e) => setEditingLead({ ...editingLead, dateOfBirth: e.target.value })}
+                disabled={viewOnly}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Gender</label>
+              <select
+                value={editingLead.gender || ''}
+                onChange={(e) => setEditingLead({ ...editingLead, gender: e.target.value })}
+                disabled={viewOnly}
+                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info disabled:opacity-60"
+              >
+                <option value="">Select…</option>
+                {MEMBER_GENDER_OPTIONS.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Location *</label>
@@ -516,6 +651,71 @@ export default function LeadsDialog({
             </div>
           </div>
 
+          {(!viewOnly || cleanAddress(editingLead.address)) && (
+            <div className="border-t pt-4">
+              <label className="block text-sm font-medium mb-2">Address</label>
+              {viewOnly ? (
+                <p className="text-sm text-foreground">
+                  {[
+                    editingLead.address?.street,
+                    editingLead.address?.city,
+                    editingLead.address?.state,
+                    editingLead.address?.zipCode,
+                    editingLead.address?.country,
+                  ]
+                    .map((s) => (s || '').trim())
+                    .filter(Boolean)
+                    .join(', ') || '—'}
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    { key: 'street', label: 'Street' },
+                    { key: 'city', label: 'City' },
+                    { key: 'state', label: 'State' },
+                    { key: 'zipCode', label: 'Zip Code' },
+                    { key: 'country', label: 'Country' },
+                  ].map(({ key, label }) => (
+                    <div key={key}>
+                      <label className="block text-sm font-medium mb-1">{label}</label>
+                      <Input
+                        value={editingLead.address?.[key] ?? (key === 'country' ? 'USA' : '')}
+                        onChange={(e) =>
+                          setEditingLead((prev) => ({
+                            ...prev,
+                            address: { ...addressFromRecord(prev.address), [key]: e.target.value },
+                          }))
+                        }
+                        placeholder={key === 'country' ? 'USA' : 'Optional'}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="border-t pt-4">
+            <label className="flex items-center gap-1.5 text-sm font-medium mb-1">
+              <Users className="h-3.5 w-3.5 text-muted-foreground" />
+              Couple / family members
+            </label>
+            <p className="text-xs text-muted-foreground mb-3">
+              {mode === 'create'
+                ? 'Add a partner or family member to create alongside this lead.'
+                : 'People linked to this lead. They carry over when the lead is converted.'}
+            </p>
+            <LeadMembersSection
+              leadId={editingLead._id || null}
+              members={editingLead.members || []}
+              viewOnly={viewOnly}
+              onChange={(members) => {
+                setEditingLead((prev) => (prev ? { ...prev, members } : prev))
+                if (editingLead._id) onRefresh && onRefresh()
+              }}
+            />
+          </div>
+
           <div className="border-t pt-4">
             <label className="flex items-center gap-1.5 text-sm font-medium mb-2">
               <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
@@ -641,6 +841,277 @@ function LeadNotesSection({ leadId, notes, onChanged }) {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+function MemberFields({ value, onChange, disabled = false }) {
+  const set = (key, val) => onChange({ ...value, [key]: val })
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div>
+        <label className="block text-xs font-medium mb-1 text-muted-foreground">Name *</label>
+        <Input
+          value={value.name || ''}
+          onChange={(e) => set('name', e.target.value)}
+          disabled={disabled}
+          placeholder="Full name"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium mb-1 text-muted-foreground">Relationship</label>
+        <Input
+          value={value.relationship || ''}
+          onChange={(e) => set('relationship', e.target.value)}
+          disabled={disabled}
+          placeholder="e.g. Spouse, Partner"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium mb-1 text-muted-foreground">Email</label>
+        <Input
+          type="email"
+          value={value.email || ''}
+          onChange={(e) => set('email', e.target.value)}
+          disabled={disabled}
+          placeholder="Optional"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium mb-1 text-muted-foreground">Phone</label>
+        <PhoneNumberInput
+          value={value.phoneNumber || ''}
+          onChange={(v) => set('phoneNumber', v)}
+          disabled={disabled}
+          placeholder="Optional"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium mb-1 text-muted-foreground">Date of birth</label>
+        <Input
+          type="date"
+          value={value.dateOfBirth || ''}
+          onChange={(e) => set('dateOfBirth', e.target.value)}
+          disabled={disabled}
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium mb-1 text-muted-foreground">Gender</label>
+        <select
+          value={value.gender || ''}
+          onChange={(e) => set('gender', e.target.value)}
+          disabled={disabled}
+          className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-info disabled:opacity-60"
+        >
+          <option value="">Select…</option>
+          {MEMBER_GENDER_OPTIONS.map((g) => (
+            <option key={g.value} value={g.value}>
+              {g.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium mb-1 text-muted-foreground">Notes</label>
+        <Input
+          value={value.notes || ''}
+          onChange={(e) => set('notes', e.target.value)}
+          disabled={disabled}
+          placeholder="Any notes about this person"
+        />
+      </div>
+    </div>
+  )
+}
+
+function LeadMembersSection({ leadId, members = [], viewOnly = false, onChange }) {
+  const toast = useToast()
+  const localMode = !leadId
+  const list = Array.isArray(members) ? members : []
+
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState(emptyMember)
+  const [editKey, setEditKey] = useState(null) // index (local mode) or member _id (server mode)
+  const [editDraft, setEditDraft] = useState(emptyMember)
+  const [busy, setBusy] = useState(false)
+
+  const resetAdd = () => {
+    setAdding(false)
+    setDraft(emptyMember)
+  }
+  const resetEdit = () => {
+    setEditKey(null)
+    setEditDraft(emptyMember)
+  }
+
+  const keyFor = (member, index) => (localMode ? member._localId || `i${index}` : member._id)
+  const isEditing = (member, index) => editKey !== null && editKey === keyFor(member, index)
+
+  async function handleAdd() {
+    const clean = sanitizeMember(draft)
+    if (!clean.name) {
+      toast.error({ title: 'Validation Error', message: 'Member name is required' })
+      return
+    }
+    if (localMode) {
+      onChange([...list, { ...clean, _localId: `m${Date.now()}${Math.random().toString(36).slice(2, 7)}` }])
+      resetAdd()
+      return
+    }
+    setBusy(true)
+    const res = await api.post(`/api/lead/${leadId}/members`, clean)
+    setBusy(false)
+    if (res.success) {
+      onChange(Array.isArray(res.data?.members) ? res.data.members : [])
+      resetAdd()
+      toast.success({ title: 'Added', message: 'Member added' })
+    } else {
+      toast.error({ title: 'Error', message: res.error || 'Unable to add member' })
+    }
+  }
+
+  async function handleUpdate(member, index) {
+    const clean = sanitizeMember(editDraft)
+    if (!clean.name) {
+      toast.error({ title: 'Validation Error', message: 'Member name is required' })
+      return
+    }
+    if (localMode) {
+      onChange(list.map((m, i) => (i === index ? { ...clean, _localId: m._localId } : m)))
+      resetEdit()
+      return
+    }
+    setBusy(true)
+    const res = await api.put(`/api/lead/${leadId}/members/${member._id}`, clean)
+    setBusy(false)
+    if (res.success) {
+      onChange(Array.isArray(res.data?.members) ? res.data.members : [])
+      resetEdit()
+      toast.success({ title: 'Saved', message: 'Member updated' })
+    } else {
+      toast.error({ title: 'Error', message: res.error || 'Unable to update member' })
+    }
+  }
+
+  async function handleDelete(member, index) {
+    if (localMode) {
+      onChange(list.filter((_, i) => i !== index))
+      return
+    }
+    if (!window.confirm('Remove this member?')) return
+    setBusy(true)
+    const res = await api.delete(`/api/lead/${leadId}/members/${member._id}`)
+    setBusy(false)
+    if (res.success) {
+      onChange(Array.isArray(res.data?.members) ? res.data.members : [])
+      toast.success({ title: 'Removed', message: 'Member removed' })
+    } else {
+      toast.error({ title: 'Error', message: res.error || 'Unable to remove member' })
+    }
+  }
+
+  function startEdit(member, index) {
+    setAdding(false)
+    setEditKey(keyFor(member, index))
+    setEditDraft(memberFromRecord(member))
+  }
+
+  return (
+    <div className="space-y-3">
+      {list.length === 0 && !adding ? (
+        <div className="rounded-md border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+          {viewOnly ? 'No additional people on this lead.' : 'No partner or family members added yet.'}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {list.map((member, index) =>
+            isEditing(member, index) ? (
+              <div key={keyFor(member, index)} className="rounded-md border border-border bg-muted/30 p-3">
+                <MemberFields value={editDraft} onChange={setEditDraft} disabled={busy} />
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={resetEdit} disabled={busy}>
+                    Cancel
+                  </Button>
+                  <Button type="button" size="sm" onClick={() => handleUpdate(member, index)} disabled={busy}>
+                    {busy ? 'Saving…' : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div
+                key={keyFor(member, index)}
+                className="flex items-start justify-between gap-3 rounded-md border border-border bg-muted/40 px-3 py-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {member.name}
+                    {member.relationship && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground capitalize">
+                        {member.relationship}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {[member.email, member.phoneNumber].filter(Boolean).join(' · ') || '—'}
+                  </p>
+                </div>
+                {!viewOnly && (
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(member, index)}
+                      disabled={busy}
+                      className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+                      aria-label="Edit member"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(member, index)}
+                      disabled={busy}
+                      className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                      aria-label="Remove member"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          )}
+        </div>
+      )}
+
+      {!viewOnly && adding && (
+        <div className="rounded-md border border-border bg-muted/30 p-3">
+          <MemberFields value={draft} onChange={setDraft} disabled={busy} />
+          <div className="mt-3 flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={resetAdd} disabled={busy}>
+              Cancel
+            </Button>
+            <Button type="button" size="sm" onClick={handleAdd} disabled={busy}>
+              {busy ? 'Adding…' : 'Add person'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!viewOnly && !adding && editKey === null && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            resetEdit()
+            setDraft(emptyMember)
+            setAdding(true)
+          }}
+        >
+          <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+          Add person
+        </Button>
       )}
     </div>
   )
