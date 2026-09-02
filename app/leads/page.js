@@ -52,6 +52,13 @@ const LEAD_CSV_FIELDS = [
   { key: 'phoneNumber', header: 'phonenumber', sample: '+1234567890' },
   { key: 'status', header: 'status', sample: 'new' },
   { key: 'reason', header: 'reason', sample: '' },
+  { key: 'dateOfBirth', header: 'dateofbirth', sample: '1990-01-01' },
+  { key: 'gender', header: 'gender', sample: 'male' },
+  { key: 'street', header: 'street', sample: '123 Main St' },
+  { key: 'city', header: 'city', sample: 'New York' },
+  { key: 'state', header: 'state', sample: 'NY' },
+  { key: 'zipCode', header: 'zipcode', sample: '10001' },
+  { key: 'country', header: 'country', sample: 'USA' },
   { key: 'createdAt', header: 'createdat', sample: '2026-01-01' },
 ]
 
@@ -335,6 +342,13 @@ export default function LeadsPage() {
       phoneNumber: lead.phoneNumber || '',
       status: lead.stage || '',
       reason: lead.reason || '',
+      dateOfBirth: lead.dateOfBirth ? String(lead.dateOfBirth).slice(0, 10) : '',
+      gender: lead.gender || '',
+      street: lead.address?.street || '',
+      city: lead.address?.city || '',
+      state: lead.address?.state || '',
+      zipCode: lead.address?.zipCode || '',
+      country: lead.address?.country || '',
       createdAt: lead.createdAt ? String(lead.createdAt).slice(0, 10) : '',
     }))
   }
@@ -346,16 +360,29 @@ export default function LeadsPage() {
     }
     const branchId = getBranchQueryParam()
     const branchLocation = locations.find((l) => String(l._id) === String(branchId))
-    const leadsWithOrg = rows.map((row) => ({
-      name: row.name,
-      email: row.email,
-      phoneNumber: row.phoneNumber,
-      stage: row.status || 'new',
-      reason: row.reason || '',
-      location: branchLocation?.name || '',
-      locationID: branchId ? [branchId] : undefined,
-      organisationID: user.organisationID,
-    }))
+    const leadsWithOrg = rows.map((row) => {
+      const address = {
+        street: (row.street || '').trim(),
+        city: (row.city || '').trim(),
+        state: (row.state || '').trim(),
+        zipCode: (row.zipCode || '').trim(),
+        country: (row.country || '').trim() || 'USA',
+      }
+      const hasAddress = address.street || address.city || address.state || address.zipCode
+      return {
+        name: row.name,
+        email: row.email,
+        phoneNumber: row.phoneNumber,
+        stage: row.status || 'new',
+        reason: row.reason || '',
+        dateOfBirth: row.dateOfBirth || undefined,
+        gender: (row.gender || '').trim().toLowerCase() || undefined,
+        address: hasAddress ? address : undefined,
+        location: branchLocation?.name || '',
+        locationID: branchId ? [branchId] : undefined,
+        organisationID: user.organisationID,
+      }
+    })
     const result = await api.post('/api/lead/bulk', leadsWithOrg)
     if (!result.success) {
       throw new Error(result.error || 'Failed to import leads')

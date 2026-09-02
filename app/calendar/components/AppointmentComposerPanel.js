@@ -9,12 +9,14 @@ import {
   Clock,
   Plus,
   RefreshCw,
+  Search,
   User,
   Users,
 } from "lucide-react";
 import api from "@/lib/api";
 import { getEffectiveBranch } from "@/lib/auth";
 import { studioWallTimeToUtcISO } from "@/lib/studio-time";
+import { validateRecurrence } from "@/lib/recurrence";
 import { toStudioLocalDate } from "@/lib/studioLocalDate";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MultiSelectCheckboxDropdown from "@/components/shared/MultiSelectCheckboxDropdown";
@@ -470,6 +472,17 @@ function UnallocatedServicePicker({
   onServiceSelect,
   onOpenEnrollmentWizard,
 }) {
+  const [serviceQuery, setServiceQuery] = useState("");
+
+  const showSearch = allServices.length > 5;
+  const filteredServices = useMemo(() => {
+    const q = serviceQuery.trim().toLowerCase();
+    if (!q) return allServices;
+    return allServices.filter((svc) =>
+      `${svc.serviceName || ""} ${svc.serviceCode || ""}`.toLowerCase().includes(q),
+    );
+  }, [allServices, serviceQuery]);
+
   if (allServices.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">
@@ -493,8 +506,25 @@ function UnallocatedServicePicker({
 
       <div className="space-y-1">
         <FieldLabel>Service</FieldLabel>
+        {showSearch && (
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={serviceQuery}
+              onChange={(e) => setServiceQuery(e.target.value)}
+              placeholder="Search services…"
+              className="h-8 w-full rounded-lg border border-border bg-background pl-7 pr-2 text-[11px] outline-none focus:border-brand"
+            />
+          </div>
+        )}
         <div className="space-y-1.5">
-          {allServices.map((svc) => {
+          {filteredServices.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border py-4 text-center text-[11px] text-muted-foreground">
+              No services match “{serviceQuery.trim()}”.
+            </p>
+          ) : (
+            filteredServices.map((svc) => {
             const isSelected = selectedServiceId === String(svc._id);
             return (
               <div
@@ -530,7 +560,8 @@ function UnallocatedServicePicker({
                 )}
               </div>
             );
-          })}
+            })
+          )}
         </div>
       </div>
 
@@ -1542,42 +1573,40 @@ function RecurrenceBlock({ form, setField }) {
   const isWeekly = form.recurrence_frequency === "weekly";
   const isMonthly = form.recurrence_frequency === "monthly";
 
-  // Default to the appointment's own weekday the first time weekly recurrence
-  // is used, so the picker never starts out empty.
+  // Whether staff have hand-picked the repeat days. Until they do, the pickers
+  // follow the event's own date — previously the default was written once and
+  // then frozen, so moving the date after switching Repeat on left the series
+  // repeating on the weekday of the date that was originally chosen.
+  const weeklyPicked = useRef(false);
+  const monthlyPicked = useRef(false);
+
+  // Default to the appointment's own weekday, so the picker never starts out
+  // empty and always matches the date shown above it.
   useEffect(() => {
-    if (
-      form.recurrence_enabled &&
-      isWeekly &&
-      (form.recurrence_days_of_week?.length ?? 0) === 0 &&
-      form.date
-    ) {
-      const weekday = new Date(`${form.date}T00:00:00`).getDay();
-      if (!Number.isNaN(weekday)) setField("recurrence_days_of_week", [weekday]);
-    }
+    if (!form.recurrence_enabled || !isWeekly || !form.date) return;
+    if (weeklyPicked.current) return;
+    const weekday = new Date(`${form.date}T00:00:00`).getDay();
+    if (Number.isNaN(weekday)) return;
+    if ((form.recurrence_days_of_week || []).join() === String(weekday)) return;
+    setField("recurrence_days_of_week", [weekday]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.recurrence_enabled, isWeekly, form.date]);
 
-  // Default to "the Nth weekday this date falls on" the first time monthly
-  // recurrence is used — e.g. picking Jul 14 (a Tuesday) defaults to "2nd Tue".
+  // Default to "the Nth weekday this date falls on" — e.g. picking Jul 14 (a
+  // Tuesday) defaults to "2nd Tue".
   useEffect(() => {
-    if (
-      form.recurrence_enabled &&
-      isMonthly &&
-      form.recurrence_monthly_weekday == null &&
-      (form.recurrence_monthly_weeks?.length ?? 0) === 0 &&
-      form.date
-    ) {
-      const d = new Date(`${form.date}T00:00:00`);
-      if (!Number.isNaN(d.getTime())) {
-        const occurrence = Math.ceil(d.getDate() / 7);
-        setField("recurrence_monthly_weekday", d.getDay());
-        setField("recurrence_monthly_weeks", [occurrence >= 5 ? -1 : occurrence]);
-      }
-    }
+    if (!form.recurrence_enabled || !isMonthly || !form.date) return;
+    if (monthlyPicked.current) return;
+    const d = new Date(`${form.date}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return;
+    const occurrence = Math.ceil(d.getDate() / 7);
+    setField("recurrence_monthly_weekday", d.getDay());
+    setField("recurrence_monthly_weeks", [occurrence >= 5 ? -1 : occurrence]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.recurrence_enabled, isMonthly, form.date]);
 
   function toggleDay(value) {
+    weeklyPicked.current = true;
     const current = form.recurrence_days_of_week || [];
     const next = current.includes(value)
       ? current.filter((d) => d !== value)
@@ -1586,6 +1615,7 @@ function RecurrenceBlock({ form, setField }) {
   }
 
   function toggleMonthlyWeek(value) {
+    monthlyPicked.current = true;
     const current = form.recurrence_monthly_weeks || [];
     const next = current.includes(value)
       ? current.filter((w) => w !== value)
@@ -1664,9 +1694,10 @@ function RecurrenceBlock({ form, setField }) {
                       <button
                         key={day.value}
                         type="button"
-                        onClick={() =>
-                          setField("recurrence_monthly_weekday", day.value)
-                        }
+                        onClick={() => {
+                          monthlyPicked.current = true;
+                          setField("recurrence_monthly_weekday", day.value);
+                        }}
                         className={[
                           "h-8 w-8 shrink-0 rounded-full text-[10px] font-semibold transition-colors",
                           active
@@ -2493,6 +2524,18 @@ export default function AppointmentComposerPanel({
       setError("Please select a student before booking.");
       setIsSaving(false);
       return;
+    }
+
+    // Validate: an incomplete Repeat rule used to be dropped silently — the
+    // payload fell back to `{ enabled: false }` and a single event was created,
+    // so staff believed they had scheduled a whole series.
+    if (form.recurrence_enabled) {
+      const repeatError = validateRecurrence(form);
+      if (repeatError) {
+        setError(repeatError);
+        setIsSaving(false);
+        return;
+      }
     }
 
     // Validate: pay_per_session requires a payment method when booking a chargeable service
