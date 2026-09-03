@@ -205,7 +205,7 @@ export default function ConversionsSection({ data, comparisons, rangeDays }) {
         eyebrow="Report 2"
         title="Intro → First"
         emphasis="Purchase"
-        note="Every first purchase counts, whatever the product. Sale values describe that first sale only."
+        note="Every first purchase counts, whatever the product — including packages bought at or just before the intro visit. Sale values describe that first sale only."
         detailsButton={
           <DetailsButton
             title="Lead → Intro → First Purchase — full details"

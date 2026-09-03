@@ -24,6 +24,10 @@ const PIPELINE_LABEL_POS = [
   'absolute right-[70px] top-[20px] text-[14px] leading-[20px] text-muted-foreground',
 ]
 
+/**
+ * The backend already sends `color` and `percentage` (largest-remainder, sums
+ * to 100). Only fill gaps for a payload that predates that — never recompute.
+ */
 function withPipelinePresentation(rows = []) {
   const total = rows.reduce((n, r) => n + (Number(r.value) || 0), 0)
   return rows.map((r, i) => ({
@@ -55,7 +59,6 @@ export default function SalesPipelineAndLeadSourcesWidget({
             title="Sales Pipeline — full details"
             metric="leads"
             rangeDays={defaultRange}
-            params={{ allTime: 'true' }}
             columns={PIPELINE_DETAIL_COLUMNS}
           />
         </div>
