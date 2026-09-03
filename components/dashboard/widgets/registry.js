@@ -45,7 +45,7 @@ export const dashboardWidgetRegistry = [
   {
     id: 'pipeline',
     title: 'Sales Pipeline',
-    description: 'Current lead distribution by stage',
+    description: 'Leads created this period, by current stage',
     category: 'Pipeline',
     permission: PERMISSION.leadConversion,
     component: PipelineWidget,
@@ -65,7 +65,7 @@ export const dashboardWidgetRegistry = [
   {
     id: 'conversion-funnel',
     title: 'Conversion Funnel',
-    description: 'Lead → engaged → pending payment → converted',
+    description: 'Leads → engaged or beyond → payment or beyond → converted',
     category: 'Pipeline',
     permission: PERMISSION.leadConversion,
     component: ConversionFunnelWidget,

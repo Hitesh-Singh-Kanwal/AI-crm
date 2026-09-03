@@ -1977,10 +1977,23 @@ function layoutWeekDayTimedEvents(events, gridLayout) {
   return { visible };
 }
 
+/** Derive the {date, time, instructorId} slot payload `onSlotClick` expects
+ * from an existing calendar event — used to let a cancelled event's own card
+ * offer "Book over" instead of making the user re-locate its empty slot. */
+function slotInfoForEvent(event, instructorId) {
+  const s = new Date(event.start);
+  return {
+    date: formatLocalDateKey(s),
+    time: `${String(s.getHours()).padStart(2, "0")}:${String(s.getMinutes()).padStart(2, "0")}`,
+    instructorId,
+  };
+}
+
 function TimedCalendarEventCard({
   event,
   top,
   onEventClick,
+  onBookOverClick,
   slotOverflow,
   onSlotMoreClick,
   customSlotMins = DEFAULT_SLOT_MINS,
@@ -2073,6 +2086,22 @@ function TimedCalendarEventCard({
           className="calendar-more-link absolute bottom-0.5 right-0.5 z-20 shrink-0 max-w-[calc(100%-8px)]"
         >
           +{slotOverflow.count} more
+        </button>
+      ) : null}
+      {isCancelledEvent && onBookOverClick ? (
+        <button
+          type="button"
+          data-book-over="true"
+          title="Book a new lesson in this freed-up slot"
+          onClick={(e) => {
+            e.stopPropagation();
+            hideEventTooltip();
+            onBookOverClick(event);
+          }}
+          onMouseEnter={(e) => e.stopPropagation()}
+          className="calendar-more-link absolute top-0.5 right-0.5 z-20 shrink-0 max-w-[calc(100%-8px)] opacity-0 group-hover/event:opacity-100"
+        >
+          Book over
         </button>
       ) : null}
       <div className="h-full min-h-0 flex flex-col overflow-hidden px-1.5 py-0.5 gap-[1px] box-border">
@@ -2627,6 +2656,29 @@ function TutorDayCalendar({
                         </svg>
                       </span>
                     )}
+                    {isCancelledEvent && !event.isPeekingBehind && (
+                      <button
+                        type="button"
+                        data-book-over="true"
+                        title="Book a new lesson in this freed-up slot"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          hideEventTooltip();
+                          onSlotClick?.(
+                            slotInfoForEvent(
+                              event,
+                              tutor.key && tutor.key !== UNASSIGNED_KEY
+                                ? tutor.key
+                                : undefined,
+                            ),
+                          );
+                        }}
+                        onMouseEnter={(e) => e.stopPropagation()}
+                        className="calendar-more-link absolute top-0.5 right-0.5 z-20 shrink-0 max-w-[calc(100%-8px)] opacity-0 group-hover/event:opacity-100"
+                      >
+                        Book over
+                      </button>
+                    )}
                     {isCompletedEvent && (
                       <span
                         className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-success flex items-center justify-center z-10 shrink-0"
@@ -2898,6 +2950,11 @@ function TutorWeekCalendar({
                   event={event}
                   top={event.top}
                   onEventClick={onEventClick}
+                  onBookOverClick={(ev) => {
+                    const raw = ev.extendedProps?.raw;
+                    const instructorId = raw?.teacherID?._id || raw?.teacherID;
+                    onSlotClick?.(slotInfoForEvent(ev, instructorId));
+                  }}
                   customSlotMins={customSlotMins}
                   slotRowHeightPx={slotRowHeightPx}
                   slotOverflow={event.slotOverflow}

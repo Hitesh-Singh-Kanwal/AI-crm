@@ -28,6 +28,9 @@ export default function ConversionFunnelWidget({ conversionFunnel = [], defaultR
       />
       {conversionFunnel.length > 0 ? (
         <div className="mt-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Leads created in this period. Each step counts leads that reached that stage or any later one.
+          </p>
           {conversionFunnel.map((stage) => (
             <div key={stage.stage} className="space-y-1">
               <div className="flex items-center justify-between text-sm">

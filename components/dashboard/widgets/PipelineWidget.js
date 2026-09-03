@@ -25,13 +25,15 @@ export default function PipelineWidget({ pipeline = [], defaultRange }) {
             title="Sales Pipeline — full details"
             metric="leads"
             rangeDays={defaultRange}
-            params={{ allTime: 'true' }}
             columns={DETAIL_COLUMNS}
           />
         }
       />
       {pipeline.length > 0 ? (
         <div className="mt-4">
+          <p className="mb-3 text-xs text-muted-foreground">
+            Leads created in this period, by current stage.
+          </p>
           <DonutChart
             data={pipeline}
             centerLabel="Total"

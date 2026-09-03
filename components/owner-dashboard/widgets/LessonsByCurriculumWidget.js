@@ -14,7 +14,11 @@ const DETAIL_COLUMNS = [
 ]
 
 export default function LessonsByCurriculumWidget({ lessons, rangeDays, onRangeChange }) {
-  const data = (lessons?.byCurriculum || []).filter((r) => r.count > 0)
+  const tiers = lessons?.byCurriculum || []
+  const data = tiers.filter((r) => r.count > 0)
+  const emptyMessage = tiers.length === 0
+    ? 'No curriculum tiers set up yet. Tag packages with a curriculum in Settings to see tier activity.'
+    : 'No lessons taught under a curriculum-tagged package in this period.'
 
   return (
     <Card>
@@ -39,7 +43,7 @@ export default function LessonsByCurriculumWidget({ lessons, rangeDays, onRangeC
           />
         </div>
       ) : (
-        <EmptyChart message="No curriculum-tagged lessons in this period." />
+        <EmptyChart message={emptyMessage} />
       )}
     </Card>
   )

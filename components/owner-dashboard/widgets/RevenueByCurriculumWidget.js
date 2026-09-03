@@ -21,7 +21,11 @@ const DETAIL_COLUMNS = [
 ]
 
 export default function RevenueByCurriculumWidget({ revenue, rangeDays, onRangeChange }) {
-  const data = (revenue?.byCurriculum || []).filter((r) => r.revenue > 0)
+  const tiers = revenue?.byCurriculum || []
+  const data = tiers.filter((r) => r.revenue > 0)
+  const emptyMessage = tiers.length === 0
+    ? 'No curriculum tiers set up yet. Tag packages with a curriculum in Settings to see tier revenue.'
+    : 'No curriculum-tagged payments collected in this period.'
 
   return (
     <Card>
@@ -47,7 +51,7 @@ export default function RevenueByCurriculumWidget({ revenue, rangeDays, onRangeC
           />
         </div>
       ) : (
-        <EmptyChart message="No curriculum-tagged purchases in this period." />
+        <EmptyChart message={emptyMessage} />
       )}
     </Card>
   )
