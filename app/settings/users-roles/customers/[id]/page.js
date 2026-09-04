@@ -80,6 +80,24 @@ import { extractLeadReasonsList } from "@/lib/workflow-normalize";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+// Short name for an enrollment. A real package uses its template name; a
+// services-only sale ("Services") is named by the service(s) it holds instead.
+function enrollmentDisplayName(enr) {
+  const pkg = enr?.package;
+  if (!pkg) return enr?.label ?? "";
+  if (pkg.packageRef) {
+    return pkg.packageName ?? pkg.packageRef?.packageName ?? enr?.label ?? "";
+  }
+  const svcNames = [
+    ...new Set(
+      (pkg.services ?? [])
+        .map((s) => s.serviceName || s.serviceCode)
+        .filter(Boolean),
+    ),
+  ].join(", ");
+  return enr?.label || svcNames || pkg.packageName || "";
+}
+
 function statusColor(status) {
   return (
     {
@@ -2664,9 +2682,7 @@ function PackagesTab({ customerID, locationID }) {
                     )}
                     <div>
                       <p className="text-[13px] font-semibold text-foreground">
-                        {pkg.packageName ??
-                          pkg.packageRef?.packageName ??
-                          "Package"}
+                        {enrollmentDisplayName(enr) || "Package"}
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
                         Purchased {formatDate(pkg.purchaseDate)}
@@ -4199,11 +4215,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                   const ordinal =
                     ["1st", "2nd", "3rd"][enr.enrollmentNumber - 1] ??
                     `${enr.enrollmentNumber}th`;
-                  const pkgName =
-                    enr.package?.packageName ??
-                    enr.package?.packageRef?.packageName ??
-                    enr.label ??
-                    "";
+                  const pkgName = enrollmentDisplayName(enr);
                   return (
                     <option key={enr._id} value={String(enr._id)}>
                       {ordinal} Enrollment{pkgName ? ` — ${pkgName}` : ""}
@@ -4314,9 +4326,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                         )}
                         <div>
                           <p className="text-[15px] font-bold text-foreground">
-                            {cp.packageName ??
-                              cp.packageRef?.packageName ??
-                              "Package"}
+                            {enrollmentDisplayName(enr) || "Package"}
                           </p>
                           <p className="text-[12px] text-muted-foreground mt-1">
                             Purchased {formatDate(cp.purchaseDate)}

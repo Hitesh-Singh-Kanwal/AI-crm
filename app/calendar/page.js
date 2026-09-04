@@ -283,19 +283,33 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
   // Sort each group chronologically
   Object.values(pkgSessionOrder).forEach((arr) => arr.sort((a, b) => a.date - b.date));
 
-  // Credit pools whose stamped session numbers cannot be right, because two
-  // events in the same pool claim the same position.
+  // Credit pools whose stamped session numbers cannot be right, so their
+  // ordering is recovered from the calendar (chronological) order instead —
+  // which is what the stamps were meant to express.
   //
-  // Bookings made before the backend took its position from the same atomic
-  // operation as the session deduction could observe each other's increments,
-  // and a batch of slots booked together came back sharing one number — five
-  // lessons reading "5 Paid" instead of counting down. Those stamps are still
-  // in the database, so the ordering they were meant to express is recovered
-  // here from the calendar order instead, which is what they should have said.
+  //  1. Two events in the pool claim the same position. Bookings made before
+  //     the backend took its position from the same atomic operation as the
+  //     session deduction could observe each other's increments, and a batch
+  //     of slots booked together came back sharing one number — five lessons
+  //     reading "5 Paid" instead of counting down.
+  //  2. The stamps disagree with chronological order. The backend numbers a
+  //     session from `sessionsUsed` at booking time, i.e. the order the staff
+  //     member created the bookings — so booking five slots newest-first
+  //     leaves the earliest lesson stamped #5. `arr` is already sorted by
+  //     date, so its stamps must be non-decreasing or the pool is unreliable.
   const untrustedPools = new Set();
   Object.entries(pkgSessionOrder).forEach(([key, arr]) => {
     const stamped = arr.map((e) => e.sessionNumber).filter((n) => n != null);
-    if (new Set(stamped).size !== stamped.length) untrustedPools.add(key);
+    if (new Set(stamped).size !== stamped.length) {
+      untrustedPools.add(key);
+      return;
+    }
+    for (let i = 1; i < stamped.length; i++) {
+      if (stamped[i] < stamped[i - 1]) {
+        untrustedPools.add(key);
+        return;
+      }
+    }
   });
 
   return appointments.map((appt) => {
