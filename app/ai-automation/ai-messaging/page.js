@@ -1,11 +1,15 @@
 'use client'
 
-import { Suspense, useMemo } from 'react'
+import { Suspense, useCallback, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
 import { Tabs } from '@/components/ui/tabs'
 import DocumentLibraryTab from './components/DocumentLibraryTab'
 import SmsPromptTab from './components/SmsPromptTab'
+import {
+  normalizeWorkingLocation,
+  workingLocationQueryParam,
+} from '@/app/ai-automation/ai-calling/components/locationScope'
 
 const VALID_VIEWS = ['prompt', 'knowledge-base', 'playbook']
 
@@ -15,11 +19,32 @@ function AiMessagingPageInner() {
   const searchParams = useSearchParams()
   const rawView = searchParams?.get('view')
   const activeTab = VALID_VIEWS.includes(rawView) ? rawView : 'prompt'
+  const workingLocationID = useMemo(
+    () => normalizeWorkingLocation(searchParams?.get('locationID')),
+    [searchParams],
+  )
+
+  const setQuery = useCallback(
+    (patch) => {
+      const params = new URLSearchParams(searchParams?.toString() || '')
+      Object.entries(patch).forEach(([key, value]) => {
+        if (value == null || value === '') params.delete(key)
+        else params.set(key, String(value))
+      })
+      router.replace(`${pathname}?${params.toString()}`)
+    },
+    [pathname, router, searchParams],
+  )
 
   const setActiveTab = (tab) => {
-    const params = new URLSearchParams(searchParams?.toString() || '')
-    params.set('view', tab)
-    router.push(`${pathname}?${params.toString()}`)
+    setQuery({ view: tab, locationID: workingLocationQueryParam(workingLocationID) })
+  }
+
+  const setWorkingLocationID = (id) => {
+    setQuery({
+      view: activeTab,
+      locationID: workingLocationQueryParam(normalizeWorkingLocation(id)),
+    })
   }
 
   const subtitle = useMemo(() => {
@@ -36,23 +61,31 @@ function AiMessagingPageInner() {
     <MainLayout title="AI Messaging" subtitle={subtitle}>
       <div className="flex h-full min-h-full flex-col">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-full w-full flex-col">
-          <SmsPromptTab activeView={activeTab} />
+          <SmsPromptTab
+            activeView={activeTab}
+            workingLocationID={workingLocationID}
+            onWorkingLocationChange={setWorkingLocationID}
+          />
           <DocumentLibraryTab
             activeView={activeTab}
+            workingLocationID={workingLocationID}
+            onWorkingLocationChange={setWorkingLocationID}
             tabValue="knowledge-base"
             endpoint="/api/knowledge-base"
             heading="Knowledge base"
-            subheading="Upload studio PDFs (locations, classes, pricing, policies) the AI agent can reference."
+            subheading="Pick a studio, upload that studio's PDF, then Set active. Each studio keeps its own knowledge base — activating one location does not replace another."
             entityLabel="document"
             entityPlural="documents"
             requireActive
           />
           <DocumentLibraryTab
             activeView={activeTab}
+            workingLocationID={workingLocationID}
+            onWorkingLocationChange={setWorkingLocationID}
             tabValue="playbook"
             endpoint="/api/conversational-playbook"
             heading="Conversation playbook"
-            subheading="Upload example conversation PDFs so the AI agent matches your studio's tone and pacing."
+            subheading="Upload example conversation PDFs so the AI agent matches your studio's tone and pacing. The active playbook for the selected studio is the only one that studio's texts use."
             entityLabel="playbook"
             entityPlural="playbooks"
           />

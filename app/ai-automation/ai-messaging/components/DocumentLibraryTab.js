@@ -20,6 +20,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
+import WorkingStudioPicker from '@/app/ai-automation/ai-calling/components/WorkingStudioPicker'
 import {
   initLocationID,
   hasLocationSelection,
@@ -69,7 +70,11 @@ function DocumentDialog({ open, onClose, doc, endpoint, entityLabel, onRefresh, 
     } else {
       setName('')
       setDescription('')
-      setLocationID(defaultLocationID || [])
+      setLocationID(
+        hasLocationSelection(defaultLocationID)
+          ? defaultLocationID
+          : initLocationID(null),
+      )
     }
     setFile(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -150,11 +155,19 @@ function DocumentDialog({ open, onClose, doc, endpoint, entityLabel, onRefresh, 
           <div>
             <label className="mb-1 block text-sm font-medium">Studio scope *</label>
             <LocationSelector
-              value={locationID}
-              onChange={setLocationID}
-              multiple
+              value={
+                locationID === ALL_BRANCHES_VALUE
+                  ? ALL_BRANCHES_VALUE
+                  : Array.isArray(locationID) && locationID.length
+                    ? locationID[0]
+                    : locationID || null
+              }
+              onChange={(id) => setLocationID(normalizeWorkingLocation(id))}
+              multiple={false}
               allowAllBranches
-              placeholder="Select studio(s)…"
+              showAllOption={false}
+              preselectActiveBranch={false}
+              placeholder="Select a studio…"
             />
           </div>
           <div>
@@ -203,6 +216,8 @@ export default function DocumentLibraryTab({
   entityLabel,
   entityPlural,
   requireActive = false,
+  workingLocationID,
+  onWorkingLocationChange,
 }) {
   const toast = useToast()
   const [docs, setDocs] = useState([])
@@ -216,12 +231,13 @@ export default function DocumentLibraryTab({
   const [editingDoc, setEditingDoc] = useState(null)
   const [togglingId, setTogglingId] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
-  const [workingLocationID, setWorkingLocationID] = useState([])
 
   const locationQuery = workingLocationQueryParam(workingLocationID)
+  const forLocationPayload =
+    locationQuery && locationQuery !== 'all' ? { forLocationID: locationQuery } : {}
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const params = new URLSearchParams({
         page: String(page),
@@ -241,7 +257,7 @@ export default function DocumentLibraryTab({
     } catch {
       pushToast.error('Error', { description: 'Unable to load documents' })
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [endpoint, page, search, locationQuery])
 
@@ -266,9 +282,16 @@ export default function DocumentLibraryTab({
   }
 
   const handleSetActive = async (doc, next) => {
+    if (next && !locationQuery) {
+      toast.error({
+        title: 'Select a studio',
+        message: `Pick a working studio first, then set the ${entityLabel} that studio should use.`,
+      })
+      return
+    }
     setTogglingId(doc._id)
     try {
-      const result = await api.put(`${endpoint}/${doc._id}`, { isActive: next })
+      const result = await api.put(`${endpoint}/${doc._id}`, { isActive: next, ...forLocationPayload })
       if (!result.success) {
         toast.error({ title: 'Error', message: result.error || result.message || 'Unable to update status' })
         return
@@ -276,10 +299,50 @@ export default function DocumentLibraryTab({
       toast.success({
         title: next ? 'Activated' : 'Deactivated',
         message: next
-          ? (result.message || `"${doc.name}" is now active`)
+          ? (locationQuery && locationQuery !== 'all'
+            ? `"${doc.name}" is now used for this studio`
+            : (result.message || `"${doc.name}" is now active`))
           : `"${doc.name}" is no longer active`,
       })
-      load()
+      const id = String(doc._id)
+      const viewingStudio = Boolean(locationQuery && locationQuery !== 'all')
+      setDocs((prev) =>
+        prev.map((d) => {
+          const mine = String(d._id) === id
+          if (viewingStudio) {
+            if (mine) {
+              return {
+                ...d,
+                isActive: next,
+                isEffective: next,
+                embeddingStatus: next ? 'ready' : d.embeddingStatus,
+              }
+            }
+            if (next) return { ...d, isEffective: false }
+            return d
+          }
+          // All branches: strong badge from isUsedSomewhere, not raw isActive.
+          if (mine) {
+            return {
+              ...d,
+              isActive: next,
+              isEffective: false,
+              isUsedSomewhere: next,
+              usedByStudioCount: next ? d.usedByStudioCount || 1 : 0,
+              embeddingStatus: next ? 'ready' : d.embeddingStatus,
+            }
+          }
+          if (next) {
+            return {
+              ...d,
+              isUsedSomewhere: false,
+              usedByStudioCount: 0,
+            }
+          }
+          return d
+        }),
+      )
+      await load({ silent: true })
     } catch {
       toast.error({ title: 'Error', message: 'Unexpected error' })
     } finally {
@@ -304,6 +367,10 @@ export default function DocumentLibraryTab({
       setDeletingId(null)
     }
   }
+
+  useEffect(() => {
+    setPage(1)
+  }, [locationQuery])
 
   useEffect(() => {
     if (activeView !== tabValue) return
@@ -331,26 +398,13 @@ export default function DocumentLibraryTab({
           <p className="text-sm text-muted-foreground">{subheading}</p>
         </div>
 
-        <div className="mb-4 max-w-md">
-          <label className="mb-1.5 block text-sm font-medium">Working studio</label>
-          <LocationSelector
-            value={
-              workingLocationID === ALL_BRANCHES_VALUE
-                ? ALL_BRANCHES_VALUE
-                : Array.isArray(workingLocationID) && workingLocationID.length
-                  ? workingLocationID[0]
-                  : null
-            }
-            onChange={(id) => {
-              setWorkingLocationID(normalizeWorkingLocation(id))
-              setPage(1)
-            }}
-            multiple={false}
-            allowAllBranches
-            showAllOption={false}
-            placeholder="Filter by studio…"
-          />
-        </div>
+        <WorkingStudioPicker
+          workingLocationID={workingLocationID}
+          onWorkingLocationChange={(id) => {
+            onWorkingLocationChange?.(id)
+            setPage(1)
+          }}
+        />
 
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SearchInput
@@ -363,6 +417,13 @@ export default function DocumentLibraryTab({
             variant="gradient"
             className="h-9 shrink-0 gap-2 rounded-lg px-4 text-sm font-medium"
             onClick={() => {
+              if (!hasLocationSelection(workingLocationID)) {
+                toast.error({
+                  title: 'Select a studio',
+                  message: 'Pick a working studio first so this upload is saved for that location.',
+                })
+                return
+              }
               setEditingDoc(null)
               setDialogOpen(true)
             }}
@@ -383,12 +444,19 @@ export default function DocumentLibraryTab({
           <div className="grid grid-cols-1 gap-4">
             {docs.map((d) => {
               const isLive = d.isActive && d.embeddingStatus === 'ready'
+              const viewingStudio = Boolean(locationQuery && locationQuery !== 'all')
+              const isUsedHere = viewingStudio
+                ? Boolean(d.isEffective)
+                : Boolean(d.isUsedSomewhere)
+              const usedCount = Number(d.usedByStudioCount) || 0
+              const allBranchesLabel =
+                usedCount > 1 ? `Used by ${usedCount} studios` : 'Used by 1 studio'
               return (
                 <div
                   key={d._id}
                   className={cn(
                     'flex flex-col gap-4 rounded-xl border bg-card p-5 sm:flex-row sm:items-start sm:justify-between',
-                    isLive ? 'border-brand/40 bg-brand/5' : 'border-border'
+                    isUsedHere ? 'border-brand/40 bg-brand/5' : 'border-border'
                   )}
                 >
                   <div className="flex min-w-0 items-start gap-3">
@@ -398,11 +466,16 @@ export default function DocumentLibraryTab({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-semibold text-foreground">{d.name}</span>
-                        {isLive && (
+                        {isUsedHere ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
-                            <CheckCircle className="h-3 w-3" /> Active
+                            <CheckCircle className="h-3 w-3" />{' '}
+                            {viewingStudio ? 'Used for this studio' : allBranchesLabel}
                           </span>
-                        )}
+                        ) : isLive ? (
+                          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                            {viewingStudio ? 'Active elsewhere' : 'Eligible fallback'}
+                          </span>
+                        ) : null}
                         {locationBadgeLabel(d) && (
                           <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                             {locationBadgeLabel(d)}
@@ -452,7 +525,7 @@ export default function DocumentLibraryTab({
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
-                    {isLive && !requireActive && (
+                    {isUsedHere && !requireActive && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -464,7 +537,7 @@ export default function DocumentLibraryTab({
                         <Power className="h-3.5 w-3.5" />
                       </Button>
                     )}
-                    {!isLive && (
+                    {!isUsedHere && (
                       <>
                         <Button
                           variant="gradient"
@@ -476,16 +549,18 @@ export default function DocumentLibraryTab({
                           <CheckCircle className="h-3.5 w-3.5" />
                           {togglingId === d._id ? 'Activating…' : 'Set active'}
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          title="Delete"
-                          className="h-8 w-8 p-0 text-red-500 hover:border-red-300 hover:text-red-600"
-                          onClick={() => handleDelete(d)}
-                          disabled={deletingId === d._id}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {!isLive && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            title="Delete"
+                            className="h-8 w-8 p-0 text-red-500 hover:border-red-300 hover:text-red-600"
+                            onClick={() => handleDelete(d)}
+                            disabled={deletingId === d._id}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </>
                     )}
                   </div>

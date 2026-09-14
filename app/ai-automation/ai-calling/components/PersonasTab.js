@@ -29,6 +29,7 @@ import {
   clampVapiLlmTemperature,
 } from '@/lib/vapiVoice'
 import { hasLocationSelection, initLocationID, locationBadgeLabel, toLocationPayload } from './locationScope'
+import WorkingStudioPicker from './WorkingStudioPicker'
 
 const API_BASE = (
   typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL
@@ -92,6 +93,8 @@ export default function PersonasTab({
   onRefresh,
   searchQuery = '',
   onSearchQueryChange,
+  workingLocationID = [],
+  onWorkingLocationChange,
 }) {
   const toast = useToast()
   const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
@@ -254,7 +257,11 @@ export default function PersonasTab({
     setTargetPersona(persona)
     setVoice(getNextCopyName(persona.voice || 'Persona', personas))
     loadPersonaIntoModal(persona)
-    setLocationID(initLocationID(persona))
+    setLocationID(
+      hasLocationSelection(workingLocationID)
+        ? workingLocationID
+        : initLocationID(persona),
+    )
     setModalMode('duplicate')
     setModalOpen(true)
   }
@@ -335,6 +342,12 @@ export default function PersonasTab({
       <p className="text-sm text-muted-foreground">
         ElevenLabs voice personas are shared across every studio. Duplicate or customize to save a copy for your location.
       </p>
+
+      <WorkingStudioPicker
+        workingLocationID={workingLocationID}
+        onWorkingLocationChange={onWorkingLocationChange}
+        className="max-w-md"
+      />
 
       <SearchInput
         className="max-w-sm"

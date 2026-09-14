@@ -20,6 +20,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
+import WorkingStudioPicker from '@/app/ai-automation/ai-calling/components/WorkingStudioPicker'
 import {
   initLocationID,
   hasLocationSelection,
@@ -720,7 +721,11 @@ function AgentSetupSelector() {
 
 // ─── Main tab component ───────────────────────────────────────────────────────
 
-export default function SmsPromptTab({ activeView = 'embeddings' }) {
+export default function SmsPromptTab({
+  activeView = 'embeddings',
+  workingLocationID,
+  onWorkingLocationChange,
+}) {
   const toast = useToast()
   const [prompts, setPrompts] = useState([])
   const [loading, setLoading] = useState(false)
@@ -732,12 +737,13 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
   const [viewPrompt, setViewPrompt] = useState(null)
   const [viewOpen, setViewOpen] = useState(false)
   const [viewLoading, setViewLoading] = useState(false)
-  const [workingLocationID, setWorkingLocationID] = useState([])
 
   const locationQuery = workingLocationQueryParam(workingLocationID)
+  const viewingStudio = Boolean(locationQuery && locationQuery !== 'all')
+  const forLocationPayload = viewingStudio ? { forLocationID: locationQuery } : {}
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const params = new URLSearchParams()
       if (locationQuery) params.set('locationID', locationQuery)
@@ -748,7 +754,7 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
     } catch {
       pushToast.error('Error', { description: 'Unable to load prompts' })
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [locationQuery])
 
@@ -758,13 +764,41 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
   }, [activeView, load])
 
   const handleActivate = async (p) => {
-    if (p.isActive) return
+    // When a studio is selected, "already active" means active *for this studio*.
+    // On All branches, strong highlight is isUsedSomewhere (not raw isActive).
+    if (viewingStudio ? p.isEffective : p.isUsedSomewhere) return
     setActivatingId(p._id)
     try {
-      const result = await api.post(`/api/sms-prompt/${p._id}/activate`, {})
+      const result = await api.post(`/api/sms-prompt/${p._id}/activate`, forLocationPayload)
       if (result.success) {
-        toast.success({ title: 'Activated', message: `"${p.name}" is now the active prompt` })
-        load()
+        toast.success({
+          title: 'Activated',
+          message: viewingStudio
+            ? `"${p.name}" is now the prompt for this studio`
+            : `"${p.name}" is now the active prompt`,
+        })
+        const id = String(p._id)
+        setPrompts((prev) =>
+          prev.map((row) => {
+            const mine = String(row._id) === id
+            if (viewingStudio) {
+              return {
+                ...row,
+                isEffective: mine,
+                isActive: mine ? true : row.isActive,
+              }
+            }
+            // All branches activate: this row is the org default; clear others' strong badge.
+            return {
+              ...row,
+              isEffective: false,
+              isActive: mine ? true : false,
+              isUsedSomewhere: mine,
+              usedByStudioCount: mine ? row.usedByStudioCount || 1 : 0,
+            }
+          }),
+        )
+        await load({ silent: true })
       } else {
         toast.error({ title: 'Error', message: result.error || 'Unable to activate prompt' })
       }
@@ -809,28 +843,16 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
-            One active prompt per studio scope. Texts to a studio number use that studio&apos;s active
-            prompt (or All branches). Knowledge Base and Playbook PDFs are injected per studio too.
+            Pick a studio, then set the prompt that studio should use. Texts to that studio&apos;s
+            number use only that prompt — other studios keep their own. All branches is the fallback
+            when a studio has no prompt of its own.
           </p>
         </div>
 
-        <div className="mb-4 max-w-md">
-          <label className="mb-1.5 block text-sm font-medium">Working studio</label>
-          <LocationSelector
-            value={
-              workingLocationID === ALL_BRANCHES_VALUE
-                ? ALL_BRANCHES_VALUE
-                : Array.isArray(workingLocationID) && workingLocationID.length
-                  ? workingLocationID[0]
-                  : null
-            }
-            onChange={(id) => setWorkingLocationID(normalizeWorkingLocation(id))}
-            multiple={false}
-            allowAllBranches
-            showAllOption={false}
-            placeholder="Filter by studio…"
-          />
-        </div>
+        <WorkingStudioPicker
+          workingLocationID={workingLocationID}
+          onWorkingLocationChange={onWorkingLocationChange}
+        />
 
         {/* Agent setup: architecture, then the model list for whichever is chosen */}
         <div className="mb-6">
@@ -868,18 +890,25 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
-            {filtered.map((p) => (
+            {filtered.map((p) => {
+              const isUsedHere = viewingStudio
+                ? Boolean(p.isEffective)
+                : Boolean(p.isUsedSomewhere)
+              const usedCount = Number(p.usedByStudioCount) || 0
+              const allBranchesLabel =
+                usedCount > 1 ? `Used by ${usedCount} studios` : 'Used by 1 studio'
+              return (
               <div
                 key={p._id}
                 className={cn(
                   'flex flex-col gap-4 rounded-xl border bg-card p-5 sm:flex-row sm:items-start sm:justify-between',
-                  p.isActive ? 'border-brand/40 bg-brand/5' : 'border-border',
+                  isUsedHere ? 'border-brand/40 bg-brand/5' : 'border-border',
                 )}
               >
                 {/* Left: name + badges */}
                 <div className="flex min-w-0 items-start gap-3">
                   <div className="mt-0.5 shrink-0">
-                    {p.isActive ? (
+                    {isUsedHere ? (
                       <CheckCircle className="h-5 w-5 text-brand" />
                     ) : (
                       <div className="h-5 w-5 rounded-full border-2 border-border" />
@@ -893,11 +922,15 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
                           <Lock className="h-3 w-3" /> Locked
                         </span>
                       )}
-                      {p.isActive && (
+                      {isUsedHere ? (
                         <span className="inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
-                          Active
+                          {viewingStudio ? 'Used for this studio' : allBranchesLabel}
                         </span>
-                      )}
+                      ) : p.isActive ? (
+                        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                          {viewingStudio ? 'Active elsewhere' : 'Eligible fallback'}
+                        </span>
+                      ) : null}
                       {locationBadgeLabel(p) && (
                         <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                           {locationBadgeLabel(p)}
@@ -959,7 +992,7 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
                   )}
 
                   {/* Set active — keep text */}
-                  {!p.isActive && (
+                  {!isUsedHere && (
                     <Button
                       size="sm"
                       variant="gradient"
@@ -986,7 +1019,8 @@ export default function SmsPromptTab({ activeView = 'embeddings' }) {
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

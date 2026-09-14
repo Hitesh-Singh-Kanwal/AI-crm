@@ -15,7 +15,13 @@ function normalizeName(v) {
   return (v || '').trim()
 }
 
-export default function ScriptEditorDialog({ open, onClose, initialScript, onSaved }) {
+export default function ScriptEditorDialog({
+  open,
+  onClose,
+  initialScript,
+  onSaved,
+  defaultLocationID,
+}) {
   const toast = useToast()
   const isEditing = !!initialScript?._id
 
@@ -66,11 +72,17 @@ export default function ScriptEditorDialog({ open, onClose, initialScript, onSav
     setName(initialScript?.name || '')
     setScript(initialScript?.script || '')
     setType(initialScript?.type || 'call')
-    setLocationID(initLocationID(initialScript))
+    setLocationID(
+      initialScript
+        ? initLocationID(initialScript)
+        : hasLocationSelection(defaultLocationID)
+          ? defaultLocationID
+          : initLocationID(null),
+    )
 
     fetchCategories()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialScript?._id])
+  }, [open, initialScript?._id, defaultLocationID])
 
   async function handleSave() {
     if (!hasLocationSelection(locationID)) {

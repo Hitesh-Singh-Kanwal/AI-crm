@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast, toast as toastApi } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import GlobalLoader from '@/components/shared/GlobalLoader'
-import LocationSelector from '@/components/shared/LocationSelector'
+import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
+import WorkingStudioPicker from './WorkingStudioPicker'
 import api, { getApiBaseUrl } from '@/lib/api'
 import {
   DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
@@ -38,7 +39,13 @@ import {
   resolveBackgroundSoundForSave,
   resolveBackgroundSoundOptionValue,
 } from '@/lib/backgroundSound'
-import { hasLocationSelection, initLocationID, locationBadgeLabel, toLocationPayload } from './locationScope'
+import {
+  hasLocationSelection,
+  initLocationID,
+  locationBadgeLabel,
+  toLocationPayload,
+  workingLocationQueryParam,
+} from './locationScope'
 
 const ASSISTANTS_PAGE_SIZE = 9
 const DEFAULT_LLM = 'gpt-4o-mini'
@@ -76,7 +83,10 @@ function extractAssistantsPayload(result) {
   }
 }
 
-export default function AiAssistTab() {
+export default function AiAssistTab({
+  workingLocationID = [],
+  onWorkingLocationChange,
+}) {
   const toast = useToast()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -136,6 +146,22 @@ export default function AiAssistTab() {
 
   useEffect(() => { setPage(1) }, [debouncedSearch])
 
+  const locationQuery = workingLocationQueryParam(workingLocationID)
+  const withLocationQuery = useCallback(
+    (path) => {
+      if (!locationQuery) return path
+      const sep = path.includes('?') ? '&' : '?'
+      return `${path}${sep}locationID=${encodeURIComponent(locationQuery)}`
+    },
+    [locationQuery],
+  )
+
+  useEffect(() => { setPage(1) }, [locationQuery])
+
+  const defaultCreateLocation = () => (
+    hasLocationSelection(workingLocationID) ? workingLocationID : initLocationID(null)
+  )
+
   // ── derived selected items ──
   const llmSelectOptions = useMemo(() => {
     const base = VAPI_LLM_OPTIONS
@@ -178,6 +204,7 @@ export default function AiAssistTab() {
         limit: String(ASSISTANTS_PAGE_SIZE),
       })
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
+      if (locationQuery) params.set('locationID', locationQuery)
 
       const result = await api.get(`/api/ai-assistant/paginated?${params.toString()}`)
       if (!result.success) {
@@ -194,7 +221,7 @@ export default function AiAssistTab() {
     } finally {
       setLoading(false)
     }
-  }, [page, debouncedSearch])
+  }, [page, debouncedSearch, locationQuery])
 
   useEffect(() => { fetchAssistants() }, [fetchAssistants])
 
@@ -203,10 +230,10 @@ export default function AiAssistTab() {
     setOptionsLoading(true)
     try {
       const [personaRes, scriptRes, fileRes, soundRes] = await Promise.all([
-        api.get('/api/ai-persona?page=1&limit=100'),
-        api.get('/api/ai-script/'),
-        api.get('/api/ai-script/file/'),
-        api.get('/api/ai-background-sound/'),
+        api.get(withLocationQuery('/api/ai-persona?page=1&limit=100')),
+        api.get(withLocationQuery('/api/ai-script/')),
+        api.get(withLocationQuery('/api/ai-script/file/')),
+        api.get(withLocationQuery('/api/ai-background-sound/')),
       ])
 
       const personaList = Array.isArray(personaRes?.data)
@@ -234,7 +261,7 @@ export default function AiAssistTab() {
     } finally {
       setOptionsLoading(false)
     }
-  }, [])
+  }, [withLocationQuery])
 
   useEffect(() => {
     fetchFormOptions()
@@ -266,6 +293,11 @@ export default function AiAssistTab() {
     setLocationID(initLocationID(null))
   }
 
+  const resetCreateEditorState = () => {
+    resetEditorState()
+    setLocationID(defaultCreateLocation())
+  }
+
   const syncVoiceTuningFromPersona = useCallback((persona) => {
     if (!persona) return
     setTtsStability(
@@ -287,7 +319,7 @@ export default function AiAssistTab() {
 
   // ── open create dialog ──
   const openCreate = async () => {
-    resetEditorState()
+    resetCreateEditorState()
     setEditorOpen(true)
     await fetchFormOptions()
   }
@@ -559,14 +591,21 @@ export default function AiAssistTab() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground max-w-2xl">
-          Create reusable assistants (e.g. Booking, Promo, Marketing) by combining persona, script,
-          knowledge base, and success evaluator. Use them in Make Calls and review outcomes in AI
-          Calling Data filtered by assistant.
+          Pick a studio, then create assistants for that studio. An assistant assigned to one
+          studio cannot be used at another. All-branches assistants can be used at any studio.
         </p>
         <Button variant="gradient" className="w-full sm:w-auto" onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" />
           Create assistant
         </Button>
+      </div>
+
+      <div className="max-w-md">
+        <WorkingStudioPicker
+          workingLocationID={workingLocationID}
+          onWorkingLocationChange={onWorkingLocationChange}
+          className=""
+        />
       </div>
 
       {/* Search */}
@@ -598,8 +637,12 @@ export default function AiAssistTab() {
             <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
               <Bot className="h-7 w-7 text-muted-foreground" />
             </div>
-            <p className="font-medium text-muted-foreground">No AI assistants yet</p>
-            <p className="text-sm text-muted-foreground mt-1">Create one to reuse setup in make-calls.</p>
+            <p className="font-medium text-muted-foreground">
+              {locationQuery ? 'No assistants for this studio' : 'No AI assistants yet'}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Create one scoped to the selected studio to reuse it in Make Calls and Inbound IVR.
+            </p>
           </CardContent>
         </Card>
       )}
@@ -762,6 +805,11 @@ export default function AiAssistTab() {
                   placeholder="Select studio(s)…"
                   disabled={editorLoading}
                 />
+                <p className="text-[11px] text-muted-foreground">
+                  {editingAssistant
+                    ? 'This assistant is only available for the selected studio(s).'
+                    : 'Defaults to the working studio. This assistant will only be available there (or at every studio if you choose All branches).'}
+                </p>
               </div>
 
               <div className="space-y-1.5 md:col-span-2">

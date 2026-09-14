@@ -11,11 +11,12 @@ import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
-import { locationBadgeLabel } from './locationScope'
-
-const FILES_PAGE_SIZE = 10
+import { locationBadgeLabel, workingLocationQueryParam } from './locationScope'
+import WorkingStudioPicker from './WorkingStudioPicker'
 import KnowledgeBaseUploadDialog from './KnowledgeBaseUploadDialog'
 import KnowledgeBaseEditDialog from './KnowledgeBaseEditDialog'
+
+const FILES_PAGE_SIZE = 10
 
 const fileTypeIcons = { pdf: '📄', docx: '📝', doc: '📝', txt: '📃', mp3: '🎵', unknown: '📁' }
 
@@ -98,7 +99,10 @@ function extractFilesPayload(result) {
   }
 }
 
-export default function KnowledgeBaseTab() {
+export default function KnowledgeBaseTab({
+  workingLocationID = [],
+  onWorkingLocationChange,
+}) {
   const [dragOver, setDragOver] = useState(false)
   const toast = useToast()
 
@@ -127,6 +131,12 @@ export default function KnowledgeBaseTab() {
     setPage(1)
   }, [debouncedSearch])
 
+  const locationQuery = workingLocationQueryParam(workingLocationID)
+
+  useEffect(() => {
+    setPage(1)
+  }, [locationQuery])
+
   const fetchFiles = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -136,6 +146,7 @@ export default function KnowledgeBaseTab() {
         limit: String(FILES_PAGE_SIZE),
       })
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
+      if (locationQuery) params.set('locationID', locationQuery)
       const result = await api.get(`/api/ai-script/file/paginated?${params.toString()}`)
       if (result.success) {
         const { list, total, totalPages: totalPagesFromApi } = extractFilesPayload(result)
@@ -156,7 +167,7 @@ export default function KnowledgeBaseTab() {
     } finally {
       setLoading(false)
     }
-  }, [page, debouncedSearch])
+  }, [page, debouncedSearch, locationQuery])
 
   useEffect(() => {
     fetchFiles()
@@ -203,6 +214,12 @@ export default function KnowledgeBaseTab() {
         </p>
       </div>
 
+      <WorkingStudioPicker
+        workingLocationID={workingLocationID}
+        onWorkingLocationChange={onWorkingLocationChange}
+        className="max-w-md"
+      />
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="rounded-xl border-border/80 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
           <CardContent className="p-5">
@@ -239,7 +256,12 @@ export default function KnowledgeBaseTab() {
         </Card>
       </div>
 
-      <KnowledgeBaseUploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onUploaded={fetchFiles} />
+      <KnowledgeBaseUploadDialog
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onUploaded={fetchFiles}
+        defaultLocationID={workingLocationID}
+      />
       <KnowledgeBaseEditDialog
         open={editOpen}
         onClose={() => setEditOpen(false)}
