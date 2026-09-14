@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, Fragment } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -9,12 +9,10 @@ import {
   Trash2,
   Pin,
   PinOff,
-  Package,
   BookOpen,
   StickyNote,
   User,
   ChevronDown,
-  ArrowUpDown,
   X,
   CreditCard,
   Wallet,
@@ -33,6 +31,9 @@ import {
   XCircle,
   AlertTriangle,
   History,
+  MessageSquare,
+  MoreHorizontal,
+  Copy,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -44,7 +45,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
+import EnrollMenu from "@/components/enrollment/EnrollMenu";
+import { CreateEventPurchaseDialog } from "@/app/settings/setup/components/EventsPurchases";
 import CustomerMembershipsTab from "@/components/membership/CustomerMembershipsTab";
 import CustomerWalletTab from "@/components/wallet/CustomerWalletTab";
 import CancelRefundDialog from "@/components/shared/CancelRefundDialog";
@@ -78,6 +88,10 @@ import {
 import StatusColorBadge from "@/components/shared/StatusColorBadge";
 import { formatReasonLabel } from "@/lib/dynamic-list-normalize";
 import { extractLeadReasonsList } from "@/lib/workflow-normalize";
+import {
+  mapEmailHistoryRecord,
+  normalizeEmailAddress,
+} from "@/lib/emailSend";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -315,27 +329,6 @@ function IssueRefundDialog({ open, onClose, payment, customerID, onSuccess }) {
   );
 }
 
-// ─── Tabs ────────────────────────────────────────────────────────────────────
-
-const TABS = [
-  { id: "profile", label: "Profile", Icon: User },
-  { id: "intro", label: "Trial", Icon: Sparkles },
-  {
-    id: "active-enrollments",
-    label: " Enrollments",
-    Icon: ClipboardList,
-  },
-  { id: "memberships", label: "Memberships", Icon: CreditCard },
-  { id: "wallet", label: "Wallet", Icon: Wallet },
-  { id: "purchases", label: "Events & Products", Icon: Receipt },
-  { id: "payments", label: "Payment History", Icon: Receipt },
-  { id: "lessons", label: "Lessons", Icon: BookOpen },
-  { id: "history", label: "History", Icon: History },
-  { id: "notes", label: "Notes", Icon: StickyNote },
-  { id: "members", label: "Members", Icon: Users },
-  { id: "contracts", label: "Contracts", Icon: FileText },
-];
-
 // ─── Tags ────────────────────────────────────────────────────────────────────
 
 function TagsEditor({ customer, onUpdated }) {
@@ -463,170 +456,6 @@ function TagsEditor({ customer, onUpdated }) {
   );
 }
 
-// ─── Balance Breakdown ───────────────────────────────────────────────────────
-
-// Consolidates every payment-related balance concept scattered across the
-// Enrollments/Memberships/Wallet tabs into one place: what the customer owes
-// (per package/membership, so staff can see exactly where an outstanding
-// total is coming from) and what they have available to spend (Wallet — the
-// only spendable balance the app has; customer.credits/"Store Credit" was a
-// legacy field nothing writes to anymore, so it isn't read here) — two
-// different, easily-conflated numbers, kept visibly separate rather than
-// netted together.
-function BalanceBreakdownCard({ customer }) {
-  const [loading, setLoading] = useState(true);
-  const [owedBreakdown, setOwedBreakdown] = useState([]); // [{ label, amount, type }]
-  const [walletBalance, setWalletBalance] = useState(0);
-
-  useEffect(() => {
-    if (!customer?._id) return;
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([
-      // Explicit limit — the list endpoint defaults to 20 per page, which
-      // would silently drop any enrollment past the first page for a
-      // long-tenured customer.
-      api.get(`/api/enrollment?customerID=${customer._id}&limit=500`),
-      api.get(`/api/customer-membership/customer/${customer._id}`),
-      fetchWalletBalance(customer._id),
-    ]).then(([enrRes, memRes, wallet]) => {
-      if (cancelled) return;
-      // package.dueAmount / membership.dueAmount are snapshot fields that
-      // aren't always kept in sync (e.g. mid-payment-plan) — `!= null`
-      // means "the snapshot is trustworthy", but when it's null the real
-      // outstanding amount still exists, just has to be derived the same
-      // way the payment-plan scheduler on this page already does
-      // (`cp.dueAmount != null ? dueAmount : totalPaid - amountCollected`).
-      // Reading only dueAmount directly here silently dropped any
-      // enrollment/membership that had fallen out of sync.
-      const packages = (enrRes.success ? enrRes.data || [] : [])
-        .map((enr) => {
-          const pkg = enr.package;
-          // A cancelled package/enrollment shouldn't keep contributing to
-          // Outstanding — its stale dueAmount snapshot otherwise lingers
-          // here even after the cancel flow has zeroed/refunded it.
-          if (!pkg || pkg.status === "cancelled" || enr.status === "cancelled") return null;
-          const due =
-            pkg.dueAmount != null
-              ? Number(pkg.dueAmount)
-              : Math.max(0, Number(pkg.totalPaid || 0) - Number(pkg.amountCollected || 0));
-          return due > 0 ? { label: pkg.packageName || "Package", amount: due, type: "Package" } : null;
-        })
-        .filter(Boolean);
-      const memberships = (memRes.success ? memRes.data || [] : [])
-        .map((m) => {
-          if (m.status === "cancelled") return null;
-          const due =
-            m.dueAmount != null
-              ? Number(m.dueAmount)
-              : Math.max(0, Number(m.price || 0) - Number(m.amountCollected || 0));
-          return due > 0 ? { label: m.membershipName || "Membership", amount: due, type: "Membership" } : null;
-        })
-        .filter(Boolean);
-      setOwedBreakdown([...packages, ...memberships].sort((a, b) => b.amount - a.amount));
-      setWalletBalance(Number(wallet) || 0);
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [customer?._id]);
-
-  const totalOwed = owedBreakdown.reduce((sum, row) => sum + row.amount, 0);
-  // Wallet is the only spendable balance a customer can have — customer.credits
-  // ("Store Credit") is a legacy field nothing writes to anymore, so it isn't
-  // read here. "Available" used to be Wallet + Store Credit; now that Store
-  // Credit is gone, that sum would just be Wallet Balance again — collapsed
-  // into one tile below instead of showing the same number twice.
-
-  const availableBreakdown = [
-    walletBalance > 0 && { label: "Wallet Balance", amount: walletBalance, type: "Wallet" },
-  ].filter(Boolean);
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
-      <h2 className="text-[13px] font-semibold text-foreground">Balance Summary</h2>
-      {loading ? (
-        <p className="text-[12px] text-muted-foreground">Loading…</p>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-xl border border-border bg-card px-4 py-3">
-              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
-                <AlertTriangle className="h-3 w-3" />
-                Outstanding
-              </p>
-              <p
-                className={`text-[19px] font-semibold ${totalOwed > 0 ? "text-destructive" : "text-foreground"}`}
-              >
-                ${totalOwed.toFixed(2)}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border bg-card px-4 py-3">
-              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1">
-                <Wallet className="h-3 w-3" />
-                Wallet Balance
-              </p>
-              <p className="text-[19px] font-semibold text-success">
-                ${walletBalance.toFixed(2)}
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-              Where it's coming from
-            </p>
-            {owedBreakdown.length === 0 && availableBreakdown.length === 0 ? (
-              <p className="text-[12px] text-muted-foreground">
-                No outstanding balance and no available funds.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {owedBreakdown.map((row, i) => (
-                  <div
-                    key={`owed-${i}`}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-destructive/5 px-3 py-2"
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-foreground">
-                      <Package className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{row.label}</span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
-                        ({row.type} due)
-                      </span>
-                    </span>
-                    <span className="shrink-0 text-[12px] font-semibold text-destructive">
-                      ${row.amount.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-                {availableBreakdown.map((row, i) => (
-                  <div
-                    key={`avail-${i}`}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-success/5 px-3 py-2"
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-foreground">
-                      {row.type === "Wallet" ? (
-                        <Wallet className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      ) : (
-                        <CreditCard className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      )}
-                      <span className="truncate">{row.label}</span>
-                    </span>
-                    <span className="shrink-0 text-[12px] font-semibold text-success">
-                      ${row.amount.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 // ─── Profile Tab ─────────────────────────────────────────────────────────────
 
 function ProfileTab({ customer, locations, onUpdated }) {
@@ -643,17 +472,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
   );
   const [savingCallbackDate, setSavingCallbackDate] = useState(false);
   const [customerEvents, setCustomerEvents] = useState([]);
-  const [sessionStats, setSessionStats] = useState({
-    usedValue: 0,
-    scheduledValue: 0,
-    remainingValue: 0,
-    usedCount: 0,
-    scheduledCount: 0,
-    remainingCount: 0,
-    totalCount: 0,
-    completedCount: 0,
-    completedValue: 0,
-  });
   const toast = useToast();
 
   useEffect(() => {
@@ -706,67 +524,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
       }
     });
   }, [customer?._id]);
-
-  useEffect(() => {
-    if (!customer?._id) return;
-    api
-      .get(`/api/enrollment?customerID=${customer._id}&status=active`)
-      .then(async (enrRes) => {
-        if (!enrRes.success) return;
-        const list = enrRes.data || [];
-        if (!list.length) return;
-        const detResults = await Promise.all(
-          list.map((e) => api.get(`/api/customer-package/${e._id}/details`)),
-        );
-        let usedCount = 0,
-          remainingCount = 0,
-          totalCount = 0,
-          completedCount = 0;
-        let usedValue = 0,
-          remainingValue = 0,
-          completedValue = 0;
-        detResults.forEach((res) => {
-          if (!res.success) return;
-          const services = res.data?.services ?? [];
-          services.forEach((svc) => {
-            const price = Number(svc.pricePerSession) || 0;
-            const used = svc.sessionsUsed ?? 0;
-            // sessionsUsed is the count deducted from the package balance —
-            // it includes sessions booked for a future date, not just ones
-            // that have actually happened. sessionsCompleted (derived
-            // server-side from past/completed CalendarEvents) is the true
-            // attendance count.
-            const completed = svc.sessionsCompleted ?? 0;
-            const sched = svc.sessionsScheduled ?? 0;
-            const remaining = Math.max(0, (svc.sessionsTotal ?? 0) - used);
-            usedCount += used;
-            remainingCount += remaining;
-            totalCount += svc.sessionsTotal ?? 0;
-            usedValue += used * price;
-            remainingValue += remaining * price;
-            completedCount += completed;
-            completedValue += completed * price;
-          });
-        });
-        // Derive scheduled count from future calendar events
-        const now = new Date();
-        const scheduledCount = customerEvents.filter(
-          (ev) => new Date(ev.startDateTime) > now,
-        ).length;
-        const scheduledValue = 0; // price per scheduled session not reliably available without per-event charge lookup
-        setSessionStats({
-          usedValue,
-          scheduledValue,
-          remainingValue,
-          usedCount,
-          scheduledCount,
-          remainingCount,
-          totalCount,
-          completedCount,
-          completedValue,
-        });
-      });
-  }, [customer?._id, customerEvents]);
 
   function startEdit() {
     setForm({
@@ -849,70 +606,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
 
   return (
     <div className="space-y-6">
-      {/* Quick stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Member Since", value: formatDate(customer.memberSince ?? customer.createdAt) },
-          {
-            label: `Sessions Completed (${sessionStats.completedCount ?? 0})`,
-            value: `$${(sessionStats.completedValue ?? 0).toFixed(2)}`,
-            accent: "text-info",
-          },
-          {
-            label: "Scheduled Events",
-            value: sessionStats.scheduledCount,
-            accent: "text-violet-500",
-          },
-        ].map(({ label, value, accent }) => (
-          <div
-            key={label}
-            className="rounded-xl border border-border bg-card px-4 py-3"
-          >
-            <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-            <p
-              className={`text-[15px] font-semibold ${accent ?? "text-foreground"}`}
-            >
-              {value}
-            </p>
-          </div>
-        ))}
-        {/* Remaining sessions card */}
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
-          <p className="text-[11px] text-muted-foreground mb-1">
-            Remaining Sessions
-          </p>
-          <div className="flex items-baseline gap-1.5">
-            <p className="text-[15px] font-semibold text-success">
-              {sessionStats.remainingCount}
-            </p>
-            <p className="text-[12px] text-muted-foreground">
-              / {sessionStats.totalCount} sess
-            </p>
-          </div>
-          <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full rounded-full bg-success transition-all"
-              style={{
-                width:
-                  sessionStats.totalCount > 0
-                    ? `${(sessionStats.usedCount / sessionStats.totalCount) * 100}%`
-                    : "0%",
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-between mt-1.5">
-            <p className="text-[10px] text-muted-foreground">
-              {sessionStats.usedCount} used
-            </p>
-            <p className="text-[13px] font-semibold text-success">
-              ${sessionStats.remainingValue.toFixed(2)}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <BalanceBreakdownCard customer={customer} />
-
+      {/* Session totals and balances live on Overview — this view is the record itself. */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Info card */}
         <div className="lg:col-span-2 rounded-xl border border-border bg-card p-6 space-y-5">
@@ -1425,6 +1119,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
 function PaymentSchedule({
   plan,
   cpStatus,
+  outstanding,
   onPayInstallment,
   onChangeDate,
   onAddInstallment,
@@ -1432,9 +1127,40 @@ function PaymentSchedule({
   customerID,
   locationID,
   onSent,
+  defaultOpen = false,
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const { ready: cloverReady } = useCardProcessor(locationID || plan);
+
+  // A flexible schedule's pending total can drift from the real outstanding
+  // balance (a wallet credit, refund, or a payment collected outside the
+  // plan) — self-heal it here instead of leaving a stale schedule on screen
+  // until someone happens to open the Future Payments sheet. Fixed-amount
+  // payment_plan schedules are left alone (their last installment can be
+  // intentionally discounted).
+  const reconciledRef = useRef(null);
+  useEffect(() => {
+    if (billingType !== "flexible" || !plan || plan.status !== "active" || outstanding == null) return;
+    const pending = plan.installments.map((i, idx) => ({ ...i, idx })).filter((i) => i.status === "pending");
+    if (pending.length === 0) return;
+    const pendingSum = pending.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+    const drift = Number((pendingSum - outstanding).toFixed(2));
+    if (Math.abs(drift) <= 0.01) return;
+    const key = `${plan._id}:${pendingSum}:${outstanding}`;
+    if (reconciledRef.current === key) return; // already tried this exact mismatch this session
+    reconciledRef.current = key;
+    const target = Math.max(0, Number(outstanding));
+    const base = Math.floor((target / pending.length) * 100) / 100;
+    Promise.all(
+      pending.map((inst, i) => {
+        const amount = i === pending.length - 1 ? Number((target - base * (pending.length - 1)).toFixed(2)) : base;
+        return api.patch(`/api/payment-plan/${plan._id}/installment/${inst.idx}/due-date`, {
+          dueDate: new Date(inst.dueDate).toISOString().slice(0, 10),
+          amount,
+        });
+      }),
+    ).then(() => onSent?.());
+  }, [plan, outstanding, billingType, onSent]);
 
   if (!plan) return null;
 
@@ -1471,103 +1197,135 @@ function PaymentSchedule({
 
       {open && (
         <div className="mt-3">
-          <div className="rounded-lg border border-border overflow-hidden">
-            {plan.installments.map((inst, idx) => {
-              return (
-                <div
-                  key={idx}
-                  className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${inst.status === "paid" ? "bg-success/5" : ""}`}
-                >
-                  <div className="flex items-center gap-2.5">
+          {(() => {
+            const nextDueIdx = plan.installments.findIndex((i) => i.status === "pending");
+            return (
+              <div className="rounded-lg border border-border overflow-hidden">
+                {plan.installments.map((inst, idx) => {
+                  const isNextDue = idx === nextDueIdx;
+                  const isOverdue = isNextDue && new Date(inst.dueDate) < new Date();
+                  const isLast = idx === plan.installments.length - 1;
+                  const hasDiscount = isLast && plan.installmentAmount > inst.amount;
+                  return (
                     <div
-                      className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                      key={idx}
+                      className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${
                         inst.status === "paid"
-                          ? "bg-success text-white"
-                          : inst.status === "failed"
-                            ? "bg-rose-600 text-white"
-                            : inst.status === "payment_pending"
-                              ? "bg-warning text-white"
-                              : "bg-muted text-muted-foreground"
+                          ? "bg-success/5"
+                          : isNextDue
+                            ? isOverdue
+                              ? "bg-rose-50/40 dark:bg-rose-900/10"
+                              : "bg-warning/10"
+                            : ""
                       }`}
                     >
-                      {inst.status === "paid" ? "✓" : idx + 1}
-                    </div>
-                    <div>
-                      <p className="text-[12px] text-foreground font-medium">
-                        Payment {idx + 1}
-                        {inst.status === "paid" && (
-                          <span className="ml-1.5 text-[11px] font-normal text-success">
-                            Paid
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                            inst.status === "paid"
+                              ? "bg-success text-white"
+                              : inst.status === "failed"
+                                ? "bg-rose-600 text-white"
+                                : inst.status === "payment_pending"
+                                  ? "bg-warning text-white"
+                                  : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {inst.status === "paid" ? "✓" : idx + 1}
+                        </div>
+                        <div>
+                          <p className="text-[12px] text-foreground font-medium">
+                            Payment {idx + 1}
+                            {inst.status === "paid" && (
+                              <span className="ml-1.5 text-[11px] font-normal text-success">
+                                Paid
+                              </span>
+                            )}
+                            {inst.status === "failed" && (
+                              <span className="ml-1.5 text-[11px] font-normal text-rose-600">
+                                Failed
+                              </span>
+                            )}
+                            {inst.status === "payment_pending" && (
+                              <span className="ml-1.5 text-[11px] font-normal text-warning">
+                                Payment pending
+                              </span>
+                            )}
+                            {isOverdue && (
+                              <span className="ml-1.5 text-[11px] font-normal text-rose-600">
+                                Overdue
+                              </span>
+                            )}
+                          </p>
+                          <p className={`text-[11px] ${isOverdue ? "text-rose-600" : "text-muted-foreground"}`}>
+                            Due{" "}
+                            {new Date(inst.dueDate).toLocaleDateString("en-AU", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {hasDiscount && (
+                          <span className="text-[11px] text-muted-foreground line-through">
+                            ${Number(plan.installmentAmount).toFixed(2)}
                           </span>
                         )}
-                        {inst.status === "failed" && (
-                          <span className="ml-1.5 text-[11px] font-normal text-rose-600">
-                            Failed
+                        <p className={`text-[13px] font-semibold ${isOverdue ? "text-rose-600" : "text-foreground"}`}>
+                          ${Number(inst.amount).toFixed(2)}
+                        </p>
+                        {hasDiscount && (
+                          <span className="text-[10px] font-medium text-warning bg-warning/10 px-1.5 py-0.5 rounded-full">
+                            discount
                           </span>
                         )}
-                        {inst.status === "payment_pending" && (
-                          <span className="ml-1.5 text-[11px] font-normal text-warning">
-                            Payment pending
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Due{" "}
-                        {new Date(inst.dueDate).toLocaleDateString("en-AU", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-[13px] font-semibold text-foreground">
-                      ${Number(inst.amount).toFixed(2)}
-                    </p>
-                    {inst.status === "pending" &&
-                      plan.status === "active" &&
-                      cpStatus === "active" && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2.5 text-[11px]"
-                            onClick={() => onChangeDate({ plan, index: idx })}
-                          >
-                            Change Date
-                          </Button>
-                          {cloverReady && customerID && (
-                            <SendPaymentLinkMenu
-                              customerID={customerID}
-                              target={{
-                                kind: "installment",
-                                paymentPlanID: plan._id,
-                                installmentIndex: idx,
-                              }}
-                              onSent={onSent}
-                            />
+                        {inst.status === "pending" &&
+                          plan.status === "active" &&
+                          cpStatus === "active" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2.5 text-[11px]"
+                                onClick={() => onChangeDate({ plan, index: idx })}
+                              >
+                                Change Due Date
+                              </Button>
+                              {cloverReady && customerID && (
+                                <SendPaymentLinkMenu
+                                  customerID={customerID}
+                                  target={{
+                                    kind: "installment",
+                                    paymentPlanID: plan._id,
+                                    installmentIndex: idx,
+                                  }}
+                                  onSent={onSent}
+                                />
+                              )}
+                              <Button
+                                size="sm"
+                                className="h-7 px-2.5 text-[11px] bg-success hover:bg-success text-white"
+                                onClick={() =>
+                                  onPayInstallment({
+                                    plan,
+                                    index: idx,
+                                    billingType,
+                                  })
+                                }
+                              >
+                                Pay Now
+                              </Button>
+                            </>
                           )}
-                          <Button
-                            size="sm"
-                            className="h-7 px-2.5 text-[11px] bg-success hover:bg-success text-white"
-                            onClick={() =>
-                              onPayInstallment({
-                                plan,
-                                index: idx,
-                                billingType,
-                              })
-                            }
-                          >
-                            Pay
-                          </Button>
-                        </>
-                      )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
           {plan.nextPaymentDate && plan.status === "active" && (
             <p className="text-[11px] text-muted-foreground mt-1.5">
               Next payment due:{" "}
@@ -1585,7 +1343,7 @@ function PaymentSchedule({
                 size="sm"
                 variant="outline"
                 className="mt-3 h-7 px-3 text-[11px] w-full"
-                onClick={() => onAddInstallment(plan)}
+                onClick={() => onAddInstallment({ plan, outstanding })}
               >
                 + Add Payment
               </Button>
@@ -1853,7 +1611,36 @@ function PayInstallmentDialog({
         navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
         toast.success(CHECKOUT_TOAST);
       } else {
-        toast.success("Installment payment recorded.");
+        // A flexible schedule promises the full balance gets collected — if
+        // this payment came up short, spread the shortfall across whatever's
+        // still pending rather than silently losing track of it.
+        const shortfall = Number((installment.amount - num).toFixed(2));
+        const remaining =
+          billingType === "flexible" && shortfall > 0.01
+            ? plan.installments
+                .map((i, idx) => ({ ...i, idx }))
+                .filter((i) => i.idx !== installmentIndex && i.status === "pending")
+            : [];
+        if (remaining.length > 0) {
+          const base = Math.floor((shortfall / remaining.length) * 100) / 100;
+          await Promise.all(
+            remaining.map((i, i2) => {
+              const bump =
+                i2 === remaining.length - 1
+                  ? Number((shortfall - base * (remaining.length - 1)).toFixed(2))
+                  : base;
+              return api.patch(`/api/payment-plan/${plan._id}/installment/${i.idx}/due-date`, {
+                dueDate: new Date(i.dueDate).toISOString().slice(0, 10),
+                amount: Number((Number(i.amount) + bump).toFixed(2)),
+              });
+            }),
+          );
+          toast.success(
+            `Installment payment recorded — $${shortfall.toFixed(2)} shortfall added to the remaining payments.`,
+          );
+        } else {
+          toast.success("Installment payment recorded.");
+        }
       }
       onSuccess();
       onClose();
@@ -2088,84 +1875,201 @@ function ChangeInstallmentDateDialog({
 }
 
 // ─── AddInstallmentDialog ─────────────────────────────────────────────────────
+// Re-lays out the plan's still-pending payments as the same boxes staff filled
+// in on the enrollment's Flexible step, so restructuring the schedule later
+// feels like the same form instead of a bare "one payment" popup.
 
-function AddInstallmentDialog({ open, onClose, plan, onSuccess }) {
-  const [dueDate, setDueDate] = useState("");
-  const [amount, setAmount] = useState("");
+function AddInstallmentDialog({ open, onClose, plan, outstanding, onSuccess }) {
+  const [rows, setRows] = useState([]);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
+  // The true remaining balance — not the pending installments' own sum, which
+  // can drift from it (a wallet credit, refund, or discount applied outside
+  // the plan). Falls back to the plan's own total only if the real figure
+  // wasn't passed in.
+  const target = useMemo(() => {
+    if (outstanding != null) return Number(outstanding);
+    return (plan?.installments || [])
+      .filter((i) => i.status === "pending")
+      .reduce((sum, i) => sum + Number(i.amount || 0), 0);
+  }, [outstanding, plan]);
+
+  // Rows carry their original installment index (`origIdx`) when they mirror
+  // an already-scheduled payment — those get PATCHed. Rows with no `origIdx`
+  // are new and get POSTed. There's no delete-installment endpoint, so an
+  // already-scheduled row can be re-dated/re-amounted but not removed.
+  // Loaded rows are immediately reconciled against `target` — if the schedule
+  // had drifted from the real outstanding balance, opening this panel is
+  // what fixes it, rather than making staff notice and correct it by hand.
   useEffect(() => {
-    if (open) {
-      setDueDate("");
-      setAmount("");
+    if (open && plan) {
+      const pending = plan.installments
+        .map((inst, idx) => ({ ...inst, idx }))
+        .filter((inst) => inst.status === "pending")
+        .map((inst) => ({
+          _key: String(inst.idx),
+          origIdx: inst.idx,
+          dueDate: new Date(inst.dueDate).toISOString().slice(0, 10),
+          amount: Number(inst.amount).toFixed(2),
+        }));
+      setRows(splitEvenly(pending, target));
     }
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, plan]);
+
+  const rowsTotal = rows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const amountLeft = Number((target - rowsTotal).toFixed(2));
+
+  // Adding/removing a row, or editing one row's amount, re-spreads the fixed
+  // scheduled total across the rest — same auto-balancing as the enrollment
+  // form, so a short-paid or overtyped row never has to be hand-corrected.
+  function splitEvenly(list, remaining) {
+    const base = list.length ? Math.floor((remaining / list.length) * 100) / 100 : 0;
+    return list.map((r, i) => ({
+      ...r,
+      amount: (i === list.length - 1 ? Number((remaining - base * (list.length - 1)).toFixed(2)) : base).toFixed(2),
+    }));
+  }
+
+  function updateRow(key, field, value) {
+    if (field !== "amount") {
+      setRows((prev) => prev.map((r) => (r._key === key ? { ...r, [field]: value } : r)));
+      return;
+    }
+    setRows((prev) => {
+      const leftover = Math.max(0, target - (Number(value) || 0));
+      const others = prev.filter((r) => r._key !== key);
+      const split = splitEvenly(others, leftover);
+      return prev.map((r) => (r._key === key ? { ...r, amount: value } : split.find((o) => o._key === r._key)));
+    });
+  }
+
+  function addRow() {
+    setRows((prev) =>
+      splitEvenly(
+        [...prev, { _key: String(Date.now() + Math.random()), origIdx: null, dueDate: "", amount: "" }],
+        target,
+      ),
+    );
+  }
+
+  function removeRow(key) {
+    setRows((prev) => splitEvenly(prev.filter((r) => r._key !== key), target));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!dueDate || !amount) return;
+    if (rows.some((r) => !r.dueDate || !(Number(r.amount) > 0))) {
+      toast.error("Every payment needs a date and an amount.");
+      return;
+    }
+    if (Math.abs(amountLeft) > 0.01) {
+      toast.error(`Amount left to schedule is $${amountLeft.toFixed(2)} — it must be $0 before saving.`);
+      return;
+    }
     setSaving(true);
-    const res = await api.post(`/api/payment-plan/${plan._id}/installment`, {
-      dueDate,
-      amount: Number(amount),
-    });
-    if (res.success) {
-      toast.success("Payment added.");
+    const results = await Promise.all(
+      rows.map((r) =>
+        r.origIdx != null
+          ? api.patch(`/api/payment-plan/${plan._id}/installment/${r.origIdx}/due-date`, {
+              dueDate: r.dueDate,
+              amount: Number(r.amount),
+            })
+          : api.post(`/api/payment-plan/${plan._id}/installment`, {
+              dueDate: r.dueDate,
+              amount: Number(r.amount),
+            }),
+      ),
+    );
+    setSaving(false);
+    if (results.every((r) => r.success)) {
+      toast.success("Payment schedule updated.");
       onSuccess();
       onClose();
     } else {
-      toast.error(res.error || "Failed to add payment.");
+      toast.error("Some payments failed to save — please check the schedule.");
     }
-    setSaving(false);
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) onClose();
-      }}
-    >
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Add Scheduled Payment</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          <FormField label="Due Date" required>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-            />
-          </FormField>
-          <FormField label="Amount ($)" required>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-            />
-          </FormField>
-          <div className="flex justify-end gap-2 pt-1">
+    <Sheet open={open} onClose={onClose} width="440px">
+      <SheetContent onClose={onClose} className="flex flex-col overflow-hidden p-0">
+        <div className="shrink-0 border-b border-border px-5 py-4">
+          <h2 className="text-[15px] font-bold text-foreground">Future Payments</h2>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            One row is the remaining balance's single due date. Add more to split it into a schedule.
+          </p>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            <div className="space-y-1.5">
+              {rows.map((r, i) => (
+                <div key={r._key} className="flex items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground w-5 shrink-0">{i + 1}.</span>
+                  <input
+                    type="date"
+                    value={r.dueDate}
+                    onChange={(e) => updateRow(r._key, "dueDate", e.target.value)}
+                    className="h-8 flex-1 rounded-lg border border-border bg-background px-2.5 text-[12px]"
+                  />
+                  <div className="relative w-28">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={r.amount}
+                      onChange={(e) => updateRow(r._key, "amount", e.target.value)}
+                      className="h-8 w-full rounded-lg border border-border bg-background pl-5 pr-2 text-[12px]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeRow(r._key)}
+                    disabled={rows.length === 1 || r.origIdx != null}
+                    title={r.origIdx != null ? "Already scheduled — change its date/amount instead" : "Remove payment"}
+                    className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Remove payment"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addRow}
+              className="flex items-center gap-1 h-7 px-2 rounded border border-dashed border-border bg-background text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+            >
+              + Add another payment
+            </button>
+            <div className="space-y-1 pt-2 border-t border-border">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-muted-foreground">Amount left to schedule</p>
+                <p className={`text-[12px] font-semibold ${Math.abs(amountLeft) > 0.01 ? "text-destructive" : "text-success"}`}>
+                  ${amountLeft.toFixed(2)}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="shrink-0 flex justify-end gap-2 border-t border-border/60 px-5 py-3">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
             <Button
               type="submit"
               size="sm"
-              disabled={saving || !dueDate || !amount}
+              disabled={saving}
               className="bg-brand hover:opacity-90 text-white"
             >
-              {saving ? "Saving…" : "Add Payment"}
+              {saving ? "Saving…" : "Save Schedule"}
             </Button>
           </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -2370,6 +2274,7 @@ function PackagesTab({ customerID, locationID }) {
   const [extending, setExtending] = useState(false);
   const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null); // { plan, index }
+  const [addInstallTarget, setAddInstallTarget] = useState(null); // { plan, outstanding }
   const toast = useToast();
   const { ready: cloverReady } = useCardProcessor(locationID);
 
@@ -2923,171 +2828,23 @@ function PackagesTab({ customerID, locationID }) {
                 )}
 
                 {/* Payment plan / scheduled-flexible installment schedule */}
-                {(() => {
-                  const plan = plansMap[String(enr._id)];
-                  if (!plan) return null;
-                  const paidCount = plan.installments.filter(
-                    (i) => i.status === "paid",
-                  ).length;
-                  return (
-                    <div className="mt-4 border-t border-border pt-4">
-                      <div className="flex items-center justify-between mb-2.5">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                          Payment Schedule
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                              plan.status === "completed"
-                                ? "bg-success/10 text-success"
-                                : plan.status === "cancelled"
-                                  ? "bg-muted text-muted-foreground"
-                                  : "bg-violet-500/10 text-violet-600"
-                            }`}
-                          >
-                            {plan.status}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {paidCount} / {plan.numberOfInstallments} paid
-                          </span>
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-border overflow-hidden">
-                        {plan.installments.map((inst, idx) => {
-                          const isLast = idx === plan.installments.length - 1;
-                          const hasDiscount =
-                            isLast && plan.installmentAmount > inst.amount;
-                          return (
-                            <div
-                              key={idx}
-                              className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${
-                                inst.status === "paid" ? "bg-success/5" : ""
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <div
-                                  className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
-                                    inst.status === "paid"
-                                      ? "bg-success text-white"
-                                      : inst.status === "failed"
-                                        ? "bg-rose-600 text-white"
-                                        : inst.status === "payment_pending"
-                                          ? "bg-warning text-white"
-                                          : "bg-muted text-muted-foreground"
-                                  }`}
-                                >
-                                  {inst.status === "paid" ? "✓" : idx + 1}
-                                </div>
-                                <div>
-                                  <p className="text-[12px] text-foreground font-medium">
-                                    Payment {idx + 1}
-                                    {inst.status === "paid" && (
-                                      <span className="ml-1.5 text-[11px] font-normal text-success">
-                                        Paid
-                                      </span>
-                                    )}
-                                    {inst.status === "failed" && (
-                                      <span className="ml-1.5 text-[11px] font-normal text-rose-600">
-                                        Failed
-                                      </span>
-                                    )}
-                                    {inst.status === "payment_pending" && (
-                                      <span className="ml-1.5 text-[11px] font-normal text-warning">
-                                        Payment pending
-                                      </span>
-                                    )}
-                                  </p>
-                                  <p className="text-[11px] text-muted-foreground">
-                                    Due{" "}
-                                    {new Date(inst.dueDate).toLocaleDateString(
-                                      "en-AU",
-                                      {
-                                        day: "numeric",
-                                        month: "short",
-                                        year: "numeric",
-                                      },
-                                    )}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {hasDiscount && (
-                                  <span className="text-[11px] text-muted-foreground line-through">
-                                    ${Number(plan.installmentAmount).toFixed(2)}
-                                  </span>
-                                )}
-                                <p className="text-[13px] font-semibold text-foreground">
-                                  ${Number(inst.amount).toFixed(2)}
-                                </p>
-                                {hasDiscount && (
-                                  <span className="text-[10px] font-medium text-warning bg-warning/10 px-1.5 py-0.5 rounded-full">
-                                    discount
-                                  </span>
-                                )}
-                                {inst.status === "pending" &&
-                                  plan.status === "active" &&
-                                  pkg.status === "active" && (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 px-2.5 text-[11px]"
-                                        onClick={() =>
-                                          setChangeInstallDateTarget({
-                                            plan,
-                                            index: idx,
-                                          })
-                                        }
-                                      >
-                                        Change Date
-                                      </Button>
-                                      {cloverReady && (
-                                        <SendPaymentLinkMenu
-                                          customerID={customerID}
-                                          target={{
-                                            kind: "installment",
-                                            paymentPlanID: plan._id,
-                                            installmentIndex: idx,
-                                          }}
-                                          onSent={load}
-                                        />
-                                      )}
-                                      <Button
-                                        size="sm"
-                                        className="h-7 px-2.5 text-[11px] bg-success hover:bg-success text-white"
-                                        onClick={() =>
-                                          setPayInstallTarget({
-                                            plan,
-                                            index: idx,
-                                            billingType: pkg.billingType,
-                                          })
-                                        }
-                                      >
-                                        Pay
-                                      </Button>
-                                    </>
-                                  )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {plan.nextPaymentDate && plan.status === "active" && (
-                        <p className="text-[11px] text-muted-foreground mt-1.5">
-                          Next payment due:{" "}
-                          {new Date(plan.nextPaymentDate).toLocaleDateString(
-                            "en-AU",
-                            {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            },
-                          )}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })()}
+                {plansMap[String(enr._id)] && (
+                  <div className="mt-4 border-t border-border pt-4">
+                    <PaymentSchedule
+                      plan={plansMap[String(enr._id)]}
+                      cpStatus={pkg.status}
+                      outstanding={outstanding}
+                      billingType={pkg.billingType}
+                      customerID={customerID}
+                      locationID={locationID}
+                      onPayInstallment={setPayInstallTarget}
+                      onChangeDate={setChangeInstallDateTarget}
+                      onAddInstallment={setAddInstallTarget}
+                      onSent={load}
+                      defaultOpen
+                    />
+                  </div>
+                )}
 
                 <PaymentTimeline
                   customerID={customerID}
@@ -3116,6 +2873,15 @@ function PackagesTab({ customerID, locationID }) {
         onClose={() => setChangeInstallDateTarget(null)}
         plan={changeInstallDateTarget?.plan}
         installmentIndex={changeInstallDateTarget?.index}
+        onSuccess={load}
+      />
+
+      {/* Add installment dialog — flexible plans only */}
+      <AddInstallmentDialog
+        open={Boolean(addInstallTarget)}
+        onClose={() => setAddInstallTarget(null)}
+        plan={addInstallTarget?.plan}
+        outstanding={addInstallTarget?.outstanding}
         onSuccess={load}
       />
 
@@ -3727,14 +3493,24 @@ const BLANK_ENR_FORM = {
   },
 };
 
-function EnrollmentsTab({ customerID, customerName = "", locationID }) {
+function EnrollmentsTab({
+  customerID,
+  customerName = "",
+  locationID,
+  /** Open straight onto this enrollment — set when Overview deep-links into one. */
+  initialEnrollmentID = null,
+}) {
   const [statusFilter, setStatusFilter] = useState("active");
   const [enrollments, setEnrollments] = useState([]);
   const [detailsMap, setDetailsMap] = useState({});
   const [plansMap, setPlansMap] = useState({});
   const [allPkgs, setAllPkgs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedEnrId, setSelectedEnrId] = useState(null);
+  const [selectedEnrId, setSelectedEnrId] = useState(initialEnrollmentID);
+
+  useEffect(() => {
+    if (initialEnrollmentID) setSelectedEnrId(String(initialEnrollmentID));
+  }, [initialEnrollmentID]);
 
   const [createEnrollmentOpen, setCreateEnrollmentOpen] = useState(false);
 
@@ -4982,6 +4758,7 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
                       <PaymentSchedule
                         plan={plansMap[String(enr._id)]}
                         cpStatus={cp.status}
+                        outstanding={outstanding}
                         billingType={cp.billingType}
                         customerID={customerID}
                         locationID={locationID}
@@ -5039,7 +4816,8 @@ function EnrollmentsTab({ customerID, customerName = "", locationID }) {
       <AddInstallmentDialog
         open={Boolean(addInstallTarget)}
         onClose={() => setAddInstallTarget(null)}
-        plan={addInstallTarget}
+        plan={addInstallTarget?.plan}
+        outstanding={addInstallTarget?.outstanding}
         onSuccess={load}
       />
 
@@ -8080,6 +7858,1018 @@ function NotesTab({ customer, onUpdated }) {
   );
 }
 
+// ─── Student account shell ───────────────────────────────────────────────────
+
+// One entry per drill-in view: its title, icon and the one-line explainer the
+// section index shows. Keeping it in one map means the pill nav, the index
+// rows and the breadcrumb can never drift apart.
+const VIEW_META = {
+  "active-enrollments": {
+    label: "Enrollments",
+    icon: ClipboardList,
+    blurb: "Purchased programs, remaining lessons and payment schedules.",
+  },
+  purchases: {
+    label: "Events & Products",
+    icon: Receipt,
+    blurb: "Event registrations plus the full history of product purchases.",
+  },
+  memberships: {
+    label: "Memberships",
+    icon: CreditCard,
+    blurb: "Recurring service memberships and the benefits they include.",
+  },
+  lessons: {
+    label: "Lessons",
+    icon: BookOpen,
+    blurb: "Every booked, completed, cancelled and missed lesson.",
+  },
+  intro: {
+    label: "Trial",
+    icon: Sparkles,
+    blurb: "The introductory class or first à la carte lesson.",
+  },
+  wallet: {
+    label: "Wallet",
+    icon: Wallet,
+    blurb: "Available account funds and the full wallet ledger.",
+  },
+  payments: {
+    label: "Payment History",
+    icon: Receipt,
+    blurb: "Payments, receipts, refunds and their status in one ledger.",
+  },
+  notes: {
+    label: "Notes",
+    icon: StickyNote,
+    blurb: "Instructor and staff notes, with author and date.",
+  },
+  history: {
+    label: "History",
+    icon: History,
+    blurb: "Audit trail of account, attendance and status changes.",
+  },
+  contracts: {
+    label: "Waivers & Contracts",
+    icon: FileText,
+    blurb: "Signed waivers, agreements and related files.",
+  },
+  members: {
+    label: "Members",
+    icon: Users,
+    blurb: "Partners, guardians and household members on this account.",
+  },
+  profile: {
+    label: "Personal details",
+    icon: User,
+    blurb: "Contact information, address, tags and lifecycle status.",
+  },
+};
+
+const SECTIONS = [
+  { id: "overview", label: "Overview" },
+  {
+    id: "services",
+    label: "Services",
+    title: "Services & Purchases",
+    blurb:
+      "Everything this student has bought — enrollments, memberships, lessons, events and their trial.",
+    views: ["active-enrollments", "purchases", "memberships", "lessons", "intro"],
+  },
+  { id: "communication", label: "Communication" },
+  {
+    id: "billing",
+    label: "Billing",
+    title: "Billing",
+    blurb: "Account funds and the full payment record.",
+    views: ["wallet", "payments"],
+  },
+  {
+    id: "records",
+    label: "Records",
+    title: "Records",
+    blurb: "Notes, account history, signed documents and connected people.",
+    views: ["notes", "history", "contracts", "members", "profile"],
+  },
+];
+
+const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+
+function locationNamesOf(raw, locations) {
+  const ids = Array.isArray(raw)
+    ? raw.map((l) => String(l?._id ?? l)).filter(Boolean)
+    : raw
+      ? [String(raw?._id ?? raw)]
+      : [];
+  const names = ids
+    .map((id) => locations.find((l) => String(l._id) === id)?.name)
+    .filter(Boolean);
+  if (!names.length) return "—";
+  return names.length <= 2
+    ? names.join(", ")
+    : `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+}
+
+// Everything the Overview and the section indexes need, fetched once for the
+// whole page instead of each panel doing its own round trip.
+function useAccountSummary(customerID) {
+  const [state, setState] = useState({
+    loading: true,
+    enrollments: [],
+    memberships: [],
+    events: [],
+    payments: [],
+    wallet: 0,
+    sessions: { total: 0, used: 0, remaining: 0 },
+  });
+
+  const reload = useCallback(async () => {
+    if (!customerID) return;
+    const from = new Date();
+    from.setFullYear(from.getFullYear() - 1);
+    const to = new Date();
+    to.setFullYear(to.getFullYear() + 1);
+    const calParams = new URLSearchParams({
+      start: from.toISOString(),
+      end: to.toISOString(),
+    });
+
+    const [enrRes, memRes, calRes, payRes, wallet] = await Promise.all([
+      // The list endpoint pages at 20 by default — a long-tenured student would
+      // otherwise lose every enrollment past the first page.
+      api.get(`/api/enrollment?customerID=${customerID}&limit=500`),
+      api.get(`/api/customer-membership/customer/${customerID}`),
+      api.get(`/api/calendar/customer/${customerID}?${calParams}`),
+      api.get(`/api/payment/customer/${customerID}?page=1&limit=500`),
+      fetchWalletBalance(customerID),
+    ]);
+
+    const enrollments = enrRes.success ? enrRes.data || [] : [];
+    // Only active packages get a details round trip — the session counters are
+    // about what's left to book, and a long-tenured student's expired and
+    // completed enrollments would otherwise cost a request each on every load.
+    const live = enrollments.filter(
+      (e) => e.status !== "cancelled" && e.package?.status === "active",
+    );
+    const details = await Promise.all(
+      live.map((e) => api.get(`/api/customer-package/${e._id}/details`)),
+    );
+    const sessions = details.reduce(
+      (acc, res) => {
+        (res.success ? res.data?.services ?? [] : []).forEach((svc) => {
+          const total = svc.sessionsTotal ?? 0;
+          const used = svc.sessionsUsed ?? 0;
+          acc.total += total;
+          acc.used += used;
+          acc.remaining += Math.max(0, total - used);
+        });
+        return acc;
+      },
+      { total: 0, used: 0, remaining: 0 },
+    );
+
+    setState({
+      loading: false,
+      enrollments,
+      memberships: memRes.success ? memRes.data || [] : [],
+      events:
+        calRes.success && Array.isArray(calRes.data) ? calRes.data : [],
+      payments: payRes.success ? payRes.data || [] : [],
+      wallet: Number(wallet) || 0,
+      sessions,
+    });
+  }, [customerID]);
+
+  useEffect(() => {
+    let alive = true;
+    setState((p) => ({ ...p, loading: true }));
+    reload().finally(() => {
+      if (!alive) return;
+      setState((p) => ({ ...p, loading: false }));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [reload]);
+
+  return { ...state, reload };
+}
+
+// ─── Shell building blocks ───────────────────────────────────────────────────
+
+function Panel({ title, subtitle, action, className = "", children }) {
+  return (
+    <section
+      className={`rounded-2xl border border-border bg-card p-5 ${className}`}
+    >
+      {(title || action) && (
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            {title && (
+              <h2 className="text-[14px] font-semibold text-foreground">
+                {title}
+              </h2>
+            )}
+            {subtitle && (
+              <p className="text-[12px] text-muted-foreground mt-1">
+                {subtitle}
+              </p>
+            )}
+          </div>
+          {action}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+function LinkButton({ children, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="shrink-0 text-[12px] font-semibold text-primary hover:underline"
+    >
+      {children}
+    </button>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+        {label}
+      </p>
+      <div className="text-[13px] font-medium text-foreground break-words">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** A row that behaves like a link but stays a div, so it can hold buttons. */
+function ClickableRow({ onClick, className = "", children }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className={`cursor-pointer outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ─── Section index (Services / Billing / Records) ────────────────────────────
+
+function SectionIndex({ section, summary, onOpen }) {
+  const [expanded, setExpanded] = useState(null);
+
+  // Live counts so the index says something useful before you click into it.
+  const stateFor = (viewId) => {
+    const activeEnrollments = summary.enrollments.filter(
+      (e) => e.status !== "cancelled" && e.package?.status !== "cancelled",
+    );
+    const activeMemberships = summary.memberships.filter(
+      (m) => m.status !== "cancelled" && m.status !== "expired",
+    );
+    const upcoming = summary.events.filter(
+      (ev) =>
+        new Date(ev.startDateTime) > new Date() &&
+        !String(deriveEventStatus(ev)).startsWith("cancelled"),
+    );
+    switch (viewId) {
+      case "active-enrollments":
+        return {
+          value: `${activeEnrollments.length} active`,
+          hint: activeEnrollments.length ? "Choose an enrollment" : "None yet",
+          children: activeEnrollments.map((enr) => ({
+            id: String(enr._id),
+            title: enr.package?.packageName || enrollmentDisplayName(enr),
+            sub: `Purchased ${formatDate(enr.package?.purchaseDate ?? enr.createdAt)}`,
+            value:
+              Number(enr.package?.dueAmount ?? 0) > 0
+                ? `${money(enr.package.dueAmount)} due`
+                : "Paid in full",
+            hint: enr.package?.status ?? enr.status,
+            open: () =>
+              onOpen("active-enrollments", { enrollmentID: String(enr._id) }),
+          })),
+        };
+      case "memberships":
+        return {
+          value: `${activeMemberships.length} active`,
+          hint: activeMemberships[0]?.membershipName ?? "None yet",
+        };
+      case "lessons": {
+        const next = upcoming.sort(
+          (a, b) => new Date(a.startDateTime) - new Date(b.startDateTime),
+        )[0];
+        return {
+          value: next ? `Next ${formatDate(next.startDateTime)}` : "Nothing booked",
+          hint: `${summary.events.length} in the last year`,
+        };
+      }
+      case "wallet":
+        return { value: `${money(summary.wallet)} available`, hint: "View ledger" };
+      case "payments": {
+        const last = summary.payments[0];
+        return {
+          value: `${summary.payments.length} transactions`,
+          hint: last ? `Last ${formatDate(last.createdAt)}` : "None yet",
+        };
+      }
+      default:
+        return {};
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-[17px] font-semibold text-foreground">
+          {section.title}
+        </h2>
+        <p className="text-[12px] text-muted-foreground mt-1">{section.blurb}</p>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        {section.views.map((viewId, i) => {
+          const meta = VIEW_META[viewId];
+          const Icon = meta.icon;
+          const state = stateFor(viewId);
+          const hasChildren = (state.children?.length ?? 0) > 0;
+          const isOpen = expanded === viewId;
+          return (
+            <div
+              key={viewId}
+              className={i > 0 ? "border-t border-border" : undefined}
+            >
+              <ClickableRow
+                onClick={() =>
+                  hasChildren
+                    ? setExpanded(isOpen ? null : viewId)
+                    : onOpen(viewId)
+                }
+                className={`flex items-center gap-3 px-4 py-3.5 hover:bg-muted/40 ${isOpen ? "bg-muted/30" : ""}`}
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold text-foreground">
+                    {meta.label}
+                  </span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {meta.blurb}
+                  </span>
+                </span>
+                {state.value && (
+                  <span className="hidden sm:block text-right shrink-0">
+                    <span className="block text-[12px] font-semibold text-foreground">
+                      {summary.loading ? "—" : state.value}
+                    </span>
+                    <span className="block text-[10px] text-muted-foreground">
+                      {summary.loading ? "" : state.hint}
+                    </span>
+                  </span>
+                )}
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+                    hasChildren ? (isOpen ? "rotate-0" : "-rotate-90") : "-rotate-90"
+                  }`}
+                />
+              </ClickableRow>
+
+              {hasChildren && isOpen && (
+                <div className="bg-muted/20 px-4 pb-4 pl-4 sm:pl-16 space-y-2">
+                  {state.children.map((child) => (
+                    <ClickableRow
+                      key={child.id}
+                      onClick={child.open}
+                      className="flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 hover:border-primary/50"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[12px] font-semibold text-foreground truncate">
+                          {child.title}
+                        </span>
+                        <span className="block text-[10px] text-muted-foreground">
+                          {child.sub}
+                        </span>
+                      </span>
+                      <span className="text-right shrink-0">
+                        <span className="block text-[11px] font-semibold text-foreground">
+                          {child.value}
+                        </span>
+                        <span className="block text-[10px] text-muted-foreground capitalize">
+                          {child.hint}
+                        </span>
+                      </span>
+                      <ChevronDown className="h-3.5 w-3.5 -rotate-90 text-muted-foreground" />
+                    </ClickableRow>
+                  ))}
+                  <div className="flex justify-end pt-1">
+                    <LinkButton onClick={() => onOpen(viewId)}>
+                      View all {VIEW_META[viewId].label.toLowerCase()} →
+                    </LinkButton>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Overview ────────────────────────────────────────────────────────────────
+
+function MetricCard({ label, value, hint, accent = "text-foreground", children }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className={`mt-1.5 text-[21px] font-semibold leading-tight ${accent}`}>
+        {value}
+      </p>
+      {hint && <p className="mt-1 text-[11px] text-muted-foreground">{hint}</p>}
+      {children}
+    </div>
+  );
+}
+
+function OverviewSection({ customer, locations, summary, onOpen }) {
+  const now = Date.now();
+
+  // Outstanding money, broken down by what it's owed against — the same
+  // derivation the enrollment cards use, so the two never disagree.
+  const owed = useMemo(() => {
+    const fromPackages = summary.enrollments
+      .map((enr) => {
+        const pkg = enr.package;
+        if (!pkg || pkg.status === "cancelled" || enr.status === "cancelled")
+          return null;
+        const due =
+          pkg.dueAmount != null
+            ? Number(pkg.dueAmount)
+            : Math.max(
+                0,
+                Number(pkg.totalPaid || 0) - Number(pkg.amountCollected || 0),
+              );
+        return due > 0
+          ? {
+              key: `enr-${enr._id}`,
+              label: pkg.packageName || enrollmentDisplayName(enr),
+              sub: `Enrollment · purchased ${formatDate(pkg.purchaseDate ?? enr.createdAt)}`,
+              amount: due,
+              cta: "Open enrollment →",
+              open: () =>
+                onOpen("active-enrollments", { enrollmentID: String(enr._id) }),
+            }
+          : null;
+      })
+      .filter(Boolean);
+
+    const fromMemberships = summary.memberships
+      .map((m) => {
+        if (m.status === "cancelled") return null;
+        const due =
+          m.dueAmount != null
+            ? Number(m.dueAmount)
+            : Math.max(
+                0,
+                Number(m.price || 0) - Number(m.amountCollected || 0),
+              );
+        return due > 0
+          ? {
+              key: `mem-${m._id}`,
+              label: m.membershipName || "Membership",
+              sub: m.expiryDate
+                ? `Membership · expires ${formatDate(m.expiryDate)}`
+                : "Membership",
+              amount: due,
+              cta: "Open membership →",
+              open: () => onOpen("memberships"),
+            }
+          : null;
+      })
+      .filter(Boolean);
+
+    return [...fromPackages, ...fromMemberships].sort(
+      (a, b) => b.amount - a.amount,
+    );
+  }, [summary.enrollments, summary.memberships, onOpen]);
+
+  const totalOwed = owed.reduce((sum, r) => sum + r.amount, 0);
+
+  const lifetimeSpend = useMemo(
+    () =>
+      summary.payments
+        .filter((p) => p.status === "completed")
+        .reduce(
+          (sum, p) => sum + (p.type === "refund" ? -1 : 1) * Number(p.amount || 0),
+          0,
+        ),
+    [summary.payments],
+  );
+
+  const nextLesson = useMemo(
+    () =>
+      summary.events
+        .filter(
+          (ev) =>
+            new Date(ev.startDateTime).getTime() > now &&
+            !String(deriveEventStatus(ev)).startsWith("cancelled"),
+        )
+        .sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime))[0],
+    [summary.events, now],
+  );
+
+  // One timeline out of two sources, so "what happened lately" doesn't mean
+  // reading the Lessons tab and the Payment History tab side by side.
+  const activity = useMemo(() => {
+    const lessons = summary.events
+      .filter((ev) => new Date(ev.startDateTime).getTime() <= now)
+      .map((ev) => ({
+        key: `ev-${ev._id}`,
+        at: ev.startDateTime,
+        icon: deriveEventStatus(ev) === "completed" ? CheckCircle : CalendarX,
+        title: `${eventStatusLabel(deriveEventStatus(ev))} ${ev.title || "lesson"}`,
+        sub: ev.teacherID?.name ? `With ${ev.teacherID.name}` : "",
+      }));
+    const payments = summary.payments.map((p) => ({
+      key: `pay-${p._id}`,
+      at: p.createdAt,
+      icon: p.type === "refund" ? RotateCcw : Receipt,
+      title:
+        p.type === "refund"
+          ? `Refund issued · ${money(p.amount)}`
+          : `Payment received · ${money(p.amount)}`,
+      sub: [p.method, p.enrollmentID?.package?.packageName]
+        .filter(Boolean)
+        .join(" · "),
+    }));
+    return [...lessons, ...payments]
+      .sort((a, b) => new Date(b.at) - new Date(a.at))
+      .slice(0, 6);
+  }, [summary.events, summary.payments, now]);
+
+  const activeMembership = summary.memberships.find(
+    (m) => m.status !== "cancelled" && m.status !== "expired",
+  );
+  const memberCount = Array.isArray(customer.members)
+    ? customer.members.length
+    : 0;
+  const sinceDate = customer.memberSince ?? customer.createdAt;
+  const years = sinceDate
+    ? Math.floor((now - new Date(sinceDate).getTime()) / 31557600000)
+    : null;
+
+  return (
+    <div className="space-y-4">
+      {/* Health metrics */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <MetricCard
+          label="Current enrollment"
+          value={`${summary.sessions.remaining} lesson${summary.sessions.remaining === 1 ? "" : "s"}`}
+          hint={`${summary.sessions.used} of ${summary.sessions.total} used`}
+        >
+          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-success transition-all"
+              style={{
+                width: summary.sessions.total
+                  ? `${Math.min(100, (summary.sessions.used / summary.sessions.total) * 100)}%`
+                  : "0%",
+              }}
+            />
+          </div>
+        </MetricCard>
+        <MetricCard
+          label="Student since"
+          value={sinceDate ? formatDate(sinceDate) : "—"}
+          hint={
+            years != null
+              ? `${years} year${years === 1 ? "" : "s"} · ${customerLifecycleLabel(customer.lifecycleStatus).toLowerCase()}`
+              : undefined
+          }
+        />
+        <ClickableRow onClick={() => onOpen("payments")} className="rounded-2xl">
+          <MetricCard
+            label="Lifetime spend"
+            value={money(lifetimeSpend)}
+            hint="Completed payments less refunds · view history →"
+          />
+        </ClickableRow>
+      </div>
+
+      {/* Profile + at-a-glance */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Panel
+          className="lg:col-span-2"
+          title="Student profile"
+          action={
+            <LinkButton onClick={() => onOpen("profile")}>
+              Edit profile
+            </LinkButton>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Phone">{customer.phoneNumber || "—"}</Field>
+            <Field label="Email">{customer.email || "—"}</Field>
+            <Field label="Date of birth">
+              {customer.dateOfBirth ? formatDate(customer.dateOfBirth) : "Not provided"}
+            </Field>
+            <Field label="Home studio">
+              {locationNamesOf(customer.locationID, locations)}
+            </Field>
+            <Field label="Status">
+              <StatusColorBadge
+                color={customerLifecycleColor(customer.lifecycleStatus)}
+                className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+              >
+                {customerLifecycleLabel(customer.lifecycleStatus)}
+              </StatusColorBadge>
+            </Field>
+            <Field label="Follow-up">
+              {customer.callbackDate ? formatDate(customer.callbackDate) : "None set"}
+            </Field>
+          </div>
+          {(customer.tags?.length || customer.autoTags?.length) > 0 && (
+            <div className="mt-5">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2">
+                Tags
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {[...(customer.tags ?? []), ...(customer.autoTags ?? [])].map(
+                  (t, i) => (
+                    <span
+                      key={`${t}-${i}`}
+                      className="rounded-lg bg-muted px-2 py-1 text-[11px] text-foreground"
+                    >
+                      {t}
+                    </span>
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+        </Panel>
+
+        <div className="space-y-4">
+          {/* Next lesson — the one thing staff act on most, so it leads. */}
+          <section
+            className={`rounded-2xl border p-5 ${
+              nextLesson
+                ? "border-border bg-card"
+                : "border-warning/30 bg-warning/10"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h2 className="text-[14px] font-semibold text-foreground">
+                Next lesson
+              </h2>
+              {!nextLesson && (
+                <span className="text-[9px] font-bold uppercase tracking-wide text-warning">
+                  Needs attention
+                </span>
+              )}
+            </div>
+            {nextLesson ? (
+              <div className="flex items-center gap-3">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <span className="text-[17px] font-bold leading-none">
+                    {new Date(nextLesson.startDateTime).getDate()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-foreground truncate">
+                    {nextLesson.title || "Lesson"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {formatDate(nextLesson.startDateTime)} ·{" "}
+                    {new Date(nextLesson.startDateTime).toLocaleTimeString(
+                      "en-US",
+                      { hour: "numeric", minute: "2-digit" },
+                    )}
+                  </p>
+                  {nextLesson.teacherID?.name && (
+                    <p className="text-[11px] text-muted-foreground">
+                      With {nextLesson.teacherID.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-warning/20 text-[20px] font-bold text-warning">
+                  !
+                </div>
+                <div>
+                  <p className="text-[13px] font-semibold text-foreground">
+                    No next lesson scheduled
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {summary.sessions.remaining > 0
+                      ? `${summary.sessions.remaining} lesson${summary.sessions.remaining === 1 ? "" : "s"} left to book.`
+                      : "No remaining lessons on the account."}
+                  </p>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <Panel
+            title="Active membership"
+            action={
+              <LinkButton onClick={() => onOpen("memberships")}>
+                Manage
+              </LinkButton>
+            }
+          >
+            {activeMembership ? (
+              <div className="space-y-3">
+                <Field label="Membership">
+                  {activeMembership.membershipName || "Membership"}
+                </Field>
+                <Field label="Status">
+                  <span className="capitalize">{activeMembership.status}</span>
+                </Field>
+                {activeMembership.expiryDate && (
+                  <Field label="Next renewal">
+                    {formatDate(activeMembership.expiryDate)}
+                  </Field>
+                )}
+              </div>
+            ) : (
+              <p className="text-[12px] text-muted-foreground">
+                No active membership on this account.
+              </p>
+            )}
+          </Panel>
+
+          <Panel
+            title="Members"
+            subtitle="People connected to this account"
+            action={
+              <LinkButton onClick={() => onOpen("members")}>Manage</LinkButton>
+            }
+          >
+            <p className="text-[12px] text-muted-foreground">
+              {memberCount > 0
+                ? `${memberCount} connected member${memberCount === 1 ? "" : "s"}.`
+                : "No connected members yet."}
+            </p>
+          </Panel>
+        </div>
+      </div>
+
+      {/* Balance summary */}
+      <Panel
+        title="Balance summary"
+        subtitle="Outstanding amounts across this student's account"
+        action={
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Total balance
+            </p>
+            <p
+              className={`text-[20px] font-semibold ${totalOwed > 0 ? "text-destructive" : "text-foreground"}`}
+            >
+              {money(totalOwed)}
+            </p>
+          </div>
+        }
+      >
+        {summary.loading ? (
+          <p className="text-[12px] text-muted-foreground">Loading…</p>
+        ) : owed.length === 0 ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-success/5 px-3.5 py-3">
+            <p className="text-[12px] text-foreground">
+              Nothing outstanding — this account is fully paid up.
+            </p>
+            <p className="text-[12px] font-semibold text-success">
+              {money(summary.wallet)} in wallet
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {owed.map((row) => (
+              <ClickableRow
+                key={row.key}
+                onClick={row.open}
+                className="flex items-center justify-between gap-3 rounded-lg px-2 py-3 hover:bg-muted/40"
+              >
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold text-foreground truncate">
+                    {row.label}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {row.sub}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-[13px] font-semibold text-destructive">
+                    {money(row.amount)}
+                  </p>
+                  <p className="text-[10px] font-semibold text-primary">
+                    {row.cta}
+                  </p>
+                </div>
+              </ClickableRow>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {/* Recent activity */}
+      <Panel
+        title="Recent activity"
+        action={
+          <LinkButton onClick={() => onOpen("history")}>
+            View all records
+          </LinkButton>
+        }
+      >
+        {summary.loading ? (
+          <p className="text-[12px] text-muted-foreground">Loading…</p>
+        ) : activity.length === 0 ? (
+          <p className="text-[12px] text-muted-foreground">
+            Nothing has happened on this account yet.
+          </p>
+        ) : (
+          <div className="divide-y divide-border">
+            {activity.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.key} className="flex items-center gap-3 py-3">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12px] font-medium text-foreground truncate">
+                      {item.title}
+                    </p>
+                    {item.sub && (
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {item.sub}
+                      </p>
+                    )}
+                  </div>
+                  <time className="shrink-0 text-[10px] text-muted-foreground">
+                    {formatDate(item.at)}
+                  </time>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+// ─── Communication ───────────────────────────────────────────────────────────
+
+// Read-only on purpose: the send endpoints are lead-shaped (they log history
+// against a lead record this customer may not have), so replying stays in the
+// Inbox where that wiring already exists.
+function CommunicationSection({ customer }) {
+  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState([]);
+  const [matched, setMatched] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const digits = (v) => String(v || "").replace(/\D/g, "").slice(-10);
+    const email = normalizeEmailAddress(customer.email);
+    const phone = digits(customer.phoneNumber);
+
+    async function load() {
+      setLoading(true);
+      const [convRes, mailRes] = await Promise.all([
+        api.get("/api/smsHistory/conversations"),
+        api.get("/api/emailHistory?limit=200"),
+      ]);
+      if (cancelled) return;
+
+      const conv = (convRes.success ? convRes.data || [] : []).find(
+        (c) =>
+          (phone && digits(c.phoneNumber) === phone) ||
+          (email && normalizeEmailAddress(c.email) === email),
+      );
+
+      let sms = [];
+      if (conv?.leadID) {
+        const res = await api.get(
+          `/api/smsHistory/conversations/${conv.leadID}?page=1`,
+        );
+        if (cancelled) return;
+        sms = (Array.isArray(res.data?.messages) ? res.data.messages : []).map(
+          (m) => ({
+            id: `sms-${m._id}`,
+            channel: "Text",
+            inbound: m.status === "received",
+            content: m.message,
+            at: m.createdAt,
+          }),
+        );
+      }
+
+      const emails = (mailRes.success ? mailRes.data || [] : [])
+        .map((rec) => mapEmailHistoryRecord(rec, customer.name))
+        .filter((m) => email && normalizeEmailAddress(m.recipientEmail) === email)
+        .map((m) => ({
+          id: `mail-${m.id}`,
+          channel: "Email",
+          inbound: m.direction === "inbound",
+          content: m.subject ? `${m.subject} — ${m.content}` : m.content,
+          at: m.timestamp,
+        }));
+
+      setMatched(Boolean(conv) || emails.length > 0);
+      setMessages(
+        [...sms, ...emails]
+          .filter((m) => m.content)
+          .sort((a, b) => new Date(a.at) - new Date(b.at))
+          .slice(-30),
+      );
+      setLoading(false);
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [customer._id, customer.email, customer.phoneNumber, customer.name]);
+
+  return (
+    <Panel
+      title="Messaging"
+      subtitle={
+        matched
+          ? "Texts and emails matched to this student's phone and email"
+          : "Texts and emails for this student"
+      }
+      action={
+        <a
+          href="/inbox"
+          className="shrink-0 text-[12px] font-semibold text-primary hover:underline"
+        >
+          Open in Inbox ↗
+        </a>
+      }
+    >
+      {loading ? (
+        <p className="text-[12px] text-muted-foreground">Loading conversation…</p>
+      ) : messages.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center">
+          <p className="text-[13px] font-medium text-foreground">
+            No messages yet
+          </p>
+          <p className="mt-1 text-[12px] text-muted-foreground">
+            Nothing has been sent to {customer.phoneNumber || customer.email || "this student"} yet.
+            Start a conversation from the Inbox.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {messages.map((m) => (
+            <div
+              key={m.id}
+              className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 ${
+                m.inbound
+                  ? "bg-muted text-foreground"
+                  : "ml-auto bg-primary text-primary-foreground"
+              }`}
+            >
+              <p className="text-[12px] leading-relaxed whitespace-pre-wrap break-words">
+                {m.content}
+              </p>
+              <p
+                className={`mt-1.5 text-[10px] ${m.inbound ? "text-muted-foreground" : "text-primary-foreground/70"}`}
+              >
+                {m.channel} · {formatDate(m.at)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CustomerDetailPage() {
@@ -8088,7 +8878,60 @@ export default function CustomerDetailPage() {
   const [customer, setCustomer] = useState(null);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("profile");
+  // `section` is the pill nav; `view` is the drill-in open inside it (null =
+  // the section's own index). Both are mirrored into the query string so a
+  // refresh or a shared link reopens exactly what the user was looking at.
+  // replaceState, not push — the header's Back button is meant to leave the
+  // student, not walk back through the sections one at a time.
+  const [nav, setNav] = useState(() => {
+    if (typeof window === "undefined") return { section: "overview", view: null };
+    const params = new URLSearchParams(window.location.search);
+    const section = SECTIONS.some((s) => s.id === params.get("section"))
+      ? params.get("section")
+      : "overview";
+    const view = VIEW_META[params.get("view")] ? params.get("view") : null;
+    return { section, view, enrollmentID: params.get("enrollment") || null };
+  });
+  // Which CreateEnrollmentSheet mode the "+ New" menu opened, if any.
+  const [createMode, setCreateMode] = useState(null);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const summary = useAccountSummary(id);
+  const toast = useToast();
+
+  const copyToClipboard = useCallback(
+    async (value, label) => {
+      try {
+        await navigator.clipboard.writeText(value);
+        toast.success(`${label} copied.`);
+      } catch {
+        toast.error(`Couldn't copy the ${label.toLowerCase()}.`);
+      }
+    },
+    [toast],
+  );
+
+  const go = useCallback((section, view = null, extra = {}) => {
+    setNav({ section, view, enrollmentID: extra.enrollmentID ?? null });
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("section", section);
+    if (view) params.set("view", view);
+    else params.delete("view");
+    if (extra.enrollmentID) params.set("enrollment", extra.enrollmentID);
+    else params.delete("enrollment");
+    window.history.replaceState(null, "", `?${params.toString()}`);
+  }, []);
+
+  // Overview panels link straight at a view (and sometimes a specific
+  // enrollment); resolve which section owns it so the pill nav follows along.
+  const openView = useCallback(
+    (viewId, extra = {}) => {
+      const owner =
+        SECTIONS.find((s) => s.views?.includes(viewId))?.id ?? "records";
+      go(owner, viewId, extra);
+    },
+    [go],
+  );
 
   const load = useCallback(async () => {
     const [custRes, locRes] = await Promise.all([
@@ -8106,7 +8949,7 @@ export default function CustomerDetailPage() {
 
   if (loading) {
     return (
-      <MainLayout>
+      <MainLayout hideHeader>
         <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
           <LoadingSpinner />
         </div>
@@ -8116,7 +8959,7 @@ export default function CustomerDetailPage() {
 
   if (!customer) {
     return (
-      <MainLayout>
+      <MainLayout hideHeader>
         <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] gap-4">
           <p className="text-[13px] text-muted-foreground">
             Customer not found.
@@ -8129,99 +8972,249 @@ export default function CustomerDetailPage() {
     );
   }
 
+  const section = SECTIONS.find((s) => s.id === nav.section) ?? SECTIONS[0];
+  const viewMeta = nav.view ? VIEW_META[nav.view] : null;
+  const locationLabel = locationNamesOf(customer.locationID, locations);
+
+  const viewContent = {
+    profile: () => (
+      <ProfileTab customer={customer} locations={locations} onUpdated={load} />
+    ),
+    intro: () => <IntroTab customer={customer} />,
+    "active-enrollments": () => (
+      <EnrollmentsTab
+        customerID={customer._id}
+        customerName={customer.name || customer.email || ""}
+        locationID={resolveLocationID(customer)}
+        initialEnrollmentID={nav.enrollmentID}
+      />
+    ),
+    memberships: () => (
+      <CustomerMembershipsTab
+        customerID={customer._id}
+        customerName={customer.name || customer.email || ""}
+        locationID={resolveLocationID(customer)}
+      />
+    ),
+    wallet: () => <CustomerWalletTab customerID={customer._id} />,
+    purchases: () => <PurchasesTab customerID={customer._id} />,
+    payments: () => <PaymentsTab customerID={customer._id} />,
+    lessons: () => <LessonsTab customer={customer} />,
+    history: () => <HistoryTab customer={customer} />,
+    notes: () => <NotesTab customer={customer} onUpdated={load} />,
+    members: () => <MembersTab customer={customer} onUpdated={load} />,
+    contracts: () => <ContractsTab customerID={customer._id} />,
+  };
+
   return (
-    <MainLayout>
-      <div className="w-full px-6 py-6 space-y-6">
-        {/* Back + header */}
-        <div className="flex items-center gap-4">
+    <MainLayout hideHeader>
+      {/* Student action bar — this page only. Every item goes somewhere real:
+          the three that have a creation sheet open it here, the rest jump to
+          the view that owns that flow. */}
+      <div className="-mx-3 -mt-3 mb-4 flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:-mx-4 sm:-mt-4 sm:px-6 lg:-mx-2">
+        <nav
+          aria-label="Breadcrumb"
+          className="min-w-0 truncate text-[13px] text-muted-foreground"
+        >
+          <button
+            type="button"
+            onClick={() => router.push("/settings/users-roles/customers")}
+            className="rounded hover:text-foreground hover:underline"
+          >
+            Students
+          </button>
+          <span className="mx-1.5">/</span>
+          <span className="text-foreground">{customer.name}</span>
+        </nav>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 px-3 text-[12px]"
+            onClick={() => go("communication")}
+          >
+            <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Message</span>
+          </Button>
+
+          {/* Same menu as the app header's "+ Enroll" — one component, so the
+              two can't drift apart. */}
+          <EnrollMenu
+            label="New"
+            triggerClassName="h-9 rounded-full px-4"
+            onSelectMode={setCreateMode}
+            onSelectEvent={() => setPurchaseOpen(true)}
+          />
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 w-9 p-0"
+                aria-label="More actions"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => openView("profile")}>
+                <Pencil className="mr-2 h-3.5 w-3.5" />
+                Edit profile
+              </DropdownMenuItem>
+              {customer.email && (
+                <DropdownMenuItem onClick={() => copyToClipboard(customer.email, "Email")}>
+                  <Copy className="mr-2 h-3.5 w-3.5" />
+                  Copy email
+                </DropdownMenuItem>
+              )}
+              {customer.phoneNumber && (
+                <DropdownMenuItem
+                  onClick={() => copyToClipboard(customer.phoneNumber, "Phone number")}
+                >
+                  <Copy className="mr-2 h-3.5 w-3.5" />
+                  Copy phone number
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/inbox")}>
+                Open in Inbox
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <CreateEnrollmentSheet
+        open={Boolean(createMode)}
+        onClose={() => setCreateMode(null)}
+        initialMode={createMode ?? "service"}
+        customerID={customer._id}
+        customerName={customer.name || customer.email || ""}
+        locationID={resolveLocationID(customer)}
+        onSuccess={() => {
+          toast.success(
+            createMode === "membership"
+              ? "Membership assigned."
+              : "Enrollment created.",
+          );
+          const landing =
+            createMode === "membership" ? "memberships" : "active-enrollments";
+          setCreateMode(null);
+          summary.reload();
+          go("services", landing);
+        }}
+      />
+
+      <CreateEventPurchaseDialog
+        open={purchaseOpen}
+        onClose={() => setPurchaseOpen(false)}
+        onCreated={() => {
+          setPurchaseOpen(false);
+          summary.reload();
+          go("services", "purchases");
+        }}
+      />
+
+      <div className="w-full px-4 sm:px-6 pb-6 space-y-5">
+        {/* Student header */}
+        <div className="flex items-start gap-3">
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-9 w-9 shrink-0"
             onClick={() => router.back()}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <Avatar className="h-10 w-10">
-              <AvatarFallback className="text-[13px] font-semibold bg-primary/10 text-primary">
-                {getInitials(customer.name)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold text-foreground truncate">
-                  {customer.name}
-                </h1>
-                <StatusColorBadge
-                  color={customerLifecycleColor(customer.lifecycleStatus)}
-                  className="flex-shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                >
-                  {customerLifecycleLabel(customer.lifecycleStatus)}
-                </StatusColorBadge>
-              </div>
-              <p className="text-[13px] text-muted-foreground truncate">
-                {customer.email}
-              </p>
+          <Avatar className="h-12 w-12 shrink-0 rounded-2xl">
+            <AvatarFallback className="rounded-2xl bg-primary/10 text-[15px] font-bold text-primary">
+              {getInitials(customer.name)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-[22px] font-semibold leading-tight text-foreground truncate">
+                {customer.name}
+              </h1>
+              <StatusColorBadge
+                color={customerLifecycleColor(customer.lifecycleStatus)}
+                className="shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+              >
+                {customerLifecycleLabel(customer.lifecycleStatus)}
+              </StatusColorBadge>
             </div>
+            <p className="mt-1 text-[12px] text-muted-foreground truncate">
+              {[customer.email, customer.phoneNumber, locationLabel !== "—" ? locationLabel : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-0 border-b border-border">
-          {TABS.map(({ id: tabId, label, Icon }) => (
+        {/* Section nav */}
+        <nav
+          aria-label="Student account sections"
+          className="flex gap-1 overflow-x-auto rounded-2xl bg-muted/60 p-1"
+        >
+          {SECTIONS.map((s) => (
             <button
-              key={tabId}
+              key={s.id}
               type="button"
-              onClick={() => setTab(tabId)}
-              className={[
-                "flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 transition-colors",
-                tab === tabId
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              ].join(" ")}
+              onClick={() => go(s.id)}
+              aria-current={section.id === s.id ? "page" : undefined}
+              className={`whitespace-nowrap rounded-xl px-4 py-2 text-[13px] font-semibold transition-colors ${
+                section.id === s.id
+                  ? "bg-card text-primary shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
+              {s.label}
             </button>
           ))}
-        </div>
+        </nav>
 
-        {/* Tab content */}
-        <div>
-          {tab === "profile" && (
-            <ProfileTab
-              customer={customer}
-              locations={locations}
-              onUpdated={load}
-            />
-          )}
-          {tab === "intro" && <IntroTab customer={customer} />}
-          {tab === "active-enrollments" && (
-            <EnrollmentsTab
-              customerID={customer._id}
-              customerName={customer.name || customer.email || ""}
-              locationID={resolveLocationID(customer)}
-            />
-          )}
-          {tab === "memberships" && (
-            <CustomerMembershipsTab
-              customerID={customer._id}
-              customerName={customer.name || customer.email || ""}
-              locationID={resolveLocationID(customer)}
-            />
-          )}
-          {tab === "wallet" && <CustomerWalletTab customerID={customer._id} />}
-          {tab === "purchases" && <PurchasesTab customerID={customer._id} />}
-          {tab === "payments" && <PaymentsTab customerID={customer._id} />}
-          {tab === "lessons" && <LessonsTab customer={customer} />}
-          {tab === "history" && <HistoryTab customer={customer} />}
-          {tab === "notes" && <NotesTab customer={customer} onUpdated={load} />}
-          {tab === "members" && (
-            <MembersTab customer={customer} onUpdated={load} />
-          )}
-          {tab === "contracts" && <ContractsTab customerID={customer._id} />}
-        </div>
+        {/* Breadcrumb back into the section index */}
+        {viewMeta && (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-[17px] font-semibold text-foreground">
+                {viewMeta.label}
+              </h2>
+              <p className="text-[12px] text-muted-foreground">
+                {viewMeta.blurb}
+              </p>
+            </div>
+            {section.views && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 px-3 text-[12px]"
+                onClick={() => go(section.id)}
+              >
+                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+                {section.label}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Content */}
+        {nav.view ? (
+          viewContent[nav.view]?.()
+        ) : section.id === "overview" ? (
+          <OverviewSection
+            customer={customer}
+            locations={locations}
+            summary={summary}
+            onOpen={openView}
+          />
+        ) : section.id === "communication" ? (
+          <CommunicationSection customer={customer} />
+        ) : (
+          <SectionIndex section={section} summary={summary} onOpen={openView} />
+        )}
       </div>
     </MainLayout>
   );

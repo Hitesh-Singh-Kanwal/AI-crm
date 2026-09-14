@@ -16,6 +16,11 @@ function todayISO() {
   return new Date(d.getTime() - offset * 60 * 1000).toISOString().slice(0, 10);
 }
 
+function fmtDate(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+}
+
 // Selling loose services is meant to be a two-field job, so the validity isn't
 // asked for: every service enrollment gets a year. Staff holding
 // calendar.enrollment write can change it afterwards from the customer's
@@ -41,9 +46,9 @@ const BLANK_FORM = {
     startDate: "",
     installmentMode: "count",
     installmentAmount: "",
-    scheduleMode: "single",
-    customInstallments: [],
-    dueDate: "",
+    initialAmount: "0",
+    initialDate: todayISO(),
+    futurePayments: [{ _key: "fp-0", amount: "", dueDate: "" }],
     collectNow: true,
     collectAmount: "",
     collectDate: todayISO(),
@@ -299,39 +304,60 @@ export default function NewEnrollmentPackageInline({
     }));
   }
 
-  function addCustomInstallment() {
-    setForm((prev) => ({
-      ...prev,
-      billing: {
-        ...prev.billing,
-        customInstallments: [
-          ...prev.billing.customInstallments,
-          { _key: String(Date.now() + Math.random()), dueDate: "", amount: "" },
-        ],
-      },
+  // Adding/removing a row (or changing the initial payment) changes how many
+  // ways the remaining balance splits, so re-spread it evenly across all rows
+  // rather than leaving a stray $0 box or a stale amount.
+  function splitEvenly(rows, remaining) {
+    const base = rows.length ? Math.floor((remaining / rows.length) * 100) / 100 : 0;
+    return rows.map((c, i) => ({
+      ...c,
+      amount: (i === rows.length - 1 ? Number((remaining - base * (rows.length - 1)).toFixed(2)) : base).toFixed(2),
     }));
   }
 
-  function updateCustomInstallment(key, field, value) {
-    setForm((prev) => ({
-      ...prev,
-      billing: {
-        ...prev.billing,
-        customInstallments: prev.billing.customInstallments.map((c) =>
-          c._key === key ? { ...c, [field]: value } : c,
-        ),
-      },
-    }));
+  function addFuturePayment() {
+    setForm((prev) => {
+      const rows = [
+        ...prev.billing.futurePayments,
+        { _key: String(Date.now() + Math.random()), dueDate: "", amount: "" },
+      ];
+      const remaining = total - Number(prev.billing.initialAmount || 0);
+      return { ...prev, billing: { ...prev.billing, futurePayments: splitEvenly(rows, remaining) } };
+    });
   }
 
-  function removeCustomInstallment(key) {
-    setForm((prev) => ({
-      ...prev,
-      billing: {
-        ...prev.billing,
-        customInstallments: prev.billing.customInstallments.filter((c) => c._key !== key),
-      },
-    }));
+  function updateFuturePayment(key, field, value) {
+    setForm((prev) => {
+      const rows = prev.billing.futurePayments;
+      if (field !== "amount") {
+        return {
+          ...prev,
+          billing: {
+            ...prev.billing,
+            futurePayments: rows.map((c) => (c._key === key ? { ...c, [field]: value } : c)),
+          },
+        };
+      }
+      // Editing one row's amount short-pays or over-pays it relative to what
+      // was scheduled — spread the remaining balance evenly across the other
+      // rows so the total always stays balanced, whichever row was touched.
+      const remaining = total - Number(prev.billing.initialAmount || 0);
+      const leftover = Math.max(0, remaining - (Number(value) || 0));
+      const otherRows = rows.filter((c) => c._key !== key);
+      const splitOthers = splitEvenly(otherRows, leftover);
+      const futurePayments = rows.map((c) =>
+        c._key === key ? { ...c, amount: value } : splitOthers.find((o) => o._key === c._key),
+      );
+      return { ...prev, billing: { ...prev.billing, futurePayments } };
+    });
+  }
+
+  function removeFuturePayment(key) {
+    setForm((prev) => {
+      const rows = prev.billing.futurePayments.filter((c) => c._key !== key);
+      const remaining = total - Number(prev.billing.initialAmount || 0);
+      return { ...prev, billing: { ...prev.billing, futurePayments: splitEvenly(rows, remaining) } };
+    });
   }
 
   const total = form.services.reduce(
@@ -371,7 +397,6 @@ export default function NewEnrollmentPackageInline({
   const collectWalletShort = collectFromWallet && collectAmt > walletBalance;
 
   const chargeableServices = form.services.filter((s) => s.isChargeable !== false);
-  const canPayPerSession = chargeableServices.length === 1;
 
   const installments = useMemo(() => {
     if (form.billingType !== "payment_plan") return [];
@@ -417,39 +442,25 @@ export default function NewEnrollmentPackageInline({
     total,
   ]);
 
-  const customInstallmentsTotal = form.billing.customInstallments.reduce(
+  const futurePaymentsTotal = form.billing.futurePayments.reduce(
     (sum, c) => sum + (Number(c.amount) || 0),
     0,
   );
+  const initialAmount = Number(form.billing.initialAmount || 0);
+  // Must hit exactly $0 before staff can move on — anything else means the
+  // balance isn't fully accounted for between the initial payment and the
+  // future-payment rows.
+  const amountLeftToSchedule = total - initialAmount - futurePaymentsTotal;
 
   const firstInstallmentAmount = installments[0]?.amount ?? 0;
 
-  // Flexible billing with a custom schedule is stored as a tracked plan, so its
-  // first scheduled payment behaves like a payment-plan installment at collection.
-  const scheduledFlexible =
-    form.billingType === "flexible" && form.billing.scheduleMode === "custom";
-  const firstScheduledFlexAmount = scheduledFlexible
-    ? Number(
-        [...form.billing.customInstallments]
-          .filter((c) => c.dueDate && Number(c.amount) > 0)
-          .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0]?.amount || 0,
-      )
-    : 0;
-  const collectsFirstInstallment = form.billingType === "payment_plan" || scheduledFlexible;
+  const collectsFirstInstallment = form.billingType === "payment_plan";
 
-  // The payment being collected now settles the first scheduled installment, so
-  // its recorded date defaults to that installment's due date rather than today.
-  // A plain one-time / flexible payment has no schedule and defaults to today.
-  const firstScheduledFlexDate = scheduledFlexible
-    ? [...form.billing.customInstallments]
-        .filter((c) => c.dueDate && Number(c.amount) > 0)
-        .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0]?.dueDate || ""
-    : "";
   const defaultCollectDate =
     form.billingType === "payment_plan"
       ? form.billing.startDate || todayISO()
-      : scheduledFlexible
-        ? firstScheduledFlexDate || todayISO()
+      : form.billingType === "flexible"
+        ? form.billing.initialDate || todayISO()
         : todayISO();
   const effectiveCollectDate = collectDateTouched
     ? form.billing.collectDate
@@ -457,7 +468,10 @@ export default function NewEnrollmentPackageInline({
   // One-time payments have nothing to split — the amount collected now is
   // always the full payable balance, so the field is locked the same way a
   // first installment amount is (that one's fixed by the schedule instead).
-  const collectAmountIsFixed = collectsFirstInstallment || form.billingType === "one_time";
+  // Flexible's initial payment is locked too — it was already finalized on
+  // Step 1 and changing it here would desync the student agreement.
+  const collectAmountIsFixed =
+    collectsFirstInstallment || form.billingType === "one_time" || form.billingType === "flexible";
 
   // The wallet split settles part of a one-time balance already, so the card only ever
   // charges what's left for the chosen method.
@@ -480,9 +494,9 @@ export default function NewEnrollmentPackageInline({
   const defaultCollectAmount = useMemo(() => {
     if (form.billingType === "one_time") return total;
     if (form.billingType === "payment_plan") return firstInstallmentAmount;
-    if (scheduledFlexible) return firstScheduledFlexAmount;
+    if (form.billingType === "flexible") return initialAmount;
     return 0;
-  }, [form.billingType, total, firstInstallmentAmount, scheduledFlexible, firstScheduledFlexAmount]);
+  }, [form.billingType, total, firstInstallmentAmount, initialAmount]);
 
   function goToPayment() {
     if (!serviceOnly && !form.packageID) {
@@ -514,18 +528,21 @@ export default function NewEnrollmentPackageInline({
       }
     }
     if (total > 0 && form.billingType === "flexible") {
-      if (form.billing.scheduleMode === "custom") {
-        const valid = form.billing.customInstallments.filter((c) => c.dueDate && Number(c.amount) > 0);
-        if (valid.length === 0) {
-          setError("Add at least one scheduled payment with a date and amount.");
-          return;
-        }
-        if (Math.abs(customInstallmentsTotal - total) > 0.01) {
-          setError(`Scheduled payments total $${customInstallmentsTotal.toFixed(2)} but the balance is $${total.toFixed(2)}.`);
-          return;
-        }
-      } else if (!form.billing.dueDate) {
-        setError("Please set a due date.");
+      if (initialAmount < 0 || initialAmount > total) {
+        setError("Initial payment must be between $0 and the payable balance.");
+        return;
+      }
+      if (initialAmount > 0 && !form.billing.initialDate) {
+        setError("Please set the initial payment date.");
+        return;
+      }
+      const scheduledRows = form.billing.futurePayments.filter((c) => Number(c.amount) > 0);
+      if (scheduledRows.some((c) => !c.dueDate)) {
+        setError("Every future payment needs a due date.");
+        return;
+      }
+      if (Math.abs(amountLeftToSchedule) > 0.01) {
+        setError(`Amount left to schedule is $${amountLeftToSchedule.toFixed(2)} — it must be $0 before continuing.`);
         return;
       }
     }
@@ -534,7 +551,7 @@ export default function NewEnrollmentPackageInline({
       ...p,
       billing: {
         ...p.billing,
-        collectNow: p.billingType !== "flexible" || scheduledFlexible,
+        collectNow: p.billingType !== "flexible" || initialAmount > 0,
         collectAmount: defaultCollectAmount ? String(defaultCollectAmount.toFixed(2)) : "",
       },
     }));
@@ -856,39 +873,28 @@ export default function NewEnrollmentPackageInline({
             <p className="text-[11px] font-medium text-muted-foreground uppercase">
               Billing Type
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {[
                 { v: "one_time", label: "One-time" },
                 { v: "payment_plan", label: "Payment Plan" },
                 { v: "flexible", label: "Flexible" },
-                { v: "pay_per_session", label: "Pay Per Session", disabled: !canPayPerSession },
               ]
                 .filter(({ v }) => !serviceOnly || SERVICE_ONLY_BILLING_TYPES.includes(v))
-                .map(({ v, label, disabled }) => (
+                .map(({ v, label }) => (
                 <button
                   key={v}
                   type="button"
-                  disabled={disabled}
-                  onClick={() => !disabled && setForm((p) => ({ ...p, billingType: v }))}
-                  title={disabled && v === "pay_per_session" ? "Requires exactly one chargeable service in the package" : undefined}
+                  onClick={() => setForm((p) => ({ ...p, billingType: v }))}
                   className={`rounded-lg border p-2 text-[11px] transition-colors ${
                     form.billingType === v
                       ? "border-primary bg-primary/5 font-medium"
-                      : disabled
-                        ? "border-border bg-muted/20 text-muted-foreground cursor-not-allowed opacity-50"
-                        : "border-border bg-background hover:border-primary/50"
+                      : "border-border bg-background hover:border-primary/50"
                   }`}
                 >
                   {label}
                 </button>
               ))}
             </div>
-            {!serviceOnly && !canPayPerSession && form.services.length > 0 && (
-              <p className="text-[10px] text-muted-foreground">
-                Pay Per Session requires exactly 1 chargeable service.{" "}
-                {chargeableServices.length === 0 ? "No chargeable services in this package." : `This package has ${chargeableServices.length} chargeable services.`}
-              </p>
-            )}
             {form.billingType === "one_time" && (
               <div className="rounded-lg border border-border bg-muted/20 p-3">
                 <div className="flex items-center justify-between">
@@ -1015,112 +1021,119 @@ export default function NewEnrollmentPackageInline({
               </div>
             )}
             {form.billingType === "flexible" && (
-              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
-                <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
-                  {[
-                    { v: "single", label: "Single due date" },
-                    { v: "custom", label: "Scheduled payments" },
-                  ].map((opt) => (
-                    <button
-                      key={opt.v}
-                      type="button"
-                      onClick={() =>
-                        setForm((p) => ({ ...p, billing: { ...p.billing, scheduleMode: opt.v } }))
-                      }
-                      className={`h-7 px-3 rounded-md text-[11px] font-medium transition-colors ${
-                        form.billing.scheduleMode === opt.v
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-4">
+                <p className="text-[10px] text-muted-foreground -mt-1">
+                  This arrangement will be included in the student agreement — get it right here, it can't be changed on the payment step.
+                </p>
 
-                {form.billing.scheduleMode === "custom" ? (
-                  <>
-                    <p className="text-[11px] text-muted-foreground">
-                      Add any number of payments, each with its own date and amount. Each is tracked and collected individually.
-                    </p>
-                    <div className="space-y-1.5">
-                      {form.billing.customInstallments.map((c, i) => (
-                        <div key={c._key} className="flex items-center gap-2">
-                          <span className="text-[11px] text-muted-foreground w-5 shrink-0">{i + 1}.</span>
-                          <input
-                            type="date"
-                            value={c.dueDate}
-                            onChange={(e) => updateCustomInstallment(c._key, "dueDate", e.target.value)}
-                            className="h-8 flex-1 rounded-lg border border-border bg-background px-2.5 text-[12px]"
-                          />
-                          <div className="relative w-28">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              placeholder="0.00"
-                              value={c.amount}
-                              onChange={(e) => updateCustomInstallment(c._key, "amount", e.target.value)}
-                              className="h-8 w-full rounded-lg border border-border bg-background pl-5 pr-2 text-[12px]"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeCustomInstallment(c._key)}
-                            className="text-muted-foreground hover:text-destructive transition-colors"
-                            aria-label="Remove payment"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={addCustomInstallment}
-                      className="flex items-center gap-1 h-7 px-2 rounded border border-dashed border-border bg-background text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
-                    >
-                      <Plus className="h-3 w-3" /> Add Payment
-                    </button>
-                    <div className="space-y-1 pt-2 border-t border-border">
-                      <div className="flex items-center justify-between">
-                        <p className="text-[11px] text-muted-foreground">Remaining to schedule</p>
-                        <p className={`text-[12px] font-semibold ${Math.abs(customInstallmentsTotal - total) > 0.01 ? "text-destructive" : "text-foreground"}`}>
-                          ${(total - customInstallmentsTotal).toFixed(2)}
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <p className="text-[11px] text-muted-foreground">Payable Balance</p>
-                        <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
-                      </div>
-                      {Math.abs(customInstallmentsTotal - total) > 0.01 && (
-                        <p className="text-[10px] text-destructive">Scheduled payments must add up to the payable balance.</p>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-[11px] text-muted-foreground">
-                      No schedule set. A due date is recorded and payment can be collected at any time.
-                    </p>
-                    <div>
-                      <label className="block text-[10px] font-medium text-muted-foreground mb-1">Due Date <span className="text-rose-500">*</span></label>
+                {/* Initial payment */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-foreground">
+                    Initial payment <span className="font-normal text-muted-foreground">(optional — enter $0 if none)</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
                       <input
-                        type="date"
-                        value={form.billing.dueDate}
+                        type="number"
+                        min="0"
+                        max={total}
+                        step="0.01"
+                        placeholder="0.00"
+                        value={form.billing.initialAmount}
                         onChange={(e) =>
-                          setForm((p) => ({ ...p, billing: { ...p.billing, dueDate: e.target.value } }))
+                          setForm((p) => {
+                            const remaining = total - (Number(e.target.value) || 0);
+                            return {
+                              ...p,
+                              billing: {
+                                ...p.billing,
+                                initialAmount: e.target.value,
+                                futurePayments: splitEvenly(p.billing.futurePayments, remaining),
+                              },
+                            };
+                          })
                         }
-                        className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                        className="h-9 w-full rounded-lg border border-border bg-background pl-6 pr-3 text-[12px] outline-none focus:border-primary"
                       />
                     </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-border">
-                      <p className="text-[11px] text-muted-foreground">Payable Balance</p>
-                      <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
-                    </div>
-                  </>
-                )}
+                    <input
+                      type="date"
+                      value={form.billing.initialDate}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, billing: { ...p.billing, initialDate: e.target.value } }))
+                      }
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+
+                {/* Future payments */}
+                <div className="space-y-1.5 pt-1 border-t border-border">
+                  <label className="text-[11px] font-medium text-foreground block pt-2">
+                    Future payments
+                  </label>
+                  <p className="text-[10px] text-muted-foreground">
+                    One row is the remaining balance's single due date. Add more to split it into a schedule.
+                  </p>
+                  <div className="space-y-1.5">
+                    {form.billing.futurePayments.map((c, i) => (
+                      <div key={c._key} className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground w-5 shrink-0">{i + 1}.</span>
+                        <input
+                          type="date"
+                          value={c.dueDate}
+                          onChange={(e) => updateFuturePayment(c._key, "dueDate", e.target.value)}
+                          className="h-8 flex-1 rounded-lg border border-border bg-background px-2.5 text-[12px]"
+                        />
+                        <div className="relative w-28">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={c.amount}
+                            onChange={(e) => updateFuturePayment(c._key, "amount", e.target.value)}
+                            className="h-8 w-full rounded-lg border border-border bg-background pl-5 pr-2 text-[12px]"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFuturePayment(c._key)}
+                          disabled={form.billing.futurePayments.length === 1}
+                          className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          aria-label="Remove payment"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addFuturePayment}
+                    className="flex items-center gap-1 h-7 px-2 rounded border border-dashed border-border bg-background text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+                  >
+                    <Plus className="h-3 w-3" /> Add another payment
+                  </button>
+                </div>
+
+                <div className="space-y-1 pt-2 border-t border-border">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] text-muted-foreground">Amount left to schedule</p>
+                    <p className={`text-[12px] font-semibold ${Math.abs(amountLeftToSchedule) > 0.01 ? "text-destructive" : "text-success"}`}>
+                      ${amountLeftToSchedule.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] text-muted-foreground">Payable Balance</p>
+                    <p className="text-[13px] font-bold text-foreground">${total.toFixed(2)}</p>
+                  </div>
+                  {Math.abs(amountLeftToSchedule) > 0.01 && (
+                    <p className="text-[10px] text-destructive">Initial payment plus future payments must add up to the payable balance.</p>
+                  )}
+                </div>
               </div>
             )}
             {form.billingType === "pay_per_session" && (
@@ -1215,15 +1228,70 @@ export default function NewEnrollmentPackageInline({
                 <p className="text-[11px] text-muted-foreground">
                   No upfront payment. A charge is recorded automatically each time a session is booked.
                 </p>
+              ) : form.billingType === "flexible" ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] text-muted-foreground">Initial payment due</p>
+                    <p className="text-[12px] font-semibold text-foreground">
+                      ${initialAmount.toFixed(2)}
+                      {initialAmount > 0 && <span className="text-muted-foreground font-normal"> · {fmtDate(form.billing.initialDate)}</span>}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] text-muted-foreground">Remaining balance</p>
+                    <p className="text-[12px] font-semibold text-foreground">${(total - initialAmount).toFixed(2)}</p>
+                  </div>
+                  {form.billing.futurePayments.filter((c) => Number(c.amount) > 0).length > 0 && (
+                    <div className="pt-2 border-t border-border space-y-1">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase">Future payments</p>
+                      {form.billing.futurePayments
+                        .filter((c) => Number(c.amount) > 0)
+                        .map((c) => (
+                          <div key={c._key} className="flex items-center justify-between">
+                            <span className="text-[11px] text-muted-foreground">{fmtDate(c.dueDate)}</span>
+                            <span className="text-[11px] font-medium text-foreground">${Number(c.amount).toFixed(2)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-border">
+                    {initialAmount > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-medium text-foreground">Collect initial payment now</p>
+                        <div className="relative">
+                          <select
+                            value={form.billing.method}
+                            onChange={(e) =>
+                              setForm((p) => ({ ...p, billing: { ...p.billing, method: e.target.value } }))
+                            }
+                            className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
+                          >
+                            {collectMethodOptions.map((m) => (
+                              <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                        </div>
+                        {collectFromWallet && (
+                          <p className={`text-[11px] ${collectWalletShort ? "text-destructive" : "text-muted-foreground"}`}>
+                            Wallet balance: ${walletBalance.toFixed(2)}
+                            {collectWalletShort && ` — not enough to cover $${collectAmt.toFixed(2)}`}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">No payment is due at enrollment.</p>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground pt-1">
+                    To change any amount or date, go back to Step 1.
+                  </p>
+                </div>
               ) : (
                 <>
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-medium text-foreground">
-                      {collectsFirstInstallment
-                        ? "Collect first installment now"
-                        : form.billingType === "flexible"
-                          ? "Collect initial payment now"
-                          : "Collect payment now"}
+                      {collectsFirstInstallment ? "Collect first installment now" : "Collect payment now"}
                     </p>
                     <button
                       type="button"
