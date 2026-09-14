@@ -61,11 +61,14 @@ function followupFromApi(item) {
 function settingsToForm(raw) {
   const agentFollowupEnabled = raw?.agentFollowupEnabled !== false
   const followupStages = normalizeFollowupStages(raw?.followupStages)
+  const followupPrompt =
+    typeof raw?.followupPrompt === 'string' ? raw.followupPrompt : ''
 
   if (Array.isArray(raw?.followups) && raw.followups.length > 0) {
     return {
       agentFollowupEnabled,
       followupStages,
+      followupPrompt,
       followups: raw.followups.map(followupFromApi),
     }
   }
@@ -83,6 +86,7 @@ function settingsToForm(raw) {
     return {
       agentFollowupEnabled,
       followupStages,
+      followupPrompt,
       followups: Array.from({ length: count }, () =>
         emptyFollowup({
           intervalHours: hours,
@@ -97,6 +101,7 @@ function settingsToForm(raw) {
   return {
     agentFollowupEnabled: true,
     followupStages: [...DEFAULT_FOLLOWUP_STAGES],
+    followupPrompt: '',
     followups: DEFAULT_FOLLOWUPS.map((f) => ({ ...f })),
   }
 }
@@ -361,6 +366,7 @@ export default function FollowupSettingsPage() {
         locationID: scope,
         agentFollowupEnabled: form.agentFollowupEnabled !== false,
         followupStages: normalizeFollowupStages(form.followupStages),
+        followupPrompt: String(form.followupPrompt || '').trim() || null,
         followups: form.followups.map((step) => ({
           intervalHours: Number(step.intervalHours),
           intervalMinutes: Number(step.intervalMinutes),
@@ -493,6 +499,26 @@ export default function FollowupSettingsPage() {
                     <p className="text-xs text-muted-foreground">
                       Follow-ups start when a lead enters this stage, and stop when they leave.
                       Default is Engaged.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="followup-prompt" className="text-sm font-medium">
+                      AI follow-up prompt
+                    </label>
+                    <Textarea
+                      id="followup-prompt"
+                      rows={4}
+                      value={form.followupPrompt || ''}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, followupPrompt: e.target.value }))
+                      }
+                      placeholder="Optional guidance for AI-written follow-ups (tone, what to ask, what to avoid)…"
+                      disabled={saving || scheduleDisabled}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Used when a step has AI-generated message on. Leave blank to use the default
+                      prompt.
                     </p>
                   </div>
 
