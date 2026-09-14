@@ -466,9 +466,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
   const [saving, setSaving] = useState(false);
   // Holds the refused payload + violations while the admin decides whether to override.
   const [overridePrompt, setOverridePrompt] = useState(null);
-  // Bumped after a successful save so the history panel refetches — a status change is
-  // exactly when the timeline becomes stale.
-  const [statusHistoryKey, setStatusHistoryKey] = useState(0);
   const [leadReasons, setLeadReasons] = useState([]);
   // Quick-save for just the callback date, without entering full profile
   // edit mode — mirrors saveCallbackDate() in app/leads/components/LeadsDialog.js
@@ -592,7 +589,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
       onUpdated();
       setEditing(false);
       setOverridePrompt(null);
-      setStatusHistoryKey((k) => k + 1);
       return true;
     }
     // A failing entry requirement is not an error to report and forget — the admin may
@@ -1029,20 +1025,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
 
               {/* Tags */}
               <TagsEditor customer={customer} onUpdated={onUpdated} />
-
-              <div className="border-t border-border" />
-
-              {/* Why this customer is at this status — the question the lifecycle badge
-                  above provokes, answered in the same card rather than a separate tab. */}
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  Status History
-                </p>
-                <CustomerStatusHistory
-                  customerID={customer._id}
-                  refreshKey={statusHistoryKey}
-                />
-              </div>
             </div>
           )}
         </div>
@@ -7685,11 +7667,9 @@ function LessonsTab({ customer }) {
 }
 
 // ─── History Tab ────────────────────────────────────────────────────────────
-// Surfaces customFields.migrationLegacy — the historic/contextual fields a
-// migration import saves (lifetime lesson counts, last lesson date, lifetime
-// collected, source, dance level, assigned teacher, key dates) but that have
-// no dedicated Customer model column. Previously this data was written on
-// import and then never shown anywhere; this tab is the display surface for it.
+// Status-change timeline is the primary record. customFields.migrationLegacy
+// (lifetime counts, source, dance level, etc. from an import) stays as a
+// secondary block when it exists.
 
 const HISTORY_DATE_FIELDS = [
   { key: "customerSince", label: "Customer Since" },
@@ -7708,22 +7688,7 @@ const HISTORY_COUNT_FIELDS = [
 
 function HistoryTab({ customer }) {
   const legacy = customer?.customFields?.migrationLegacy || {};
-  const hasAnything = Object.keys(legacy).length > 0;
-
-  if (!hasAnything) {
-    return (
-      <div className="rounded-xl border border-border bg-card p-8 text-center">
-        <p className="text-[13px] text-muted-foreground">
-          No migration history on file for this customer.
-        </p>
-        <p className="mt-1 text-[12px] text-muted-foreground">
-          This section fills in automatically for customers brought in through a migration import that
-          supplied Source, Dance Level, Assigned Teacher, historic lesson counts, Lifetime Collected, or
-          key dates.
-        </p>
-      </div>
-    );
-  }
+  const hasLegacy = Object.keys(legacy).length > 0;
 
   const totalLessons = HISTORY_COUNT_FIELDS.reduce(
     (sum, { key }) => sum + (Number(legacy[key]) || 0),
@@ -7733,68 +7698,80 @@ function HistoryTab({ customer }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-xl border border-border bg-card p-5">
-        <h2 className="mb-1 text-[13px] font-semibold text-foreground">Legacy Record</h2>
+        <h2 className="mb-1 text-[13px] font-semibold text-foreground">Status history</h2>
         <p className="mb-4 text-[12px] text-muted-foreground">
-          Carried over from this customer's old system at migration time.
+          How this account moved between lifecycle statuses — including changes that were refused or held by an override.
         </p>
-
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          {legacy.source && (
-            <div>
-              <p className="text-[11px] text-muted-foreground mb-1">Source</p>
-              <p className="text-[13px] font-medium text-foreground">{legacy.source}</p>
-            </div>
-          )}
-          {legacy.danceLevel && (
-            <div>
-              <p className="text-[11px] text-muted-foreground mb-1">Dance Level</p>
-              <p className="text-[13px] font-medium text-foreground">{legacy.danceLevel}</p>
-            </div>
-          )}
-          {legacy.assignedTeacher && (
-            <div>
-              <p className="text-[11px] text-muted-foreground mb-1">Assigned Teacher</p>
-              <p className="text-[13px] font-medium text-foreground">{legacy.assignedTeacher}</p>
-            </div>
-          )}
-          {legacy.lifetimeCollected !== undefined && (
-            <div>
-              <p className="text-[11px] text-muted-foreground mb-1">Lifetime Collected</p>
-              <p className="text-[13px] font-medium text-foreground">
-                ${Number(legacy.lifetimeCollected).toFixed(2)}
-              </p>
-            </div>
-          )}
-          {HISTORY_DATE_FIELDS.map(
-            ({ key, label }) =>
-              legacy[key] && (
-                <div key={key}>
-                  <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-                  <p className="text-[13px] font-medium text-foreground">{formatDate(legacy[key])}</p>
-                </div>
-              ),
-          )}
-        </div>
+        <CustomerStatusHistory customerID={customer._id} />
       </div>
 
-      {totalLessons > 0 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h2 className="mb-4 text-[13px] font-semibold text-foreground">Historic Lesson Counts</h2>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-            {HISTORY_COUNT_FIELDS.map(({ key, label }) => (
-              <div key={key} className="rounded-xl border border-border bg-card px-4 py-3">
-                <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-                <p className="text-[19px] font-semibold text-foreground">
-                  {Number(legacy[key]) || 0}
-                </p>
-              </div>
-            ))}
-            <div className="rounded-xl border border-border bg-primary/5 px-4 py-3">
-              <p className="text-[11px] text-muted-foreground mb-1">Total</p>
-              <p className="text-[19px] font-semibold text-primary">{totalLessons}</p>
+      {hasLegacy && (
+        <>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h2 className="mb-1 text-[13px] font-semibold text-foreground">Legacy record</h2>
+            <p className="mb-4 text-[12px] text-muted-foreground">
+              Carried over from this customer&apos;s old system at migration time.
+            </p>
+
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              {legacy.source && (
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-1">Source</p>
+                  <p className="text-[13px] font-medium text-foreground">{legacy.source}</p>
+                </div>
+              )}
+              {legacy.danceLevel && (
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-1">Dance Level</p>
+                  <p className="text-[13px] font-medium text-foreground">{legacy.danceLevel}</p>
+                </div>
+              )}
+              {legacy.assignedTeacher && (
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-1">Assigned Teacher</p>
+                  <p className="text-[13px] font-medium text-foreground">{legacy.assignedTeacher}</p>
+                </div>
+              )}
+              {legacy.lifetimeCollected !== undefined && (
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-1">Lifetime Collected</p>
+                  <p className="text-[13px] font-medium text-foreground">
+                    ${Number(legacy.lifetimeCollected).toFixed(2)}
+                  </p>
+                </div>
+              )}
+              {HISTORY_DATE_FIELDS.map(
+                ({ key, label }) =>
+                  legacy[key] && (
+                    <div key={key}>
+                      <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
+                      <p className="text-[13px] font-medium text-foreground">{formatDate(legacy[key])}</p>
+                    </div>
+                  ),
+              )}
             </div>
           </div>
-        </div>
+
+          {totalLessons > 0 && (
+            <div className="rounded-xl border border-border bg-card p-5">
+              <h2 className="mb-4 text-[13px] font-semibold text-foreground">Historic lesson counts</h2>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+                {HISTORY_COUNT_FIELDS.map(({ key, label }) => (
+                  <div key={key} className="rounded-xl border border-border bg-card px-4 py-3">
+                    <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
+                    <p className="text-[19px] font-semibold text-foreground">
+                      {Number(legacy[key]) || 0}
+                    </p>
+                  </div>
+                ))}
+                <div className="rounded-xl border border-border bg-primary/5 px-4 py-3">
+                  <p className="text-[11px] text-muted-foreground mb-1">Total</p>
+                  <p className="text-[19px] font-semibold text-primary">{totalLessons}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -7969,7 +7946,7 @@ const VIEW_META = {
   history: {
     label: "History",
     icon: History,
-    blurb: "Audit trail of account, attendance and status changes.",
+    blurb: "Lifecycle status changes, plus any record carried over from a migration.",
   },
   contracts: {
     label: "Waivers & Contracts",

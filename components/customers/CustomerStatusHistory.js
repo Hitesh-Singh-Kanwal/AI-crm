@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api'
-import { customerLifecycleLabel } from '@/lib/customer-lifecycle'
+import {
+  customerLifecycleColor,
+  customerLifecycleLabel,
+} from '@/lib/customer-lifecycle'
+import StatusColorBadge from '@/components/shared/StatusColorBadge'
 
 /**
  * A customer's status timeline, plus any override currently holding it in place.
@@ -17,16 +21,35 @@ import { customerLifecycleLabel } from '@/lib/customer-lifecycle'
  */
 
 const OUTCOME_STYLE = {
-  applied: { label: 'Changed', cls: 'text-foreground' },
-  refused_requirements: { label: 'Refused', cls: 'text-destructive' },
-  suppressed_override: { label: 'Held by override', cls: 'text-amber-600 dark:text-amber-500' },
-  conflict: { label: 'Conflict', cls: 'text-muted-foreground' },
+  applied: {
+    label: 'Changed',
+    cls: 'bg-primary/10 text-primary',
+  },
+  refused_requirements: {
+    label: 'Refused',
+    cls: 'bg-destructive/10 text-destructive',
+  },
+  suppressed_override: {
+    label: 'Held by override',
+    cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  },
+  conflict: {
+    label: 'Conflict',
+    cls: 'bg-muted text-muted-foreground',
+  },
 }
 
 function formatWhen(value) {
   if (!value) return ''
   const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString()
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }
 
 /** Who or what caused it — a rule name beats a bare "automation". */
@@ -36,6 +59,20 @@ function actorLabel(t) {
   if (t.source === 'import') return 'an import'
   if (t.source === 'system') return 'the system'
   return 'automation'
+}
+
+function StatusChip({ status }) {
+  if (!status) {
+    return <span className="text-[13px] text-muted-foreground">—</span>
+  }
+  return (
+    <StatusColorBadge
+      color={customerLifecycleColor(status)}
+      className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+    >
+      {customerLifecycleLabel(status)}
+    </StatusColorBadge>
+  )
 }
 
 export default function CustomerStatusHistory({ customerID, refreshKey = 0 }) {
@@ -57,63 +94,83 @@ export default function CustomerStatusHistory({ customerID, refreshKey = 0 }) {
   }, [load, refreshKey])
 
   if (loading && !data) {
-    return <p className="text-[12px] text-muted-foreground">Loading status history…</p>
+    return <p className="text-[13px] text-muted-foreground">Loading status history…</p>
   }
   if (!data) return null
 
   const { statusOverride, transitions = [] } = data
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {statusOverride ? (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-          <p className="text-[12px] font-medium text-amber-700 dark:text-amber-400">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <p className="text-[13px] font-medium text-amber-700 dark:text-amber-400">
             Status overridden
             {statusOverride.byUserID?.name ? ` by ${statusOverride.byUserID.name}` : ''}
           </p>
           {statusOverride.reason && (
-            <p className="mt-0.5 text-[12px] text-muted-foreground">{statusOverride.reason}</p>
+            <p className="mt-0.5 text-[13px] text-foreground">{statusOverride.reason}</p>
           )}
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-[12px] text-muted-foreground">
             Automation will not change this status while the override stands.
           </p>
         </div>
       ) : null}
 
       {transitions.length === 0 ? (
-        <p className="text-[12px] text-muted-foreground">No status changes recorded yet.</p>
+        <p className="text-[13px] text-muted-foreground">No status changes recorded yet.</p>
       ) : (
-        <ul className="space-y-2">
-          {transitions.map((t) => {
+        <ol className="space-y-0">
+          {transitions.map((t, i) => {
             const style = OUTCOME_STYLE[t.outcome] || OUTCOME_STYLE.applied
+            const last = i === transitions.length - 1
             return (
-              <li key={t._id} className="rounded-lg border border-border bg-card px-3 py-2">
-                <div className="flex flex-wrap items-baseline gap-x-2">
-                  <span className={`text-[12px] font-medium ${style.cls}`}>{style.label}</span>
-                  <span className="text-[13px] text-foreground">
-                    {/* customerLifecycleLabel falls back to "Active" for an empty value,
-                        so a null fromStatus must not be passed through it — that would
-                        claim a prior status the customer never had. */}
-                    {t.fromStatus ? customerLifecycleLabel(t.fromStatus) : '—'}
-                    {' → '}
-                    {customerLifecycleLabel(t.toStatus)}
-                  </span>
-                  {t.isOverride && (
-                    <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                      Override
+              <li key={t._id} className="relative flex gap-3">
+                <div className="flex w-3 shrink-0 flex-col items-center">
+                  <span
+                    className={`mt-1.5 h-2.5 w-2.5 rounded-full ring-4 ${
+                      t.outcome === 'applied'
+                        ? 'bg-primary ring-primary/10'
+                        : t.outcome === 'refused_requirements'
+                          ? 'bg-destructive ring-destructive/10'
+                          : t.outcome === 'suppressed_override'
+                            ? 'bg-amber-500 ring-amber-500/15'
+                            : 'bg-muted-foreground ring-muted'
+                    }`}
+                  />
+                  {!last && <span className="mt-1 w-px flex-1 bg-border" />}
+                </div>
+                <div className={`min-w-0 flex-1 ${last ? 'pb-0' : 'pb-5'}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${style.cls}`}
+                    >
+                      {style.label}
                     </span>
+                    {t.isOverride && (
+                      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                        Override
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <StatusChip status={t.fromStatus} />
+                    <span className="text-[12px] text-muted-foreground">→</span>
+                    <StatusChip status={t.toStatus} />
+                  </div>
+                  <p className="mt-1.5 text-[12px] text-muted-foreground">
+                    {formatWhen(t.createdAt)}
+                    {formatWhen(t.createdAt) ? ' · ' : ''}
+                    by {actorLabel(t)}
+                  </p>
+                  {t.note && (
+                    <p className="mt-1.5 text-[13px] leading-relaxed text-foreground">{t.note}</p>
                   )}
                 </div>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {formatWhen(t.createdAt)} · by {actorLabel(t)}
-                </p>
-                {t.note && (
-                  <p className="mt-1 text-[12px] text-foreground">{t.note}</p>
-                )}
               </li>
             )
           })}
-        </ul>
+        </ol>
       )}
     </div>
   )
