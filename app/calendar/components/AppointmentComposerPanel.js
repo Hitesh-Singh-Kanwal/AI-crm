@@ -2459,7 +2459,13 @@ export default function AppointmentComposerPanel({
                 startDate: payload.billing?.startDate,
               }
             : payload.billingType === "flexible"
-              ? { dueDate: payload.billing?.dueDate || undefined }
+              ? {
+                  initialAmount: Number(payload.billing?.initialAmount || 0),
+                  initialDate: payload.billing?.initialDate || undefined,
+                  customInstallments: (payload.billing?.futurePayments || [])
+                    .filter((c) => c.dueDate && Number(c.amount) > 0)
+                    .map((c) => ({ dueDate: c.dueDate, amount: Number(c.amount) })),
+                }
               : {},
       ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
       ...(payload.tip?.teacherID && payload.tip?.amount

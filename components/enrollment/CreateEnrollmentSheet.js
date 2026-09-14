@@ -206,13 +206,13 @@ export default function CreateEnrollmentSheet({
                 }
               })()
             : payload.billingType === 'flexible'
-              ? payload.billing?.scheduleMode === 'custom'
-                ? {
-                    customInstallments: (payload.billing?.customInstallments || [])
-                      .filter((c) => c.dueDate && Number(c.amount) > 0)
-                      .map((c) => ({ dueDate: c.dueDate, amount: Number(c.amount) })),
-                  }
-                : { dueDate: payload.billing?.dueDate || undefined }
+              ? {
+                  initialAmount: Number(payload.billing?.initialAmount || 0),
+                  initialDate: payload.billing?.initialDate || undefined,
+                  customInstallments: (payload.billing?.futurePayments || [])
+                    .filter((c) => c.dueDate && Number(c.amount) > 0)
+                    .map((c) => ({ dueDate: c.dueDate, amount: Number(c.amount) })),
+                }
               : {},
       ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
       ...(payload.tip?.teacherID && payload.tip?.amount
@@ -238,10 +238,7 @@ export default function CreateEnrollmentSheet({
     const collectNow = Boolean(payload.billing?.collectNow) && collectAmount > 0
     const method = payload.billing?.method || 'cash'
 
-    const isScheduledFlexible =
-      payload.billingType === 'flexible' && payload.billing?.scheduleMode === 'custom'
-
-    if (collectNow && (payload.billingType === 'payment_plan' || isScheduledFlexible)) {
+    if (collectNow && payload.billingType === 'payment_plan') {
       const planRes = await api.get(`/api/payment-plan/customer/${resolvedCustomerID}`)
       const plans = planRes?.success ? planRes.data || [] : []
       const matchesEnrollment = (p) =>
@@ -263,7 +260,7 @@ export default function CreateEnrollmentSheet({
         }
         checkoutUrl = payRes.data?.checkoutUrl || null
       }
-    } else if (collectNow && payload.billingType === 'flexible' && !isScheduledFlexible) {
+    } else if (collectNow && payload.billingType === 'flexible') {
       const payRes = await api.post('/api/payment', {
         customerID: resolvedCustomerID,
         enrollmentID,

@@ -4,12 +4,21 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { isAuthenticated, refreshSession } from '@/lib/auth'
 import { canAccessRoute, getDefaultRedirect } from '@/lib/permissions'
+import { Menu } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
+import { Button } from '@/components/ui/button'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import { cn } from '@/lib/utils'
 
-export default function MainLayout({ children, title, subtitle, mainClassName }) {
+export default function MainLayout({
+  children,
+  title,
+  subtitle,
+  mainClassName,
+  /** For pages that draw their own top bar — stacking both looks broken. */
+  hideHeader = false,
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const toast = useToast()
@@ -97,14 +106,33 @@ export default function MainLayout({ children, title, subtitle, mainClassName })
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar mobileOpen={mobileMenuOpen} setMobileOpen={setMobileMenuOpen} />
       <div className="flex-1 flex flex-col overflow-hidden md:p-2">
-        <Suspense fallback={<header className="sticky top-0 z-30 min-h-[86px] border-b border-border bg-background" />}>
-          <Header 
-            title={title} 
-            subtitle={subtitle} 
-            mobileMenuOpen={mobileMenuOpen}
-            onMenuClick={() => setMobileMenuOpen((prev) => !prev)} 
-          />
-        </Suspense>
+        {hideHeader ? (
+          // The header carries the only sidebar toggle below lg, so hiding it
+          // outright would strand mobile users — keep a slim strip for it.
+          <div className="flex items-center border-b border-border bg-background px-2 py-1.5 lg:hidden">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className={cn(
+                'h-9 w-9 rounded-lg text-muted-foreground',
+                mobileMenuOpen && 'bg-muted text-foreground',
+              )}
+              aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          </div>
+        ) : (
+          <Suspense fallback={<header className="sticky top-0 z-30 min-h-[86px] border-b border-border bg-background" />}>
+            <Header
+              title={title}
+              subtitle={subtitle}
+              mobileMenuOpen={mobileMenuOpen}
+              onMenuClick={() => setMobileMenuOpen((prev) => !prev)}
+            />
+          </Suspense>
+        )}
         <main
           className={cn(
             'flex-1 min-h-0 overflow-y-auto scrollbar-hide bg-background px-3 py-3 sm:px-4 sm:py-4 lg:px-2',
