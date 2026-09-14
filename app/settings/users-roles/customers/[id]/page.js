@@ -31,9 +31,6 @@ import {
   XCircle,
   AlertTriangle,
   History,
-  MessageSquare,
-  MoreHorizontal,
-  Copy,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -45,21 +42,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
-import EnrollMenu from "@/components/enrollment/EnrollMenu";
-import { CreateEventPurchaseDialog } from "@/app/settings/setup/components/EventsPurchases";
 import CustomerMembershipsTab from "@/components/membership/CustomerMembershipsTab";
 import CustomerWalletTab from "@/components/wallet/CustomerWalletTab";
 import CancelRefundDialog from "@/components/shared/CancelRefundDialog";
 import ConfirmStatusOverrideDialog from "@/components/customers/ConfirmStatusOverrideDialog";
 import CustomerStatusHistory from "@/components/customers/CustomerStatusHistory";
+import CustomerInboxThread from "@/components/customers/CustomerInboxThread";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import LocationSelector from "@/components/shared/LocationSelector";
 import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
@@ -90,11 +79,6 @@ import {
 import StatusColorBadge from "@/components/shared/StatusColorBadge";
 import { formatReasonLabel } from "@/lib/dynamic-list-normalize";
 import { extractLeadReasonsList } from "@/lib/workflow-normalize";
-import {
-  mapEmailHistoryRecord,
-  normalizeEmailAddress,
-} from "@/lib/emailSend";
-
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 // Short name for an enrollment. A real package uses its template name; a
@@ -8781,131 +8765,12 @@ function OverviewSection({ customer, locations, summary, onOpen }) {
 
 // ─── Communication ───────────────────────────────────────────────────────────
 
-// Read-only on purpose: the send endpoints are lead-shaped (they log history
-// against a lead record this customer may not have), so replying stays in the
-// Inbox where that wiring already exists.
+// Same Inbox thread UI (SMS, email, calls) scoped to this student.
 function CommunicationSection({ customer }) {
-  const [loading, setLoading] = useState(true);
-  const [messages, setMessages] = useState([]);
-  const [matched, setMatched] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const digits = (v) => String(v || "").replace(/\D/g, "").slice(-10);
-    const email = normalizeEmailAddress(customer.email);
-    const phone = digits(customer.phoneNumber);
-
-    async function load() {
-      setLoading(true);
-      const [convRes, mailRes] = await Promise.all([
-        api.get("/api/smsHistory/conversations"),
-        api.get("/api/emailHistory?limit=200"),
-      ]);
-      if (cancelled) return;
-
-      const conv = (convRes.success ? convRes.data || [] : []).find(
-        (c) =>
-          (phone && digits(c.phoneNumber) === phone) ||
-          (email && normalizeEmailAddress(c.email) === email),
-      );
-
-      let sms = [];
-      if (conv?.leadID) {
-        const res = await api.get(
-          `/api/smsHistory/conversations/${conv.leadID}?page=1`,
-        );
-        if (cancelled) return;
-        sms = (Array.isArray(res.data?.messages) ? res.data.messages : []).map(
-          (m) => ({
-            id: `sms-${m._id}`,
-            channel: "Text",
-            inbound: m.status === "received",
-            content: m.message,
-            at: m.createdAt,
-          }),
-        );
-      }
-
-      const emails = (mailRes.success ? mailRes.data || [] : [])
-        .map((rec) => mapEmailHistoryRecord(rec, customer.name))
-        .filter((m) => email && normalizeEmailAddress(m.recipientEmail) === email)
-        .map((m) => ({
-          id: `mail-${m.id}`,
-          channel: "Email",
-          inbound: m.direction === "inbound",
-          content: m.subject ? `${m.subject} — ${m.content}` : m.content,
-          at: m.timestamp,
-        }));
-
-      setMatched(Boolean(conv) || emails.length > 0);
-      setMessages(
-        [...sms, ...emails]
-          .filter((m) => m.content)
-          .sort((a, b) => new Date(a.at) - new Date(b.at))
-          .slice(-30),
-      );
-      setLoading(false);
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [customer._id, customer.email, customer.phoneNumber, customer.name]);
-
   return (
-    <Panel
-      title="Messaging"
-      subtitle={
-        matched
-          ? "Texts and emails matched to this student's phone and email"
-          : "Texts and emails for this student"
-      }
-      action={
-        <a
-          href="/inbox"
-          className="shrink-0 text-[12px] font-semibold text-primary hover:underline"
-        >
-          Open in Inbox ↗
-        </a>
-      }
-    >
-      {loading ? (
-        <p className="text-[12px] text-muted-foreground">Loading conversation…</p>
-      ) : messages.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center">
-          <p className="text-[13px] font-medium text-foreground">
-            No messages yet
-          </p>
-          <p className="mt-1 text-[12px] text-muted-foreground">
-            Nothing has been sent to {customer.phoneNumber || customer.email || "this student"} yet.
-            Start a conversation from the Inbox.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 ${
-                m.inbound
-                  ? "bg-muted text-foreground"
-                  : "ml-auto bg-primary text-primary-foreground"
-              }`}
-            >
-              <p className="text-[12px] leading-relaxed whitespace-pre-wrap break-words">
-                {m.content}
-              </p>
-              <p
-                className={`mt-1.5 text-[10px] ${m.inbound ? "text-muted-foreground" : "text-primary-foreground/70"}`}
-              >
-                {m.channel} · {formatDate(m.at)}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-    </Panel>
+    <div className="flex h-[min(72vh,760px)] min-h-[520px] flex-col overflow-hidden rounded-2xl border border-border bg-card">
+      <CustomerInboxThread key={customer._id} customer={customer} />
+    </div>
   );
 }
 
@@ -8931,23 +8796,7 @@ export default function CustomerDetailPage() {
     const view = VIEW_META[params.get("view")] ? params.get("view") : null;
     return { section, view, enrollmentID: params.get("enrollment") || null };
   });
-  // Which CreateEnrollmentSheet mode the "+ New" menu opened, if any.
-  const [createMode, setCreateMode] = useState(null);
-  const [purchaseOpen, setPurchaseOpen] = useState(false);
   const summary = useAccountSummary(id);
-  const toast = useToast();
-
-  const copyToClipboard = useCallback(
-    async (value, label) => {
-      try {
-        await navigator.clipboard.writeText(value);
-        toast.success(`${label} copied.`);
-      } catch {
-        toast.error(`Couldn't copy the ${label.toLowerCase()}.`);
-      }
-    },
-    [toast],
-  );
 
   const go = useCallback((section, view = null, extra = {}) => {
     setNav({ section, view, enrollmentID: extra.enrollmentID ?? null });
@@ -8988,7 +8837,7 @@ export default function CustomerDetailPage() {
 
   if (loading) {
     return (
-      <MainLayout hideHeader>
+      <MainLayout>
         <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
           <LoadingSpinner />
         </div>
@@ -8998,7 +8847,7 @@ export default function CustomerDetailPage() {
 
   if (!customer) {
     return (
-      <MainLayout hideHeader>
+      <MainLayout>
         <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] gap-4">
           <p className="text-[13px] text-muted-foreground">
             Customer not found.
@@ -9046,150 +8895,40 @@ export default function CustomerDetailPage() {
   };
 
   return (
-    <MainLayout hideHeader>
-      {/* Student action bar — this page only. Every item goes somewhere real:
-          the three that have a creation sheet open it here, the rest jump to
-          the view that owns that flow. */}
-      <div className="-mx-3 -mt-3 mb-4 flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:-mx-4 sm:-mt-4 sm:px-6 lg:-mx-2">
-        <nav
-          aria-label="Breadcrumb"
-          className="min-w-0 truncate text-[13px] text-muted-foreground"
-        >
-          <button
-            type="button"
-            onClick={() => router.push("/settings/users-roles/customers")}
-            className="rounded hover:text-foreground hover:underline"
-          >
-            Students
-          </button>
-          <span className="mx-1.5">/</span>
-          <span className="text-foreground">{customer.name}</span>
-        </nav>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 px-3 text-[12px]"
-            onClick={() => go("communication")}
-          >
-            <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Message</span>
-          </Button>
-
-          {/* Same menu as the app header's "+ Enroll" — one component, so the
-              two can't drift apart. */}
-          <EnrollMenu
-            label="New"
-            triggerClassName="h-9 rounded-full px-4"
-            onSelectMode={setCreateMode}
-            onSelectEvent={() => setPurchaseOpen(true)}
-          />
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 w-9 p-0"
-                aria-label="More actions"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => openView("profile")}>
-                <Pencil className="mr-2 h-3.5 w-3.5" />
-                Edit profile
-              </DropdownMenuItem>
-              {customer.email && (
-                <DropdownMenuItem onClick={() => copyToClipboard(customer.email, "Email")}>
-                  <Copy className="mr-2 h-3.5 w-3.5" />
-                  Copy email
-                </DropdownMenuItem>
-              )}
-              {customer.phoneNumber && (
-                <DropdownMenuItem
-                  onClick={() => copyToClipboard(customer.phoneNumber, "Phone number")}
+    <MainLayout>
+      <div className="w-full pb-6 space-y-5">
+        <div className="flex min-w-0 items-start gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => router.push("/settings/users-roles/customers")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <Avatar className="h-12 w-12 shrink-0 rounded-2xl">
+              <AvatarFallback className="rounded-2xl bg-primary/10 text-[15px] font-bold text-primary">
+                {getInitials(customer.name)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-[22px] font-semibold leading-tight text-foreground truncate">
+                  {customer.name}
+                </h1>
+                <StatusColorBadge
+                  color={customerLifecycleColor(customer.lifecycleStatus)}
+                  className="shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                 >
-                  <Copy className="mr-2 h-3.5 w-3.5" />
-                  Copy phone number
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/inbox")}>
-                Open in Inbox
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      <CreateEnrollmentSheet
-        open={Boolean(createMode)}
-        onClose={() => setCreateMode(null)}
-        initialMode={createMode ?? "service"}
-        customerID={customer._id}
-        customerName={customer.name || customer.email || ""}
-        locationID={resolveLocationID(customer)}
-        onSuccess={() => {
-          toast.success(
-            createMode === "membership"
-              ? "Membership assigned."
-              : "Enrollment created.",
-          );
-          const landing =
-            createMode === "membership" ? "memberships" : "active-enrollments";
-          setCreateMode(null);
-          summary.reload();
-          go("services", landing);
-        }}
-      />
-
-      <CreateEventPurchaseDialog
-        open={purchaseOpen}
-        onClose={() => setPurchaseOpen(false)}
-        onCreated={() => {
-          setPurchaseOpen(false);
-          summary.reload();
-          go("services", "purchases");
-        }}
-      />
-
-      <div className="w-full px-4 sm:px-6 pb-6 space-y-5">
-        {/* Student header */}
-        <div className="flex items-start gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            onClick={() => router.back()}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <Avatar className="h-12 w-12 shrink-0 rounded-2xl">
-            <AvatarFallback className="rounded-2xl bg-primary/10 text-[15px] font-bold text-primary">
-              {getInitials(customer.name)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-[22px] font-semibold leading-tight text-foreground truncate">
-                {customer.name}
-              </h1>
-              <StatusColorBadge
-                color={customerLifecycleColor(customer.lifecycleStatus)}
-                className="shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-              >
-                {customerLifecycleLabel(customer.lifecycleStatus)}
-              </StatusColorBadge>
+                  {customerLifecycleLabel(customer.lifecycleStatus)}
+                </StatusColorBadge>
+              </div>
+              <p className="mt-1 text-[12px] text-muted-foreground truncate">
+                {[customer.email, customer.phoneNumber, locationLabel !== "—" ? locationLabel : null]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
             </div>
-            <p className="mt-1 text-[12px] text-muted-foreground truncate">
-              {[customer.email, customer.phoneNumber, locationLabel !== "—" ? locationLabel : null]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-          </div>
         </div>
 
         {/* Section nav */}

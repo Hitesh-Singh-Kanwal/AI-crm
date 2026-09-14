@@ -43,6 +43,7 @@ export default function ConversationView({
   onPlaceCall,
   callPlacing = false,
   callLogsLoading = false,
+  embedded = false,
 }) {
   const [activeTab, setActiveTab] = useState(() => defaultChannelTab(conversation))
   const scrollRef = useRef(null)
@@ -137,7 +138,12 @@ export default function ConversationView({
   }
 
   return (
-    <main className="flex-1 flex flex-col min-h-0 min-w-0 bg-card h-full border-l-0 lg:border-l border-border overflow-hidden">
+    <main
+      className={cn(
+        'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card',
+        embedded ? 'border-0' : 'border-l-0 border-border lg:border-l',
+      )}
+    >
       {/* Header */}
       <div className="p-3 sm:p-4 border-b border-border bg-card flex-shrink-0">
         <div className="flex items-center justify-between gap-2 sm:gap-4">
@@ -158,7 +164,7 @@ export default function ConversationView({
             <div className="min-w-0">
               <h4 className="text-sm font-semibold text-foreground truncate">{getContactDisplayName(conversation.contact)}</h4>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">{conversation.contact.type}</span>
+                <span className="text-xs text-muted-foreground">{conversation.contact?.type}</span>
                 {contactPhone && (
                   <>
                     <span className="text-xs text-muted-foreground">•</span>
@@ -195,12 +201,14 @@ export default function ConversationView({
                 <span className="sr-only">Load older messages</span>
               </Button>
             )}
-            <button
-              onClick={onToggleDetails}
-              className="px-2.5 sm:px-3 py-1 rounded-md text-xs sm:text-sm whitespace-nowrap bg-[color:var(--studio-primary)] text-white"
-            >
-              View profile
-            </button>
+            {onToggleDetails && (
+              <button
+                onClick={onToggleDetails}
+                className="px-2.5 sm:px-3 py-1 rounded-md text-xs sm:text-sm whitespace-nowrap bg-[color:var(--studio-primary)] text-white"
+              >
+                View profile
+              </button>
+            )}
           </div>
         </div>
 
