@@ -31,9 +31,6 @@ import {
   XCircle,
   AlertTriangle,
   History,
-  MessageSquare,
-  MoreHorizontal,
-  Copy,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -45,21 +42,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
-import EnrollMenu from "@/components/enrollment/EnrollMenu";
 import { CreateEventPurchaseDialog } from "@/app/settings/setup/components/EventsPurchases";
 import CustomerMembershipsTab from "@/components/membership/CustomerMembershipsTab";
 import CustomerWalletTab from "@/components/wallet/CustomerWalletTab";
 import CancelRefundDialog from "@/components/shared/CancelRefundDialog";
 import ConfirmStatusOverrideDialog from "@/components/customers/ConfirmStatusOverrideDialog";
 import CustomerStatusHistory from "@/components/customers/CustomerStatusHistory";
+import CustomerInboxThread from "@/components/customers/CustomerInboxThread";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import LocationSelector from "@/components/shared/LocationSelector";
 import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
@@ -90,11 +80,6 @@ import {
 import StatusColorBadge from "@/components/shared/StatusColorBadge";
 import { formatReasonLabel } from "@/lib/dynamic-list-normalize";
 import { extractLeadReasonsList } from "@/lib/workflow-normalize";
-import {
-  mapEmailHistoryRecord,
-  normalizeEmailAddress,
-} from "@/lib/emailSend";
-
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 // Short name for an enrollment. A real package uses its template name; a
@@ -466,9 +451,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
   const [saving, setSaving] = useState(false);
   // Holds the refused payload + violations while the admin decides whether to override.
   const [overridePrompt, setOverridePrompt] = useState(null);
-  // Bumped after a successful save so the history panel refetches — a status change is
-  // exactly when the timeline becomes stale.
-  const [statusHistoryKey, setStatusHistoryKey] = useState(0);
   const [leadReasons, setLeadReasons] = useState([]);
   // Quick-save for just the callback date, without entering full profile
   // edit mode — mirrors saveCallbackDate() in app/leads/components/LeadsDialog.js
@@ -592,7 +574,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
       onUpdated();
       setEditing(false);
       setOverridePrompt(null);
-      setStatusHistoryKey((k) => k + 1);
       return true;
     }
     // A failing entry requirement is not an error to report and forget — the admin may
@@ -1029,20 +1010,6 @@ function ProfileTab({ customer, locations, onUpdated }) {
 
               {/* Tags */}
               <TagsEditor customer={customer} onUpdated={onUpdated} />
-
-              <div className="border-t border-border" />
-
-              {/* Why this customer is at this status — the question the lifecycle badge
-                  above provokes, answered in the same card rather than a separate tab. */}
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  Status History
-                </p>
-                <CustomerStatusHistory
-                  customerID={customer._id}
-                  refreshKey={statusHistoryKey}
-                />
-              </div>
             </div>
           )}
         </div>
@@ -2777,6 +2744,25 @@ function PackagesTab({ customerID, locationID }) {
                   </div>
                 )}
 
+                {/* Payment plan / scheduled-flexible installment schedule */}
+                {plansMap[String(enr._id)] && (
+                  <div className="mt-4 border-t border-border pt-4">
+                    <PaymentSchedule
+                      plan={plansMap[String(enr._id)]}
+                      cpStatus={pkg.status}
+                      outstanding={outstanding}
+                      billingType={pkg.billingType}
+                      customerID={customerID}
+                      locationID={locationID}
+                      onPayInstallment={setPayInstallTarget}
+                      onChangeDate={setChangeInstallDateTarget}
+                      onAddInstallment={setAddInstallTarget}
+                      onSent={load}
+                      defaultOpen
+                    />
+                  </div>
+                )}
+
                 {/* Services with full session breakdown */}
                 {services.length > 0 && (
                   <div className="mt-4 border-t border-border pt-4">
@@ -2886,25 +2872,6 @@ function PackagesTab({ customerID, locationID }) {
                         );
                       })}
                     </div>
-                  </div>
-                )}
-
-                {/* Payment plan / scheduled-flexible installment schedule */}
-                {plansMap[String(enr._id)] && (
-                  <div className="mt-4 border-t border-border pt-4">
-                    <PaymentSchedule
-                      plan={plansMap[String(enr._id)]}
-                      cpStatus={pkg.status}
-                      outstanding={outstanding}
-                      billingType={pkg.billingType}
-                      customerID={customerID}
-                      locationID={locationID}
-                      onPayInstallment={setPayInstallTarget}
-                      onChangeDate={setChangeInstallDateTarget}
-                      onAddInstallment={setAddInstallTarget}
-                      onSent={load}
-                      defaultOpen
-                    />
                   </div>
                 )}
 
@@ -4291,6 +4258,23 @@ function EnrollmentsTab({
                       ))}
                     </div>
 
+                    {/* Payment plan / scheduled-flexible installments */}
+                    {plansMap[String(enr._id)] && (
+                      <PaymentSchedule
+                        plan={plansMap[String(enr._id)]}
+                        cpStatus={cp.status}
+                        outstanding={outstanding}
+                        billingType={cp.billingType}
+                        customerID={customerID}
+                        locationID={locationID}
+                        onPayInstallment={setPayInstallTarget}
+                        onChangeDate={setChangeInstallDateTarget}
+                        onAddInstallment={setAddInstallTarget}
+                        onSent={load}
+                        defaultOpen
+                      />
+                    )}
+
                     {/* Services */}
                     {services.length > 0 &&
                       (() => {
@@ -4815,21 +4799,6 @@ function EnrollmentsTab({
                         </div>
                       )}
 
-                    {/* Payment plan / scheduled-flexible installments */}
-                    {plansMap[String(enr._id)] && (
-                      <PaymentSchedule
-                        plan={plansMap[String(enr._id)]}
-                        cpStatus={cp.status}
-                        outstanding={outstanding}
-                        billingType={cp.billingType}
-                        customerID={customerID}
-                        locationID={locationID}
-                        onPayInstallment={setPayInstallTarget}
-                        onChangeDate={setChangeInstallDateTarget}
-                        onAddInstallment={setAddInstallTarget}
-                        onSent={load}
-                      />
-                    )}
 
                     <PaymentTimeline
                       customerID={customerID}
@@ -5976,12 +5945,13 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
   );
 }
 
-function PurchasesTab({ customerID }) {
+function PurchasesTab({ customerID, customerName }) {
   const [rows, setRows] = useState([]);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [createPurchaseOpen, setCreatePurchaseOpen] = useState(false);
   const toast = useToast();
 
   const [plans, setPlans] = useState([]);
@@ -6069,13 +6039,22 @@ function PurchasesTab({ customerID }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-[13px] text-muted-foreground">
-        {rows.length} purchase{rows.length !== 1 ? "s" : ""}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[13px] text-muted-foreground">
+          {rows.length} purchase{rows.length !== 1 ? "s" : ""}
+        </p>
+        <Button
+          size="sm"
+          className="h-8 text-[12px]"
+          onClick={() => setCreatePurchaseOpen(true)}
+        >
+          <Plus className="h-3.5 w-3.5 mr-1.5" /> Enroll
+        </Button>
+      </div>
 
       {rows.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          No events or products yet. Create one from Setup → “Create Events &amp; Products”.
+          No events or products yet. Click "Enroll" to create one.
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-x-auto">
@@ -6257,8 +6236,19 @@ function PurchasesTab({ customerID }) {
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">
-        Card &amp; wallet payments: use “Create Events &amp; Products”, or record them from Payment History.
+        Card &amp; wallet payments: use “Enroll”, or record them from Payment History.
       </p>
+
+      <CreateEventPurchaseDialog
+        open={createPurchaseOpen}
+        onClose={() => setCreatePurchaseOpen(false)}
+        initialCustomerID={customerID}
+        initialCustomerName={customerName}
+        onCreated={() => {
+          toast.success("Purchase created");
+          load();
+        }}
+      />
     </div>
   );
 }
@@ -7685,11 +7675,9 @@ function LessonsTab({ customer }) {
 }
 
 // ─── History Tab ────────────────────────────────────────────────────────────
-// Surfaces customFields.migrationLegacy — the historic/contextual fields a
-// migration import saves (lifetime lesson counts, last lesson date, lifetime
-// collected, source, dance level, assigned teacher, key dates) but that have
-// no dedicated Customer model column. Previously this data was written on
-// import and then never shown anywhere; this tab is the display surface for it.
+// Status-change timeline is the primary record. customFields.migrationLegacy
+// (lifetime counts, source, dance level, etc. from an import) stays as a
+// secondary block when it exists.
 
 const HISTORY_DATE_FIELDS = [
   { key: "customerSince", label: "Customer Since" },
@@ -7708,22 +7696,7 @@ const HISTORY_COUNT_FIELDS = [
 
 function HistoryTab({ customer }) {
   const legacy = customer?.customFields?.migrationLegacy || {};
-  const hasAnything = Object.keys(legacy).length > 0;
-
-  if (!hasAnything) {
-    return (
-      <div className="rounded-xl border border-border bg-card p-8 text-center">
-        <p className="text-[13px] text-muted-foreground">
-          No migration history on file for this customer.
-        </p>
-        <p className="mt-1 text-[12px] text-muted-foreground">
-          This section fills in automatically for customers brought in through a migration import that
-          supplied Source, Dance Level, Assigned Teacher, historic lesson counts, Lifetime Collected, or
-          key dates.
-        </p>
-      </div>
-    );
-  }
+  const hasLegacy = Object.keys(legacy).length > 0;
 
   const totalLessons = HISTORY_COUNT_FIELDS.reduce(
     (sum, { key }) => sum + (Number(legacy[key]) || 0),
@@ -7733,68 +7706,80 @@ function HistoryTab({ customer }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-xl border border-border bg-card p-5">
-        <h2 className="mb-1 text-[13px] font-semibold text-foreground">Legacy Record</h2>
+        <h2 className="mb-1 text-[13px] font-semibold text-foreground">Status history</h2>
         <p className="mb-4 text-[12px] text-muted-foreground">
-          Carried over from this customer's old system at migration time.
+          How this account moved between lifecycle statuses — including changes that were refused or held by an override.
         </p>
-
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          {legacy.source && (
-            <div>
-              <p className="text-[11px] text-muted-foreground mb-1">Source</p>
-              <p className="text-[13px] font-medium text-foreground">{legacy.source}</p>
-            </div>
-          )}
-          {legacy.danceLevel && (
-            <div>
-              <p className="text-[11px] text-muted-foreground mb-1">Dance Level</p>
-              <p className="text-[13px] font-medium text-foreground">{legacy.danceLevel}</p>
-            </div>
-          )}
-          {legacy.assignedTeacher && (
-            <div>
-              <p className="text-[11px] text-muted-foreground mb-1">Assigned Teacher</p>
-              <p className="text-[13px] font-medium text-foreground">{legacy.assignedTeacher}</p>
-            </div>
-          )}
-          {legacy.lifetimeCollected !== undefined && (
-            <div>
-              <p className="text-[11px] text-muted-foreground mb-1">Lifetime Collected</p>
-              <p className="text-[13px] font-medium text-foreground">
-                ${Number(legacy.lifetimeCollected).toFixed(2)}
-              </p>
-            </div>
-          )}
-          {HISTORY_DATE_FIELDS.map(
-            ({ key, label }) =>
-              legacy[key] && (
-                <div key={key}>
-                  <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-                  <p className="text-[13px] font-medium text-foreground">{formatDate(legacy[key])}</p>
-                </div>
-              ),
-          )}
-        </div>
+        <CustomerStatusHistory customerID={customer._id} />
       </div>
 
-      {totalLessons > 0 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h2 className="mb-4 text-[13px] font-semibold text-foreground">Historic Lesson Counts</h2>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-            {HISTORY_COUNT_FIELDS.map(({ key, label }) => (
-              <div key={key} className="rounded-xl border border-border bg-card px-4 py-3">
-                <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-                <p className="text-[19px] font-semibold text-foreground">
-                  {Number(legacy[key]) || 0}
-                </p>
-              </div>
-            ))}
-            <div className="rounded-xl border border-border bg-primary/5 px-4 py-3">
-              <p className="text-[11px] text-muted-foreground mb-1">Total</p>
-              <p className="text-[19px] font-semibold text-primary">{totalLessons}</p>
+      {hasLegacy && (
+        <>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h2 className="mb-1 text-[13px] font-semibold text-foreground">Legacy record</h2>
+            <p className="mb-4 text-[12px] text-muted-foreground">
+              Carried over from this customer&apos;s old system at migration time.
+            </p>
+
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              {legacy.source && (
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-1">Source</p>
+                  <p className="text-[13px] font-medium text-foreground">{legacy.source}</p>
+                </div>
+              )}
+              {legacy.danceLevel && (
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-1">Dance Level</p>
+                  <p className="text-[13px] font-medium text-foreground">{legacy.danceLevel}</p>
+                </div>
+              )}
+              {legacy.assignedTeacher && (
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-1">Assigned Teacher</p>
+                  <p className="text-[13px] font-medium text-foreground">{legacy.assignedTeacher}</p>
+                </div>
+              )}
+              {legacy.lifetimeCollected !== undefined && (
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-1">Lifetime Collected</p>
+                  <p className="text-[13px] font-medium text-foreground">
+                    ${Number(legacy.lifetimeCollected).toFixed(2)}
+                  </p>
+                </div>
+              )}
+              {HISTORY_DATE_FIELDS.map(
+                ({ key, label }) =>
+                  legacy[key] && (
+                    <div key={key}>
+                      <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
+                      <p className="text-[13px] font-medium text-foreground">{formatDate(legacy[key])}</p>
+                    </div>
+                  ),
+              )}
             </div>
           </div>
-        </div>
+
+          {totalLessons > 0 && (
+            <div className="rounded-xl border border-border bg-card p-5">
+              <h2 className="mb-4 text-[13px] font-semibold text-foreground">Historic lesson counts</h2>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+                {HISTORY_COUNT_FIELDS.map(({ key, label }) => (
+                  <div key={key} className="rounded-xl border border-border bg-card px-4 py-3">
+                    <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
+                    <p className="text-[19px] font-semibold text-foreground">
+                      {Number(legacy[key]) || 0}
+                    </p>
+                  </div>
+                ))}
+                <div className="rounded-xl border border-border bg-primary/5 px-4 py-3">
+                  <p className="text-[11px] text-muted-foreground mb-1">Total</p>
+                  <p className="text-[19px] font-semibold text-primary">{totalLessons}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -7969,7 +7954,7 @@ const VIEW_META = {
   history: {
     label: "History",
     icon: History,
-    blurb: "Audit trail of account, attendance and status changes.",
+    blurb: "Lifecycle status changes, plus any record carried over from a migration.",
   },
   contracts: {
     label: "Waivers & Contracts",
@@ -8198,9 +8183,6 @@ function SectionIndex({ section, summary, onOpen }) {
 
   // Live counts so the index says something useful before you click into it.
   const stateFor = (viewId) => {
-    const activeEnrollments = summary.enrollments.filter(
-      (e) => e.status !== "cancelled" && e.package?.status !== "cancelled",
-    );
     const activeMemberships = summary.memberships.filter(
       (m) => m.status !== "cancelled" && m.status !== "expired",
     );
@@ -8210,23 +8192,40 @@ function SectionIndex({ section, summary, onOpen }) {
         !String(deriveEventStatus(ev)).startsWith("cancelled"),
     );
     switch (viewId) {
-      case "active-enrollments":
+      case "active-enrollments": {
+        const statusCounts = summary.enrollments.reduce((acc, e) => {
+          const status = e.package?.status ?? e.status ?? "unknown";
+          acc[status] = (acc[status] || 0) + 1;
+          return acc;
+        }, {});
+        const breakdown = Object.entries(statusCounts)
+          .map(([status, count]) => `${count} ${status}`)
+          .join(" · ");
         return {
-          value: `${activeEnrollments.length} active`,
-          hint: activeEnrollments.length ? "Choose an enrollment" : "None yet",
-          children: activeEnrollments.map((enr) => ({
-            id: String(enr._id),
-            title: enr.package?.packageName || enrollmentDisplayName(enr),
-            sub: `Purchased ${formatDate(enr.package?.purchaseDate ?? enr.createdAt)}`,
-            value:
-              Number(enr.package?.dueAmount ?? 0) > 0
-                ? `${money(enr.package.dueAmount)} due`
-                : "Paid in full",
-            hint: enr.package?.status ?? enr.status,
-            open: () =>
-              onOpen("active-enrollments", { enrollmentID: String(enr._id) }),
-          })),
+          value: `${summary.enrollments.length} total`,
+          hint: summary.enrollments.length ? breakdown : "None yet",
+          children: summary.enrollments.map((enr) => {
+            const pkg = enr.package;
+            const due =
+              pkg?.dueAmount != null
+                ? Number(pkg.dueAmount)
+                : Math.max(
+                    0,
+                    Number(pkg?.totalPaid ?? pkg?.contractedValue ?? 0) -
+                      Number(pkg?.amountCollected || 0),
+                  );
+            return {
+              id: String(enr._id),
+              title: pkg?.packageName || enrollmentDisplayName(enr),
+              sub: `Purchased ${formatDate(pkg?.purchaseDate ?? enr.createdAt)}`,
+              value: due > 0 ? `${money(due)} due` : "Paid in full",
+              hint: pkg?.status ?? enr.status,
+              open: () =>
+                onOpen("active-enrollments", { enrollmentID: String(enr._id) }),
+            };
+          }),
         };
+      }
       case "memberships":
         return {
           value: `${activeMemberships.length} active`,
@@ -8371,8 +8370,38 @@ function MetricCard({ label, value, hint, accent = "text-foreground", children }
   );
 }
 
-function OverviewSection({ customer, locations, summary, onOpen }) {
+function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
   const now = Date.now();
+  const toast = useToast();
+
+  // Quick-save for just the callback date, right from the metric tile —
+  // mirrors saveCallbackDate() in ProfileTab so this and the full profile
+  // form never drift out of sync.
+  const [callbackDateDraft, setCallbackDateDraft] = useState(
+    customer.callbackDate ? String(customer.callbackDate).slice(0, 10) : "",
+  );
+  const [savingCallbackDate, setSavingCallbackDate] = useState(false);
+  useEffect(() => {
+    setCallbackDateDraft(
+      customer.callbackDate ? String(customer.callbackDate).slice(0, 10) : "",
+    );
+  }, [customer?._id, customer?.callbackDate]);
+  async function saveCallbackDate() {
+    if (!customer?._id) return;
+    setSavingCallbackDate(true);
+    const res = await api.put(`/api/customer/${customer._id}`, {
+      callbackDate: callbackDateDraft || null,
+    });
+    if (res.success) {
+      toast.success("Callback date updated.");
+      onUpdated?.();
+    } else {
+      toast.error(res.error || "Unable to update callback date.");
+    }
+    setSavingCallbackDate(false);
+  }
+  const callbackOverdue =
+    customer.callbackDate && new Date(customer.callbackDate).getTime() <= now;
 
   // Outstanding money, broken down by what it's owed against — the same
   // derivation the enrollment cards use, so the two never disagree.
@@ -8387,7 +8416,8 @@ function OverviewSection({ customer, locations, summary, onOpen }) {
             ? Number(pkg.dueAmount)
             : Math.max(
                 0,
-                Number(pkg.totalPaid || 0) - Number(pkg.amountCollected || 0),
+                Number(pkg.totalPaid ?? pkg.contractedValue ?? 0) -
+                  Number(pkg.amountCollected || 0),
               );
         return due > 0
           ? {
@@ -8547,6 +8577,56 @@ function OverviewSection({ customer, locations, summary, onOpen }) {
             </LinkButton>
           }
         >
+          <div
+            className={`mb-4 rounded-xl border p-3.5 ${
+              callbackOverdue
+                ? "border-warning/30 bg-warning/10"
+                : "border-border bg-muted/30"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Callback date
+              </p>
+              {callbackOverdue && (
+                <span className="text-[9px] font-bold uppercase tracking-wide text-warning">
+                  Overdue
+                </span>
+              )}
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <span
+                className={`text-[15px] font-semibold ${callbackOverdue ? "text-warning" : "text-foreground"}`}
+              >
+                {customer.callbackDate ? formatDate(customer.callbackDate) : "Not set"}
+              </span>
+              <div className="ml-auto flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={callbackDateDraft}
+                  onChange={(e) => setCallbackDateDraft(e.target.value)}
+                  className="h-8 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={saveCallbackDate}
+                  disabled={
+                    savingCallbackDate ||
+                    callbackDateDraft ===
+                      (customer.callbackDate
+                        ? String(customer.callbackDate).slice(0, 10)
+                        : "")
+                  }
+                  className="h-8 shrink-0 px-2.5 text-[12px]"
+                >
+                  {savingCallbackDate ? "..." : "Save"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Phone">{customer.phoneNumber || "—"}</Field>
             <Field label="Email">{customer.email || "—"}</Field>
@@ -8563,9 +8643,6 @@ function OverviewSection({ customer, locations, summary, onOpen }) {
               >
                 {customerLifecycleLabel(customer.lifecycleStatus)}
               </StatusColorBadge>
-            </Field>
-            <Field label="Follow-up">
-              {customer.callbackDate ? formatDate(customer.callbackDate) : "None set"}
             </Field>
           </div>
           {(customer.tags?.length || customer.autoTags?.length) > 0 && (
@@ -8688,11 +8765,29 @@ function OverviewSection({ customer, locations, summary, onOpen }) {
               <LinkButton onClick={() => onOpen("members")}>Manage</LinkButton>
             }
           >
-            <p className="text-[12px] text-muted-foreground">
-              {memberCount > 0
-                ? `${memberCount} connected member${memberCount === 1 ? "" : "s"}.`
-                : "No connected members yet."}
-            </p>
+            {memberCount > 0 ? (
+              <div className="space-y-2.5">
+                {customer.members.map((m) => (
+                  <div key={m._id} className="flex items-center gap-2.5">
+                    <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                      {(m.name || "?").charAt(0).toUpperCase()}
+                    </div>
+                    <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
+                      {m.name}
+                    </span>
+                    {m.relationship && (
+                      <span className="text-[11px] capitalize text-muted-foreground">
+                        · {m.relationship}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[12px] text-muted-foreground">
+                No connected members yet.
+              </p>
+            )}
           </Panel>
         </div>
       </div>
@@ -8804,131 +8899,12 @@ function OverviewSection({ customer, locations, summary, onOpen }) {
 
 // ─── Communication ───────────────────────────────────────────────────────────
 
-// Read-only on purpose: the send endpoints are lead-shaped (they log history
-// against a lead record this customer may not have), so replying stays in the
-// Inbox where that wiring already exists.
+// Same Inbox thread UI (SMS, email, calls) scoped to this student.
 function CommunicationSection({ customer }) {
-  const [loading, setLoading] = useState(true);
-  const [messages, setMessages] = useState([]);
-  const [matched, setMatched] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const digits = (v) => String(v || "").replace(/\D/g, "").slice(-10);
-    const email = normalizeEmailAddress(customer.email);
-    const phone = digits(customer.phoneNumber);
-
-    async function load() {
-      setLoading(true);
-      const [convRes, mailRes] = await Promise.all([
-        api.get("/api/smsHistory/conversations"),
-        api.get("/api/emailHistory?limit=200"),
-      ]);
-      if (cancelled) return;
-
-      const conv = (convRes.success ? convRes.data || [] : []).find(
-        (c) =>
-          (phone && digits(c.phoneNumber) === phone) ||
-          (email && normalizeEmailAddress(c.email) === email),
-      );
-
-      let sms = [];
-      if (conv?.leadID) {
-        const res = await api.get(
-          `/api/smsHistory/conversations/${conv.leadID}?page=1`,
-        );
-        if (cancelled) return;
-        sms = (Array.isArray(res.data?.messages) ? res.data.messages : []).map(
-          (m) => ({
-            id: `sms-${m._id}`,
-            channel: "Text",
-            inbound: m.status === "received",
-            content: m.message,
-            at: m.createdAt,
-          }),
-        );
-      }
-
-      const emails = (mailRes.success ? mailRes.data || [] : [])
-        .map((rec) => mapEmailHistoryRecord(rec, customer.name))
-        .filter((m) => email && normalizeEmailAddress(m.recipientEmail) === email)
-        .map((m) => ({
-          id: `mail-${m.id}`,
-          channel: "Email",
-          inbound: m.direction === "inbound",
-          content: m.subject ? `${m.subject} — ${m.content}` : m.content,
-          at: m.timestamp,
-        }));
-
-      setMatched(Boolean(conv) || emails.length > 0);
-      setMessages(
-        [...sms, ...emails]
-          .filter((m) => m.content)
-          .sort((a, b) => new Date(a.at) - new Date(b.at))
-          .slice(-30),
-      );
-      setLoading(false);
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [customer._id, customer.email, customer.phoneNumber, customer.name]);
-
   return (
-    <Panel
-      title="Messaging"
-      subtitle={
-        matched
-          ? "Texts and emails matched to this student's phone and email"
-          : "Texts and emails for this student"
-      }
-      action={
-        <a
-          href="/inbox"
-          className="shrink-0 text-[12px] font-semibold text-primary hover:underline"
-        >
-          Open in Inbox ↗
-        </a>
-      }
-    >
-      {loading ? (
-        <p className="text-[12px] text-muted-foreground">Loading conversation…</p>
-      ) : messages.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center">
-          <p className="text-[13px] font-medium text-foreground">
-            No messages yet
-          </p>
-          <p className="mt-1 text-[12px] text-muted-foreground">
-            Nothing has been sent to {customer.phoneNumber || customer.email || "this student"} yet.
-            Start a conversation from the Inbox.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 ${
-                m.inbound
-                  ? "bg-muted text-foreground"
-                  : "ml-auto bg-primary text-primary-foreground"
-              }`}
-            >
-              <p className="text-[12px] leading-relaxed whitespace-pre-wrap break-words">
-                {m.content}
-              </p>
-              <p
-                className={`mt-1.5 text-[10px] ${m.inbound ? "text-muted-foreground" : "text-primary-foreground/70"}`}
-              >
-                {m.channel} · {formatDate(m.at)}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-    </Panel>
+    <div className="flex h-[min(72vh,760px)] min-h-[520px] flex-col overflow-hidden rounded-2xl border border-border bg-card">
+      <CustomerInboxThread key={customer._id} customer={customer} />
+    </div>
   );
 }
 
@@ -8954,23 +8930,7 @@ export default function CustomerDetailPage() {
     const view = VIEW_META[params.get("view")] ? params.get("view") : null;
     return { section, view, enrollmentID: params.get("enrollment") || null };
   });
-  // Which CreateEnrollmentSheet mode the "+ New" menu opened, if any.
-  const [createMode, setCreateMode] = useState(null);
-  const [purchaseOpen, setPurchaseOpen] = useState(false);
   const summary = useAccountSummary(id);
-  const toast = useToast();
-
-  const copyToClipboard = useCallback(
-    async (value, label) => {
-      try {
-        await navigator.clipboard.writeText(value);
-        toast.success(`${label} copied.`);
-      } catch {
-        toast.error(`Couldn't copy the ${label.toLowerCase()}.`);
-      }
-    },
-    [toast],
-  );
 
   const go = useCallback((section, view = null, extra = {}) => {
     setNav({ section, view, enrollmentID: extra.enrollmentID ?? null });
@@ -9011,7 +8971,7 @@ export default function CustomerDetailPage() {
 
   if (loading) {
     return (
-      <MainLayout hideHeader>
+      <MainLayout>
         <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
           <LoadingSpinner />
         </div>
@@ -9021,7 +8981,7 @@ export default function CustomerDetailPage() {
 
   if (!customer) {
     return (
-      <MainLayout hideHeader>
+      <MainLayout>
         <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] gap-4">
           <p className="text-[13px] text-muted-foreground">
             Customer not found.
@@ -9059,7 +9019,12 @@ export default function CustomerDetailPage() {
       />
     ),
     wallet: () => <CustomerWalletTab customerID={customer._id} />,
-    purchases: () => <PurchasesTab customerID={customer._id} />,
+    purchases: () => (
+      <PurchasesTab
+        customerID={customer._id}
+        customerName={customer.name || customer.email || ""}
+      />
+    ),
     payments: () => <PaymentsTab customerID={customer._id} />,
     lessons: () => <LessonsTab customer={customer} />,
     history: () => <HistoryTab customer={customer} />,
@@ -9069,150 +9034,40 @@ export default function CustomerDetailPage() {
   };
 
   return (
-    <MainLayout hideHeader>
-      {/* Student action bar — this page only. Every item goes somewhere real:
-          the three that have a creation sheet open it here, the rest jump to
-          the view that owns that flow. */}
-      <div className="-mx-3 -mt-3 mb-4 flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:-mx-4 sm:-mt-4 sm:px-6 lg:-mx-2">
-        <nav
-          aria-label="Breadcrumb"
-          className="min-w-0 truncate text-[13px] text-muted-foreground"
-        >
-          <button
-            type="button"
-            onClick={() => router.push("/settings/users-roles/customers")}
-            className="rounded hover:text-foreground hover:underline"
-          >
-            Students
-          </button>
-          <span className="mx-1.5">/</span>
-          <span className="text-foreground">{customer.name}</span>
-        </nav>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 px-3 text-[12px]"
-            onClick={() => go("communication")}
-          >
-            <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Message</span>
-          </Button>
-
-          {/* Same menu as the app header's "+ Enroll" — one component, so the
-              two can't drift apart. */}
-          <EnrollMenu
-            label="New"
-            triggerClassName="h-9 rounded-full px-4"
-            onSelectMode={setCreateMode}
-            onSelectEvent={() => setPurchaseOpen(true)}
-          />
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 w-9 p-0"
-                aria-label="More actions"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => openView("profile")}>
-                <Pencil className="mr-2 h-3.5 w-3.5" />
-                Edit profile
-              </DropdownMenuItem>
-              {customer.email && (
-                <DropdownMenuItem onClick={() => copyToClipboard(customer.email, "Email")}>
-                  <Copy className="mr-2 h-3.5 w-3.5" />
-                  Copy email
-                </DropdownMenuItem>
-              )}
-              {customer.phoneNumber && (
-                <DropdownMenuItem
-                  onClick={() => copyToClipboard(customer.phoneNumber, "Phone number")}
+    <MainLayout>
+      <div className="w-full pb-6 space-y-5">
+        <div className="flex min-w-0 items-start gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => router.push("/settings/users-roles/customers")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <Avatar className="h-12 w-12 shrink-0 rounded-2xl">
+              <AvatarFallback className="rounded-2xl bg-primary/10 text-[15px] font-bold text-primary">
+                {getInitials(customer.name)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-[22px] font-semibold leading-tight text-foreground truncate">
+                  {customer.name}
+                </h1>
+                <StatusColorBadge
+                  color={customerLifecycleColor(customer.lifecycleStatus)}
+                  className="shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                 >
-                  <Copy className="mr-2 h-3.5 w-3.5" />
-                  Copy phone number
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/inbox")}>
-                Open in Inbox
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      <CreateEnrollmentSheet
-        open={Boolean(createMode)}
-        onClose={() => setCreateMode(null)}
-        initialMode={createMode ?? "service"}
-        customerID={customer._id}
-        customerName={customer.name || customer.email || ""}
-        locationID={resolveLocationID(customer)}
-        onSuccess={() => {
-          toast.success(
-            createMode === "membership"
-              ? "Membership assigned."
-              : "Enrollment created.",
-          );
-          const landing =
-            createMode === "membership" ? "memberships" : "active-enrollments";
-          setCreateMode(null);
-          summary.reload();
-          go("services", landing);
-        }}
-      />
-
-      <CreateEventPurchaseDialog
-        open={purchaseOpen}
-        onClose={() => setPurchaseOpen(false)}
-        onCreated={() => {
-          setPurchaseOpen(false);
-          summary.reload();
-          go("services", "purchases");
-        }}
-      />
-
-      <div className="w-full px-4 sm:px-6 pb-6 space-y-5">
-        {/* Student header */}
-        <div className="flex items-start gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            onClick={() => router.back()}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <Avatar className="h-12 w-12 shrink-0 rounded-2xl">
-            <AvatarFallback className="rounded-2xl bg-primary/10 text-[15px] font-bold text-primary">
-              {getInitials(customer.name)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-[22px] font-semibold leading-tight text-foreground truncate">
-                {customer.name}
-              </h1>
-              <StatusColorBadge
-                color={customerLifecycleColor(customer.lifecycleStatus)}
-                className="shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-              >
-                {customerLifecycleLabel(customer.lifecycleStatus)}
-              </StatusColorBadge>
+                  {customerLifecycleLabel(customer.lifecycleStatus)}
+                </StatusColorBadge>
+              </div>
+              <p className="mt-1 text-[12px] text-muted-foreground truncate">
+                {[customer.email, customer.phoneNumber, locationLabel !== "—" ? locationLabel : null]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
             </div>
-            <p className="mt-1 text-[12px] text-muted-foreground truncate">
-              {[customer.email, customer.phoneNumber, locationLabel !== "—" ? locationLabel : null]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-          </div>
         </div>
 
         {/* Section nav */}
@@ -9271,6 +9126,7 @@ export default function CustomerDetailPage() {
             locations={locations}
             summary={summary}
             onOpen={openView}
+            onUpdated={load}
           />
         ) : section.id === "communication" ? (
           <CommunicationSection customer={customer} />

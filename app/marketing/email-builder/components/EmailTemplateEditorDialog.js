@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlignLeft, ArrowLeft, Code2, Eye, Layout, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -37,7 +37,14 @@ export default function EmailTemplateEditorDialog({
   const [code, setCode] = useState('')
   const [body, setBody] = useState('')
   const [htmlBody, setHtmlBody] = useState('')
+  const htmlBodyRef = useRef(htmlBody)
+  htmlBodyRef.current = htmlBody
   const [editTab, setEditTab] = useState('visual')
+
+  const handleHtmlChange = useCallback((next) => {
+    htmlBodyRef.current = next
+    setHtmlBody(next)
+  }, [])
 
   const fetchCategories = useCallback(async () => {
     const result = await api.get('/api/email/builder/category')
@@ -64,7 +71,9 @@ export default function EmailTemplateEditorDialog({
       setCategoryId(getTemplateCategoryId(email))
       setCode(String(email?.code || ''))
       setBody(String(email?.body || ''))
-      setHtmlBody(String(email?.htmlBody || ''))
+      const loadedHtml = String(email?.htmlBody || '')
+      htmlBodyRef.current = loadedHtml
+      setHtmlBody(loadedHtml)
       setEditTab(String(email?.htmlBody || '').trim() ? 'visual' : 'description')
     } catch (e) {
       console.error(e)
@@ -93,7 +102,8 @@ export default function EmailTemplateEditorDialog({
       })
       return
     }
-    if (!String(htmlBody || '').trim()) {
+    const htmlToSave = String(htmlBodyRef.current || htmlBody || '')
+    if (!htmlToSave.trim()) {
       toast.error({ title: 'Missing HTML', message: 'HTML body is required.' })
       return
     }
@@ -103,7 +113,7 @@ export default function EmailTemplateEditorDialog({
         subject: subject.trim(),
         categoryID: categoryId,
         body: String(body || '').trim() || null,
-        htmlBody: String(htmlBody || ''),
+        htmlBody: htmlToSave,
       })
       if (!result.success) {
         toast.error({ title: 'Update failed', message: result.error || 'Could not update email.' })
@@ -172,7 +182,7 @@ export default function EmailTemplateEditorDialog({
               <EmailFooterPicker
                 html={htmlBody}
                 onHtmlChange={(next) => {
-                  setHtmlBody(next)
+                  handleHtmlChange(next)
                   setEditTab('preview')
                 }}
                 className="shrink-0"
@@ -272,7 +282,7 @@ export default function EmailTemplateEditorDialog({
               {editTab === 'visual' && (
                 <EmailVisualHtmlEditor
                   html={htmlBody}
-                  onChange={setHtmlBody}
+                  onChange={handleHtmlChange}
                   className="h-full min-h-[calc(100vh-220px)]"
                 />
               )}
@@ -280,7 +290,7 @@ export default function EmailTemplateEditorDialog({
               {editTab === 'html' && (
                 <EmailHtmlPanel
                   htmlBody={htmlBody}
-                  onHtmlBodyChange={setHtmlBody}
+                  onHtmlBodyChange={handleHtmlChange}
                   onOpenDesign={() => setEditTab('visual')}
                   layout="editor-only"
                   className="h-full min-h-[calc(100vh-220px)]"

@@ -536,7 +536,7 @@ export function SavedTemplatesTab() {
 
 /* ────────────────────────── Create Events & Products ────────────────────────── */
 
-export function CreateEventPurchaseDialog({ open, onClose, onCreated }) {
+export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCustomerID, initialCustomerName }) {
   const [step, setStep] = useState(1)
   const [products, setProducts] = useState([])
   const [eventTypes, setEventTypes] = useState([])
@@ -579,7 +579,9 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated }) {
 
   useEffect(() => {
     if (!open) return
-    setStep(1); setCustomer(null); setCustomerQuery(''); setEventTypeID(''); setTemplateID('')
+    setStep(1)
+    setCustomer(initialCustomerID ? { _id: initialCustomerID, name: initialCustomerName || '' } : null)
+    setCustomerQuery(''); setEventTypeID(''); setTemplateID('')
     setName(''); setItems([]); setSaveAsTemplate(false)
     setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setCollectDate(todayISO())
     setUseWallet(false); setWalletAmount(''); setWalletBalance(null)
@@ -600,7 +602,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated }) {
       if (c.success) setCustomers(Array.isArray(c.data) ? c.data : [])
       if (tch.success) setTeachers(Array.isArray(tch.data) ? tch.data : [])
     })
-  }, [open])
+  }, [open, initialCustomerID, initialCustomerName])
 
   useEffect(() => {
     if (!customer?._id) { setWalletBalance(null); return }
