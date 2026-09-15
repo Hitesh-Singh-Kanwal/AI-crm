@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Columns,
   FileText,
@@ -404,6 +404,14 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
   const [htmlBody, setHtmlBody] = useState('')
   const [htmlCustomized, setHtmlCustomized] = useState(false)
   const [step, setStep] = useState('details') // 'details' | 'design'
+  const htmlBodyRef = useRef(htmlBody)
+  htmlBodyRef.current = htmlBody
+
+  const onVisualHtmlChange = useCallback((value) => {
+    htmlBodyRef.current = value
+    setHtmlBody(value)
+    setHtmlCustomized(true)
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -638,7 +646,9 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
       setStep('details')
       return
     }
-    const htmlToSave = String(effectiveHtmlBody || '').trim()
+    const htmlToSave = String(
+      htmlCustomized ? htmlBodyRef.current || htmlBody : generatedHtml,
+    ).trim()
     if (!htmlToSave) {
       toast.error({ title: 'Empty email', message: 'Add blocks or paste HTML content.' })
       return
@@ -807,6 +817,7 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
                       <EmailFooterPicker
                         html={effectiveHtmlBody}
                         onHtmlChange={(next) => {
+                          htmlBodyRef.current = next
                           setHtmlBody(next)
                           setHtmlCustomized(true)
                           setCanvasView('preview')
@@ -844,10 +855,7 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
                     {canvasView === 'visual' && htmlCustomized && (
                       <EmailVisualHtmlEditor
                         html={htmlBody}
-                        onChange={(value) => {
-                          setHtmlBody(value)
-                          setHtmlCustomized(true)
-                        }}
+                        onChange={onVisualHtmlChange}
                         className="h-full min-h-[calc(100vh-220px)]"
                       />
                     )}
@@ -933,10 +941,7 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
                     {canvasView === 'html' && (
                       <EmailHtmlPanel
                         htmlBody={htmlBody}
-                        onHtmlBodyChange={(value) => {
-                          setHtmlBody(value)
-                          setHtmlCustomized(true)
-                        }}
+                        onHtmlBodyChange={onVisualHtmlChange}
                         onSyncFromVisual={syncHtmlFromVisual}
                         showSyncFromVisual
                         onOpenDesign={() => setCanvasView('visual')}

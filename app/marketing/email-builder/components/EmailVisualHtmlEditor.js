@@ -25,6 +25,12 @@ import {
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import { uploadEmailMedia, buildVideoEmailHtml, deleteEmailMedia, normalizeExternalMediaUrl } from '../emailBuilderApi'
+import {
+  applyEditedInner,
+  extractEditableHtml,
+  extractHeadStyles,
+  stripEditorSelectionChrome,
+} from '../emailVisualHtmlUtils'
 
 const FONT_SIZES = [
   { label: 'S', value: '3', title: 'Small' },
@@ -113,37 +119,52 @@ export default function EmailVisualHtmlEditor({
   const [bgColor, setBgColor] = useState('#fef08a')
   const lastWritten = useRef('')
   const htmlRef = useRef(html)
+  const sourceHtmlRef = useRef(html)
+  const onChangeRef = useRef(onChange)
   const initializedRef = useRef(false)
   const ignoreEmitUntilRef = useRef(0)
+  const listenersAbortRef = useRef(null)
   htmlRef.current = html
+  onChangeRef.current = onChange
 
   const getDoc = () => iframeRef.current?.contentDocument || null
 
-  const emitHtml = useCallback(() => {
-    if (Date.now() < ignoreEmitUntilRef.current) return
-    const doc = getDoc()
-    if (!doc?.body) return
-    // Clone so editor selection chrome (outline / data-crm-selected) never lands in saved HTML.
-    const clone = doc.body.cloneNode(true)
-    clone.querySelectorAll('img[data-crm-selected="1"]').forEach((el) => {
-      el.removeAttribute('data-crm-selected')
-      if (el.style) {
-        el.style.outline = ''
-        el.style.outlineOffset = ''
-        const cleaned = String(el.getAttribute('style') || '')
-          .replace(/outline[^;]*;?/gi, '')
-          .replace(/outline-offset[^;]*;?/gi, '')
-          .replace(/;;+/g, ';')
-          .trim()
-        if (cleaned) el.setAttribute('style', cleaned)
-        else el.removeAttribute('style')
-      }
+  const beginIgnoreEmits = () => {
+    ignoreEmitUntilRef.current = Date.now() + 80
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        ignoreEmitUntilRef.current = 0
+      })
     })
-    const next = clone.innerHTML || ''
+  }
+
+  const readEditorHtml = useCallback((sourceHtml) => {
+    const doc = getDoc()
+    if (!doc?.body) return null
+    const clone = doc.body.cloneNode(true)
+    stripEditorSelectionChrome(clone)
+    return applyEditedInner(sourceHtml, clone.innerHTML || '')
+  }, [])
+
+  const emitHtml = useCallback((opts = {}) => {
+    if (!opts.force && Date.now() < ignoreEmitUntilRef.current) return
+    const next = readEditorHtml(sourceHtmlRef.current)
+    if (next == null) return
     if (next === lastWritten.current) return
     lastWritten.current = next
-    onChange?.(next)
-  }, [onChange])
+    sourceHtmlRef.current = next
+    onChangeRef.current?.(next)
+  }, [readEditorHtml])
+
+  const emitQueuedRef = useRef(false)
+  const queueEmit = useCallback(() => {
+    if (emitQueuedRef.current) return
+    emitQueuedRef.current = true
+    queueMicrotask(() => {
+      emitQueuedRef.current = false
+      emitHtml()
+    })
+  }, [emitHtml])
 
   const saveSelection = () => {
     const doc = getDoc()
@@ -173,78 +194,107 @@ export default function EmailVisualHtmlEditor({
     setSelectedImg(null)
   }
 
-  const extractEditableHtml = (sourceHtml) => {
-    const raw = String(sourceHtml || '')
-    const bodyMatch = raw.match(/<body[^>]*>([\s\S]*)<\/body>/i)
-    if (bodyMatch) return bodyMatch[1]
-    if (/<!DOCTYPE|<html[\s>]/i.test(raw)) {
-      return raw
-        .replace(/<!DOCTYPE[^>]*>/i, '')
-        .replace(/<head[\s\S]*?<\/head>/gi, '')
-        .replace(/<\/?html[^>]*>/gi, '')
-        .replace(/<\/?body[^>]*>/gi, '')
-    }
-    return raw
-  }
-
   const bindEditorListeners = useCallback(() => {
     const doc = getDoc()
     if (!doc?.body) return
 
-    const onInput = () => emitHtml()
+    listenersAbortRef.current?.abort()
+    const ac = new AbortController()
+    listenersAbortRef.current = ac
+    const { signal } = ac
+
+    const onInput = () => queueEmit()
     const onClick = (e) => {
-      const target = e.target
-      if (target?.tagName === 'IMG') {
+      const node = e.target
+      const el = node?.nodeType === 1 ? node : node?.parentElement
+      const anchor = el?.closest?.('a')
+      if (anchor) e.preventDefault()
+      if (el?.tagName === 'IMG') {
         e.preventDefault()
         clearImageSelection()
-        target.setAttribute('data-crm-selected', '1')
+        el.setAttribute('data-crm-selected', '1')
         // Outline comes from iframe CSS for [data-crm-selected] — do not write into style.
-        setSelectedImg(target)
+        setSelectedImg(el)
         return
       }
       clearImageSelection()
     }
 
-    doc.addEventListener('input', onInput)
-    doc.addEventListener('blur', onInput, true)
-    doc.addEventListener('click', onClick)
-    doc.addEventListener('mouseup', saveSelection)
-    doc.addEventListener('keyup', saveSelection)
-  }, [emitHtml])
+    doc.addEventListener('input', onInput, { signal })
+    doc.addEventListener('keyup', () => {
+      saveSelection()
+      queueEmit()
+    }, { signal })
+    doc.addEventListener('paste', onInput, { signal })
+    doc.addEventListener('cut', onInput, { signal })
+    doc.addEventListener('blur', onInput, { capture: true, signal })
+    doc.addEventListener('click', onClick, { signal })
+    doc.addEventListener('mouseup', saveSelection, { signal })
+
+    const observer = new MutationObserver(() => queueEmit())
+    observer.observe(doc.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+    signal.addEventListener('abort', () => observer.disconnect())
+  }, [queueEmit])
 
   const writeDocument = useCallback(
     (sourceHtml) => {
       const doc = getDoc()
       if (!doc) return
+      ignoreEmitUntilRef.current = Date.now() + 80
+      listenersAbortRef.current?.abort()
       const bodyHtml = extractEditableHtml(sourceHtml)
-      const wrapped = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <style>
+      const templateStyles = extractHeadStyles(sourceHtml)
+      const wrapped = [
+        '<!DOCTYPE html><html><head><meta charset="utf-8" />',
+        templateStyles,
+        `<style>
     html, body { margin: 0; padding: 24px; font-family: Arial, Helvetica, sans-serif; line-height: 1.55; color: #0f172a; background: #fff; }
-    body { min-height: 420px; outline: none; max-width: 720px; margin: 0 auto; }
-    img { max-width: 100%; height: auto; cursor: pointer; }
+    html, body { -webkit-user-modify: read-write; user-select: text !important; }
+    body { min-height: 420px; outline: none; max-width: 720px; margin: 0 auto; cursor: text; }
+    body, body * { pointer-events: auto !important; -webkit-user-select: text !important; user-select: text !important; }
+    img { max-width: 100%; height: auto; cursor: pointer; -webkit-user-select: none !important; user-select: none !important; }
     img[data-crm-img="1"] { width: 100%; }
     table { max-width: 100%; }
     img[data-crm-selected="1"] { outline: 2px solid #6366f1; outline-offset: 3px; }
-    a { color: #2563eb; }
+    a { color: #2563eb; cursor: text; }
     ::selection { background: #c7d2fe; }
-  </style>
-</head>
-<body contenteditable="true">${bodyHtml}</body>
-</html>`
+  </style></head>`,
+        '<body contenteditable="true" spellcheck="false">',
+        bodyHtml,
+        '</body></html>',
+      ].join('')
       doc.open()
       doc.write(wrapped)
       doc.close()
-      lastWritten.current = bodyHtml
+      const liveDoc = getDoc() || doc
+      if (liveDoc.body) {
+        liveDoc.body.setAttribute('contenteditable', 'true')
+        liveDoc.body.setAttribute('spellcheck', 'false')
+      }
+      sourceHtmlRef.current = sourceHtml
+      lastWritten.current = sourceHtml
       setReady(true)
       setSelectedImg(null)
+      bindEditorListeners()
+      beginIgnoreEmits()
     },
-    [],
+    [bindEditorListeners],
   )
 
+  const writeDocumentRef = useRef(writeDocument)
+  writeDocumentRef.current = writeDocument
+  const emitHtmlRef = useRef(emitHtml)
+  emitHtmlRef.current = emitHtml
+  const bindEditorListenersRef = useRef(bindEditorListeners)
+  bindEditorListenersRef.current = bindEditorListeners
+  const hasHtml = !!String(html || '').trim()
+
   useEffect(() => {
+    if (!hasHtml) return
     const iframe = iframeRef.current
     if (!iframe) return
     let cancelled = false
@@ -252,13 +302,13 @@ export default function EmailVisualHtmlEditor({
     const onLoad = () => {
       if (cancelled) return
       // First load is about:blank — write content once.
-      // Later loads come from doc.write(); only rebind listeners, never rewrite with stale props.
+      // Later loads come from doc.write(); rebind in case the document was replaced.
       if (!initializedRef.current) {
         initializedRef.current = true
-        writeDocument(htmlRef.current)
+        writeDocumentRef.current(htmlRef.current)
         return
       }
-      bindEditorListeners()
+      bindEditorListenersRef.current?.()
     }
 
     initializedRef.current = false
@@ -267,17 +317,23 @@ export default function EmailVisualHtmlEditor({
     iframe.src = 'about:blank'
     return () => {
       cancelled = true
+      const liveDoc = iframe.contentDocument
+      const liveHtml = String(liveDoc?.body?.innerHTML || '').trim()
+      if (liveHtml && initializedRef.current) {
+        emitHtmlRef.current({ force: true })
+      }
+      listenersAbortRef.current?.abort()
       iframe.removeEventListener('load', onLoad)
       initializedRef.current = false
     }
-  }, [writeDocument, bindEditorListeners])
+  }, [hasHtml])
 
   useEffect(() => {
-    const next = extractEditableHtml(html)
     if (!ready) return
-    if (next === lastWritten.current) return
-    // Ignore blur/input emits while we apply an external update (footer inject, etc.)
-    ignoreEmitUntilRef.current = Date.now() + 500
+    if (html === lastWritten.current) return
+    if (extractEditableHtml(html) === extractEditableHtml(lastWritten.current)) return
+    // External update (footer inject, HTML tab edits, etc.) — reload the canvas.
+    ignoreEmitUntilRef.current = Date.now() + 80
     writeDocument(html)
   }, [html, ready, writeDocument])
 
@@ -454,8 +510,6 @@ export default function EmailVisualHtmlEditor({
     setVideoOpen(false)
     toast.success({ title: 'Video added', message: 'Email-safe thumbnail link inserted.' })
   }
-
-  const hasHtml = !!String(html || '').trim()
 
   return (
     <div className={cn('flex flex-col gap-2 min-h-0 h-full w-full', className)}>
