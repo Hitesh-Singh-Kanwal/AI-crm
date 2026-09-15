@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
+import { CreateEventPurchaseDialog } from "@/app/settings/setup/components/EventsPurchases";
 import CustomerMembershipsTab from "@/components/membership/CustomerMembershipsTab";
 import CustomerWalletTab from "@/components/wallet/CustomerWalletTab";
 import CancelRefundDialog from "@/components/shared/CancelRefundDialog";
@@ -2743,6 +2744,25 @@ function PackagesTab({ customerID, locationID }) {
                   </div>
                 )}
 
+                {/* Payment plan / scheduled-flexible installment schedule */}
+                {plansMap[String(enr._id)] && (
+                  <div className="mt-4 border-t border-border pt-4">
+                    <PaymentSchedule
+                      plan={plansMap[String(enr._id)]}
+                      cpStatus={pkg.status}
+                      outstanding={outstanding}
+                      billingType={pkg.billingType}
+                      customerID={customerID}
+                      locationID={locationID}
+                      onPayInstallment={setPayInstallTarget}
+                      onChangeDate={setChangeInstallDateTarget}
+                      onAddInstallment={setAddInstallTarget}
+                      onSent={load}
+                      defaultOpen
+                    />
+                  </div>
+                )}
+
                 {/* Services with full session breakdown */}
                 {services.length > 0 && (
                   <div className="mt-4 border-t border-border pt-4">
@@ -2852,25 +2872,6 @@ function PackagesTab({ customerID, locationID }) {
                         );
                       })}
                     </div>
-                  </div>
-                )}
-
-                {/* Payment plan / scheduled-flexible installment schedule */}
-                {plansMap[String(enr._id)] && (
-                  <div className="mt-4 border-t border-border pt-4">
-                    <PaymentSchedule
-                      plan={plansMap[String(enr._id)]}
-                      cpStatus={pkg.status}
-                      outstanding={outstanding}
-                      billingType={pkg.billingType}
-                      customerID={customerID}
-                      locationID={locationID}
-                      onPayInstallment={setPayInstallTarget}
-                      onChangeDate={setChangeInstallDateTarget}
-                      onAddInstallment={setAddInstallTarget}
-                      onSent={load}
-                      defaultOpen
-                    />
                   </div>
                 )}
 
@@ -4257,6 +4258,23 @@ function EnrollmentsTab({
                       ))}
                     </div>
 
+                    {/* Payment plan / scheduled-flexible installments */}
+                    {plansMap[String(enr._id)] && (
+                      <PaymentSchedule
+                        plan={plansMap[String(enr._id)]}
+                        cpStatus={cp.status}
+                        outstanding={outstanding}
+                        billingType={cp.billingType}
+                        customerID={customerID}
+                        locationID={locationID}
+                        onPayInstallment={setPayInstallTarget}
+                        onChangeDate={setChangeInstallDateTarget}
+                        onAddInstallment={setAddInstallTarget}
+                        onSent={load}
+                        defaultOpen
+                      />
+                    )}
+
                     {/* Services */}
                     {services.length > 0 &&
                       (() => {
@@ -4781,21 +4799,6 @@ function EnrollmentsTab({
                         </div>
                       )}
 
-                    {/* Payment plan / scheduled-flexible installments */}
-                    {plansMap[String(enr._id)] && (
-                      <PaymentSchedule
-                        plan={plansMap[String(enr._id)]}
-                        cpStatus={cp.status}
-                        outstanding={outstanding}
-                        billingType={cp.billingType}
-                        customerID={customerID}
-                        locationID={locationID}
-                        onPayInstallment={setPayInstallTarget}
-                        onChangeDate={setChangeInstallDateTarget}
-                        onAddInstallment={setAddInstallTarget}
-                        onSent={load}
-                      />
-                    )}
 
                     <PaymentTimeline
                       customerID={customerID}
@@ -5942,12 +5945,13 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
   );
 }
 
-function PurchasesTab({ customerID }) {
+function PurchasesTab({ customerID, customerName }) {
   const [rows, setRows] = useState([]);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [createPurchaseOpen, setCreatePurchaseOpen] = useState(false);
   const toast = useToast();
 
   const [plans, setPlans] = useState([]);
@@ -6035,13 +6039,22 @@ function PurchasesTab({ customerID }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-[13px] text-muted-foreground">
-        {rows.length} purchase{rows.length !== 1 ? "s" : ""}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[13px] text-muted-foreground">
+          {rows.length} purchase{rows.length !== 1 ? "s" : ""}
+        </p>
+        <Button
+          size="sm"
+          className="h-8 text-[12px]"
+          onClick={() => setCreatePurchaseOpen(true)}
+        >
+          <Plus className="h-3.5 w-3.5 mr-1.5" /> Enroll
+        </Button>
+      </div>
 
       {rows.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          No events or products yet. Create one from Setup → “Create Events &amp; Products”.
+          No events or products yet. Click "Enroll" to create one.
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-x-auto">
@@ -6223,8 +6236,19 @@ function PurchasesTab({ customerID }) {
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">
-        Card &amp; wallet payments: use “Create Events &amp; Products”, or record them from Payment History.
+        Card &amp; wallet payments: use “Enroll”, or record them from Payment History.
       </p>
+
+      <CreateEventPurchaseDialog
+        open={createPurchaseOpen}
+        onClose={() => setCreatePurchaseOpen(false)}
+        initialCustomerID={customerID}
+        initialCustomerName={customerName}
+        onCreated={() => {
+          toast.success("Purchase created");
+          load();
+        }}
+      />
     </div>
   );
 }
@@ -8159,9 +8183,6 @@ function SectionIndex({ section, summary, onOpen }) {
 
   // Live counts so the index says something useful before you click into it.
   const stateFor = (viewId) => {
-    const activeEnrollments = summary.enrollments.filter(
-      (e) => e.status !== "cancelled" && e.package?.status !== "cancelled",
-    );
     const activeMemberships = summary.memberships.filter(
       (m) => m.status !== "cancelled" && m.status !== "expired",
     );
@@ -8171,23 +8192,40 @@ function SectionIndex({ section, summary, onOpen }) {
         !String(deriveEventStatus(ev)).startsWith("cancelled"),
     );
     switch (viewId) {
-      case "active-enrollments":
+      case "active-enrollments": {
+        const statusCounts = summary.enrollments.reduce((acc, e) => {
+          const status = e.package?.status ?? e.status ?? "unknown";
+          acc[status] = (acc[status] || 0) + 1;
+          return acc;
+        }, {});
+        const breakdown = Object.entries(statusCounts)
+          .map(([status, count]) => `${count} ${status}`)
+          .join(" · ");
         return {
-          value: `${activeEnrollments.length} active`,
-          hint: activeEnrollments.length ? "Choose an enrollment" : "None yet",
-          children: activeEnrollments.map((enr) => ({
-            id: String(enr._id),
-            title: enr.package?.packageName || enrollmentDisplayName(enr),
-            sub: `Purchased ${formatDate(enr.package?.purchaseDate ?? enr.createdAt)}`,
-            value:
-              Number(enr.package?.dueAmount ?? 0) > 0
-                ? `${money(enr.package.dueAmount)} due`
-                : "Paid in full",
-            hint: enr.package?.status ?? enr.status,
-            open: () =>
-              onOpen("active-enrollments", { enrollmentID: String(enr._id) }),
-          })),
+          value: `${summary.enrollments.length} total`,
+          hint: summary.enrollments.length ? breakdown : "None yet",
+          children: summary.enrollments.map((enr) => {
+            const pkg = enr.package;
+            const due =
+              pkg?.dueAmount != null
+                ? Number(pkg.dueAmount)
+                : Math.max(
+                    0,
+                    Number(pkg?.totalPaid ?? pkg?.contractedValue ?? 0) -
+                      Number(pkg?.amountCollected || 0),
+                  );
+            return {
+              id: String(enr._id),
+              title: pkg?.packageName || enrollmentDisplayName(enr),
+              sub: `Purchased ${formatDate(pkg?.purchaseDate ?? enr.createdAt)}`,
+              value: due > 0 ? `${money(due)} due` : "Paid in full",
+              hint: pkg?.status ?? enr.status,
+              open: () =>
+                onOpen("active-enrollments", { enrollmentID: String(enr._id) }),
+            };
+          }),
         };
+      }
       case "memberships":
         return {
           value: `${activeMemberships.length} active`,
@@ -8332,8 +8370,38 @@ function MetricCard({ label, value, hint, accent = "text-foreground", children }
   );
 }
 
-function OverviewSection({ customer, locations, summary, onOpen }) {
+function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
   const now = Date.now();
+  const toast = useToast();
+
+  // Quick-save for just the callback date, right from the metric tile —
+  // mirrors saveCallbackDate() in ProfileTab so this and the full profile
+  // form never drift out of sync.
+  const [callbackDateDraft, setCallbackDateDraft] = useState(
+    customer.callbackDate ? String(customer.callbackDate).slice(0, 10) : "",
+  );
+  const [savingCallbackDate, setSavingCallbackDate] = useState(false);
+  useEffect(() => {
+    setCallbackDateDraft(
+      customer.callbackDate ? String(customer.callbackDate).slice(0, 10) : "",
+    );
+  }, [customer?._id, customer?.callbackDate]);
+  async function saveCallbackDate() {
+    if (!customer?._id) return;
+    setSavingCallbackDate(true);
+    const res = await api.put(`/api/customer/${customer._id}`, {
+      callbackDate: callbackDateDraft || null,
+    });
+    if (res.success) {
+      toast.success("Callback date updated.");
+      onUpdated?.();
+    } else {
+      toast.error(res.error || "Unable to update callback date.");
+    }
+    setSavingCallbackDate(false);
+  }
+  const callbackOverdue =
+    customer.callbackDate && new Date(customer.callbackDate).getTime() <= now;
 
   // Outstanding money, broken down by what it's owed against — the same
   // derivation the enrollment cards use, so the two never disagree.
@@ -8348,7 +8416,8 @@ function OverviewSection({ customer, locations, summary, onOpen }) {
             ? Number(pkg.dueAmount)
             : Math.max(
                 0,
-                Number(pkg.totalPaid || 0) - Number(pkg.amountCollected || 0),
+                Number(pkg.totalPaid ?? pkg.contractedValue ?? 0) -
+                  Number(pkg.amountCollected || 0),
               );
         return due > 0
           ? {
@@ -8508,6 +8577,56 @@ function OverviewSection({ customer, locations, summary, onOpen }) {
             </LinkButton>
           }
         >
+          <div
+            className={`mb-4 rounded-xl border p-3.5 ${
+              callbackOverdue
+                ? "border-warning/30 bg-warning/10"
+                : "border-border bg-muted/30"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Callback date
+              </p>
+              {callbackOverdue && (
+                <span className="text-[9px] font-bold uppercase tracking-wide text-warning">
+                  Overdue
+                </span>
+              )}
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <span
+                className={`text-[15px] font-semibold ${callbackOverdue ? "text-warning" : "text-foreground"}`}
+              >
+                {customer.callbackDate ? formatDate(customer.callbackDate) : "Not set"}
+              </span>
+              <div className="ml-auto flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={callbackDateDraft}
+                  onChange={(e) => setCallbackDateDraft(e.target.value)}
+                  className="h-8 rounded-lg border border-border bg-background px-2 text-[12px] outline-none focus:border-primary"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={saveCallbackDate}
+                  disabled={
+                    savingCallbackDate ||
+                    callbackDateDraft ===
+                      (customer.callbackDate
+                        ? String(customer.callbackDate).slice(0, 10)
+                        : "")
+                  }
+                  className="h-8 shrink-0 px-2.5 text-[12px]"
+                >
+                  {savingCallbackDate ? "..." : "Save"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Phone">{customer.phoneNumber || "—"}</Field>
             <Field label="Email">{customer.email || "—"}</Field>
@@ -8524,9 +8643,6 @@ function OverviewSection({ customer, locations, summary, onOpen }) {
               >
                 {customerLifecycleLabel(customer.lifecycleStatus)}
               </StatusColorBadge>
-            </Field>
-            <Field label="Follow-up">
-              {customer.callbackDate ? formatDate(customer.callbackDate) : "None set"}
             </Field>
           </div>
           {(customer.tags?.length || customer.autoTags?.length) > 0 && (
@@ -8649,11 +8765,29 @@ function OverviewSection({ customer, locations, summary, onOpen }) {
               <LinkButton onClick={() => onOpen("members")}>Manage</LinkButton>
             }
           >
-            <p className="text-[12px] text-muted-foreground">
-              {memberCount > 0
-                ? `${memberCount} connected member${memberCount === 1 ? "" : "s"}.`
-                : "No connected members yet."}
-            </p>
+            {memberCount > 0 ? (
+              <div className="space-y-2.5">
+                {customer.members.map((m) => (
+                  <div key={m._id} className="flex items-center gap-2.5">
+                    <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                      {(m.name || "?").charAt(0).toUpperCase()}
+                    </div>
+                    <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
+                      {m.name}
+                    </span>
+                    {m.relationship && (
+                      <span className="text-[11px] capitalize text-muted-foreground">
+                        · {m.relationship}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[12px] text-muted-foreground">
+                No connected members yet.
+              </p>
+            )}
           </Panel>
         </div>
       </div>
@@ -8885,7 +9019,12 @@ export default function CustomerDetailPage() {
       />
     ),
     wallet: () => <CustomerWalletTab customerID={customer._id} />,
-    purchases: () => <PurchasesTab customerID={customer._id} />,
+    purchases: () => (
+      <PurchasesTab
+        customerID={customer._id}
+        customerName={customer.name || customer.email || ""}
+      />
+    ),
     payments: () => <PaymentsTab customerID={customer._id} />,
     lessons: () => <LessonsTab customer={customer} />,
     history: () => <HistoryTab customer={customer} />,
@@ -8987,6 +9126,7 @@ export default function CustomerDetailPage() {
             locations={locations}
             summary={summary}
             onOpen={openView}
+            onUpdated={load}
           />
         ) : section.id === "communication" ? (
           <CommunicationSection customer={customer} />
