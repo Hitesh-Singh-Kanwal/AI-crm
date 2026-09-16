@@ -1418,14 +1418,15 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
   const [open, setOpen] = useState(false);
   const [fetchedPayments, setFetchedPayments] = useState(null); // null = not yet loaded
   const [loading, setLoading] = useState(false);
+  const [syncingId, setSyncingId] = useState(null);
   const toast = useToast();
   // A caller that already has the customer's full payment list (e.g. the
   // Events & Products tab) passes it pre-filtered — skips the redundant
   // per-item round trip and stays in sync with that list's own reloads.
   const payments = preloadedPayments ?? fetchedPayments;
 
-  async function load() {
-    if (preloadedPayments || fetchedPayments !== null) return; // already have them
+  async function load(force = false) {
+    if (preloadedPayments || (!force && fetchedPayments !== null)) return; // already have them
     setLoading(true);
     const res = await api.get(
       `/api/payment/customer/${customerID}?enrollmentID=${enrollmentID}&limit=100`,
@@ -1438,6 +1439,28 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
   function toggle() {
     if (!open) load();
     setOpen((v) => !v);
+  }
+
+  // Manual backstop for a payment stuck "pending" because the Stripe webhook
+  // never arrived (wrong URL, local dev with no tunnel, a dropped delivery) —
+  // asks the backend to check Stripe directly and settle it if the money is
+  // actually already there.
+  async function syncPayment(p) {
+    setSyncingId(p._id);
+    const res = await api.post(`/api/payment/${p._id}/sync`);
+    setSyncingId(null);
+    if (!res.success) {
+      toast.error(res.error || "Couldn't check Stripe status.");
+      return;
+    }
+    if (res.data?.status === "approved") {
+      toast.success("Payment confirmed — it had already gone through on Stripe.");
+    } else if (res.data?.status === "declined") {
+      toast.error("Stripe shows this payment failed or was cancelled.");
+    } else {
+      toast.success("Stripe still shows this as processing — try again shortly.");
+    }
+    load(true);
   }
 
   const typeLabel = {
@@ -1584,6 +1607,16 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
                               >
                                 {p.status}
                               </span>
+                            )}
+                            {p.status === "pending" && p.method !== "cash" && (
+                              <button
+                                type="button"
+                                disabled={syncingId === p._id}
+                                onClick={() => syncPayment(p)}
+                                className="text-[10px] font-medium text-muted-foreground hover:text-foreground underline underline-offset-2 disabled:opacity-50"
+                              >
+                                {syncingId === p._id ? "Checking…" : "Check status"}
+                              </button>
                             )}
                           </div>
                         </div>
