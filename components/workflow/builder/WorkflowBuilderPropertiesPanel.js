@@ -30,7 +30,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { CUSTOMER_LIFECYCLE_STATUS_OPTIONS } from '@/lib/customer-lifecycle'
+import { useCustomerLifecycleStatuses } from '@/lib/use-customer-lifecycle'
 
 function Field({ label, hint, children, className }) {
   return (
@@ -138,12 +138,14 @@ function TriggerFields({ config, onChange }) {
   )
 }
 
-function ExitLogicFields({ config, onChange, entityType = 'lead' }) {
+function ExitLogicFields({ config, onChange, entityType = 'lead', statuses = [] }) {
   const isCustomer = entityType === 'customer'
   const exitRuleStages = Array.isArray(config.exitRuleStages)
     ? config.exitRuleStages.slice(0, 1)
     : []
-  const stageOptions = isCustomer ? CUSTOMER_LIFECYCLE_STATUS_OPTIONS : undefined
+  const stageOptions = isCustomer
+    ? statuses.map((s) => ({ value: s.value, label: s.label }))
+    : undefined
   const allowedValues = new Set(
     (stageOptions || []).map((opt) => String(opt.value || opt)),
   )
@@ -394,12 +396,19 @@ function UnsupportedNote() {
   )
 }
 
-function NodeConfigFields({ paletteType, category, config, onChange, options, entityType = 'lead' }) {
+function NodeConfigFields({ paletteType, category, config, onChange, options, entityType = 'lead', statuses }) {
   if (category === 'trigger' || paletteType === 'contact') {
     return <TriggerFields config={config} onChange={onChange} />
   }
   if (paletteType === 'exit_logic' || category === 'exit') {
-    return <ExitLogicFields config={config} onChange={onChange} entityType={entityType} />
+    return (
+      <ExitLogicFields
+        config={config}
+        onChange={onChange}
+        entityType={entityType}
+        statuses={statuses}
+      />
+    )
   }
   switch (paletteType) {
     case 'send_email':
@@ -452,6 +461,7 @@ function CollapsedRail({ selectedNode, onExpand }) {
 }
 
 export default function WorkflowBuilderPropertiesPanel() {
+  const { statuses } = useCustomerLifecycleStatuses()
   const nodes = useWorkflowBuilderStore((s) => s.nodes)
   const selectedNodeId = useWorkflowBuilderStore((s) => s.selectedNodeId)
   const propertiesPanelCollapsed = useWorkflowBuilderStore((s) => s.propertiesPanelCollapsed)
@@ -545,7 +555,11 @@ export default function WorkflowBuilderPropertiesPanel() {
                         </span>
                         <div className="mt-1.5 truncate text-[15px] font-bold text-foreground">{selectedNode.data.label}</div>
                         <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
-                          {getNodeSummary(selectedNode.data.paletteType, selectedNode.data.config)}
+                          {getNodeSummary(
+                            selectedNode.data.paletteType,
+                            selectedNode.data.config,
+                            statuses,
+                          )}
                         </p>
                       </div>
                     </div>
@@ -574,6 +588,7 @@ export default function WorkflowBuilderPropertiesPanel() {
                         onChange={(partial) => updateNodeConfig(selectedNode.id, partial)}
                         options={options}
                         entityType={workflowEntityType}
+                        statuses={statuses}
                       />
                     </div>
                   </div>

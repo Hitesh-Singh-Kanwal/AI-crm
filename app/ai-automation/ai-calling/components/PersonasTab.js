@@ -24,10 +24,13 @@ import {
   VAPI_ELEVENLABS_VOICE_MODEL_OPTIONS,
   VAPI_ELEVENLABS_SPEED_MAX,
   VAPI_ELEVENLABS_SPEED_MIN,
-  VAPI_LLM_OPTIONS,
   clampVapiElevenLabsSpeedForUi,
   clampVapiLlmTemperature,
+  getVapiLlmOption,
+  vapiLlmLabel,
+  vapiLlmSupportsTemperature,
 } from '@/lib/vapiVoice'
+import VapiLlmPicker from './VapiLlmPicker'
 import { hasLocationSelection, initLocationID, locationBadgeLabel, toLocationPayload } from './locationScope'
 
 const API_BASE = (
@@ -377,6 +380,7 @@ export default function PersonasTab({
               const p = { ...persona, ...overrides[persona._id] }
               const shared = isSharedPersona(p)
               const locLabel = !shared ? locationBadgeLabel(p) : null
+              const llmMeta = getVapiLlmOption(p.llmModel || 'gpt-4o-mini')
               return (
               <Card
                 key={p._id}
@@ -519,13 +523,26 @@ export default function PersonasTab({
 
                   {/* LLM settings — shown for all personas */}
                   <div className="rounded-lg bg-muted/30 border border-border/40 px-3 py-2 space-y-0.5">
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center justify-between gap-2 text-xs">
                       <span className="text-muted-foreground">LLM</span>
-                      <span className="font-mono text-foreground">{p.llmModel || 'gpt-4o-mini'}</span>
+                      <span className="text-right text-foreground">
+                        {vapiLlmLabel(p.llmModel)}
+                        {llmMeta?.price ? (
+                          <span className="block text-[10px] text-muted-foreground">
+                            {llmMeta.price.replace(' per 1M tokens', '')}
+                            {' · '}
+                            {llmMeta.latency}
+                          </span>
+                        ) : null}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Temperature</span>
-                      <span className="font-mono text-foreground">{typeof p.temperature === 'number' ? p.temperature.toFixed(2) : '0.65'}</span>
+                      <span className="font-mono text-foreground">
+                        {vapiLlmSupportsTemperature(p.llmModel)
+                          ? (typeof p.temperature === 'number' ? p.temperature.toFixed(2) : '0.65')
+                          : 'n/a'}
+                      </span>
                     </div>
                     {p.provider === '11labs' && (
                       <div className="flex items-center justify-between text-xs">
@@ -714,22 +731,20 @@ export default function PersonasTab({
                 {/* LLM settings — all providers */}
                 <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-3">
                   <p className="text-xs font-semibold text-foreground">LLM settings</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    OpenAI models Vapi supports for live calls. Newer models can be stronger but slower or more expensive.
+                  </p>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-foreground">Model</label>
-                    <select
+                    <VapiLlmPicker
                       value={llmModel}
-                      onChange={(e) => setLlmModel(e.target.value)}
+                      onChange={setLlmModel}
                       disabled={modalSaving}
-                      className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs font-mono"
-                    >
-                      {VAPI_LLM_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-foreground">
-                      Temperature: {Number(temperature).toFixed(2)}
+                      Temperature: {vapiLlmSupportsTemperature(llmModel) ? Number(temperature).toFixed(2) : 'n/a'}
                     </label>
                     <input
                       type="range"
@@ -738,13 +753,18 @@ export default function PersonasTab({
                       step={0.05}
                       value={temperature}
                       onChange={(e) => setTemperature(Number(e.target.value))}
-                      disabled={modalSaving}
-                      className="w-full accent-primary"
+                      disabled={modalSaving || !vapiLlmSupportsTemperature(llmModel)}
+                      className="w-full accent-primary disabled:opacity-40"
                     />
                     <div className="flex justify-between text-[10px] text-muted-foreground">
                       <span>0 — focused</span>
                       <span>1 — creative</span>
                     </div>
+                    {!vapiLlmSupportsTemperature(llmModel) && (
+                      <p className="text-[10px] text-muted-foreground">
+                        This model ignores temperature (reasoning family).
+                      </p>
+                    )}
                   </div>
                 </div>
 

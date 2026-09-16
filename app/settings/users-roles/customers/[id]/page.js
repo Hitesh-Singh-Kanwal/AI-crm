@@ -77,6 +77,7 @@ import {
   customerLifecycleLabel,
   CUSTOMER_LIFECYCLE_STATUS_OPTIONS,
 } from "@/lib/customer-lifecycle";
+import { useCustomerLifecycleStatuses } from "@/lib/use-customer-lifecycle";
 import StatusColorBadge from "@/components/shared/StatusColorBadge";
 import { formatReasonLabel } from "@/lib/dynamic-list-normalize";
 import { extractLeadReasonsList } from "@/lib/workflow-normalize";
@@ -452,6 +453,10 @@ function ProfileTab({ customer, locations, onUpdated }) {
   // Holds the refused payload + violations while the admin decides whether to override.
   const [overridePrompt, setOverridePrompt] = useState(null);
   const [leadReasons, setLeadReasons] = useState([]);
+  const { statuses: lifecycleStatuses } = useCustomerLifecycleStatuses();
+  const lifecycleOptions = lifecycleStatuses.length
+    ? lifecycleStatuses.map((s) => ({ value: s.value, label: s.label }))
+    : CUSTOMER_LIFECYCLE_STATUS_OPTIONS;
   // Quick-save for just the callback date, without entering full profile
   // edit mode — mirrors saveCallbackDate() in app/leads/components/LeadsDialog.js
   // so Customers gets the same "update the follow-up reminder in one click"
@@ -582,7 +587,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
       setOverridePrompt({
         payload,
         violations: res.errorData.violations || [],
-        statusLabel: customerLifecycleLabel(payload.lifecycleStatus),
+        statusLabel: customerLifecycleLabel(payload.lifecycleStatus, lifecycleStatuses),
       });
       return false;
     }
@@ -745,7 +750,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
                       }
                       className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary"
                     >
-                      {CUSTOMER_LIFECYCLE_STATUS_OPTIONS.map((opt) => (
+                      {lifecycleOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>
                           {opt.label}
                         </option>
@@ -936,10 +941,16 @@ function ProfileTab({ customer, locations, onUpdated }) {
                       Lifecycle status
                     </p>
                     <StatusColorBadge
-                      color={customerLifecycleColor(customer.lifecycleStatus)}
+                      color={customerLifecycleColor(
+                        customer.lifecycleStatus,
+                        lifecycleStatuses
+                      )}
                       className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                     >
-                      {customerLifecycleLabel(customer.lifecycleStatus)}
+                      {customerLifecycleLabel(
+                        customer.lifecycleStatus,
+                        lifecycleStatuses
+                      )}
                     </StatusColorBadge>
                   </div>
                   <div>
@@ -8558,6 +8569,7 @@ function MetricCard({ label, value, hint, accent = "text-foreground", children }
 function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
   const now = Date.now();
   const toast = useToast();
+  const { statuses: lifecycleStatuses } = useCustomerLifecycleStatuses();
 
   // Quick-save for just the callback date, right from the metric tile —
   // mirrors saveCallbackDate() in ProfileTab so this and the full profile
@@ -8735,7 +8747,7 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
           value={sinceDate ? formatDate(sinceDate) : "—"}
           hint={
             years != null
-              ? `${years} year${years === 1 ? "" : "s"} · ${customerLifecycleLabel(customer.lifecycleStatus).toLowerCase()}`
+              ? `${years} year${years === 1 ? "" : "s"} · ${customerLifecycleLabel(customer.lifecycleStatus, lifecycleStatuses).toLowerCase()}`
               : undefined
           }
         />
@@ -8820,10 +8832,16 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
             </Field>
             <Field label="Status">
               <StatusColorBadge
-                color={customerLifecycleColor(customer.lifecycleStatus)}
+                color={customerLifecycleColor(
+                  customer.lifecycleStatus,
+                  lifecycleStatuses
+                )}
                 className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
               >
-                {customerLifecycleLabel(customer.lifecycleStatus)}
+                {customerLifecycleLabel(
+                  customer.lifecycleStatus,
+                  lifecycleStatuses
+                )}
               </StatusColorBadge>
             </Field>
           </div>
@@ -9066,6 +9084,7 @@ function CommunicationSection({ customer }) {
 export default function CustomerDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { statuses: lifecycleStatuses } = useCustomerLifecycleStatuses();
   const [customer, setCustomer] = useState(null);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -9210,10 +9229,16 @@ export default function CustomerDetailPage() {
                   {customer.name}
                 </h1>
                 <StatusColorBadge
-                  color={customerLifecycleColor(customer.lifecycleStatus)}
+                  color={customerLifecycleColor(
+                    customer.lifecycleStatus,
+                    lifecycleStatuses
+                  )}
                   className="shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                 >
-                  {customerLifecycleLabel(customer.lifecycleStatus)}
+                  {customerLifecycleLabel(
+                    customer.lifecycleStatus,
+                    lifecycleStatuses
+                  )}
                 </StatusColorBadge>
               </div>
               <p className="mt-1 text-[12px] text-muted-foreground truncate">

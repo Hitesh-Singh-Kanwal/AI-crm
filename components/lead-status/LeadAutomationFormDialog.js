@@ -100,8 +100,17 @@ function createEmptyForm(statuses = []) {
   }
 }
 
+function knownStageKeySet(statuses = []) {
+  return new Set(
+    (statuses || [])
+      .map((s) => String(s.key || s.value || '').trim().toLowerCase())
+      .filter(Boolean)
+  )
+}
+
 function formFromRule(rule, statuses) {
   if (!rule) return createEmptyForm(statuses)
+  const knownKeys = knownStageKeySet(statuses)
   const conditions = hydrateConditionJoins(
     Array.isArray(rule.conditions)
       ? rule.conditions.map((c) => {
@@ -110,7 +119,9 @@ function formFromRule(rule, statuses) {
             next.type === CONDITION_TYPES.CURRENT_STAGE_IS ||
             next.type === CONDITION_TYPES.CURRENT_STAGE_IS_NOT
           ) {
-            next.stageKeys = resolveStageKeys(next)
+            next.stageKeys = resolveStageKeys(next).filter((key) =>
+              knownKeys.has(String(key).trim().toLowerCase())
+            )
           }
           if (
             next.type === CONDITION_TYPES.OPT_OUT_EVIDENCE_IS ||
@@ -438,6 +449,20 @@ export default function LeadAutomationFormDialog({
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }))
   const conditions = form.conditions || []
   const activeStatuses = statuses.filter((s) => s.isActive !== false)
+  const pickerStatuses = (() => {
+    const byKey = new Map(activeStatuses.map((s) => [s.key, s]))
+    const ensure = (key) => {
+      const k = String(key || '').trim()
+      if (!k || byKey.has(k)) return
+      const found = statuses.find((s) => s.key === k)
+      if (found) byKey.set(k, found)
+    }
+    ensure(form.actionStageKey)
+    for (const c of conditions) {
+      for (const key of resolveStageKeys(c)) ensure(key)
+    }
+    return [...byKey.values()]
+  })()
   const conditionTypeOptions = catalog.conditions.length
     ? catalog.conditions
     : [{ type: CONDITION_TYPES.EVENT_OCCURRED, label: 'Event has happened' }]
@@ -598,7 +623,9 @@ export default function LeadAutomationFormDialog({
             c.type === CONDITION_TYPES.CURRENT_STAGE_IS ||
             c.type === CONDITION_TYPES.CURRENT_STAGE_IS_NOT
           ) {
-            const stageKeys = resolveStageKeys(c)
+            const stageKeys = resolveStageKeys(c).filter((key) =>
+              knownStageKeySet(statuses).has(String(key).trim().toLowerCase())
+            )
             return { ...c, stageKeys, stageKey: stageKeys[0] }
           }
           return c
@@ -715,7 +742,7 @@ export default function LeadAutomationFormDialog({
                         cond={cond}
                         index={index}
                         saving={saving}
-                        activeStatuses={activeStatuses}
+                        activeStatuses={pickerStatuses}
                         catalog={catalog}
                         updateCondition={updateCondition}
                       />
@@ -744,9 +771,9 @@ export default function LeadAutomationFormDialog({
                 className={selectClass}
               >
                 <option value="">Select stage…</option>
-                {activeStatuses.map((s) => (
+                {pickerStatuses.map((s) => (
                   <option key={s.key} value={s.key}>
-                    {s.name}
+                    {s.name}{s.isActive === false ? ' (inactive)' : ''}
                   </option>
                 ))}
               </select>

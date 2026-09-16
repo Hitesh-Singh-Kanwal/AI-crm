@@ -16,6 +16,7 @@ import {
   VAPI_ELEVENLABS_VOICE_DEFAULTS,
   clampVapiElevenLabsSpeedForUi,
   clampVapiLlmTemperature,
+  vapiLlmLabel,
 } from '@/lib/vapiVoice'
 import {
   BUILTIN_BACKGROUND_SOUNDS,
@@ -980,7 +981,7 @@ export default function MakeCallsPage() {
                                 <div className="mt-2 space-y-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="inline-flex items-center rounded-md bg-muted/60 border border-border/50 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-                                      {persona.llmModel || 'gpt-4o-mini'}
+                                      {vapiLlmLabel(persona.llmModel)}
                                     </span>
                                     <span className="inline-flex items-center rounded-md bg-muted/60 border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                                       temp {typeof persona.temperature === 'number' ? persona.temperature.toFixed(2) : '0.65'}
@@ -1136,7 +1137,7 @@ export default function MakeCallsPage() {
                     </p>
                     <p>
                       <span className="font-medium text-foreground">LLM (Vapi):</span>{' '}
-                      {selectedAssistant.llmModel || 'gpt-4o-mini'}
+                      {vapiLlmLabel(selectedAssistant.llmModel)}
                     </p>
                     <p>
                       <span className="font-medium text-foreground">Temperature:</span>{' '}
@@ -1315,7 +1316,7 @@ export default function MakeCallsPage() {
                         <div className="pt-1 space-y-0.5">
                           <div className="flex items-center justify-between text-[11px]">
                             <span className="text-muted-foreground">LLM</span>
-                            <span className="font-mono text-foreground">{selectedPersona.llmModel || 'gpt-4o-mini'}</span>
+                            <span className="text-foreground">{vapiLlmLabel(selectedPersona.llmModel)}</span>
                           </div>
                           <div className="flex items-center justify-between text-[11px]">
                             <span className="text-muted-foreground">Temperature</span>
@@ -1521,8 +1522,8 @@ export default function MakeCallsPage() {
                   <p className="text-[11px] text-muted-foreground">
                     <span className="font-medium text-foreground">LLM (Vapi):</span>{' '}
                     {setupMode === 'assistant'
-                      ? selectedAssistant?.llmModel || 'gpt-4o-mini'
-                      : selectedPersona?.llmModel || 'gpt-4o-mini'}
+                      ? vapiLlmLabel(selectedAssistant?.llmModel)
+                      : vapiLlmLabel(selectedPersona?.llmModel)}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     <span className="font-medium text-foreground">Temperature:</span>{' '}
