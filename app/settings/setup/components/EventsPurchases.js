@@ -573,9 +573,9 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const [planFreq, setPlanFreq] = useState('monthly')
   const [planStart, setPlanStart] = useState(todayISO())
   // flexible
-  const [flexMode, setFlexMode] = useState('single') // single | custom
-  const [flexDueDate, setFlexDueDate] = useState(todayISO())
-  const [flexRows, setFlexRows] = useState([{ dueDate: todayISO(), amount: '' }])
+  const [flexInitialAmount, setFlexInitialAmount] = useState('0')
+  const [flexInitialDate, setFlexInitialDate] = useState(todayISO())
+  const [flexFuturePayments, setFlexFuturePayments] = useState([{ _key: 'fp-0', dueDate: '', amount: '' }])
 
   useEffect(() => {
     if (!open) return
@@ -587,7 +587,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     setUseWallet(false); setWalletAmount(''); setWalletBalance(null)
     setTipEnabled(false); setTipTeacherID(''); setTipAmount('')
     setPlanCount('3'); setPlanFreq('monthly'); setPlanStart(todayISO())
-    setFlexMode('single'); setFlexDueDate(todayISO()); setFlexRows([{ dueDate: todayISO(), amount: '' }])
+    setFlexInitialAmount('0'); setFlexInitialDate(todayISO()); setFlexFuturePayments([{ _key: 'fp-0', dueDate: '', amount: '' }])
     setCustomers([])
     Promise.all([
       api.get('/api/product?limit=200&isActive=true'),
@@ -648,8 +648,48 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
 
   const planCountN = Math.max(1, Number(planCount) || 1)
   const perInstallment = payable / planCountN
-  const flexTotal = flexRows.reduce((s, r) => s + (Number(r.amount) || 0), 0)
-  const flexBalanced = Math.abs(flexTotal - payable) < 0.01
+
+  const flexInitialAmountN = Number(flexInitialAmount || 0)
+  const flexFutureTotal = flexFuturePayments.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+  const flexAmountLeftToSchedule = payable - flexInitialAmountN - flexFutureTotal
+  const flexBalanced = Math.abs(flexAmountLeftToSchedule) < 0.01
+
+  // Adding/removing a row (or changing the initial payment) changes how many
+  // ways the remaining balance splits, so re-spread it evenly across all rows
+  // rather than leaving a stray $0 box or a stale amount.
+  function splitFlexEvenly(rows, remaining) {
+    const base = rows.length ? Math.floor((remaining / rows.length) * 100) / 100 : 0
+    return rows.map((r, i) => ({
+      ...r,
+      amount: (i === rows.length - 1 ? Number((remaining - base * (rows.length - 1)).toFixed(2)) : base).toFixed(2),
+    }))
+  }
+  function updateFlexInitialAmount(value) {
+    setFlexInitialAmount(value)
+    setFlexFuturePayments((prev) => splitFlexEvenly(prev, payable - (Number(value) || 0)))
+  }
+  function addFlexFuturePayment() {
+    setFlexFuturePayments((prev) => {
+      const rows = [...prev, { _key: String(Date.now() + Math.random()), dueDate: '', amount: '' }]
+      return splitFlexEvenly(rows, payable - flexInitialAmountN)
+    })
+  }
+  function updateFlexFuturePayment(key, field, value) {
+    setFlexFuturePayments((prev) => {
+      if (field !== 'amount') return prev.map((r) => (r._key === key ? { ...r, [field]: value } : r))
+      const remaining = payable - flexInitialAmountN
+      const leftover = Math.max(0, remaining - (Number(value) || 0))
+      const otherRows = prev.filter((r) => r._key !== key)
+      const splitOthers = splitFlexEvenly(otherRows, leftover)
+      return prev.map((r) => (r._key === key ? { ...r, amount: value } : splitOthers.find((o) => o._key === r._key)))
+    })
+  }
+  function removeFlexFuturePayment(key) {
+    setFlexFuturePayments((prev) => {
+      const rows = prev.filter((r) => r._key !== key)
+      return splitFlexEvenly(rows, payable - flexInitialAmountN)
+    })
+  }
 
   async function submit() {
     if (!customer) { toast.error('Select a student or customer'); return }
@@ -695,13 +735,18 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         let billing
         if (isPlan) {
           billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: payMethod, collectDate }
-        } else if (flexMode === 'custom') {
-          billing = { customInstallments: flexRows.filter((r) => r.dueDate && Number(r.amount) > 0).map((r) => ({ dueDate: r.dueDate, amount: Number(r.amount) })), method: payMethod, collectDate }
         } else {
-          billing = { dueDate: flexDueDate, method: payMethod, collectDate }
+          const scheduleRows = [
+            ...(flexInitialAmountN > 0 ? [{ dueDate: flexInitialDate, amount: flexInitialAmountN }] : []),
+            ...flexFuturePayments
+              .filter((r) => r.dueDate && Number(r.amount) > 0)
+              .map((r) => ({ dueDate: r.dueDate, amount: Number(r.amount) })),
+          ]
+          billing = { customInstallments: scheduleRows, method: payMethod, collectDate }
         }
+        const effectiveCollectNow = isPlan ? collectNow : flexInitialAmountN > 0 && collectNow
         const planRes = await api.post('/api/payment-plan/purchase', {
-          customerID: customer._id, purchaseID: purchase._id, collectNow, billing,
+          customerID: customer._id, purchaseID: purchase._id, collectNow: effectiveCollectNow, billing,
         })
         if (!planRes.success) toast.error('Purchase saved, but the payment plan failed', { description: planRes.error })
         else if (planRes.data?.checkoutUrl) { window.open(planRes.data.checkoutUrl, '_blank', 'noopener'); toast.success('Plan created — first installment checkout opened') }
@@ -944,47 +989,67 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
               )}
 
               {isFlex && (
-                <>
-                  <div className="inline-flex rounded-lg border border-border bg-background p-0.5 w-fit">
-                    {[{ v: 'single', label: 'Single due date' }, { v: 'custom', label: 'Custom schedule' }].map((o) => (
-                      <button key={o.v} type="button" onClick={() => setFlexMode(o.v)}
-                        className={['h-7 px-3 rounded-md text-[12px] font-medium', flexMode === o.v ? 'bg-brand text-brand-foreground' : 'text-muted-foreground'].join(' ')}>
-                        {o.label}
-                      </button>
-                    ))}
+                <div className="rounded-xl border border-border bg-muted/20 p-4 flex flex-col gap-4">
+                  <p className="text-xs text-muted-foreground -mt-1">
+                    This arrangement will be included in the student agreement — get it right here, it can&apos;t be changed on the payment step.
+                  </p>
+
+                  {/* Initial payment */}
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Initial payment <span className="font-normal text-muted-foreground">(optional — enter $0 if none)</span></Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input type="number" min="0" max={payable} step="0.01" placeholder="0.00" value={flexInitialAmount} onChange={(e) => updateFlexInitialAmount(e.target.value)} />
+                      <Input type="date" value={flexInitialDate} onChange={(e) => setFlexInitialDate(e.target.value)} />
+                    </div>
                   </div>
 
-                  {flexMode === 'single' ? (
+                  {/* Future payments */}
+                  <div className="flex flex-col gap-1.5 pt-2 border-t border-border">
+                    <Label>Future payments</Label>
+                    <p className="text-xs text-muted-foreground -mt-1">
+                      One row is the remaining balance's single due date. Add more to split it into a schedule.
+                    </p>
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="flex-due">Due date for {money(payable)}</Label>
-                      <Input id="flex-due" type="date" value={flexDueDate} onChange={(e) => setFlexDueDate(e.target.value)} className="w-[220px]" />
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      {flexRows.map((r, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <Input type="date" value={r.dueDate} onChange={(e) => setFlexRows((p) => p.map((x, idx) => idx === i ? { ...x, dueDate: e.target.value } : x))} className="w-[170px]" />
-                          <Input type="number" min="0" step="0.01" placeholder="Amount" value={r.amount} onChange={(e) => setFlexRows((p) => p.map((x, idx) => idx === i ? { ...x, amount: e.target.value } : x))} className="w-[120px]" />
-                          {flexRows.length > 1 && (
-                            <button type="button" onClick={() => setFlexRows((p) => p.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
-                          )}
+                      {flexFuturePayments.map((r, i) => (
+                        <div key={r._key} className="flex items-center gap-2">
+                          <span className="w-5 shrink-0 text-xs text-muted-foreground">{i + 1}.</span>
+                          <Input type="date" value={r.dueDate} onChange={(e) => updateFlexFuturePayment(r._key, 'dueDate', e.target.value)} className="flex-1" />
+                          <Input type="number" min="0" step="0.01" placeholder="0.00" value={r.amount} onChange={(e) => updateFlexFuturePayment(r._key, 'amount', e.target.value)} className="w-28" />
+                          <button type="button" onClick={() => removeFlexFuturePayment(r._key)} disabled={flexFuturePayments.length === 1}
+                            className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed"
+                            aria-label="Remove payment">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       ))}
-                      <button type="button" onClick={() => setFlexRows((p) => [...p, { dueDate: todayISO(), amount: '' }])}
-                        className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-dashed border-border px-3 h-8 text-[13px] font-medium text-muted-foreground hover:text-foreground">
-                        <Plus className="h-3.5 w-3.5" /> Add installment
-                      </button>
-                      <p className={['text-xs', flexBalanced ? 'text-muted-foreground' : 'text-destructive'].join(' ')}>
-                        Scheduled {money(flexTotal)} of {money(payable)}{flexBalanced ? ' ✓' : ` — ${money(payable - flexTotal)} unallocated`}
-                      </p>
                     </div>
-                  )}
+                    <button type="button" onClick={addFlexFuturePayment}
+                      className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-dashed border-border px-3 h-8 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:border-brand/50">
+                      <Plus className="h-3.5 w-3.5" /> Add another payment
+                    </button>
+                  </div>
 
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <input type="checkbox" checked={collectNow} onChange={(e) => setCollectNow(e.target.checked)} />
-                    Collect the first installment now
-                  </label>
-                </>
+                  <div className="flex flex-col gap-1 pt-2 border-t border-border">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Amount left to schedule</span>
+                      <span className={`text-sm font-semibold ${flexBalanced ? 'text-success' : 'text-destructive'}`}>{money(flexAmountLeftToSchedule)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Payable Balance</span>
+                      <span className="text-sm font-bold">{money(payable)}</span>
+                    </div>
+                    {!flexBalanced && (
+                      <p className="text-[11px] text-destructive">Initial payment plus future payments must add up to the payable balance.</p>
+                    )}
+                  </div>
+
+                  {flexInitialAmountN > 0 && (
+                    <label className="flex items-center gap-2 text-sm font-medium">
+                      <input type="checkbox" checked={collectNow} onChange={(e) => setCollectNow(e.target.checked)} />
+                      Collect the initial payment now ({money(flexInitialAmountN)})
+                    </label>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -1002,7 +1067,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
               <Button
                 type="button"
                 onClick={submit}
-                disabled={saving || walletOver || (isPlan && planCountN < 2) || (isFlex && flexMode === 'custom' && !flexBalanced)}
+                disabled={saving || walletOver || (isPlan && planCountN < 2) || (isFlex && !flexBalanced)}
               >
                 {saving
                   ? 'Saving…'

@@ -63,7 +63,7 @@ import {
   closeCheckoutTab,
   CHECKOUT_TOAST,
 } from "@/lib/clover";
-import { PAYMENT_METHODS } from "@/lib/paymentMethods";
+import { PAYMENT_METHODS, NO_DEVICE_PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { dateInputToISO, todayDateInput } from "@/lib/studioLocalDate";
 import WalletShortfallField, {
   walletPaymentFields,
@@ -1239,17 +1239,35 @@ function PaymentSchedule({
         <div className="mt-3">
           {(() => {
             const nextDueIdx = plan.installments.findIndex((i) => i.status === "pending");
+            // Paid installments belong in Payment History, not this
+            // schedule — showing only what's still outstanding here.
+            const visible = plan.installments
+              .map((inst, idx) => ({ inst, idx }))
+              .filter(({ inst }) => inst.status !== "paid");
+            if (visible.length === 0) {
+              return (
+                <p className="px-1 text-[12px] text-muted-foreground">
+                  All payments collected.
+                </p>
+              );
+            }
             return (
               <div className="rounded-lg border border-border overflow-hidden">
-                {plan.installments.map((inst, idx) => {
+                {visible.map(({ inst, idx }, i) => {
                   const isNextDue = idx === nextDueIdx;
                   const isOverdue = isNextDue && new Date(inst.dueDate) < new Date();
                   const isLast = idx === plan.installments.length - 1;
-                  const hasDiscount = isLast && plan.installmentAmount > inst.amount;
+                  // Flexible schedules let staff pay less than the scheduled
+                  // amount (the shortfall gets rescheduled elsewhere, see
+                  // PayInstallmentDialog) — that's an underpayment, never a
+                  // discount, so only payment_plan's genuine last-installment
+                  // rounding discount gets the badge.
+                  const hasDiscount =
+                    isLast && plan.installmentAmount > inst.amount && billingType !== "flexible";
                   return (
                     <div
                       key={idx}
-                      className={`flex items-center justify-between px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""} ${
+                      className={`flex items-center justify-between px-3 py-2.5 ${i > 0 ? "border-t border-border" : ""} ${
                         inst.status === "paid"
                           ? "bg-success/5"
                           : isNextDue
@@ -1396,19 +1414,23 @@ function PaymentSchedule({
 
 // ─── PaymentTimeline ─────────────────────────────────────────────────────────
 
-function PaymentTimeline({ customerID, enrollmentID }) {
+function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments }) {
   const [open, setOpen] = useState(false);
-  const [payments, setPayments] = useState(null); // null = not yet loaded
+  const [fetchedPayments, setFetchedPayments] = useState(null); // null = not yet loaded
   const [loading, setLoading] = useState(false);
   const toast = useToast();
+  // A caller that already has the customer's full payment list (e.g. the
+  // Events & Products tab) passes it pre-filtered — skips the redundant
+  // per-item round trip and stays in sync with that list's own reloads.
+  const payments = preloadedPayments ?? fetchedPayments;
 
   async function load() {
-    if (payments !== null) return; // already loaded
+    if (preloadedPayments || fetchedPayments !== null) return; // already have them
     setLoading(true);
     const res = await api.get(
       `/api/payment/customer/${customerID}?enrollmentID=${enrollmentID}&limit=100`,
     );
-    if (res.success) setPayments(Array.isArray(res.data) ? res.data : []);
+    if (res.success) setFetchedPayments(Array.isArray(res.data) ? res.data : []);
     else toast.error("Failed to load payment history");
     setLoading(false);
   }
@@ -1420,6 +1442,7 @@ function PaymentTimeline({ customerID, enrollmentID }) {
 
   const typeLabel = {
     package_purchase: "Payment",
+    event_purchase: "Purchase",
     credit_topup: "Credit Top-up",
     refund: "Refund",
     session_payment: "Session Payment",
@@ -1510,6 +1533,11 @@ function PaymentTimeline({ customerID, enrollmentID }) {
                                 {p.enrollmentID.package.packageName}
                               </span>
                             )}
+                            {p.purchaseID?.name && (
+                              <span className="text-[10px] font-medium bg-info/10 text-info px-1.5 py-0.5 rounded border border-info/20">
+                                {p.purchaseID.name}
+                              </span>
+                            )}
                           </div>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
                             {date.toLocaleDateString("en-AU", {
@@ -1588,6 +1616,7 @@ function PayInstallmentDialog({
   const [walletBalance, setWalletBalance] = useState(0);
   const [amount, setAmount] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayDateInput);
+  const [deviceID, setDeviceID] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
   const { ready: cloverReady } = useCardProcessor(locationID || plan);
@@ -1602,6 +1631,10 @@ function PayInstallmentDialog({
 
   const amountEditable = billingType === "flexible";
   const installment = plan?.installments?.[installmentIndex];
+  // Guards the shortfall reschedule below from running twice if the actual
+  // payment call fails (e.g. a declined card) and staff retries without
+  // closing the dialog — the schedule split already went through once.
+  const rescheduledRef = useRef(false);
 
   // When the wallet cannot cover the installment, the shortfall method is what actually
   // reaches Clover — so it, not the wallet, decides whether a checkout tab is needed.
@@ -1613,9 +1646,13 @@ function PayInstallmentDialog({
   });
   const payWithClover = paymentFields.method === "card" && cloverReady;
   const cloverNotConnected = paymentFields.method === "card" && !cloverReady;
+  const payWithTerminal = paymentFields.method === "terminal";
+  const terminalNotSelected = payWithTerminal && !deviceID;
 
   useEffect(() => {
     if (installment) setAmount(Number(installment.amount).toFixed(2));
+    rescheduledRef.current = false;
+    setDeviceID("");
   }, [installment]);
 
   function validatedAmount() {
@@ -1630,14 +1667,63 @@ function PayInstallmentDialog({
   async function submitPayment() {
     const num = validatedAmount();
     if (num === null) return;
+    if (payWithTerminal && !deviceID) return;
     const checkoutTab = payWithClover ? openCheckoutTab() : null;
     setSaving(true);
+
+    // A flexible schedule promises the full balance gets collected. If this
+    // installment is being paid for less than its scheduled amount, carve
+    // the shortfall into the schedule *before* marking it paid — a
+    // single-installment plan otherwise has nothing left pending the moment
+    // this one clears, and the backend then has no pending row left to
+    // report the balance against, so the remainder silently disappears
+    // instead of staying payable. Reordering this ahead of the actual
+    // pay-installment call also sidesteps ever asking the backend to add a
+    // new installment to a plan it already considers fully paid/completed.
+    const shortfall = Number((installment.amount - num).toFixed(2));
+    if (billingType === "flexible" && shortfall > 0.01 && !rescheduledRef.current) {
+      const otherPending = plan.installments
+        .map((i, idx) => ({ ...i, idx }))
+        .filter((i) => i.idx !== installmentIndex && i.status === "pending");
+      let rescheduleOk;
+      if (otherPending.length > 0) {
+        const base = Math.floor((shortfall / otherPending.length) * 100) / 100;
+        const results = await Promise.all(
+          otherPending.map((i, i2) => {
+            const bump =
+              i2 === otherPending.length - 1
+                ? Number((shortfall - base * (otherPending.length - 1)).toFixed(2))
+                : base;
+            return api.patch(`/api/payment-plan/${plan._id}/installment/${i.idx}/due-date`, {
+              dueDate: new Date(i.dueDate).toISOString().slice(0, 10),
+              amount: Number((Number(i.amount) + bump).toFixed(2)),
+            });
+          }),
+        );
+        rescheduleOk = results.every((r) => r.success);
+      } else {
+        const addRes = await api.post(`/api/payment-plan/${plan._id}/installment`, {
+          dueDate: new Date(installment.dueDate).toISOString().slice(0, 10),
+          amount: shortfall,
+        });
+        rescheduleOk = addRes.success;
+      }
+      if (!rescheduleOk) {
+        closeCheckoutTab(checkoutTab);
+        setSaving(false);
+        toast.error("Couldn't reschedule the remaining balance — payment not recorded.");
+        return;
+      }
+      rescheduledRef.current = true;
+    }
+
     const res = await api.post(
       `/api/payment-plan/${plan._id}/pay-installment`,
       {
         installmentIndex,
         amount: num,
         paymentDate: dateInputToISO(paymentDate),
+        ...(payWithTerminal ? { deviceID } : {}),
         ...walletPaymentFields({
           method,
           shortfallMethod,
@@ -1650,37 +1736,16 @@ function PayInstallmentDialog({
       if (res.data?.checkoutUrl) {
         navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
         toast.success(CHECKOUT_TOAST);
+      } else if (res.data?.pending) {
+        // A Stripe Terminal charge is async — the PaymentIntent only succeeds
+        // once the customer taps their card, settled later by the webhook.
+        toast.success("Charge sent to the reader — waiting for the card.");
+      } else if (shortfall > 0.01) {
+        toast.success(
+          `Installment payment recorded — $${shortfall.toFixed(2)} shortfall scheduled as a new payment.`,
+        );
       } else {
-        // A flexible schedule promises the full balance gets collected — if
-        // this payment came up short, spread the shortfall across whatever's
-        // still pending rather than silently losing track of it.
-        const shortfall = Number((installment.amount - num).toFixed(2));
-        const remaining =
-          billingType === "flexible" && shortfall > 0.01
-            ? plan.installments
-                .map((i, idx) => ({ ...i, idx }))
-                .filter((i) => i.idx !== installmentIndex && i.status === "pending")
-            : [];
-        if (remaining.length > 0) {
-          const base = Math.floor((shortfall / remaining.length) * 100) / 100;
-          await Promise.all(
-            remaining.map((i, i2) => {
-              const bump =
-                i2 === remaining.length - 1
-                  ? Number((shortfall - base * (remaining.length - 1)).toFixed(2))
-                  : base;
-              return api.patch(`/api/payment-plan/${plan._id}/installment/${i.idx}/due-date`, {
-                dueDate: new Date(i.dueDate).toISOString().slice(0, 10),
-                amount: Number((Number(i.amount) + bump).toFixed(2)),
-              });
-            }),
-          );
-          toast.success(
-            `Installment payment recorded — $${shortfall.toFixed(2)} shortfall added to the remaining payments.`,
-          );
-        } else {
-          toast.success("Installment payment recorded.");
-        }
+        toast.success("Installment payment recorded.");
       }
       onSuccess();
       onClose();
@@ -1781,6 +1846,12 @@ function PayInstallmentDialog({
               className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
             />
           </FormField>
+          <TerminalDeviceField
+            method={method}
+            locationID={locationID}
+            deviceID={deviceID}
+            onDeviceChange={setDeviceID}
+          />
           <WalletShortfallField
             method={method}
             balance={walletBalance}
@@ -1811,11 +1882,13 @@ function PayInstallmentDialog({
             <Button
               type="submit"
               size="sm"
-              disabled={saving || cloverNotConnected}
+              disabled={saving || cloverNotConnected || terminalNotSelected}
               className="bg-success hover:bg-success text-white"
             >
               {saving
-                ? "Recording…"
+                ? payWithTerminal
+                  ? "Waiting for terminal…"
+                  : "Recording…"
                 : payWithClover
                   ? "Pay by card"
                   : `Pay $${(Number(amount) || 0).toFixed(2)}`}
@@ -1994,8 +2067,27 @@ function AddInstallmentDialog({ open, onClose, plan, outstanding, onSuccess }) {
     );
   }
 
-  function removeRow(key) {
-    setRows((prev) => splitEvenly(prev.filter((r) => r._key !== key), target));
+  // A row not yet saved just drops out locally. An already-scheduled row
+  // deletes on the server right away instead of batching with Save — removing
+  // it shifts every later installment's index, which would desync any other
+  // row's origIdx if it waited for the batched submit below — so the dialog
+  // closes and the parent reloads the plan fresh.
+  async function removeRow(row) {
+    if (row.origIdx == null) {
+      setRows((prev) => splitEvenly(prev.filter((r) => r._key !== row._key), target));
+      return;
+    }
+    if (!window.confirm(`Remove the $${Number(row.amount).toFixed(2)} payment due ${row.dueDate}?`)) return;
+    setSaving(true);
+    const res = await api.delete(`/api/payment-plan/${plan._id}/installment/${row.origIdx}`);
+    setSaving(false);
+    if (res.success) {
+      toast.success("Payment removed.");
+      onSuccess();
+      onClose();
+    } else {
+      toast.error(res.error || "Failed to remove payment.");
+    }
   }
 
   async function handleSubmit(e) {
@@ -2023,12 +2115,28 @@ function AddInstallmentDialog({ open, onClose, plan, outstanding, onSuccess }) {
       ),
     );
     setSaving(false);
+
+    // A brand-new row that succeeded now exists as a real installment on the
+    // backend — record its index so that if another row in this same submit
+    // failed and staff retries, this one gets PATCHed instead of POSTed
+    // again (which would schedule it a second time).
+    setRows((prev) =>
+      prev.map((r, i) => {
+        const result = results[i];
+        if (r.origIdx == null && result?.success) {
+          const newIdx = (result.data?.installments?.length ?? 0) - 1;
+          return { ...r, origIdx: newIdx };
+        }
+        return r;
+      }),
+    );
+
     if (results.every((r) => r.success)) {
       toast.success("Payment schedule updated.");
       onSuccess();
       onClose();
     } else {
-      toast.error("Some payments failed to save — please check the schedule.");
+      toast.error("Some payments failed to save — the ones that went through won't be repeated if you try again.");
     }
   }
 
@@ -2067,9 +2175,9 @@ function AddInstallmentDialog({ open, onClose, plan, outstanding, onSuccess }) {
                   </div>
                   <button
                     type="button"
-                    onClick={() => removeRow(r._key)}
-                    disabled={rows.length === 1 || r.origIdx != null}
-                    title={r.origIdx != null ? "Already scheduled — change its date/amount instead" : "Remove payment"}
+                    onClick={() => removeRow(r)}
+                    disabled={rows.length === 1 || saving}
+                    title="Remove payment"
                     className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     aria-label="Remove payment"
                   >
@@ -3367,7 +3475,7 @@ function PackagesTab({ customerID, locationID }) {
                         onChange={(e) => setBilling("method", e.target.value)}
                         className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
                       >
-                        {PAYMENT_METHODS.map((m) => (
+                        {NO_DEVICE_PAYMENT_METHODS.map((m) => (
                           <option key={m.value} value={m.value}>
                             {m.label}
                           </option>
@@ -3590,50 +3698,59 @@ function EnrollmentsTab({
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [enrRes, allRes, calRes] = await Promise.all([
-      api.get(`/api/enrollment?customerID=${customerID}`),
-      api.get("/api/package?limit=200&isActive=true"),
-      api.get(`/api/calendar/customer/${customerID}`),
-    ]);
-    if (calRes.success && Array.isArray(calRes.data))
-      setCalendarEvents(calRes.data);
-    if (allRes.success) setAllPkgs(allRes.data || []);
-    if (enrRes.success) {
-      const list = enrRes.data || [];
-      setEnrollments(list);
-      if (list.length > 0)
-        setSelectedEnrId((prev) => prev ?? String(list[list.length - 1]._id));
-      const withPkg = list.filter((e) => e.package);
-      if (withPkg.length > 0) {
-        const detResults = await Promise.all(
-          withPkg.map((e) => api.get(`/api/customer-package/${e._id}/details`)),
-        );
-        const detMap = {};
-        withPkg.forEach((e, i) => {
-          if (detResults[i].success) detMap[String(e._id)] = detResults[i].data;
-        });
-        setDetailsMap(detMap);
-        const hasPlan = withPkg.some(
-          (e) =>
-            e.package?.billingType === "payment_plan" ||
-            e.package?.billingType === "flexible",
-        );
-        if (hasPlan) {
-          const plansRes = await api.get(
-            `/api/payment-plan/customer/${customerID}`,
+    try {
+      const [enrRes, allRes, calRes] = await Promise.all([
+        api.get(`/api/enrollment?customerID=${customerID}`),
+        api.get("/api/package?limit=200&isActive=true"),
+        api.get(`/api/calendar/customer/${customerID}`),
+      ]);
+      if (calRes.success && Array.isArray(calRes.data))
+        setCalendarEvents(calRes.data);
+      if (allRes.success) setAllPkgs(allRes.data || []);
+      if (enrRes.success) {
+        const list = enrRes.data || [];
+        setEnrollments(list);
+        if (list.length > 0)
+          setSelectedEnrId((prev) => prev ?? String(list[list.length - 1]._id));
+        const withPkg = list.filter((e) => e.package);
+        if (withPkg.length > 0) {
+          const detResults = await Promise.all(
+            withPkg.map((e) => api.get(`/api/customer-package/${e._id}/details`)),
           );
-          if (plansRes.success) {
-            const pm = {};
-            (plansRes.data || []).forEach((plan) => {
-              const enrId = String(plan.enrollmentID?._id ?? plan.enrollmentID);
-              pm[enrId] = plan;
-            });
-            setPlansMap(pm);
+          const detMap = {};
+          withPkg.forEach((e, i) => {
+            if (detResults[i].success) detMap[String(e._id)] = detResults[i].data;
+          });
+          setDetailsMap(detMap);
+          const hasPlan = withPkg.some(
+            (e) =>
+              e.package?.billingType === "payment_plan" ||
+              e.package?.billingType === "flexible",
+          );
+          if (hasPlan) {
+            const plansRes = await api.get(
+              `/api/payment-plan/customer/${customerID}`,
+            );
+            if (plansRes.success) {
+              const pm = {};
+              (plansRes.data || []).forEach((plan) => {
+                const enrId = String(plan.enrollmentID?._id ?? plan.enrollmentID);
+                pm[enrId] = plan;
+              });
+              setPlansMap(pm);
+            }
           }
         }
+      } else {
+        toast.error(enrRes.error || "Failed to load enrollments.");
       }
+    } catch (err) {
+      // A thrown error here (bad response shape, etc.) must not leave the
+      // spinner stuck forever with no visible feedback.
+      toast.error(err?.message || "Failed to load enrollments.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [customerID]);
 
   useEffect(() => {
@@ -4269,8 +4386,16 @@ function EnrollmentsTab({
                       ))}
                     </div>
 
-                    {/* Payment plan / scheduled-flexible installments */}
-                    {plansMap[String(enr._id)] && (
+                    {/* Payment plan / scheduled-flexible installments. For
+                        flexible billing, a fully-paid plan has nothing left
+                        to schedule — paid installments already show in
+                        Payment History below, and any new balance goes
+                        through the Pay Now card instead of this box. */}
+                    {plansMap[String(enr._id)] &&
+                      (cp.billingType !== "flexible" ||
+                        plansMap[String(enr._id)].installments.some(
+                          (i) => i.status === "pending",
+                        )) && (
                       <PaymentSchedule
                         plan={plansMap[String(enr._id)]}
                         cpStatus={cp.status}
@@ -4285,6 +4410,99 @@ function EnrollmentsTab({
                         defaultOpen
                       />
                     )}
+
+                    {/* Set up a going-forward payment plan on a package that
+                        doesn't have one yet — mainly for migrated enrollments,
+                        which land with a static outstanding balance and no
+                        billing schedule (see customerImport.service.js).
+                        setupPaymentPlanForEnrollment schedules cp.dueAmount,
+                        not the Collected-derived `outstanding` figure above —
+                        those two can diverge (e.g. this card's `outstanding`
+                        is still $1000 for a legacy-imported enrollment whose
+                        $700-collected Payment record predates this feature,
+                        while dueAmount already correctly says $300). Pass the
+                        same amount the backend will actually schedule so the
+                        dialog never promises a number it won't deliver. */}
+                    {(() => {
+                      const schedulable =
+                        cp.dueAmount != null
+                          ? Number(cp.dueAmount)
+                          : outstanding;
+                      return (
+                        (!cp.billingType || cp.billingType === "one_time") &&
+                        enr.status === "active" &&
+                        cp.status === "active" &&
+                        !plansMap[String(enr._id)] &&
+                        schedulable > 0 && (
+                          <div className="mt-5 border-t border-border pt-5">
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="text-[12px] font-bold text-foreground uppercase tracking-widest">
+                                Payment Due
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSetupPlanTarget({
+                                    enrollment: enr,
+                                    outstanding: schedulable,
+                                  })
+                                }
+                                className="text-[11px] font-medium text-muted-foreground hover:text-foreground underline underline-offset-2"
+                              >
+                                Set up a payment plan instead
+                              </button>
+                            </div>
+                            <PaymentDueCard
+                              itemName={cp.packageName}
+                              badgeLabel="One-time"
+                              amountDue={schedulable}
+                              customerID={customerID}
+                              locationID={locationID}
+                              paymentType="package_purchase"
+                              paymentTarget={{ enrollmentID: enr._id }}
+                              sendLinkTarget={{ kind: "package", enrollmentID: enr._id }}
+                              onSuccess={load}
+                            />
+                          </div>
+                        )
+                      );
+                    })()}
+
+                    {/* Flexible billing — single-due-date payment card.
+                        Hidden only while the flexible enrollment carries a
+                        tracked schedule with payments still pending
+                        (rendered as installments above instead); a
+                        completed/absent schedule with a balance still owed
+                        falls through to here. */}
+                    {cp.billingType === "flexible" &&
+                      enr.status === "active" &&
+                      cp.paymentStatus !== "paid" &&
+                      !plansMap[String(enr._id)]?.installments?.some(
+                        (i) => i.status === "pending",
+                      ) && (
+                        <div className="mt-5 border-t border-border pt-5">
+                          <p className="text-[12px] font-bold text-foreground uppercase tracking-widest mb-3">
+                            Payment Due
+                          </p>
+                          <PaymentDueCard
+                            itemName={cp.packageName}
+                            amountDue={outstanding}
+                            dueDate={cp.dueDate}
+                            onChangeDueDate={(newDueDate) =>
+                              api.patch(
+                                `/api/customer-package/${enr._id}/flexible-due`,
+                                { dueDate: newDueDate },
+                              )
+                            }
+                            customerID={customerID}
+                            locationID={locationID}
+                            paymentType="package_purchase"
+                            paymentTarget={{ enrollmentID: enr._id }}
+                            sendLinkTarget={{ kind: "package", enrollmentID: enr._id }}
+                            onSuccess={load}
+                          />
+                        </div>
+                      )}
 
                     {/* Services */}
                     {services.length > 0 &&
@@ -4744,73 +4962,6 @@ function EnrollmentsTab({
                         );
                       })()}
 
-                    {/* Set up a going-forward payment plan on a package that
-                        doesn't have one yet — mainly for migrated enrollments,
-                        which land with a static outstanding balance and no
-                        billing schedule (see customerImport.service.js).
-                        setupPaymentPlanForEnrollment schedules cp.dueAmount,
-                        not the Collected-derived `outstanding` figure above —
-                        those two can diverge (e.g. this card's `outstanding`
-                        is still $1000 for a legacy-imported enrollment whose
-                        $700-collected Payment record predates this feature,
-                        while dueAmount already correctly says $300). Pass the
-                        same amount the backend will actually schedule so the
-                        dialog never promises a number it won't deliver. */}
-                    {(() => {
-                      const schedulable =
-                        cp.dueAmount != null
-                          ? Number(cp.dueAmount)
-                          : outstanding;
-                      return (
-                        (!cp.billingType || cp.billingType === "one_time") &&
-                        enr.status === "active" &&
-                        cp.status === "active" &&
-                        !plansMap[String(enr._id)] &&
-                        schedulable > 0 && (
-                          <div className="mt-5 border-t border-border pt-5 flex items-center justify-between">
-                            <p className="text-[12px] text-muted-foreground">
-                              ${schedulable.toFixed(2)} outstanding with no
-                              billing schedule.
-                            </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 text-[12px]"
-                              onClick={() =>
-                                setSetupPlanTarget({
-                                  enrollment: enr,
-                                  outstanding: schedulable,
-                                })
-                              }
-                            >
-                              + Set Up Payment Plan
-                            </Button>
-                          </div>
-                        )
-                      );
-                    })()}
-
-                    {/* Flexible billing — single-due-date payment card.
-                        Hidden when the flexible enrollment carries a tracked
-                        schedule (rendered as installments below instead). */}
-                    {cp.billingType === "flexible" &&
-                      enr.status === "active" &&
-                      cp.paymentStatus !== "paid" &&
-                      !plansMap[String(enr._id)] && (
-                        <div className="mt-5 border-t border-border pt-5">
-                          <p className="text-[12px] font-bold text-foreground uppercase tracking-widest mb-3">
-                            Payment Due
-                          </p>
-                          <FlexiblePaymentDueCard
-                            enr={enr}
-                            customerID={customerID}
-                            locationID={locationID}
-                            onSuccess={load}
-                          />
-                        </div>
-                      )}
-
-
                     <PaymentTimeline
                       customerID={customerID}
                       enrollmentID={String(enr._id)}
@@ -5267,7 +5418,7 @@ function EnrollmentsTab({
                                 }
                                 className="h-8 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] outline-none focus:border-primary capitalize"
                               >
-                                {PAYMENT_METHODS.map((m) => (
+                                {NO_DEVICE_PAYMENT_METHODS.map((m) => (
                                   <option key={m.value} value={m.value}>
                                     {m.label}
                                   </option>
@@ -5476,7 +5627,7 @@ function EnrollmentsTab({
                                 }
                                 className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] capitalize outline-none focus:border-primary"
                               >
-                                {PAYMENT_METHODS.map((m) => (
+                                {NO_DEVICE_PAYMENT_METHODS.map((m) => (
                                   <option key={m.value} value={m.value}>
                                     {m.label}
                                   </option>
@@ -5642,12 +5793,21 @@ function EnrollmentsTab({
 
 // ─── Payment History Tab ─────────────────────────────────────────────────────
 
-function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
-  const cp = enr.package;
-  const collected = cp.amountCollected ?? 0;
-  const outstanding = Math.max(0, (cp.totalPaid ?? 0) - collected);
-  const isOverdue =
-    cp.dueDate && outstanding > 0 && new Date(cp.dueDate) < new Date();
+function PaymentDueCard({
+  itemName,
+  badgeLabel = "Flexible Billing",
+  amountDue,
+  dueDate,
+  onChangeDueDate,
+  customerID,
+  locationID,
+  paymentType,
+  paymentTarget,
+  sendLinkTarget,
+  onSuccess,
+}) {
+  const outstanding = Math.max(0, Number(amountDue) || 0);
+  const isOverdue = dueDate && outstanding > 0 && new Date(dueDate) < new Date();
   const [mode, setMode] = useState(null); // "pay" | "change-date"
   const [amount, setAmount] = useState(String(outstanding.toFixed(2)));
   const [method, setMethod] = useState("cash");
@@ -5657,7 +5817,7 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
   const [deviceID, setDeviceID] = useState("");
   const [tipConfig, setTipConfig] = useState({ promptTip: false });
   const [newDueDate, setNewDueDate] = useState(
-    cp.dueDate ? new Date(cp.dueDate).toISOString().slice(0, 10) : "",
+    dueDate ? new Date(dueDate).toISOString().slice(0, 10) : "",
   );
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -5689,8 +5849,8 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
     setSaving(true);
     const res = await api.post("/api/payment", {
       customerID,
-      enrollmentID: enr._id,
-      type: "package_purchase",
+      ...paymentTarget,
+      type: paymentType,
       amount: num,
       ...walletPaymentFields({
         method,
@@ -5705,6 +5865,12 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
       if (res.data?.checkoutUrl) {
         navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
         toast.success(CHECKOUT_TOAST);
+      } else if (res.data?.pending) {
+        // A Stripe Terminal charge is async — the PaymentIntent only
+        // succeeds once the customer taps their card, settled later by the
+        // webhook. Unlike Clover's synchronous device charge, there's
+        // nothing to confirm yet, so don't claim it's recorded.
+        toast.success("Charge sent to the reader — waiting for the card.");
       } else {
         toast.success(
           num >= outstanding
@@ -5728,14 +5894,9 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
 
   async function handleChangeDate(e) {
     e.preventDefault();
-    if (!newDueDate) return;
+    if (!newDueDate || !onChangeDueDate) return;
     setSaving(true);
-    const res = await api.patch(
-      `/api/customer-package/${enr._id}/flexible-due`,
-      {
-        dueDate: newDueDate,
-      },
-    );
+    const res = await onChangeDueDate(newDueDate);
     if (res.success) {
       toast.success("Due date updated.");
       setMode(null);
@@ -5754,10 +5915,10 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-[13px] font-semibold text-foreground">
-              {cp.packageName}
+              {itemName}
             </p>
             <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-500/10 text-violet-600">
-              Flexible Billing
+              {badgeLabel}
             </span>
             {isOverdue && (
               <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-rose-500/10 text-rose-600">
@@ -5774,7 +5935,7 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
                 ${outstanding.toFixed(2)}
               </span>
             </div>
-            {cp.dueDate && (
+            {dueDate && (
               <div>
                 <span className="text-[11px] text-muted-foreground">
                   Due Date{" "}
@@ -5782,7 +5943,7 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
                 <span
                   className={`text-[12px] font-medium ${isOverdue ? "text-rose-600" : "text-foreground"}`}
                 >
-                  {new Date(cp.dueDate).toLocaleDateString("en-US", {
+                  {new Date(dueDate).toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
                     year: "numeric",
@@ -5801,14 +5962,23 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
             >
               Pay Now
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-3 text-[11px]"
-              onClick={() => setMode("change-date")}
-            >
-              Change Due Date
-            </Button>
+            {onChangeDueDate && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-3 text-[11px]"
+                onClick={() => setMode("change-date")}
+              >
+                Change Due Date
+              </Button>
+            )}
+            {sendLinkTarget && cloverReady && customerID && (
+              <SendPaymentLinkMenu
+                customerID={customerID}
+                target={sendLinkTarget}
+                onSent={onSuccess}
+              />
+            )}
           </div>
         )}
       </div>
@@ -5956,16 +6126,18 @@ function FlexiblePaymentDueCard({ enr, customerID, locationID, onSuccess }) {
   );
 }
 
-function PurchasesTab({ customerID, customerName }) {
+function PurchasesTab({ customerID, customerName, locationID }) {
   const [rows, setRows] = useState([]);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
   const [createPurchaseOpen, setCreatePurchaseOpen] = useState(false);
   const toast = useToast();
 
   const [plans, setPlans] = useState([]);
+  const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
+  const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null); // { plan, index }
+  const [addInstallTarget, setAddInstallTarget] = useState(null); // { plan, outstanding }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -5987,20 +6159,6 @@ function PurchasesTab({ customerID, customerName }) {
   const planFor = (purchaseID) =>
     plans.find((pl) => String(pl.purchaseID?._id ?? pl.purchaseID) === String(purchaseID));
 
-  async function payInstallment(plan, idx) {
-    setBusyId(`${plan._id}:${idx}`);
-    const res = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
-      installmentIndex: idx,
-      method: "cash",
-    });
-    setBusyId(null);
-    if (res.success) {
-      if (res.data?.checkoutUrl) window.open(res.data.checkoutUrl, "_blank", "noopener");
-      toast.success("Installment recorded");
-      load();
-    } else toast.error(res.error || "Failed");
-  }
-
   async function toggleLineCheck(row, li) {
     const next = li.checkStatus !== "checked";
     setBusyId(li._id);
@@ -6016,30 +6174,7 @@ function PurchasesTab({ customerID, customerName }) {
     return { done, total: items.length };
   };
 
-  async function collectCash(row) {
-    const due = Number(row.amountDue ?? row.total ?? 0);
-    if (due <= 0) return;
-    if (!window.confirm(`Record a cash payment of $${due.toFixed(2)} for "${row.name}"?`)) return;
-    setBusyId(row._id);
-    const res = await api.post("/api/payment", {
-      customerID,
-      purchaseID: row._id,
-      type: "event_purchase",
-      amount: due,
-      method: "cash",
-      notes: row.name,
-    });
-    setBusyId(null);
-    if (res.success) { toast.success("Payment recorded"); load(); }
-    else toast.error(res.error || "Failed to record payment");
-  }
-
   const money = (n) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const badge = (s) => ({
-    paid: "bg-success/10 text-success",
-    partial: "bg-amber-500/10 text-amber-600",
-    unpaid: "bg-muted text-muted-foreground",
-  }[s] || "bg-muted text-muted-foreground");
 
   if (loading)
     return (
@@ -6068,187 +6203,213 @@ function PurchasesTab({ customerID, customerName }) {
           No events or products yet. Click "Enroll" to create one.
         </div>
       ) : (
-        <div className="rounded-xl border border-border bg-card overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                {["Date", "Purchase", "Event Type", "Total", "Paid", "Due", "Billing", "Check", ""].map((h) => (
-                  <th key={h} className="px-4 py-2.5 text-left text-[11px] font-medium text-muted-foreground">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => {
-                const due = Number(r.amountDue ?? r.total ?? 0);
-                const open = expandedId === r._id;
-                const lineItems = r.lineItems || [];
-                const rowPayments = paymentsFor(r._id);
-                return (
-                  <Fragment key={r._id}>
-                    <tr
-                      className={`${i > 0 ? "border-t border-border" : ""} hover:bg-muted/20 cursor-pointer`}
-                      onClick={() => setExpandedId(open ? null : r._id)}
-                    >
-                      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : "—"}</td>
-                      <td className="px-4 py-2.5 font-medium">
-                        <span className="inline-flex items-center gap-1.5">
-                          <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
-                          {r.name}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{r.eventTypeID?.name || "—"}</td>
-                      <td className="px-4 py-2.5 tabular-nums">{money(r.total)}</td>
-                      <td className="px-4 py-2.5 tabular-nums text-success">{money(r.amountPaid)}</td>
-                      <td className="px-4 py-2.5 tabular-nums">{money(due)}</td>
-                      <td className="px-4 py-2.5">
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${badge(r.billingStatus)}`}>
-                          {r.billingStatus || "unpaid"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                        {(() => {
-                          const { done, total } = checkSummary(r);
-                          const all = total > 0 && done === total;
-                          return (
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${all ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
-                              {done}/{total} checked
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        {due > 0 && (
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busyId === r._id} onClick={() => collectCash(r)}>
-                            {busyId === r._id ? "…" : "Collect cash"}
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                    {open && (
-                      <tr className="border-t border-border bg-muted/20">
-                        <td colSpan={9} className="px-4 py-4">
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <div>
-                              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Line items</p>
-                              <div className="rounded-lg border border-border bg-card overflow-hidden">
-                                <table className="w-full text-[12px]">
-                                  <thead>
-                                    <tr className="bg-muted/40 text-left text-[10px] uppercase text-muted-foreground">
-                                      <th className="px-2.5 py-1.5">Item</th>
-                                      <th className="px-2.5 py-1.5 text-right">Qty</th>
-                                      <th className="px-2.5 py-1.5 text-right">Price</th>
-                                      <th className="px-2.5 py-1.5 text-right">Disc.</th>
-                                      <th className="px-2.5 py-1.5 text-right">Total</th>
-                                      <th className="px-2.5 py-1.5">Check</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {lineItems.length === 0 ? (
-                                      <tr><td colSpan={6} className="px-2.5 py-3 text-center text-muted-foreground">No line items.</td></tr>
-                                    ) : lineItems.map((li) => (
-                                      <tr key={li._id} className="border-t border-border">
-                                        <td className="px-2.5 py-1.5">{li.name}</td>
-                                        <td className="px-2.5 py-1.5 text-right tabular-nums">{li.quantity}</td>
-                                        <td className="px-2.5 py-1.5 text-right tabular-nums">{money(li.unitPrice)}</td>
-                                        <td className="px-2.5 py-1.5 text-right tabular-nums">{li.discount ? money(li.discount) : "—"}</td>
-                                        <td className="px-2.5 py-1.5 text-right tabular-nums font-medium">{money(li.total)}</td>
-                                        <td className="px-2.5 py-1.5">
-                                          {li.checkStatus === "checked" ? (
-                                            <button type="button" disabled={busyId === li._id} onClick={() => toggleLineCheck(r, li)}
-                                              className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success hover:opacity-80">
-                                              ✓ {li.checkedAt ? new Date(li.checkedAt).toLocaleDateString() : "checked"}
-                                            </button>
-                                          ) : li.eventDate ? (
-                                            <span className="text-[10px] text-muted-foreground" title="Auto-checks after this time">
-                                              auto · {new Date(li.eventDate).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
-                                            </span>
-                                          ) : (
-                                            <button type="button" disabled={busyId === li._id} onClick={() => toggleLineCheck(r, li)}
-                                              className="rounded border border-border px-2 py-0.5 text-[10px] font-medium hover:bg-muted/60">
-                                              {busyId === li._id ? "…" : "Mark checked"}
-                                            </button>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                              {r.notes && <p className="mt-2 text-[12px] text-muted-foreground">Note: {r.notes}</p>}
-                            </div>
-
-                            <div className="flex flex-col gap-4">
-                              {(() => {
-                                const plan = planFor(r._id);
-                                if (!plan) return null;
-                                return (
-                                  <div>
-                                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                      Payment schedule · {plan.status}
-                                    </p>
-                                    <div className="rounded-lg border border-border bg-card divide-y divide-border">
-                                      {(plan.installments || []).map((inst, idx) => (
-                                        <div key={idx} className="flex items-center justify-between px-3 py-2 text-[12px]">
-                                          <span className="text-muted-foreground">
-                                            #{idx + 1} · {inst.dueDate ? new Date(inst.dueDate).toLocaleDateString() : "—"}
-                                          </span>
-                                          <span className="flex items-center gap-2">
-                                            <span className="tabular-nums font-medium">{money(inst.amount)}</span>
-                                            {inst.status === "paid" ? (
-                                              <span className="text-success text-[10px] font-medium">paid</span>
-                                            ) : inst.status === "payment_pending" ? (
-                                              <span className="text-amber-600 text-[10px] font-medium">pending</span>
-                                            ) : (
-                                              <button type="button" disabled={busyId === `${plan._id}:${idx}`}
-                                                onClick={() => payInstallment(plan, idx)}
-                                                className="rounded border border-border px-2 py-0.5 text-[10px] font-medium hover:bg-muted/60">
-                                                {busyId === `${plan._id}:${idx}` ? "…" : "Record"}
-                                              </button>
-                                            )}
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-
-                              <div>
-                                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Payments</p>
-                                {rowPayments.length === 0 ? (
-                                  <p className="text-[12px] text-muted-foreground">No payments recorded against this purchase yet.</p>
-                                ) : (
-                                  <div className="rounded-lg border border-border bg-card divide-y divide-border">
-                                    {rowPayments.map((p) => (
-                                      <div key={p._id} className="flex items-center justify-between px-3 py-2 text-[12px]">
-                                        <span className="text-muted-foreground">
-                                          {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "—"} · {p.method}
-                                          {p.status !== "completed" ? ` (${p.status})` : ""}
-                                        </span>
-                                        <span className="tabular-nums font-medium">{money(p.amount)}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                                {r.sourceTemplateID?.name && (
-                                  <p className="mt-2 text-[12px] text-muted-foreground">From template: {r.sourceTemplateID.name}</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
+        <div className="space-y-4">
+          {rows.map((r) => {
+            const due = Number(r.amountDue ?? r.total ?? 0);
+            const lineItems = r.lineItems || [];
+            const rowPayments = paymentsFor(r._id);
+            const plan = planFor(r._id);
+            const { done, total } = checkSummary(r);
+            return (
+              <div
+                key={r._id}
+                className="rounded-xl border border-border bg-card overflow-hidden"
+              >
+                {/* Header bar */}
+                <div className="flex items-center justify-between px-5 py-4 bg-muted/40 border-b border-border">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] font-bold text-foreground uppercase tracking-wider">
+                      {r.name}
+                    </span>
+                    {r.eventTypeID?.name && (
+                      <span className="text-[12px] font-medium text-muted-foreground">
+                        · {r.eventTypeID.name}
+                      </span>
                     )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${paymentStatusColor(r.billingStatus)}`}
+                    >
+                      {paymentStatusLabel(r.billingStatus)}
+                    </span>
+                    <span className="text-[12px] text-muted-foreground">
+                      {r.createdAt ? formatDate(r.createdAt) : "—"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-5">
+                  {/* Billing summary */}
+                  <div className="grid grid-cols-3 divide-x divide-border rounded-lg border border-border bg-muted/30 overflow-hidden">
+                    {[
+                      { label: "Total", value: money(r.total) },
+                      { label: "Paid", value: money(r.amountPaid), cls: "text-success" },
+                      {
+                        label: "Due",
+                        value: money(due),
+                        cls: due > 0 ? "text-rose-500" : "text-muted-foreground",
+                      },
+                    ].map(({ label, value, cls }) => (
+                      <div key={label} className="text-center py-3 px-2">
+                        <p className="text-[11px] font-medium text-muted-foreground mb-1 uppercase tracking-wide">
+                          {label}
+                        </p>
+                        <p className={`text-[15px] font-bold ${cls ?? "text-foreground"}`}>
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Payment plan / scheduled-flexible installments — same
+                      component as Enrollments, so a paid-off plan drops away
+                      instead of blocking the remainder below. */}
+                  {plan &&
+                    (plan.installments || []).some((i) => i.status === "pending") && (
+                      <PaymentSchedule
+                        plan={plan}
+                        cpStatus="active"
+                        outstanding={due}
+                        // Purchases have no package doc to carry billingType
+                        // on (that's where Enrollments keep it) — the plan
+                        // itself is tagged with it instead.
+                        billingType={plan.billingType || r.billingType}
+                        customerID={customerID}
+                        locationID={locationID}
+                        onPayInstallment={setPayInstallTarget}
+                        onChangeDate={setChangeInstallDateTarget}
+                        onAddInstallment={setAddInstallTarget}
+                        onSent={load}
+                        defaultOpen
+                      />
+                    )}
+
+                  {/* Remaining balance with nothing left scheduled to cover
+                      it — same Pay Now card as a flexible enrollment. */}
+                  {due > 0 &&
+                    !plan?.installments?.some((i) => i.status === "pending") && (
+                      <div className="mt-5 border-t border-border pt-5">
+                        <p className="text-[12px] font-bold text-foreground uppercase tracking-widest mb-3">
+                          Payment Due
+                        </p>
+                        <PaymentDueCard
+                          itemName={r.name}
+                          badgeLabel="Payment Due"
+                          amountDue={due}
+                          customerID={customerID}
+                          locationID={locationID}
+                          paymentType="event_purchase"
+                          paymentTarget={{ purchaseID: r._id }}
+                          onSuccess={load}
+                        />
+                      </div>
+                    )}
+
+                  {/* Line items */}
+                  <div className="mt-5 border-t border-border pt-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-[12px] font-bold text-foreground uppercase tracking-widest">
+                        Line Items
+                      </p>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${total > 0 && done === total ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}
+                      >
+                        {done}/{total} checked
+                      </span>
+                    </div>
+                    <div className="rounded-lg border border-border overflow-hidden">
+                      <div
+                        className="grid bg-muted/50 border-b border-border px-3 py-2.5"
+                        style={{
+                          gridTemplateColumns: "minmax(0,1fr) 70px 90px 90px 90px 150px",
+                        }}
+                      >
+                        {["Item", "Qty", "Price", "Disc.", "Total", "Check"].map((h) => (
+                          <span
+                            key={h}
+                            className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
+                          >
+                            {h}
+                          </span>
+                        ))}
+                      </div>
+                      {lineItems.length === 0 ? (
+                        <p className="px-3 py-4 text-center text-[12px] text-muted-foreground">
+                          No line items.
+                        </p>
+                      ) : (
+                        lineItems.map((li, idx) => (
+                          <div
+                            key={li._id}
+                            className={`grid items-center px-3 py-2.5 ${idx > 0 ? "border-t border-border" : ""}`}
+                            style={{
+                              gridTemplateColumns: "minmax(0,1fr) 70px 90px 90px 90px 150px",
+                            }}
+                          >
+                            <span className="text-[13px] text-foreground">{li.name}</span>
+                            <span className="text-[13px] text-foreground">{li.quantity}</span>
+                            <span className="text-[13px] text-foreground">{money(li.unitPrice)}</span>
+                            <span className="text-[13px] text-foreground">
+                              {li.discount ? money(li.discount) : "—"}
+                            </span>
+                            <span className="text-[13px] font-semibold text-foreground">
+                              {money(li.total)}
+                            </span>
+                            <span>
+                              {li.checkStatus === "checked" ? (
+                                <button
+                                  type="button"
+                                  disabled={busyId === li._id}
+                                  onClick={() => toggleLineCheck(r, li)}
+                                  className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success hover:opacity-80"
+                                >
+                                  ✓ {li.checkedAt ? formatDate(li.checkedAt) : "checked"}
+                                </button>
+                              ) : li.eventDate ? (
+                                <span
+                                  className="text-[10px] text-muted-foreground"
+                                  title="Auto-checks after this time"
+                                >
+                                  auto ·{" "}
+                                  {new Date(li.eventDate).toLocaleString([], {
+                                    dateStyle: "short",
+                                    timeStyle: "short",
+                                  })}
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={busyId === li._id}
+                                  onClick={() => toggleLineCheck(r, li)}
+                                  className="rounded border border-border px-2 py-0.5 text-[10px] font-medium hover:bg-muted/60"
+                                >
+                                  {busyId === li._id ? "…" : "Mark checked"}
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    {r.notes && (
+                      <p className="mt-2 text-[12px] text-muted-foreground">Note: {r.notes}</p>
+                    )}
+                  </div>
+
+                  <PaymentTimeline customerID={customerID} payments={rowPayments} />
+
+                  {r.sourceTemplateID?.name && (
+                    <p className="mt-4 text-[12px] text-muted-foreground">
+                      From template: {r.sourceTemplateID.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
-      <p className="text-[11px] text-muted-foreground">
-        Card &amp; wallet payments: use “Enroll”, or record them from Payment History.
-      </p>
 
       <CreateEventPurchaseDialog
         open={createPurchaseOpen}
@@ -6259,6 +6420,35 @@ function PurchasesTab({ customerID, customerName }) {
           toast.success("Purchase created");
           load();
         }}
+      />
+
+      {/* Pay installment dialog */}
+      <PayInstallmentDialog
+        open={Boolean(payInstallTarget)}
+        onClose={() => setPayInstallTarget(null)}
+        plan={payInstallTarget?.plan}
+        installmentIndex={payInstallTarget?.index}
+        billingType={payInstallTarget?.billingType}
+        locationID={locationID}
+        onSuccess={load}
+      />
+
+      {/* Change installment date dialog */}
+      <ChangeInstallmentDateDialog
+        open={Boolean(changeInstallDateTarget)}
+        onClose={() => setChangeInstallDateTarget(null)}
+        plan={changeInstallDateTarget?.plan}
+        installmentIndex={changeInstallDateTarget?.index}
+        onSuccess={load}
+      />
+
+      {/* Add installment dialog — flexible plans only */}
+      <AddInstallmentDialog
+        open={Boolean(addInstallTarget)}
+        onClose={() => setAddInstallTarget(null)}
+        plan={addInstallTarget?.plan}
+        outstanding={addInstallTarget?.outstanding}
+        onSuccess={load}
       />
     </div>
   );
@@ -8204,18 +8394,13 @@ function SectionIndex({ section, summary, onOpen }) {
     );
     switch (viewId) {
       case "active-enrollments": {
-        const statusCounts = summary.enrollments.reduce((acc, e) => {
-          const status = e.package?.status ?? e.status ?? "unknown";
-          acc[status] = (acc[status] || 0) + 1;
-          return acc;
-        }, {});
-        const breakdown = Object.entries(statusCounts)
-          .map(([status, count]) => `${count} ${status}`)
-          .join(" · ");
+        const activeEnrollments = summary.enrollments.filter(
+          (e) => (e.package?.status ?? e.status) === "active",
+        );
         return {
-          value: `${summary.enrollments.length} total`,
-          hint: summary.enrollments.length ? breakdown : "None yet",
-          children: summary.enrollments.map((enr) => {
+          value: `${activeEnrollments.length} active`,
+          hint: activeEnrollments.length ? "Active" : "None yet",
+          children: activeEnrollments.map((enr) => {
             const pkg = enr.package;
             const due =
               pkg?.dueAmount != null
@@ -8529,9 +8714,6 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
       .slice(0, 6);
   }, [summary.events, summary.payments, now]);
 
-  const activeMembership = summary.memberships.find(
-    (m) => m.status !== "cancelled" && m.status !== "expired",
-  );
   const memberCount = Array.isArray(customer.members)
     ? customer.members.length
     : 0;
@@ -8746,35 +8928,6 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
               </div>
             )}
           </section>
-
-          <Panel
-            title="Active membership"
-            action={
-              <LinkButton onClick={() => onOpen("memberships")}>
-                Manage
-              </LinkButton>
-            }
-          >
-            {activeMembership ? (
-              <div className="space-y-3">
-                <Field label="Membership">
-                  {activeMembership.membershipName || "Membership"}
-                </Field>
-                <Field label="Status">
-                  <span className="capitalize">{activeMembership.status}</span>
-                </Field>
-                {activeMembership.expiryDate && (
-                  <Field label="Next renewal">
-                    {formatDate(activeMembership.expiryDate)}
-                  </Field>
-                )}
-              </div>
-            ) : (
-              <p className="text-[12px] text-muted-foreground">
-                No active membership on this account.
-              </p>
-            )}
-          </Panel>
 
           <Panel
             title="Members"
@@ -9042,6 +9195,7 @@ export default function CustomerDetailPage() {
       <PurchasesTab
         customerID={customer._id}
         customerName={customer.name || customer.email || ""}
+        locationID={resolveLocationID(customer)}
       />
     ),
     payments: () => <PaymentsTab customerID={customer._id} />,

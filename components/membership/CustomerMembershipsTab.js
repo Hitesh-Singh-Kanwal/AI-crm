@@ -15,7 +15,7 @@ import AssignMembershipForm from './AssignMembershipForm'
 import SendPaymentLinkMenu from '@/components/payments/SendPaymentLinkMenu'
 import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
-import { PAYMENT_METHODS } from '@/lib/paymentMethods'
+import { NO_DEVICE_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import WalletShortfallField, { walletPaymentFields } from '@/components/payments/WalletShortfallField'
 import { fetchWalletBalance } from '@/lib/wallet'
 
@@ -107,7 +107,7 @@ function PayInstallmentDialog({ target, onClose, onPaid, locationID }) {
           onChange={(e) => setMethod(e.target.value)}
           className="h-9 w-full rounded-lg border border-border bg-background text-sm px-2.5 capitalize focus:outline-none focus:ring-2 focus:ring-brand/30"
         >
-          {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+          {NO_DEVICE_PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
         <label className="text-[12px] font-medium text-foreground block mb-1 mt-3">Payment date</label>
         <input

@@ -8,7 +8,7 @@ import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST 
 import { toast } from "@/components/ui/toast";
 import SearchableSelect from "@/components/ui/searchable-select";
 
-import { PAYMENT_METHODS, PURCHASE_METHODS, TIP_METHODS } from "@/lib/paymentMethods";
+import { PURCHASE_METHODS, NO_DEVICE_PAYMENT_METHODS, TIP_METHODS } from "@/lib/paymentMethods";
 
 function todayISO() {
   const d = new Date();
@@ -386,7 +386,7 @@ export default function NewEnrollmentPackageInline({
   // method dropdown there. Other billing types collect a single payment, so they
   // can pay it straight from the wallet by choosing it as the method.
   const collectMethodOptions =
-    form.billingType === "one_time" ? PURCHASE_METHODS : PAYMENT_METHODS;
+    form.billingType === "one_time" ? PURCHASE_METHODS : NO_DEVICE_PAYMENT_METHODS;
 
   // Non-one-time collection paid directly from the wallet via the method dropdown.
   const collectFromWallet =
