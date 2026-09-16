@@ -57,6 +57,7 @@ import {
   customerLifecycleLabel,
   CUSTOMER_LIFECYCLE_STATUS_OPTIONS,
 } from '@/lib/customer-lifecycle'
+import { useCustomerLifecycleStatuses } from '@/lib/use-customer-lifecycle'
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
 
 const CUSTOMER_CSV_FIELDS = [
@@ -134,6 +135,10 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
   const [overridePrompt, setOverridePrompt] = useState(null)
   const toast = useToast()
   const isEdit = Boolean(initial?._id)
+  const { statuses: lifecycleStatuses } = useCustomerLifecycleStatuses()
+  const lifecycleOptions = lifecycleStatuses.length
+    ? lifecycleStatuses.map((s) => ({ value: s.value, label: s.label }))
+    : CUSTOMER_LIFECYCLE_STATUS_OPTIONS
 
   useEffect(() => {
     if (open) {
@@ -235,7 +240,7 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
       setOverridePrompt({
         payload,
         violations: result.errorData.violations || [],
-        statusLabel: customerLifecycleLabel(payload.lifecycleStatus),
+        statusLabel: customerLifecycleLabel(payload.lifecycleStatus, lifecycleStatuses),
       })
       return
     }
@@ -329,7 +334,7 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
                       onChange={(e) => setField('lifecycleStatus', e.target.value)}
                       className={cn(inputClass, 'appearance-none pr-8')}
                     >
-                      {CUSTOMER_LIFECYCLE_STATUS_OPTIONS.map((opt) => (
+                      {lifecycleOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>
                           {opt.label}
                         </option>
@@ -448,6 +453,7 @@ export default function CustomersPage() {
   const router = useRouter()
   const canWriteCustomers = hasPermission('customers', 'manage', 'write')
   const canDeleteCustomers = hasPermission('customers', 'manage', 'delete')
+  const { statuses: lifecycleStatuses } = useCustomerLifecycleStatuses()
   const [customers, setCustomers] = useState([])
   const [locations, setLocations] = useState([])
   const [teachers, setTeachers] = useState([])
@@ -1041,10 +1047,16 @@ export default function CustomersPage() {
                     </TableCell>
                     <TableCell>
                       <StatusColorBadge
-                        color={customerLifecycleColor(customer.lifecycleStatus)}
+                        color={customerLifecycleColor(
+                          customer.lifecycleStatus,
+                          lifecycleStatuses
+                        )}
                         className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                       >
-                        {customerLifecycleLabel(customer.lifecycleStatus)}
+                        {customerLifecycleLabel(
+                          customer.lifecycleStatus,
+                          lifecycleStatuses
+                        )}
                       </StatusColorBadge>
                     </TableCell>
                     <TableCell className="text-[12px] text-foreground">

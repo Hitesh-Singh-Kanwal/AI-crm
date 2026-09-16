@@ -6,6 +6,7 @@ import {
   customerLifecycleColor,
   customerLifecycleLabel,
 } from '@/lib/customer-lifecycle'
+import { useCustomerLifecycleStatuses } from '@/lib/use-customer-lifecycle'
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
 
 /**
@@ -61,21 +62,22 @@ function actorLabel(t) {
   return 'automation'
 }
 
-function StatusChip({ status }) {
+function StatusChip({ status, statuses }) {
   if (!status) {
     return <span className="text-[13px] text-muted-foreground">—</span>
   }
   return (
     <StatusColorBadge
-      color={customerLifecycleColor(status)}
+      color={customerLifecycleColor(status, statuses)}
       className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
     >
-      {customerLifecycleLabel(status)}
+      {customerLifecycleLabel(status, statuses)}
     </StatusColorBadge>
   )
 }
 
 export default function CustomerStatusHistory({ customerID, refreshKey = 0 }) {
+  const { statuses } = useCustomerLifecycleStatuses()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -154,9 +156,9 @@ export default function CustomerStatusHistory({ customerID, refreshKey = 0 }) {
                     )}
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <StatusChip status={t.fromStatus} />
+                    <StatusChip status={t.fromStatus} statuses={statuses} />
                     <span className="text-[12px] text-muted-foreground">→</span>
-                    <StatusChip status={t.toStatus} />
+                    <StatusChip status={t.toStatus} statuses={statuses} />
                   </div>
                   <p className="mt-1.5 text-[12px] text-muted-foreground">
                     {formatWhen(t.createdAt)}
