@@ -30,6 +30,7 @@ import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
 import { cn } from '@/lib/utils'
+import { vapiLlmLabel } from '@/lib/vapiVoice'
 import {
   hasLocationSelection,
   initLocationID,
@@ -1182,7 +1183,7 @@ export default function InboundIvrTab() {
                 {receptionistPersonaDoc && (
                   <p className="text-xs text-muted-foreground">
                     Active: {receptionistPersonaDoc.voice || receptionistPersonaDoc.voiceId}
-                    {receptionistPersonaDoc.llmModel ? ` · LLM ${receptionistPersonaDoc.llmModel}` : ''}
+                    {receptionistPersonaDoc.llmModel ? ` · LLM ${vapiLlmLabel(receptionistPersonaDoc.llmModel)}` : ''}
                     {typeof receptionistPersonaDoc.stability === 'number'
                       ? ` · stability ${receptionistPersonaDoc.stability}`
                       : ''}
