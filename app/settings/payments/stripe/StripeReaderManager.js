@@ -58,6 +58,18 @@ export default function StripeReaderManager({ locationID: fixedLocationID = null
     else toast.error({ title: 'Remove failed', message: res.error })
   }
 
+  // Test mode only: a simulated reader never actually taps a card on its own
+  // (Stripe's server-driven integration requires this explicit call) — a real
+  // charge sent to it otherwise sits "processing" forever with nothing to do
+  // about it short of the Stripe CLI/API.
+  async function simulate(reader) {
+    setBusy(`sim-${reader._id}`)
+    const res = await api.post(`/api/payments/stripe/readers/${reader._id}/simulate?locationID=${encodeURIComponent(resolved)}`)
+    setBusy('')
+    if (res.success) toast.success({ title: 'Card tap simulated', message: 'Any pending charge on this reader should settle within a few seconds.' })
+    else toast.error({ title: 'Simulate failed', message: res.error })
+  }
+
   return (
     <article className="rounded-2xl border border-border bg-card p-6 shadow-sm">
       <div>
@@ -96,6 +108,11 @@ export default function StripeReaderManager({ locationID: fixedLocationID = null
                       </p>
                     </div>
                     <Badge variant="secondary">Registered</Badge>
+                    {r.deviceType?.startsWith('simulated_') && (
+                      <Button variant="outline" size="sm" className="h-7 px-2.5 text-[11px]" disabled={!canWrite || busy === `sim-${r._id}`} onClick={() => simulate(r)}>
+                        {busy === `sim-${r._id}` ? 'Simulating…' : 'Simulate card tap'}
+                      </Button>
+                    )}
                     <Button variant="outline" size="sm" className="h-7 px-2.5 text-[11px]" disabled={!canDelete || busy === r._id} onClick={() => unpair(r)}>
                       {busy === r._id ? 'Removing…' : 'Remove'}
                     </Button>
