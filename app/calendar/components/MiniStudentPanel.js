@@ -14,7 +14,7 @@ import api from "@/lib/api";
 import { formatStudioDate, formatStudioTime } from "@/lib/studioLocalDate";
 import { useStudioTimezone } from "@/lib/hooks/useStudioTimezone";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
-import { PAYMENT_METHODS } from "@/lib/paymentMethods";
+import { NO_DEVICE_PAYMENT_METHODS } from "@/lib/paymentMethods";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 
 const TABS = [
@@ -1870,7 +1870,7 @@ export default function MiniStudentPanel({
                                         }
                                         className="flex-1 h-7 rounded-md border border-border bg-background px-2 text-[11px] outline-none capitalize"
                                       >
-                                        {PAYMENT_METHODS.map((m) => (
+                                        {NO_DEVICE_PAYMENT_METHODS.map((m) => (
                                           <option key={m.value} value={m.value}>
                                             {m.label}
                                           </option>
@@ -2190,7 +2190,7 @@ export default function MiniStudentPanel({
                                   }
                                   className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none capitalize"
                                 >
-                                  {PAYMENT_METHODS.map((m) => (
+                                  {NO_DEVICE_PAYMENT_METHODS.map((m) => (
                                     <option key={m.value} value={m.value}>
                                       {m.label}
                                     </option>

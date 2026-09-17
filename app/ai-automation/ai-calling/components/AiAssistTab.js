@@ -23,9 +23,10 @@ import {
   VAPI_ELEVENLABS_VOICE_MODEL_OPTIONS,
   VAPI_ELEVENLABS_SPEED_MAX,
   VAPI_ELEVENLABS_SPEED_MIN,
-  VAPI_LLM_OPTIONS,
   clampVapiElevenLabsSpeedForUi,
   clampVapiLlmTemperature,
+  vapiLlmLabel,
+  vapiLlmSupportsTemperature,
   VAPI_SUCCESS_EVALUATION_RUBRICS,
   DEFAULT_SUCCESS_EVALUATION_RUBRIC,
   DEFAULT_SUCCESS_EVALUATION_PROMPT,
@@ -46,6 +47,7 @@ import {
   toLocationPayload,
   workingLocationQueryParam,
 } from './locationScope'
+import VapiLlmPicker from './VapiLlmPicker'
 
 const ASSISTANTS_PAGE_SIZE = 9
 const DEFAULT_LLM = 'gpt-4o-mini'
@@ -163,15 +165,6 @@ export default function AiAssistTab({
   )
 
   // ── derived selected items ──
-  const llmSelectOptions = useMemo(() => {
-    const base = VAPI_LLM_OPTIONS
-    const has = base.some((o) => o.value === llmModel)
-    if (llmModel && !has) {
-      return [{ value: llmModel, label: `${llmModel} (saved)` }, ...base]
-    }
-    return base
-  }, [llmModel])
-
   const selectedPersona = useMemo(
     () => personas.find((p) => p._id === selectedPersonaId) || null,
     [personas, selectedPersonaId]
@@ -892,21 +885,16 @@ export default function AiAssistTab({
                 <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-1.5">
                     <p className="text-sm font-medium">LLM model</p>
-                    <Select
+                    <VapiLlmPicker
                       value={llmModel}
-                      onChange={(e) => setLlmModel(e.target.value)}
+                      onChange={setLlmModel}
                       disabled={editorLoading}
-                      className="font-mono text-xs"
-                    >
-                      {llmSelectOptions.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </Select>
+                    />
                   </div>
                   <div className="space-y-1.5">
-                    <p className="text-sm font-medium">Temperature ({temperature}) - 0 to 1</p>
+                    <p className="text-sm font-medium">
+                      Temperature ({vapiLlmSupportsTemperature(llmModel) ? temperature : 'n/a'}) - 0 to 1
+                    </p>
                     <input
                       type="range"
                       min={0}
@@ -914,9 +902,14 @@ export default function AiAssistTab({
                       step={0.05}
                       value={temperature}
                       onChange={(e) => setTemperature(Number(e.target.value))}
-                      disabled={editorLoading}
-                      className="w-full"
+                      disabled={editorLoading || !vapiLlmSupportsTemperature(llmModel)}
+                      className="w-full disabled:opacity-40"
                     />
+                    {!vapiLlmSupportsTemperature(llmModel) && (
+                      <p className="text-[11px] text-muted-foreground">
+                        This model ignores temperature (reasoning family).
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1183,7 +1176,7 @@ export default function AiAssistTab({
                       {formatBackgroundSoundLabel(previewData.backgroundSound, backgroundSounds)}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
-                      LLM: {previewData.llmModel || DEFAULT_LLM}
+                      LLM: {vapiLlmLabel(previewData.llmModel || DEFAULT_LLM)}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
                       temp: {previewData.temperature ?? '—'}

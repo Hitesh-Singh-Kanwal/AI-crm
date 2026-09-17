@@ -10,6 +10,7 @@ import {
   normalizeConditionsForSave,
 } from '@/lib/condition-logic'
 import { Dialog } from '@/components/ui/dialog'
+import MultiSelectCheckboxDropdown from '@/components/shared/MultiSelectCheckboxDropdown'
 import {
   ActiveToggle,
   ConditionCard,
@@ -59,15 +60,26 @@ const LIFECYCLE_STATUS_OPTIONS = [
   { value: 'archived', label: 'Archived', hint: 'Closed / no longer managed' },
 ]
 
-function blankCondition(type) {
-  if (type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS)
-    return { type, lifecycleStatus: 'active' }
-  if (type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS_NOT)
-    return { type, lifecycleStatus: 'active' }
+function resolveLifecycleKeys(c = {}) {
+  if (Array.isArray(c.lifecycleStatuses) && c.lifecycleStatuses.length) {
+    return c.lifecycleStatuses.map(String).filter(Boolean)
+  }
+  if (c.lifecycleStatus) return [String(c.lifecycleStatus)]
+  return []
+}
+
+function blankCondition(type, catalog) {
+  if (
+    type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS ||
+    type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS_NOT
+  ) {
+    return { type, lifecycleStatuses: [] }
+  }
   if (DAY_TYPES.has(type)) return { type, days: 30 }
   if (BOOLEAN_TYPES.has(type)) return { type, value: true }
-  if (type === CUSTOMER_CONDITION_TYPES.EVENT_OCCURRED)
-    return { type, event: 'payment_received' }
+  if (type === CUSTOMER_CONDITION_TYPES.EVENT_OCCURRED) {
+    return { type, event: catalog?.events?.[0]?.key || 'package_purchased' }
+  }
   return { type }
 }
 
@@ -75,7 +87,7 @@ function emptyCondition(catalog) {
   const types = (catalog?.conditions || []).map((c) => c.type)
   const preferred = CUSTOMER_CONDITION_TYPES.EVENT_OCCURRED
   const first = types.includes(preferred) ? preferred : types[0] || preferred
-  return blankCondition(first)
+  return blankCondition(first, catalog)
 }
 
 function createEmptyForm() {
@@ -95,24 +107,39 @@ function formFromRule(rule) {
     description: rule.description || '',
     isActive: rule.isActive !== false,
     conditions: hydrateConditionJoins(
-      Array.isArray(rule.conditions) ? rule.conditions.map((c) => ({ ...c })) : [],
+      (Array.isArray(rule.conditions) ? rule.conditions : []).map((c) => {
+        const next = { ...c }
+        if (
+          next.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS ||
+          next.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS_NOT
+        ) {
+          const keys = resolveLifecycleKeys(next)
+          next.lifecycleStatuses = keys
+          next.lifecycleStatus = keys[0]
+        }
+        return next
+      }),
       rule.logic === 'OR' ? 'OR' : 'AND'
     ),
     actionStatus: rule.action?.status || 'active',
   }
 }
 
-function describeCondition(c, events) {
+function describeCondition(c, events, statusOptions = LIFECYCLE_STATUS_OPTIONS) {
   const eventLabel = (key) =>
     (events || []).find((e) => e.key === key)?.label || String(key || '').replace(/_/g, ' ')
   const statusLabel = (key) =>
-    LIFECYCLE_STATUS_OPTIONS.find((s) => s.value === key)?.label || key
+    statusOptions.find((s) => s.value === key)?.label || key
 
   switch (c.type) {
-    case CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS:
-      return `status is ${statusLabel(c.lifecycleStatus)}`
-    case CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS_NOT:
-      return `status is not ${statusLabel(c.lifecycleStatus)}`
+    case CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS: {
+      const labels = resolveLifecycleKeys(c).map(statusLabel)
+      return `status is ${labels.join(' or ') || '—'}`
+    }
+    case CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS_NOT: {
+      const labels = resolveLifecycleKeys(c).map(statusLabel)
+      return `status is not ${labels.join(' or ') || '—'}`
+    }
     case CUSTOMER_CONDITION_TYPES.DAYS_SINCE_CREATED:
       return `created ≥ ${c.days ?? '?'} days ago`
     case CUSTOMER_CONDITION_TYPES.DAYS_SINCE_LAST_SESSION:
@@ -149,6 +176,7 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
     conditions: [],
     events: [],
     lifecycleStatuses: LIFECYCLE_STATUS_OPTIONS.map((s) => s.value),
+    lifecycleStatusOptions: LIFECYCLE_STATUS_OPTIONS,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -167,6 +195,7 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
           conditions: [],
           events: [],
           lifecycleStatuses: LIFECYCLE_STATUS_OPTIONS.map((s) => s.value),
+          lifecycleStatusOptions: LIFECYCLE_STATUS_OPTIONS,
         })
         setError(res?.error || 'Failed to load condition catalog')
         setForm(formFromRule(rule))
@@ -176,12 +205,30 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
       const apiStatuses = Array.isArray(res?.data?.lifecycleStatuses)
         ? res.data.lifecycleStatuses
         : []
+      const apiOptions = Array.isArray(res?.data?.lifecycleStatusOptions)
+        ? res.data.lifecycleStatusOptions
+        : []
+      const apiMeta = Array.isArray(res?.data?.lifecycleStatusMeta)
+        ? res.data.lifecycleStatusMeta
+        : []
+      const statusOptions = (apiOptions.length ? apiOptions : LIFECYCLE_STATUS_OPTIONS).map(
+        (opt) => {
+          const meta = apiMeta.find((s) => s.value === opt.value)
+          const fallback = LIFECYCLE_STATUS_OPTIONS.find((s) => s.value === opt.value)
+          return {
+            value: opt.value,
+            label: opt.label || fallback?.label || opt.value,
+            hint: meta?.description || fallback?.hint || '',
+          }
+        }
+      )
       const nextCatalog = {
         conditions: Array.isArray(res?.data?.conditions) ? res.data.conditions : [],
         events: Array.isArray(res?.data?.events) ? res.data.events : [],
         lifecycleStatuses: apiStatuses.length
           ? apiStatuses
           : LIFECYCLE_STATUS_OPTIONS.map((s) => s.value),
+        lifecycleStatusOptions: statusOptions,
       }
       setCatalog(nextCatalog)
 
@@ -200,7 +247,19 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
           c.event &&
           !wiredKeys.has(c.event)
         ) {
-          return { ...c, event: nextCatalog.events[0]?.key || 'payment_received' }
+          return { ...c, event: nextCatalog.events[0]?.key || 'package_purchased' }
+        }
+        if (
+          c.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS ||
+          c.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS_NOT
+        ) {
+          const allowed = new Set(
+            (nextCatalog.lifecycleStatusOptions || []).map((s) => s.value)
+          )
+          const keys = resolveLifecycleKeys(c).filter(
+            (key) => !allowed.size || allowed.has(key)
+          )
+          return { ...c, lifecycleStatuses: keys, lifecycleStatus: keys[0] }
         }
         return c
       })
@@ -230,7 +289,7 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
       const next = prev.conditions.map((c, i) => {
         if (i !== index) return c
         if (patch.type && patch.type !== c.type) {
-          const blank = blankCondition(patch.type)
+          const blank = blankCondition(patch.type, catalog)
           if (index > 0) blank.join = c.join === 'OR' ? 'OR' : 'AND'
           return blank
         }
@@ -258,9 +317,14 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
 
   const plainEnglish = useMemo(() => {
     if (!conditions.length || !form.actionStatus) return null
-    const parts = conditions.map((c) => describeCondition(c, catalog.events))
-    return `If ${formatJoinedConditionEnglish(parts, conditions)} → mark customer ${form.actionStatus}.`
-  }, [conditions, form.actionStatus, catalog.events])
+    const parts = conditions.map((c) =>
+      describeCondition(c, catalog.events, catalog.lifecycleStatusOptions)
+    )
+    const actionLabel =
+      catalog.lifecycleStatusOptions.find((s) => s.value === form.actionStatus)?.label ||
+      form.actionStatus
+    return `If ${formatJoinedConditionEnglish(parts, conditions)} → mark customer ${actionLabel}.`
+  }, [conditions, form.actionStatus, catalog.events, catalog.lifecycleStatusOptions])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -277,9 +341,9 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
       if (
         (c.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS ||
           c.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS_NOT) &&
-        !c.lifecycleStatus
+        !resolveLifecycleKeys(c).length
       ) {
-        setError('Select a lifecycle status for each status condition')
+        setError('Select at least one lifecycle status for each status condition')
         return
       }
       if (c.type === CUSTOMER_CONDITION_TYPES.EVENT_OCCURRED && !c.event) {
@@ -292,7 +356,10 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
       }
     }
 
-    if (!form.actionStatus || !LIFECYCLE_STATUS_OPTIONS.some((s) => s.value === form.actionStatus)) {
+    const allowedStatuses = catalog.lifecycleStatusOptions?.length
+      ? catalog.lifecycleStatusOptions
+      : LIFECYCLE_STATUS_OPTIONS
+    if (!form.actionStatus || !allowedStatuses.some((s) => s.value === form.actionStatus)) {
       setError('Select a customer lifecycle status for the action')
       return
     }
@@ -305,7 +372,18 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
       description: form.description.trim(),
       isActive: form.isActive,
       logic: 'AND',
-      conditions: normalizeConditionsForSave(conditions),
+      conditions: normalizeConditionsForSave(
+        conditions.map((c) => {
+          if (
+            c.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS ||
+            c.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS_NOT
+          ) {
+            const keys = resolveLifecycleKeys(c)
+            return { ...c, lifecycleStatuses: keys, lifecycleStatus: keys[0] }
+          }
+          return c
+        })
+      ),
       action: { status: form.actionStatus },
     }
 
@@ -429,30 +507,27 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
                       {(cond.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS ||
                         cond.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS_NOT) && (
                         <div>
-                          <FieldLabel required>Status</FieldLabel>
-                          <select
-                            value={cond.lifecycleStatus || 'active'}
-                            onChange={(e) =>
-                              updateCondition(index, { lifecycleStatus: e.target.value })
-                            }
-                            disabled={saving}
-                            className={selectClass}
-                          >
-                            {(catalog.lifecycleStatuses?.length
-                              ? catalog.lifecycleStatuses.map(
-                                  (value) =>
-                                    LIFECYCLE_STATUS_OPTIONS.find((s) => s.value === value) || {
-                                      value,
-                                      label: value,
-                                    }
-                                )
+                          <FieldLabel required>
+                            {cond.type === CUSTOMER_CONDITION_TYPES.CURRENT_LIFECYCLE_IS
+                              ? 'Statuses'
+                              : 'Exclude statuses'}
+                          </FieldLabel>
+                          <MultiSelectCheckboxDropdown
+                            options={(catalog.lifecycleStatusOptions?.length
+                              ? catalog.lifecycleStatusOptions
                               : LIFECYCLE_STATUS_OPTIONS
-                            ).map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
+                            ).map((opt) => ({ value: opt.value, label: opt.label }))}
+                            values={resolveLifecycleKeys(cond)}
+                            onChange={(lifecycleStatuses) =>
+                              updateCondition(index, {
+                                lifecycleStatuses,
+                                lifecycleStatus: lifecycleStatuses[0],
+                              })
+                            }
+                            placeholder="Select statuses…"
+                            disabled={saving}
+                            showSelectAll
+                          />
                         </div>
                       )}
 
@@ -527,7 +602,10 @@ export default function CustomerAutomationFormDialog({ open, onClose, rule, onSa
                 description="Choose the customer lifecycle status to set when conditions match."
               />
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {LIFECYCLE_STATUS_OPTIONS.map((opt) => {
+                {(catalog.lifecycleStatusOptions?.length
+                  ? catalog.lifecycleStatusOptions
+                  : LIFECYCLE_STATUS_OPTIONS
+                ).map((opt) => {
                   const selected = form.actionStatus === opt.value
                   return (
                     <button

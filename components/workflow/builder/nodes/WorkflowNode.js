@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { NODE_STYLES, getPaletteItem } from '@/components/workflow/builder/constants'
 import { useWorkflowBuilderStore } from '@/components/workflow/builder/workflowBuilderStore'
 import { customerLifecycleLabel, CUSTOMER_LIFECYCLE_STATUS_OPTIONS } from '@/lib/customer-lifecycle'
+import { useCustomerLifecycleStatuses } from '@/lib/use-customer-lifecycle'
 
 const handleClass =
   '!h-3 !w-3 !border-2 !border-background !bg-[var(--studio-primary)]'
@@ -13,14 +14,14 @@ const LIFECYCLE_STATUS_KEYS = new Set(
   CUSTOMER_LIFECYCLE_STATUS_OPTIONS.map((opt) => opt.value)
 )
 
-function formatExitStageLabel(stage) {
+function formatExitStageLabel(stage, statuses) {
   const key = String(stage || '').trim()
   if (!key) return ''
-  if (LIFECYCLE_STATUS_KEYS.has(key)) return customerLifecycleLabel(key)
+  if (LIFECYCLE_STATUS_KEYS.has(key)) return customerLifecycleLabel(key, statuses)
   return key
 }
 
-function NodeSummary({ paletteType, config }) {
+function NodeSummary({ paletteType, config, statuses }) {
   if (paletteType === 'send_email' && config?.subject) {
     return <p className="mt-1 truncate text-[11px] text-muted-foreground">Subject: {config.subject}</p>
   }
@@ -42,7 +43,7 @@ function NodeSummary({ paletteType, config }) {
     }
     return (
       <p className="mt-1 truncate text-[11px] text-muted-foreground">
-        Exit · {formatExitStageLabel(stage)}
+        Exit · {formatExitStageLabel(stage, statuses)}
       </p>
     )
   }
@@ -68,6 +69,7 @@ function NodeSummary({ paletteType, config }) {
 }
 
 export default function WorkflowNode({ id, data, selected }) {
+  const { statuses } = useCustomerLifecycleStatuses()
   const selectedNodeId = useWorkflowBuilderStore((s) => s.selectedNodeId)
   const setSelectedNodeId = useWorkflowBuilderStore((s) => s.setSelectedNodeId)
   const isSelected = selected || selectedNodeId === id
@@ -110,7 +112,7 @@ export default function WorkflowNode({ id, data, selected }) {
               {styles.badgeLabel}
             </span>
             <div className="mt-1 text-[13px] font-semibold leading-tight text-foreground">{data.label}</div>
-            <NodeSummary paletteType={data.paletteType} config={data.config} />
+            <NodeSummary paletteType={data.paletteType} config={data.config} statuses={statuses} />
           </div>
         </div>
       </div>

@@ -7,7 +7,7 @@ export default function LeadStatusesPage() {
   return (
     <MainLayout
       title="Stages & Lifecycle"
-      subtitle="Lead pipeline stages and customer Active/Inactive automations"
+      subtitle="Organization-wide lead stages, customer statuses, and the automations that move people between them"
     >
       <LeadStatusManagerClient />
     </MainLayout>

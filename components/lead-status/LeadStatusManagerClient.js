@@ -5,6 +5,7 @@ import { Layers, Pencil, Plus, RefreshCw, Trash2, Users, Zap } from 'lucide-reac
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/toast'
+import { hasPermission } from '@/lib/permissions'
 import { invalidateLeadStagesCache } from '@/lib/lead-stages'
 import LeadStatusFormDialog from '@/components/lead-status/LeadStatusFormDialog'
 import LeadAutomationFormDialog from '@/components/lead-status/LeadAutomationFormDialog'
@@ -13,7 +14,12 @@ import ConfirmDeleteLeadStatusDialog from '@/components/lead-status/ConfirmDelet
 import ConfirmDeleteLeadAutomationDialog from '@/components/lead-status/ConfirmDeleteLeadAutomationDialog'
 import {
   CUSTOMER_LIFECYCLE_STATUS_META,
+  customerLifecycleBadgeClass,
+  customerLifecycleLabel,
+  setCustomerLifecycleStatusCache,
 } from '@/lib/customer-lifecycle'
+import { invalidateCustomerLifecycleCache } from '@/lib/use-customer-lifecycle'
+import CustomerLifecycleStatusFormDialog from '@/components/lead-status/CustomerLifecycleStatusFormDialog'
 
 const ENTITY_TABS = [
   { value: 'lead', label: 'Leads', icon: Layers },
@@ -24,47 +30,6 @@ function activeBadge(isActive) {
   return isActive
     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
     : 'bg-muted text-muted-foreground'
-}
-
-function lifecycleBadge(status) {
-  switch (status) {
-    case 'inactive':
-      return 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
-    case 'archived':
-      return 'bg-muted text-muted-foreground dark:bg-slate-800/60 dark:text-muted-foreground'
-    case 'trial_scheduled':
-      return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
-    case 'trial_unscheduled':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-    case 'trial_no_show':
-      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-    case 'no_sale':
-      return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
-    case 'active':
-    default:
-      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-  }
-}
-
-function lifecycleLabel(status) {
-  switch (status) {
-    case 'trial_scheduled':
-      return 'Trial Scheduled'
-    case 'trial_unscheduled':
-      return 'Trial Unscheduled'
-    case 'trial_no_show':
-      return 'Trial No-Show'
-    case 'no_sale':
-      return 'No Sale'
-    case 'inactive':
-      return 'Inactive'
-    case 'archived':
-      return 'Archived'
-    case 'active':
-      return 'Active'
-    default:
-      return status ? String(status).replace(/_/g, ' ') : '—'
-  }
 }
 
 function summarizeLeadRule(rule, statuses) {
@@ -83,8 +48,8 @@ function summarizeLeadRule(rule, statuses) {
   return { target, n, logic }
 }
 
-function summarizeCustomerRule(rule) {
-  const target = lifecycleLabel(rule.action?.status)
+function summarizeCustomerRule(rule, statuses) {
+  const target = customerLifecycleLabel(rule.action?.status, statuses)
   const conditions = Array.isArray(rule.conditions) ? rule.conditions : []
   const n = conditions.length
   const hasJoins = conditions.some((c, i) => i > 0 && (c.join === 'AND' || c.join === 'OR'))
@@ -138,6 +103,9 @@ export default function LeadStatusManagerClient() {
   const [deleteAutoTarget, setDeleteAutoTarget] = useState(null)
   const [deletingAuto, setDeletingAuto] = useState(false)
 
+  const [custStatusFormOpen, setCustStatusFormOpen] = useState(false)
+  const [editingCustStatus, setEditingCustStatus] = useState(null)
+
   const [custAutoFormOpen, setCustAutoFormOpen] = useState(false)
   const [editingCustAuto, setEditingCustAuto] = useState(null)
 
@@ -178,6 +146,7 @@ export default function LeadStatusManagerClient() {
     const meta = catalogRes?.data?.lifecycleStatusMeta
     if (Array.isArray(meta) && meta.length) {
       setCustomerStatuses(meta)
+      setCustomerLifecycleStatusCache(meta)
     } else {
       setCustomerStatuses(CUSTOMER_LIFECYCLE_STATUS_META)
     }
@@ -309,6 +278,24 @@ export default function LeadStatusManagerClient() {
     setDeletingAuto(false)
   }
 
+  const openEditCustStatus = (status) => {
+    setEditingCustStatus(status)
+    setCustStatusFormOpen(true)
+  }
+  const handleCustStatusSaved = (saved) => {
+    invalidateCustomerLifecycleCache()
+    toast.success('Customer status updated')
+    if (saved?.value) {
+      setCustomerStatuses((prev) => {
+        const next = prev.map((row) => (row.value === saved.value ? { ...row, ...saved } : row))
+        setCustomerLifecycleStatusCache(next)
+        return next
+      })
+    } else {
+      loadCustomerAutomations()
+    }
+  }
+
   const openCreateCustAuto = () => {
     setEditingCustAuto(null)
     setCustAutoFormOpen(true)
@@ -342,6 +329,9 @@ export default function LeadStatusManagerClient() {
   }
 
   const isLead = entityType === 'lead'
+  const canWrite = hasPermission('AiAndAutomation', 'leadStatuses', 'write')
+  const canEdit = hasPermission('AiAndAutomation', 'leadStatuses', 'edit')
+  const canDelete = hasPermission('AiAndAutomation', 'leadStatuses', 'delete')
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 text-[16px]">
@@ -403,8 +393,8 @@ export default function LeadStatusManagerClient() {
             </h2>
             <p className="mt-1 max-w-2xl text-[15px] text-muted-foreground">
               {isLead
-                ? 'Customize pipeline stages, then set rules that move leads automatically.'
-                : 'Customers start in Trial after first purchase / convert, then become Active when they buy a program. Rules move them through Trial → Active.'}
+                ? 'Defaults are seeded for every organization. Edit names, descriptions, and rules here — they apply to every location in this organization.'
+                : 'Defaults are seeded for every organization. Edit status names, descriptions, and rules here — they apply to every location in this organization.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -452,9 +442,10 @@ export default function LeadStatusManagerClient() {
                 <div>
                   <h3 className="text-[15px] font-semibold text-foreground">Stages</h3>
                   <p className="text-[13px] text-muted-foreground">
-                    Labels for your pipeline. Automations move leads between them.
+                    Organization-wide labels. Automations move leads between them.
                   </p>
                 </div>
+                {canWrite ? (
                 <button
                   type="button"
                   onClick={openCreateStatus}
@@ -463,6 +454,7 @@ export default function LeadStatusManagerClient() {
                   <Plus className="h-3.5 w-3.5" />
                   Add stage
                 </button>
+                ) : null}
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-border">
@@ -491,6 +483,7 @@ export default function LeadStatusManagerClient() {
                             title="No lead stages yet"
                             description="Add stages like New, Engaged, or Converted to build your pipeline."
                             action={
+                              canWrite ? (
                               <button
                                 type="button"
                                 onClick={openCreateStatus}
@@ -499,6 +492,7 @@ export default function LeadStatusManagerClient() {
                                 <Plus className="h-3.5 w-3.5" />
                                 Add stage
                               </button>
+                              ) : null
                             }
                           />
                         </td>
@@ -540,6 +534,7 @@ export default function LeadStatusManagerClient() {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex flex-wrap gap-1.5">
+                                {canEdit ? (
                                 <button
                                   type="button"
                                   onClick={() => openEditStatus(status)}
@@ -548,6 +543,8 @@ export default function LeadStatusManagerClient() {
                                   <Pencil className="h-3.5 w-3.5" />
                                   Edit
                                 </button>
+                                ) : null}
+                                {canDelete ? (
                                 <button
                                   type="button"
                                   onClick={() => requestDeleteStatus(status)}
@@ -556,6 +553,7 @@ export default function LeadStatusManagerClient() {
                                   <Trash2 className="h-3.5 w-3.5" />
                                   Delete
                                 </button>
+                                ) : null}
                               </div>
                             </td>
                           </tr>
@@ -573,9 +571,10 @@ export default function LeadStatusManagerClient() {
                 <div>
                   <h3 className="text-[15px] font-semibold text-foreground">Automations</h3>
                   <p className="text-[13px] text-muted-foreground">
-                    IF conditions match → set lead stage.
+                    Organization-wide: IF conditions match → set lead stage.
                   </p>
                 </div>
+                {canWrite ? (
                 <button
                   type="button"
                   onClick={openCreateAuto}
@@ -586,6 +585,7 @@ export default function LeadStatusManagerClient() {
                   <Plus className="h-3.5 w-3.5" />
                   Add rule
                 </button>
+                ) : null}
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-border">
@@ -614,7 +614,7 @@ export default function LeadStatusManagerClient() {
                             title="No lead automations yet"
                             description='Try a rule like “New + no activity for 100 days → Dormant”.'
                             action={
-                              statuses.length > 0 ? (
+                              statuses.length > 0 && canWrite ? (
                                 <button
                                   type="button"
                                   onClick={openCreateAuto}
@@ -675,6 +675,7 @@ export default function LeadStatusManagerClient() {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex flex-wrap gap-1.5">
+                                {canEdit ? (
                                 <button
                                   type="button"
                                   onClick={() => openEditAuto(rule)}
@@ -683,6 +684,8 @@ export default function LeadStatusManagerClient() {
                                   <Pencil className="h-3.5 w-3.5" />
                                   Edit
                                 </button>
+                                ) : null}
+                                {canDelete ? (
                                 <button
                                   type="button"
                                   onClick={() => requestDeleteAuto(rule)}
@@ -691,6 +694,7 @@ export default function LeadStatusManagerClient() {
                                   <Trash2 className="h-3.5 w-3.5" />
                                   Delete
                                 </button>
+                                ) : null}
                               </div>
                             </td>
                           </tr>
@@ -711,8 +715,8 @@ export default function LeadStatusManagerClient() {
               <div className="mb-3">
                 <h3 className="text-[15px] font-semibold text-foreground">Statuses</h3>
                 <p className="text-[13px] text-muted-foreground">
-                  Fixed platform statuses (not studio-editable). Automations move customers between
-                  them.
+                  Rename labels and descriptions for this organization. Keys stay
+                  fixed so automations keep matching. Changes apply to every location.
                 </p>
               </div>
               <div className="overflow-x-auto rounded-xl border border-border">
@@ -723,6 +727,7 @@ export default function LeadStatusManagerClient() {
                       <th className="px-4 py-3 font-semibold">Key</th>
                       <th className="px-4 py-3 font-semibold">Phase</th>
                       <th className="px-4 py-3 font-semibold">Description</th>
+                      <th className="px-4 py-3 font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -755,6 +760,20 @@ export default function LeadStatusManagerClient() {
                         <td className="max-w-[360px] px-4 py-3 text-[12px] text-muted-foreground">
                           {status.description || '—'}
                         </td>
+                        <td className="px-4 py-3">
+                          {canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => openEditCustStatus(status)}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-medium text-foreground hover:bg-muted/40"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          ) : (
+                            <span className="text-[12px] text-muted-foreground">—</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -767,9 +786,10 @@ export default function LeadStatusManagerClient() {
               <div>
                 <h3 className="text-[15px] font-semibold text-foreground">Automations</h3>
                 <p className="text-[13px] text-muted-foreground">
-                  IF conditions match → set Trial or Active / Inactive / Archived.
+                  Organization-wide: IF conditions match → set Trial or Active / Inactive / Archived.
                 </p>
               </div>
+              {canWrite ? (
               <button
                 type="button"
                 onClick={openCreateCustAuto}
@@ -778,6 +798,7 @@ export default function LeadStatusManagerClient() {
                 <Plus className="h-3.5 w-3.5" />
                 Add rule
               </button>
+              ) : null}
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-border">
@@ -806,6 +827,7 @@ export default function LeadStatusManagerClient() {
                           title="No customer automations yet"
                           description='Try “No session for 90 days + no active membership → Inactive”.'
                           action={
+                            canWrite ? (
                             <button
                               type="button"
                               onClick={openCreateCustAuto}
@@ -814,6 +836,7 @@ export default function LeadStatusManagerClient() {
                               <Plus className="h-3.5 w-3.5" />
                               Add rule
                             </button>
+                            ) : null
                           }
                         />
                       </td>
@@ -821,7 +844,7 @@ export default function LeadStatusManagerClient() {
                   ) : (
                     customerAutomations.map((rule) => {
                       const id = rule._id || rule.id
-                      const summary = summarizeCustomerRule(rule)
+                      const summary = summarizeCustomerRule(rule, customerStatuses)
                       return (
                         <tr
                           key={id}
@@ -845,7 +868,7 @@ export default function LeadStatusManagerClient() {
                             <span
                               className={cn(
                                 'inline-flex rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide',
-                                lifecycleBadge(rule.action?.status)
+                                customerLifecycleBadgeClass(rule.action?.status)
                               )}
                             >
                               {summary.target}
@@ -863,6 +886,7 @@ export default function LeadStatusManagerClient() {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-1.5">
+                              {canEdit ? (
                               <button
                                 type="button"
                                 onClick={() => openEditCustAuto(rule)}
@@ -871,6 +895,8 @@ export default function LeadStatusManagerClient() {
                                 <Pencil className="h-3.5 w-3.5" />
                                 Edit
                               </button>
+                              ) : null}
+                              {canDelete ? (
                               <button
                                 type="button"
                                 onClick={() => requestDeleteCustAuto(rule)}
@@ -879,6 +905,7 @@ export default function LeadStatusManagerClient() {
                                 <Trash2 className="h-3.5 w-3.5" />
                                 Delete
                               </button>
+                              ) : null}
                             </div>
                           </td>
                         </tr>
@@ -912,6 +939,16 @@ export default function LeadStatusManagerClient() {
         rule={editingAuto}
         statuses={statuses}
         onSaved={handleAutoSaved}
+      />
+
+      <CustomerLifecycleStatusFormDialog
+        open={custStatusFormOpen}
+        onClose={() => {
+          setCustStatusFormOpen(false)
+          setEditingCustStatus(null)
+        }}
+        status={editingCustStatus}
+        onSaved={handleCustStatusSaved}
       />
 
       <CustomerAutomationFormDialog

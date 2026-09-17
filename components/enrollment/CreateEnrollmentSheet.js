@@ -181,6 +181,9 @@ export default function CreateEnrollmentSheet({
           ? {
               method: payload.billing?.method || 'cash',
               collectDate: payload.billing?.collectDate || undefined,
+              // Explicit false only — omitting it (every other caller of this
+              // endpoint) must keep the backend's default of collecting now.
+              ...(payload.billing?.collectNow === false ? { collectNow: false } : {}),
               ...(payload.billing?.useWallet && Number(payload.billing?.walletAmount) > 0
                 ? { walletAmount: Number(payload.billing.walletAmount) }
                 : {}),

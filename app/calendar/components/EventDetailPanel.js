@@ -15,7 +15,7 @@ import api from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
 import { studioWallTimeToUtcISO, utcToStudioWallTime } from "@/lib/studio-time";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
-import { PAYMENT_METHODS } from "@/lib/paymentMethods";
+import { NO_DEVICE_PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import LocationSelector from "@/components/shared/LocationSelector";
 import MiniStudentPanel from "./MiniStudentPanel";
@@ -1429,7 +1429,7 @@ function GroupStudentRoster({
                             }
                             className="h-8 w-full appearance-none rounded-md border border-border bg-background px-2 pr-6 text-[11px] text-foreground outline-none focus:border-warning/40"
                           >
-                            {PAYMENT_METHODS.map((m) => (
+                            {NO_DEVICE_PAYMENT_METHODS.map((m) => (
                               <option key={m.value} value={m.value}>
                                 {m.label}
                               </option>

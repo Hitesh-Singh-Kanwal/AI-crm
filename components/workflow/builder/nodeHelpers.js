@@ -6,10 +6,10 @@ const LIFECYCLE_STATUS_KEYS = new Set(
   CUSTOMER_LIFECYCLE_STATUS_OPTIONS.map((opt) => opt.value)
 )
 
-function formatExitStageLabel(stage) {
+function formatExitStageLabel(stage, statuses) {
   const key = String(stage || '').trim()
   if (!key) return ''
-  if (LIFECYCLE_STATUS_KEYS.has(key)) return customerLifecycleLabel(key)
+  if (LIFECYCLE_STATUS_KEYS.has(key)) return customerLifecycleLabel(key, statuses)
   return key
 }
 
@@ -28,12 +28,12 @@ function waitSummary(config) {
   return parts.length ? `Wait ${parts.join(' ')}` : 'No delay'
 }
 
-function exitSummary(config) {
+function exitSummary(config, statuses) {
   const stage = Array.isArray(config.exitRuleStages) ? config.exitRuleStages[0] : null
-  return stage ? `Exit · ${formatExitStageLabel(stage)}` : 'Select exit stage'
+  return stage ? `Exit · ${formatExitStageLabel(stage, statuses)}` : 'Select exit stage'
 }
 
-export function getNodeSummary(paletteType, config = {}) {
+export function getNodeSummary(paletteType, config = {}, statuses) {
   switch (paletteType) {
     case 'contact':
     case 'form_submitted':
@@ -50,7 +50,7 @@ export function getNodeSummary(paletteType, config = {}) {
     case 'wait':
       return waitSummary(config)
     case 'exit_logic':
-      return exitSummary(config)
+      return exitSummary(config, statuses)
     case 'if_else':
       return `${humanizeField(config.field)} ${humanizeOperator(config.operator)} ${config.value || '…'}`
     case 'create_task':
