@@ -65,7 +65,7 @@ export default function VapiLlmPicker({
             {group.options.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
-                {opt.price ? ` · ${opt.price.replace(' per 1M tokens', '')}` : ''}
+                {opt.price && opt.price !== '—' ? ` · ${opt.price}` : ''}
               </option>
             ))}
           </optgroup>
@@ -84,18 +84,19 @@ export default function VapiLlmPicker({
           </div>
           <div className="grid grid-cols-3 gap-2 text-[11px]">
             <div>
-              <p className="text-muted-foreground">Price</p>
-              <p className="font-medium text-foreground leading-snug">{selected.price || '—'}</p>
+              <p className="text-muted-foreground">$/min</p>
+              <p className="font-medium tabular-nums text-foreground leading-snug">{selected.price || '—'}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Latency</p>
               <p className="font-medium tabular-nums text-foreground leading-snug">{selected.latency || '—'}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">Quality</p>
+              <p className="text-muted-foreground">Intelligence</p>
               <p className="flex items-center gap-1.5 font-medium text-foreground leading-snug">
                 <QualityDots score={selected.quality} />
-                {selected.qualityLabel || '—'}
+                {selected.intelligenceLabel || '—'}
+                {selected.qualityLabel && selected.qualityLabel !== 'Unlisted' ? ` · ${selected.qualityLabel}` : ''}
               </p>
             </div>
           </div>
@@ -103,7 +104,7 @@ export default function VapiLlmPicker({
             <p className="text-[11px] leading-relaxed text-muted-foreground">{selected.description}</p>
           )}
           <p className="text-[10px] text-muted-foreground">
-            Latency is Vapi’s typical model time-to-first-token (P50, reasoning off), shown in ms like the Vapi dashboard. Real calls still vary. Prices are OpenAI list rates (input / output).
+            Latency, Intelligence, and $/min match Vapi’s Model Intelligence (P50 TTFT, score, and V3 cost formula with their costPer1MTokens + floors).
           </p>
         </div>
       )}

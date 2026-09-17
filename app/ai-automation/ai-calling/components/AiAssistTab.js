@@ -20,13 +20,14 @@ import api, { getApiBaseUrl } from '@/lib/api'
 import {
   DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
   VAPI_ELEVENLABS_VOICE_DEFAULTS,
-  VAPI_ELEVENLABS_VOICE_MODEL_OPTIONS,
   VAPI_ELEVENLABS_SPEED_MAX,
   VAPI_ELEVENLABS_SPEED_MIN,
   clampVapiElevenLabsSpeedForUi,
   clampVapiLlmTemperature,
   vapiLlmLabel,
   vapiLlmSupportsTemperature,
+  vapiTtsKeepsPersonaVoice,
+  vapiTtsLabel,
   VAPI_SUCCESS_EVALUATION_RUBRICS,
   DEFAULT_SUCCESS_EVALUATION_RUBRIC,
   DEFAULT_SUCCESS_EVALUATION_PROMPT,
@@ -48,6 +49,7 @@ import {
   workingLocationQueryParam,
 } from './locationScope'
 import VapiLlmPicker from './VapiLlmPicker'
+import VapiTtsPicker from './VapiTtsPicker'
 
 const ASSISTANTS_PAGE_SIZE = 9
 const DEFAULT_LLM = 'gpt-4o-mini'
@@ -491,13 +493,11 @@ export default function AiAssistTab({
             : String(firstMessage || ''),
         llmModel: String(llmModel || DEFAULT_LLM),
         temperature: clampVapiLlmTemperature(Number(temperature), DEFAULT_TEMPERATURE),
-        ...(selectedPersona.provider === '11labs'
-          ? { ttsModelId: String(ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID) }
-          : {}),
+        ttsModelId: String(ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID),
         persona: {
           provider: selectedPersona.provider,
           voiceId: selectedPersona.voiceId,
-          ...(selectedPersona.provider === '11labs'
+          ...(vapiTtsKeepsPersonaVoice(ttsModelId)
             ? {
                 stability: Number(ttsStability),
                 similarityBoost: Number(ttsSimilarity),
@@ -879,7 +879,7 @@ export default function AiAssistTab({
                   <p className="text-sm font-semibold">Vapi model and voice settings</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     These settings are saved on the Vapi assistant. When the selected persona uses an
-                    ElevenLabs voice, the TTS model and voice tuning are sent through Vapi voice config.
+                    ElevenLabs voice, the voice model and voice tuning are sent through Vapi voice config.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 gap-4">
@@ -916,84 +916,85 @@ export default function AiAssistTab({
                 {selectedPersona?.provider === '11labs' && (
                   <div className="rounded-lg border border-border/60 bg-background/50 p-3 space-y-3">
                     <div className="space-y-1.5">
-                      <p className="text-sm font-medium">ElevenLabs voice through Vapi</p>
-                      <Select
-                        value={ttsModelId}
-                        onChange={(e) => setTtsModelId(e.target.value)}
-                        disabled={editorLoading}
-                      >
-                        {VAPI_ELEVENLABS_VOICE_MODEL_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium">Stability ({ttsStability.toFixed(2)})</p>
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={ttsStability}
-                        onChange={(e) => setTtsStability(Number(e.target.value))}
-                        disabled={editorLoading}
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium">Similarity boost ({ttsSimilarity.toFixed(2)})</p>
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={ttsSimilarity}
-                        onChange={(e) => setTtsSimilarity(Number(e.target.value))}
-                        disabled={editorLoading}
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium">
-                        Speed ({ttsSpeed.toFixed(2)}) - Vapi max {VAPI_ELEVENLABS_SPEED_MAX.toFixed(1)}
+                      <p className="text-sm font-medium">Voice model</p>
+                      <p className="text-xs text-muted-foreground">
+                        Vapi voice models with Humanness Index figures. ElevenLabs options keep this persona’s clone; other providers use a Vapi stock voice.
                       </p>
-                      <input
-                        type="range"
-                        min={VAPI_ELEVENLABS_SPEED_MIN}
-                        max={VAPI_ELEVENLABS_SPEED_MAX}
-                        step={0.05}
-                        value={ttsSpeed}
-                        onChange={(e) =>
-                          setTtsSpeed(clampVapiElevenLabsSpeedForUi(Number(e.target.value)))
-                        }
+                      <VapiTtsPicker
+                        value={ttsModelId}
+                        onChange={setTtsModelId}
                         disabled={editorLoading}
-                        className="w-full"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium">Style ({ttsStyle.toFixed(2)})</p>
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={ttsStyle}
-                        onChange={(e) => setTtsStyle(Number(e.target.value))}
-                        disabled={editorLoading}
-                        className="w-full"
-                      />
-                    </div>
-                    <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={ttsSpeakerBoost}
-                        onChange={() => setTtsSpeakerBoost((v) => !v)}
-                        disabled={editorLoading}
-                      />
-                      Speaker boost
-                    </label>
+                    {vapiTtsKeepsPersonaVoice(ttsModelId) && (
+                      <>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium">Stability ({ttsStability.toFixed(2)})</p>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={ttsStability}
+                            onChange={(e) => setTtsStability(Number(e.target.value))}
+                            disabled={editorLoading}
+                            className="w-full"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium">Similarity boost ({ttsSimilarity.toFixed(2)})</p>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={ttsSimilarity}
+                            onChange={(e) => setTtsSimilarity(Number(e.target.value))}
+                            disabled={editorLoading}
+                            className="w-full"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium">
+                            Speed ({ttsSpeed.toFixed(2)}) - Vapi max {VAPI_ELEVENLABS_SPEED_MAX.toFixed(1)}
+                          </p>
+                          <input
+                            type="range"
+                            min={VAPI_ELEVENLABS_SPEED_MIN}
+                            max={VAPI_ELEVENLABS_SPEED_MAX}
+                            step={0.05}
+                            value={ttsSpeed}
+                            onChange={(e) =>
+                              setTtsSpeed(clampVapiElevenLabsSpeedForUi(Number(e.target.value)))
+                            }
+                            disabled={editorLoading}
+                            className="w-full"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium">Style ({ttsStyle.toFixed(2)})</p>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={ttsStyle}
+                            onChange={(e) => setTtsStyle(Number(e.target.value))}
+                            disabled={editorLoading}
+                            className="w-full"
+                          />
+                        </div>
+                        <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={ttsSpeakerBoost}
+                            onChange={() => setTtsSpeakerBoost((v) => !v)}
+                            disabled={editorLoading}
+                          />
+                          Speaker boost
+                        </label>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1182,8 +1183,8 @@ export default function AiAssistTab({
                       temp: {previewData.temperature ?? '—'}
                     </Badge>
                     {previewData.persona?.provider === '11labs' && (
-                      <Badge variant="outline" className="text-xs font-mono">
-                        ElevenLabs voice: {previewData.ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID}
+                      <Badge variant="outline" className="text-xs">
+                        Voice model: {vapiTtsLabel(previewData.ttsModelId)}
                       </Badge>
                     )}
                   </div>

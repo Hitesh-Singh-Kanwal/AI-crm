@@ -21,16 +21,19 @@ import { getToken } from '@/lib/auth'
 import {
   DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
   VAPI_ELEVENLABS_VOICE_DEFAULTS,
-  VAPI_ELEVENLABS_VOICE_MODEL_OPTIONS,
   VAPI_ELEVENLABS_SPEED_MAX,
   VAPI_ELEVENLABS_SPEED_MIN,
   clampVapiElevenLabsSpeedForUi,
   clampVapiLlmTemperature,
   getVapiLlmOption,
+  getVapiTtsOption,
   vapiLlmLabel,
   vapiLlmSupportsTemperature,
+  vapiTtsKeepsPersonaVoice,
+  vapiTtsLabel,
 } from '@/lib/vapiVoice'
 import VapiLlmPicker from './VapiLlmPicker'
+import VapiTtsPicker from './VapiTtsPicker'
 import { hasLocationSelection, initLocationID, locationBadgeLabel, toLocationPayload } from './locationScope'
 import WorkingStudioPicker from './WorkingStudioPicker'
 
@@ -394,6 +397,7 @@ export default function PersonasTab({
               const shared = isSharedPersona(p)
               const locLabel = !shared ? locationBadgeLabel(p) : null
               const llmMeta = getVapiLlmOption(p.llmModel || 'gpt-4o-mini')
+              const ttsMeta = getVapiTtsOption(p.ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID)
               return (
               <Card
                 key={p._id}
@@ -558,9 +562,20 @@ export default function PersonasTab({
                       </span>
                     </div>
                     {p.provider === '11labs' && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">TTS model</span>
-                        <span className="font-mono text-foreground text-[11px]">{p.ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID}</span>
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-muted-foreground">Voice</span>
+                        <span className="text-right text-foreground">
+                          {vapiTtsLabel(p.ttsModelId)}
+                          {ttsMeta ? (
+                            <span className="block text-[10px] text-muted-foreground">
+                              {ttsMeta.humannessLabel && ttsMeta.humannessLabel !== '—'
+                                ? `${ttsMeta.humannessLabel} · `
+                                : ''}
+                              {ttsMeta.latency}
+                              {ttsMeta.price && ttsMeta.price !== '—' ? ` · ${ttsMeta.price}` : ''}
+                            </span>
+                          ) : null}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -784,85 +799,86 @@ export default function PersonasTab({
                 {/* ElevenLabs voice tuning — only for 11labs personas */}
                 {targetPersona?.provider === '11labs' && (
                   <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-3">
-                    <p className="text-xs font-semibold text-foreground">ElevenLabs voice tuning</p>
-
+                    <p className="text-xs font-semibold text-foreground">Voice model</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Vapi voice models with Humanness Index figures. ElevenLabs options keep this persona’s cloned voice; other providers use a Vapi stock voice.
+                    </p>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-foreground">TTS model</label>
-                      <select
+                      <label className="text-xs font-medium text-foreground">Voice model</label>
+                      <VapiTtsPicker
                         value={ttsModelId}
-                        onChange={(e) => setTtsModelId(e.target.value)}
+                        onChange={setTtsModelId}
                         disabled={modalSaving}
-                        className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs font-mono"
-                      >
-                        {VAPI_ELEVENLABS_VOICE_MODEL_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-foreground">
-                          Stability: {Number(stability).toFixed(2)}
-                        </label>
-                        <input
-                          type="range" min={0} max={1} step={0.05}
-                          value={stability}
-                          onChange={(e) => setStability(Number(e.target.value))}
-                          disabled={modalSaving}
-                          className="w-full accent-primary"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-foreground">
-                          Similarity: {Number(similarityBoost).toFixed(2)}
-                        </label>
-                        <input
-                          type="range" min={0} max={1} step={0.05}
-                          value={similarityBoost}
-                          onChange={(e) => setSimilarityBoost(Number(e.target.value))}
-                          disabled={modalSaving}
-                          className="w-full accent-primary"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-foreground">
-                          Speed (max {VAPI_ELEVENLABS_SPEED_MAX}): {Number(speed).toFixed(2)}
-                        </label>
-                        <input
-                          type="range"
-                          min={VAPI_ELEVENLABS_SPEED_MIN}
-                          max={VAPI_ELEVENLABS_SPEED_MAX}
-                          step={0.05}
-                          value={speed}
-                          onChange={(e) => setSpeed(clampVapiElevenLabsSpeedForUi(Number(e.target.value)))}
-                          disabled={modalSaving}
-                          className="w-full accent-primary"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-foreground">
-                          Style: {Number(style).toFixed(2)}
-                        </label>
-                        <input
-                          type="range" min={0} max={1} step={0.05}
-                          value={style}
-                          onChange={(e) => setStyle(Number(e.target.value))}
-                          disabled={modalSaving}
-                          className="w-full accent-primary"
-                        />
-                      </div>
-                    </div>
-
-                    <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
-                      <Checkbox
-                        checked={useSpeakerBoost}
-                        onClick={() => setUseSpeakerBoost((v) => !v)}
-                        disabled={modalSaving}
-                        className="h-3.5 w-3.5 rounded border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                       />
-                      Speaker boost (clearer phone audio)
-                    </label>
+                    </div>
+
+                    {vapiTtsKeepsPersonaVoice(ttsModelId) && (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-foreground">
+                              Stability: {Number(stability).toFixed(2)}
+                            </label>
+                            <input
+                              type="range" min={0} max={1} step={0.05}
+                              value={stability}
+                              onChange={(e) => setStability(Number(e.target.value))}
+                              disabled={modalSaving}
+                              className="w-full accent-primary"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-foreground">
+                              Similarity: {Number(similarityBoost).toFixed(2)}
+                            </label>
+                            <input
+                              type="range" min={0} max={1} step={0.05}
+                              value={similarityBoost}
+                              onChange={(e) => setSimilarityBoost(Number(e.target.value))}
+                              disabled={modalSaving}
+                              className="w-full accent-primary"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-foreground">
+                              Speed (max {VAPI_ELEVENLABS_SPEED_MAX}): {Number(speed).toFixed(2)}
+                            </label>
+                            <input
+                              type="range"
+                              min={VAPI_ELEVENLABS_SPEED_MIN}
+                              max={VAPI_ELEVENLABS_SPEED_MAX}
+                              step={0.05}
+                              value={speed}
+                              onChange={(e) => setSpeed(clampVapiElevenLabsSpeedForUi(Number(e.target.value)))}
+                              disabled={modalSaving}
+                              className="w-full accent-primary"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-foreground">
+                              Style: {Number(style).toFixed(2)}
+                            </label>
+                            <input
+                              type="range" min={0} max={1} step={0.05}
+                              value={style}
+                              onChange={(e) => setStyle(Number(e.target.value))}
+                              disabled={modalSaving}
+                              className="w-full accent-primary"
+                            />
+                          </div>
+                        </div>
+
+                        <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
+                          <Checkbox
+                            checked={useSpeakerBoost}
+                            onClick={() => setUseSpeakerBoost((v) => !v)}
+                            disabled={modalSaving}
+                            className="h-3.5 w-3.5 rounded border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                          />
+                          Speaker boost (clearer phone audio)
+                        </label>
+                      </>
+                    )}
                   </div>
                 )}
 
