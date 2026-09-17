@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Pencil, Trash2, CheckCircle, Lock, Brain, Zap, DollarSign, Loader2, CheckCircle2, Eye, Sparkles, Crown, Settings2, ChevronDown, Tags, Wrench } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
-import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
+import LocationSelector from '@/components/shared/LocationSelector'
 import WorkingStudioPicker from '@/app/ai-automation/ai-calling/components/WorkingStudioPicker'
 import {
   initLocationID,
@@ -27,7 +27,6 @@ import {
   toLocationPayload,
   locationBadgeLabel,
   workingLocationQueryParam,
-  normalizeWorkingLocation,
 } from '@/app/ai-automation/ai-calling/components/locationScope'
 
 // ─── Create / Edit dialog ────────────────────────────────────────────────────
@@ -737,24 +736,28 @@ export default function SmsPromptTab({
   const [viewPrompt, setViewPrompt] = useState(null)
   const [viewOpen, setViewOpen] = useState(false)
   const [viewLoading, setViewLoading] = useState(false)
+  const loadGen = useRef(0)
 
   const locationQuery = workingLocationQueryParam(workingLocationID)
   const viewingStudio = Boolean(locationQuery && locationQuery !== 'all')
   const forLocationPayload = viewingStudio ? { forLocationID: locationQuery } : {}
 
   const load = useCallback(async ({ silent = false } = {}) => {
+    const gen = ++loadGen.current
     if (!silent) setLoading(true)
     try {
       const params = new URLSearchParams()
       if (locationQuery) params.set('locationID', locationQuery)
       const qs = params.toString()
       const result = await api.get(`/api/sms-prompt${qs ? `?${qs}` : ''}`)
+      if (gen !== loadGen.current) return
       if (result.success) setPrompts(result.data || [])
       else pushToast.error('Error', { description: result.error || 'Failed to load prompts' })
     } catch {
+      if (gen !== loadGen.current) return
       pushToast.error('Error', { description: 'Unable to load prompts' })
     } finally {
-      if (!silent) setLoading(false)
+      if (gen === loadGen.current && !silent) setLoading(false)
     }
   }, [locationQuery])
 
@@ -764,6 +767,13 @@ export default function SmsPromptTab({
   }, [activeView, load])
 
   const handleActivate = async (p) => {
+    if (!locationQuery) {
+      toast.error({
+        title: 'Select a studio',
+        message: 'Pick a working studio first, then set the prompt that studio should use.',
+      })
+      return
+    }
     // When a studio is selected, "already active" means active *for this studio*.
     // On All branches, strong highlight is isUsedSomewhere (not raw isActive).
     if (viewingStudio ? p.isEffective : p.isUsedSomewhere) return

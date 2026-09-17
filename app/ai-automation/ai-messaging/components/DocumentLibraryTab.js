@@ -231,12 +231,14 @@ export default function DocumentLibraryTab({
   const [editingDoc, setEditingDoc] = useState(null)
   const [togglingId, setTogglingId] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
+  const loadGen = useRef(0)
 
   const locationQuery = workingLocationQueryParam(workingLocationID)
   const forLocationPayload =
     locationQuery && locationQuery !== 'all' ? { forLocationID: locationQuery } : {}
 
   const load = useCallback(async ({ silent = false } = {}) => {
+    const gen = ++loadGen.current
     if (!silent) setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -246,6 +248,7 @@ export default function DocumentLibraryTab({
       })
       if (locationQuery) params.set('locationID', locationQuery)
       const result = await api.get(`${endpoint}?${params.toString()}`)
+      if (gen !== loadGen.current) return
       if (result.success) {
         const data = result.data || {}
         setDocs(data.docs || [])
@@ -255,9 +258,10 @@ export default function DocumentLibraryTab({
         pushToast.error('Error', { description: result.error || 'Failed to load documents' })
       }
     } catch {
+      if (gen !== loadGen.current) return
       pushToast.error('Error', { description: 'Unable to load documents' })
     } finally {
-      if (!silent) setLoading(false)
+      if (gen === loadGen.current && !silent) setLoading(false)
     }
   }, [endpoint, page, search, locationQuery])
 
