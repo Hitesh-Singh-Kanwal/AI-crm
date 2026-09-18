@@ -187,6 +187,14 @@ export default function CreateEnrollmentSheet({
               ...(payload.billing?.useWallet && Number(payload.billing?.walletAmount) > 0
                 ? { walletAmount: Number(payload.billing.walletAmount) }
                 : {}),
+              ...(payload.billing?.method === 'terminal'
+                ? {
+                    deviceID: payload.billing?.deviceID,
+                    ...(payload.billing?.promptTip
+                      ? { promptTip: true, tipTeacherID: payload.billing?.tipTeacherID }
+                      : {}),
+                  }
+                : {}),
             }
           : payload.billingType === 'payment_plan'
             ? (() => {
@@ -255,6 +263,14 @@ export default function CreateEnrollmentSheet({
           installmentIndex: firstPending,
           method,
           paymentDate: dateInputToISO(payload.billing?.collectDate),
+          ...(method === 'terminal'
+            ? {
+                deviceID: payload.billing?.deviceID,
+                ...(payload.billing?.promptTip
+                  ? { promptTip: true, tipTeacherID: payload.billing?.tipTeacherID }
+                  : {}),
+              }
+            : {}),
         })
         if (!payRes?.success) {
           setError(payRes?.error || 'Enrollment created but first installment payment failed.')
@@ -271,6 +287,14 @@ export default function CreateEnrollmentSheet({
         amount: collectAmount,
         method,
         paymentDate: dateInputToISO(payload.billing?.collectDate),
+        ...(method === 'terminal'
+          ? {
+              deviceID: payload.billing?.deviceID,
+              ...(payload.billing?.promptTip
+                ? { promptTip: true, tipTeacherID: payload.billing?.tipTeacherID }
+                : {}),
+            }
+          : {}),
       })
       if (!payRes?.success) {
         setError(payRes?.error || 'Enrollment created but initial payment failed.')

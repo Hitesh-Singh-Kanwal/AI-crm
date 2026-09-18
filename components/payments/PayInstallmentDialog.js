@@ -7,7 +7,7 @@
 // so the two call sites can't drift apart again.
 
 import { useState, useEffect, useRef } from "react";
-import { ChevronDown } from "lucide-react";
+import { CalendarDays, Lock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -29,13 +29,14 @@ import WalletShortfallField, {
   walletPaymentFields,
 } from "@/components/payments/WalletShortfallField";
 import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
 
 function FormField({ label, required, children }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-[12px] font-medium text-muted-foreground">
+      <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
         {label}
         {required && <span className="text-destructive ml-0.5">*</span>}
       </label>
@@ -59,6 +60,7 @@ export default function PayInstallmentDialog({
   const [amount, setAmount] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayDateInput);
   const [deviceID, setDeviceID] = useState("");
+  const [tipConfig, setTipConfig] = useState({ promptTip: false });
   const [saving, setSaving] = useState(false);
   const toast = useToast();
   const { ready: cloverReady } = useCardProcessor(locationID || plan);
@@ -95,6 +97,7 @@ export default function PayInstallmentDialog({
     if (installment) setAmount(Number(installment.amount).toFixed(2));
     rescheduledRef.current = false;
     setDeviceID("");
+    setTipConfig({ promptTip: false });
   }, [installment]);
 
   function validatedAmount() {
@@ -165,7 +168,7 @@ export default function PayInstallmentDialog({
         installmentIndex,
         amount: num,
         paymentDate: dateInputToISO(paymentDate),
-        ...(payWithTerminal ? { deviceID } : {}),
+        ...(payWithTerminal ? { deviceID, ...tipConfig } : {}),
         ...walletPaymentFields({
           method,
           shortfallMethod,
@@ -227,72 +230,83 @@ export default function PayInstallmentDialog({
   return (
     <Dialog
       open={open}
+      onClose={onClose}
       onOpenChange={(v) => {
         if (!v) onClose();
       }}
     >
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Pay Installment</DialogTitle>
-        </DialogHeader>
-        {installment && (
-          <p className="text-[12px] text-muted-foreground -mt-1">
-            Payment {installmentIndex + 1} of {plan.numberOfInstallments} ·{" "}
-            <span className="text-foreground font-medium">
-              ${Number(installment.amount).toFixed(2)}
-            </span>{" "}
-            due{" "}
-            {new Date(installment.dueDate).toLocaleDateString("en-AU", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })}
-          </p>
-        )}
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+      <DialogContent className="max-w-md !p-0 overflow-hidden">
+        <div className="bg-gradient-to-br from-[var(--studio-primary)]/15 via-[var(--studio-primary)]/5 to-transparent px-6 pt-6 pb-5 border-b border-border">
+          <DialogHeader>
+            <DialogTitle>Pay Installment</DialogTitle>
+          </DialogHeader>
+          {installment && (
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <div>
+                <span className="inline-flex items-center rounded-full bg-background/80 px-2.5 py-1 text-[11px] font-semibold text-foreground shadow-sm">
+                  Payment {installmentIndex + 1} of {plan.numberOfInstallments}
+                </span>
+                <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <CalendarDays className="h-3 w-3" />
+                  Due{" "}
+                  {new Date(installment.dueDate).toLocaleDateString("en-AU", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+              <p className="text-[26px] font-bold leading-none text-foreground">
+                ${Number(installment.amount).toFixed(2)}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 px-6 pt-5 pb-6">
           <FormField label="Amount" required>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              readOnly={!amountEditable}
-              disabled={!amountEditable}
-              className={`h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary ${
-                amountEditable ? "" : "cursor-not-allowed opacity-70"
-              }`}
-            />
-          </FormField>
-          <FormField label="Payment Method" required>
             <div className="relative">
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
-              >
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-medium text-muted-foreground">$</span>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                readOnly={!amountEditable}
+                disabled={!amountEditable}
+                className={`h-10 w-full rounded-lg border border-border bg-background pl-6 pr-9 text-[14px] font-medium outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15 ${
+                  amountEditable ? "" : "cursor-not-allowed bg-muted/40 text-muted-foreground"
+                }`}
+              />
+              {!amountEditable && (
+                <Lock className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              )}
             </div>
           </FormField>
-          <FormField label="Payment date" required>
-            <input
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-            />
+
+          <FormField label="Payment method" required>
+            <PaymentMethodPicker methods={PAYMENT_METHODS} value={method} onChange={setMethod} />
           </FormField>
+
+          <FormField label="Payment date" required>
+            <div className="relative">
+              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-[13px] outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            </div>
+          </FormField>
+
           <TerminalDeviceField
             method={method}
             locationID={locationID}
             deviceID={deviceID}
             onDeviceChange={setDeviceID}
+            onTipConfig={setTipConfig}
           />
           <WalletShortfallField
             method={method}
@@ -306,7 +320,8 @@ export default function PayInstallmentDialog({
               Connect a card processor (Clover or Stripe) in Settings → Integrations to charge a card.
             </p>
           )}
-          <div className="flex justify-end gap-2 pt-1">
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border/70 mt-1">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
@@ -325,7 +340,7 @@ export default function PayInstallmentDialog({
               type="submit"
               size="sm"
               disabled={saving || cloverNotConnected || terminalNotSelected}
-              className="bg-success hover:bg-success text-white"
+              className="bg-success hover:bg-success text-white shadow-sm"
             >
               {saving
                 ? payWithTerminal

@@ -42,7 +42,7 @@ export default function LessonsByTeacherWidget({ lessons, rangeDays, onRangeChan
             </TableHeader>
             <TableBody>
               {data.map((r, i) => (
-                <TableRow key={r.teacher}>
+                <TableRow key={`${r.teacher}-${i}`}>
                   <TableCell className={`px-2 py-2 text-[13px] font-semibold ${i === 0 ? 'text-[var(--studio-primary)]' : 'text-foreground'}`}>
                     {r.teacher}
                   </TableCell>

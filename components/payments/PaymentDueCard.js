@@ -8,6 +8,8 @@
 // app/settings/users-roles/customers/[id]/page.js.
 
 import { useState, useEffect } from "react";
+import { CalendarDays } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
 import { useCardProcessor } from "@/app/settings/payments/useCardProcessor";
@@ -23,6 +25,7 @@ import WalletShortfallField, {
   walletPaymentFields,
 } from "@/components/payments/WalletShortfallField";
 import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
@@ -187,7 +190,7 @@ export default function PaymentDueCard({
             )}
           </div>
         </div>
-        {mode === null && (
+        {mode !== "change-date" && (
           <div className="flex items-center gap-2 shrink-0">
             <Button
               size="sm"
@@ -217,58 +220,84 @@ export default function PaymentDueCard({
         )}
       </div>
 
-      {mode === "pay" && (
-        <form
-          onSubmit={handlePay}
-          className="flex items-end gap-2 flex-wrap pt-2 border-t border-border/50"
-        >
-          <div className="flex-1 min-w-[120px]">
-            <label className="block text-[10px] font-medium text-muted-foreground mb-1">
-              Amount
-            </label>
-            <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
-                $
-              </span>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="h-8 w-full rounded-md border border-border bg-background pl-6 pr-2.5 text-[12px] outline-none focus:border-primary"
-              />
+      <Dialog open={mode === "pay"} onClose={() => setMode(null)} maxWidth="md">
+        <DialogContent className="!p-0 overflow-hidden">
+          <div className="bg-gradient-to-br from-[var(--studio-primary)]/15 via-[var(--studio-primary)]/5 to-transparent px-6 pt-6 pb-5 border-b border-border">
+            <DialogHeader>
+              <DialogTitle>Pay Now</DialogTitle>
+            </DialogHeader>
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center rounded-full bg-background/80 px-2.5 py-1 text-[11px] font-semibold text-foreground shadow-sm">
+                    {itemName}
+                  </span>
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-500/10 text-violet-600">
+                    {badgeLabel}
+                  </span>
+                </div>
+                {dueDate && (
+                  <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <CalendarDays className="h-3 w-3" />
+                    Due{" "}
+                    {new Date(dueDate).toLocaleDateString("en-AU", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </p>
+                )}
+              </div>
+              <p className="text-[26px] font-bold leading-none text-foreground">
+                ${outstanding.toFixed(2)}
+              </p>
             </div>
           </div>
-          <div className="flex-1 min-w-[100px]">
-            <label className="block text-[10px] font-medium text-muted-foreground mb-1">
-              Method
-            </label>
-            <select
-              value={method}
-              onChange={(e) => setMethod(e.target.value)}
-              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary capitalize"
-            >
-              {PAYMENT_METHODS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex-1 min-w-[130px]">
-            <label className="block text-[10px] font-medium text-muted-foreground mb-1">
-              Payment Date
-            </label>
-            <input
-              type="date"
-              value={paymentDate}
-              max={todayDateInput()}
-              onChange={(e) => setPaymentDate(e.target.value)}
-              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5 w-full">
+
+          <form onSubmit={handlePay} className="space-y-4 px-6 pt-5 pb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  Amount
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-medium text-muted-foreground">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="h-10 w-full rounded-lg border border-border bg-background pl-6 pr-2.5 text-[14px] font-medium outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  Payment Date
+                </label>
+                <div className="relative">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="date"
+                    value={paymentDate}
+                    max={todayDateInput()}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-2.5 text-[13px] outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                Payment method
+              </label>
+              <PaymentMethodPicker methods={PAYMENT_METHODS} value={method} onChange={setMethod} />
+            </div>
+
             <WalletShortfallField
               method={method}
               balance={walletBalance}
@@ -277,7 +306,7 @@ export default function PaymentDueCard({
               onShortfallMethodChange={setShortfallMethod}
             />
             {cloverNotConnected && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[12px] text-muted-foreground">
                 Connect a card processor (Clover or Stripe) in Settings → Integrations to charge a card.
               </p>
             )}
@@ -288,12 +317,12 @@ export default function PaymentDueCard({
               onDeviceChange={setDeviceID}
               onTipConfig={setTipConfig}
             />
-            <div className="flex gap-1.5">
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-border/70 mt-1">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 px-3 text-[11px]"
                 onClick={() => setMode(null)}
               >
                 Cancel
@@ -301,7 +330,7 @@ export default function PaymentDueCard({
               <Button
                 type="submit"
                 size="sm"
-                className="h-8 px-3 text-[11px]"
+                className="bg-success hover:bg-success text-white shadow-sm"
                 disabled={saving || !amountValid || cloverNotConnected || terminalNotSelected}
               >
                 {saving
@@ -315,9 +344,9 @@ export default function PaymentDueCard({
                       : "Confirm Payment"}
               </Button>
             </div>
-          </div>
-        </form>
-      )}
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {mode === "change-date" && (
         <form

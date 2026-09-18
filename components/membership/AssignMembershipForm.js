@@ -11,6 +11,7 @@ import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 
 import { PURCHASE_METHODS } from '@/lib/paymentMethods'
+import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
 
 function todayISO() {
   const d = new Date()
@@ -288,13 +289,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
           {remaining > 0 && (
             <div className="flex flex-col gap-1.5">
               <Label>{walletApplied > 0 ? 'Remaining payment method' : 'Payment Method'}</Label>
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                className="h-9 rounded-lg border border-border bg-background text-sm px-2.5 focus:outline-none focus:ring-2 focus:ring-brand/30 capitalize"
-              >
-                {PURCHASE_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
+              <PaymentMethodPicker methods={PURCHASE_METHODS} value={method} onChange={setMethod} />
             </div>
           )}
 
@@ -365,13 +360,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
               {collectInitialNow && (
                 <div className="flex flex-col gap-1.5">
                   <Label>Payment Method</Label>
-                  <select
-                    value={method}
-                    onChange={(e) => setMethod(e.target.value)}
-                    className="h-9 rounded-lg border border-border bg-background text-sm px-2.5 focus:outline-none focus:ring-2 focus:ring-brand/30 capitalize"
-                  >
-                    {PURCHASE_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                  </select>
+                  <PaymentMethodPicker methods={PURCHASE_METHODS} value={method} onChange={setMethod} />
                 </div>
               )}
             </div>

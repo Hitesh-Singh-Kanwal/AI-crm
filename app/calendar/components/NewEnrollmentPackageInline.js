@@ -8,7 +8,9 @@ import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST 
 import { toast } from "@/components/ui/toast";
 import SearchableSelect from "@/components/ui/searchable-select";
 
-import { PURCHASE_METHODS, NO_DEVICE_PAYMENT_METHODS, TIP_METHODS } from "@/lib/paymentMethods";
+import { PAYMENT_METHODS, TIP_METHODS } from "@/lib/paymentMethods";
+import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 
 function todayISO() {
   const d = new Date();
@@ -201,6 +203,8 @@ export default function NewEnrollmentPackageInline({
   const [error, setError] = useState("");
   const [catalogServices, setCatalogServices] = useState([]);
   const [walletBalance, setWalletBalance] = useState(null);
+  const [deviceID, setDeviceID] = useState("");
+  const [tipConfig, setTipConfig] = useState({ promptTip: false });
   // Either processor being ready means a card payment can be taken; the backend
   // routes to whichever this location uses.
   const { ready: cardProcessorReady } = useCardProcessor(locationID);
@@ -384,9 +388,15 @@ export default function NewEnrollmentPackageInline({
 
   // One-time uses the wallet-split control below, so wallet is excluded from the
   // method dropdown there. Other billing types collect a single payment, so they
-  // can pay it straight from the wallet by choosing it as the method.
+  // can pay it straight from the wallet by choosing it as the method. Terminal is
+  // included for both — this endpoint dispatches to the paired Clover/Stripe
+  // reader the same way PaymentDueCard's balance payments do (see
+  // customerPackage.controller.js#addPackageToCustomer and
+  // paymentPlan.controller.js#processInstallmentPayment).
   const collectMethodOptions =
-    form.billingType === "one_time" ? PURCHASE_METHODS : NO_DEVICE_PAYMENT_METHODS;
+    form.billingType === "one_time"
+      ? PAYMENT_METHODS.filter((m) => m.value !== "wallet")
+      : PAYMENT_METHODS;
 
   // Non-one-time collection paid directly from the wallet via the method dropdown.
   const collectFromWallet =
@@ -490,6 +500,8 @@ export default function NewEnrollmentPackageInline({
     form.billing.method === "card" &&
     cardChargeAmount > 0 &&
     !cardProcessorReady;
+  const terminalNotSelected =
+    step === 2 && form.billing.collectNow && form.billing.method === "terminal" && !deviceID;
 
   const defaultCollectAmount = useMemo(() => {
     if (form.billingType === "one_time") return total;
@@ -574,6 +586,7 @@ export default function NewEnrollmentPackageInline({
         collectNow: collect,
         collectAmount: collect ? Number(form.billing.collectAmount) : 0,
         collectDate: effectiveCollectDate || undefined,
+        ...(collect && form.billing.method === "terminal" ? { deviceID, ...tipConfig } : {}),
       },
     };
     if (form.tip.enabled && form.tip.amount && form.teacherID) {
@@ -1258,20 +1271,18 @@ export default function NewEnrollmentPackageInline({
                     {initialAmount > 0 ? (
                       <div className="space-y-2">
                         <p className="text-[11px] font-medium text-foreground">Collect initial payment now</p>
-                        <div className="relative">
-                          <select
-                            value={form.billing.method}
-                            onChange={(e) =>
-                              setForm((p) => ({ ...p, billing: { ...p.billing, method: e.target.value } }))
-                            }
-                            className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
-                          >
-                            {collectMethodOptions.map((m) => (
-                              <option key={m.value} value={m.value}>{m.label}</option>
-                            ))}
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                        </div>
+                        <PaymentMethodPicker
+                          methods={collectMethodOptions}
+                          value={form.billing.method}
+                          onChange={(v) => setForm((p) => ({ ...p, billing: { ...p.billing, method: v } }))}
+                        />
+                        <TerminalDeviceField
+                          method={form.billing.method}
+                          locationID={locationID}
+                          deviceID={deviceID}
+                          onDeviceChange={setDeviceID}
+                          onTipConfig={setTipConfig}
+                        />
                         {collectFromWallet && (
                           <p className={`text-[11px] ${collectWalletShort ? "text-destructive" : "text-muted-foreground"}`}>
                             Wallet balance: ${walletBalance.toFixed(2)}
@@ -1314,7 +1325,7 @@ export default function NewEnrollmentPackageInline({
                   </div>
 
                   {form.billing.collectNow && (
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
                       <div className="relative">
                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
                         <input
@@ -1335,24 +1346,21 @@ export default function NewEnrollmentPackageInline({
                           }`}
                         />
                       </div>
-                      <div className="relative">
-                        <select
-                          value={form.billing.method}
-                          onChange={(e) =>
-                            setForm((p) => ({
-                              ...p,
-                              billing: { ...p.billing, method: e.target.value },
-                            }))
-                          }
-                          className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] capitalize"
-                        >
-                          {collectMethodOptions.map((m) => (
-                            <option key={m.value} value={m.value}>{m.label}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                      </div>
+                      <PaymentMethodPicker
+                        methods={collectMethodOptions}
+                        value={form.billing.method}
+                        onChange={(v) => setForm((p) => ({ ...p, billing: { ...p.billing, method: v } }))}
+                      />
                     </div>
+                  )}
+                  {form.billing.collectNow && (
+                    <TerminalDeviceField
+                      method={form.billing.method}
+                      locationID={locationID}
+                      deviceID={deviceID}
+                      onDeviceChange={setDeviceID}
+                      onTipConfig={setTipConfig}
+                    />
                   )}
                   {form.billing.collectNow && (
                     <div className="space-y-1">
@@ -1542,7 +1550,7 @@ export default function NewEnrollmentPackageInline({
             type="button"
             className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
             onClick={() => handleSubmit()}
-            disabled={loading || (serviceOnly ? form.services.length === 0 : !form.packageID) || walletOver || collectWalletShort || cloverNotConnected}
+            disabled={loading || (serviceOnly ? form.services.length === 0 : !form.packageID) || walletOver || collectWalletShort || cloverNotConnected || terminalNotSelected}
           >
             {loading ? "Creating…" : payWithClover ? "Pay by card" : serviceOnly ? "Create Enrollment & Services" : "Create Enrollment & Package"}
           </button>
