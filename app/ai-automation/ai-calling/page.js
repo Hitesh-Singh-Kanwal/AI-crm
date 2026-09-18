@@ -1,11 +1,15 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useState, Suspense } from 'react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Tabs } from '@/components/ui/tabs'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import {
+  normalizeWorkingLocation,
+  workingLocationQueryParam,
+} from './components/locationScope'
 
 import ScriptsTab from './components/ScriptsTab'
 import PersonasTab from './components/PersonasTab'
@@ -30,6 +34,10 @@ function AICallingPageInner() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const activeTab = searchParams?.get('view') || 'scripts'
+  const workingLocationID = useMemo(
+    () => normalizeWorkingLocation(searchParams?.get('locationID')),
+    [searchParams],
+  )
   const [personas, setPersonas] = useState([])
   const [personasLoading, setPersonasLoading] = useState(false)
   const [personasError, setPersonasError] = useState(null)
@@ -41,10 +49,27 @@ function AICallingPageInner() {
   const [debouncedPersonasSearch, setDebouncedPersonasSearch] = useState('')
   const toast = useToast()
 
+  const setQuery = useCallback(
+    (patch) => {
+      const params = new URLSearchParams(searchParams?.toString() || '')
+      Object.entries(patch).forEach(([key, value]) => {
+        if (value == null || value === '') params.delete(key)
+        else params.set(key, String(value))
+      })
+      router.replace(`${pathname}?${params.toString()}`)
+    },
+    [pathname, router, searchParams],
+  )
+
   const setActiveTab = (tab) => {
-    const params = new URLSearchParams(searchParams?.toString() || '')
-    params.set('view', tab)
-    router.push(`${pathname}?${params.toString()}`)
+    setQuery({ view: tab, locationID: workingLocationQueryParam(workingLocationID) })
+  }
+
+  const setWorkingLocationID = (id) => {
+    setQuery({
+      view: activeTab,
+      locationID: workingLocationQueryParam(normalizeWorkingLocation(id)),
+    })
   }
 
   useEffect(() => {
@@ -66,6 +91,8 @@ function AICallingPageInner() {
         limit: '9',
       })
       if (debouncedPersonasSearch) params.set('search', debouncedPersonasSearch)
+      const locQ = workingLocationQueryParam(workingLocationID)
+      if (locQ) params.set('locationID', locQ)
 
       const result = await api.get(`/api/ai-persona?${params.toString()}`)
       if (result.success) {
@@ -92,7 +119,7 @@ function AICallingPageInner() {
     if (activeTab !== 'personas') return
     fetchPersonas()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, personasPage, debouncedPersonasSearch])
+  }, [activeTab, personasPage, debouncedPersonasSearch, workingLocationID])
 
   const handleDeletePersona = async (id) => {
     try {
@@ -122,7 +149,12 @@ function AICallingPageInner() {
     <MainLayout title="AI Calling" subtitle="Manage AI-powered calling scripts and personas">
       <div className="h-full min-h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full min-h-full flex flex-col">
-        {activeTab === 'scripts' && <ScriptsTab />}
+        {activeTab === 'scripts' && (
+          <ScriptsTab
+            workingLocationID={workingLocationID}
+            onWorkingLocationChange={setWorkingLocationID}
+          />
+        )}
         {activeTab === 'personas' && (
           <PersonasTab
             personas={personas}
@@ -139,12 +171,34 @@ function AICallingPageInner() {
             onRefresh={fetchPersonas}
             searchQuery={personasSearchQuery}
             onSearchQueryChange={setPersonasSearchQuery}
+            workingLocationID={workingLocationID}
+            onWorkingLocationChange={setWorkingLocationID}
           />
         )}
-        {activeTab === 'knowledge' && <KnowledgeBaseTab />}
-        {activeTab === 'background-sounds' && <BackgroundSoundsTab />}
-        {activeTab === 'inbound-ivr' && <InboundIvrTab />}
-        {activeTab === 'assistants' && <AiAssistTab />}
+        {activeTab === 'knowledge' && (
+          <KnowledgeBaseTab
+            workingLocationID={workingLocationID}
+            onWorkingLocationChange={setWorkingLocationID}
+          />
+        )}
+        {activeTab === 'background-sounds' && (
+          <BackgroundSoundsTab
+            workingLocationID={workingLocationID}
+            onWorkingLocationChange={setWorkingLocationID}
+          />
+        )}
+        {activeTab === 'inbound-ivr' && (
+          <InboundIvrTab
+            workingLocationID={workingLocationID}
+            onWorkingLocationChange={setWorkingLocationID}
+          />
+        )}
+        {activeTab === 'assistants' && (
+          <AiAssistTab
+            workingLocationID={workingLocationID}
+            onWorkingLocationChange={setWorkingLocationID}
+          />
+        )}
       </Tabs>
       </div>
     </MainLayout>

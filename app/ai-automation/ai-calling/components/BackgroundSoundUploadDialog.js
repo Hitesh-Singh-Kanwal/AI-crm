@@ -69,7 +69,12 @@ function putFileToS3(uploadUrl, file, contentType, onProgress) {
   })
 }
 
-export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded }) {
+export default function BackgroundSoundUploadDialog({
+  open,
+  onClose,
+  onUploaded,
+  defaultLocationID,
+}) {
   const toast = useToast()
   const fileInputRef = useRef(null)
 
@@ -96,9 +101,13 @@ export default function BackgroundSoundUploadDialog({ open, onClose, onUploaded 
     setDescription('')
     setFile(null)
     setVolume(DEFAULT_BACKGROUND_SOUND_VOLUME)
-    setLocationID(initLocationID(null))
+    setLocationID(
+      hasLocationSelection(defaultLocationID)
+        ? defaultLocationID
+        : initLocationID(null),
+    )
     if (fileInputRef.current) fileInputRef.current.value = ''
-  }, [open])
+  }, [open, defaultLocationID])
 
   function handleFileSelect(nextFile) {
     if (!nextFile) {

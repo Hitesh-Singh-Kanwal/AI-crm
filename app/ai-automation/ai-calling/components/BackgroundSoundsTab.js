@@ -18,7 +18,8 @@ import {
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import BackgroundSoundUploadDialog from './BackgroundSoundUploadDialog'
-import { locationBadgeLabel } from './locationScope'
+import { locationBadgeLabel, workingLocationQueryParam } from './locationScope'
+import WorkingStudioPicker from './WorkingStudioPicker'
 
 const PAGE_SIZE = 12
 
@@ -46,7 +47,10 @@ function formatUploadedAt(iso) {
   return d.toLocaleString()
 }
 
-export default function BackgroundSoundsTab() {
+export default function BackgroundSoundsTab({
+  workingLocationID = [],
+  onWorkingLocationChange,
+}) {
   const toast = useToast()
   const [sounds, setSounds] = useState([])
   const [loading, setLoading] = useState(false)
@@ -79,6 +83,12 @@ export default function BackgroundSoundsTab() {
     setPage(1)
   }, [debouncedSearch])
 
+  const locationQuery = workingLocationQueryParam(workingLocationID)
+
+  useEffect(() => {
+    setPage(1)
+  }, [locationQuery])
+
   const stopPreview = useCallback(() => {
     playSessionRef.current += 1
     const audio = audioRef.current
@@ -105,6 +115,7 @@ export default function BackgroundSoundsTab() {
         limit: String(PAGE_SIZE),
       })
       if (debouncedSearch) params.set('search', debouncedSearch)
+      if (locationQuery) params.set('locationID', locationQuery)
 
       const result = await api.get(`/api/ai-background-sound/paginated?${params.toString()}`)
       if (!result.success) {
@@ -128,7 +139,7 @@ export default function BackgroundSoundsTab() {
     } finally {
       setLoading(false)
     }
-  }, [page, debouncedSearch])
+  }, [page, debouncedSearch, locationQuery])
 
   useEffect(() => {
     fetchSounds()
@@ -291,10 +302,17 @@ export default function BackgroundSoundsTab() {
         </Button>
       </div>
 
+      <WorkingStudioPicker
+        workingLocationID={workingLocationID}
+        onWorkingLocationChange={onWorkingLocationChange}
+        className="max-w-md"
+      />
+
       <BackgroundSoundUploadDialog
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onUploaded={() => fetchSounds()}
+        defaultLocationID={workingLocationID}
       />
 
       <SearchInput

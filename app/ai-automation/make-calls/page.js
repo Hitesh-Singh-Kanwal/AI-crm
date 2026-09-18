@@ -17,6 +17,7 @@ import {
   clampVapiElevenLabsSpeedForUi,
   clampVapiLlmTemperature,
   vapiLlmLabel,
+  vapiTtsLabel,
 } from '@/lib/vapiVoice'
 import {
   BUILTIN_BACKGROUND_SOUNDS,
@@ -464,13 +465,9 @@ export default function MakeCallsPage() {
             },
             scriptData: { script: String(selectedAssistant.scriptData?.script || '') },
             voiceMessage: msg.voiceMessage,
-            ...(selectedAssistant.persona?.provider === '11labs'
-              ? {
-                  ttsModelId:
-                    selectedAssistant.ttsModelId?.trim() ||
-                    DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
-                }
-              : {}),
+            ttsModelId:
+              selectedAssistant.ttsModelId?.trim() ||
+              DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
             successEvaluationEnabled: selectedAssistant.successEvaluationEnabled,
             successEvaluationPrompt: selectedAssistant.successEvaluationPrompt || '',
             successEvaluationRubric: selectedAssistant.successEvaluationRubric || 'PassFail',
@@ -507,7 +504,7 @@ export default function MakeCallsPage() {
               voiceMessage: String(voiceMessage || ''),
               llmModel: selectedPersona.llmModel || 'gpt-4o-mini',
               temperature: clampVapiLlmTemperature(selectedPersona.temperature ?? 0.65),
-              ...(vapiElevenLabs ? { ttsModelId: selectedPersona.ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID } : {}),
+              ttsModelId: selectedPersona.ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID,
             }
           })()
 
@@ -987,8 +984,8 @@ export default function MakeCallsPage() {
                                       temp {typeof persona.temperature === 'number' ? persona.temperature.toFixed(2) : '0.65'}
                                     </span>
                                     {persona.provider === '11labs' && (
-                                      <span className="inline-flex items-center rounded-md bg-muted/60 border border-border/50 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-                                        {persona.ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID}
+                                      <span className="inline-flex items-center rounded-md bg-muted/60 border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                        {vapiTtsLabel(persona.ttsModelId)}
                                       </span>
                                     )}
                                   </div>
@@ -1147,11 +1144,8 @@ export default function MakeCallsPage() {
                     </p>
                     {selectedAssistant.persona?.provider === '11labs' && (
                       <p>
-                        <span className="font-medium text-foreground">ElevenLabs TTS (via Vapi):</span>{' '}
-                        <span className="font-mono">
-                          {selectedAssistant.ttsModelId?.trim() ||
-                            DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID}
-                        </span>
+                        <span className="font-medium text-foreground">Voice model (via Vapi):</span>{' '}
+                        {vapiTtsLabel(selectedAssistant.ttsModelId)}
                       </p>
                     )}
                     {(() => {
@@ -1325,8 +1319,8 @@ export default function MakeCallsPage() {
                           {selectedPersona.provider === '11labs' && (
                             <>
                               <div className="flex items-center justify-between text-[11px]">
-                                <span className="text-muted-foreground">TTS model</span>
-                                <span className="font-mono text-foreground">{selectedPersona.ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID}</span>
+                                <span className="text-muted-foreground">Voice model</span>
+                                <span className="text-foreground">{vapiTtsLabel(selectedPersona.ttsModelId)}</span>
                               </div>
                               <div className="flex items-center justify-between text-[11px]">
                                 <span className="text-muted-foreground">Stability / Similarity</span>
@@ -1538,12 +1532,12 @@ export default function MakeCallsPage() {
                     : selectedPersona?.provider === '11labs') && (
                     <>
                       <p className="text-[11px] text-muted-foreground">
-                        <span className="font-medium text-foreground">ElevenLabs TTS (via Vapi):</span>{' '}
-                        <span className="font-mono">
-                          {setupMode === 'assistant'
-                            ? selectedAssistant?.ttsModelId?.trim() || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID
-                            : selectedPersona?.ttsModelId || DEFAULT_VAPI_ELEVENLABS_TTS_MODEL_ID}
-                        </span>
+                        <span className="font-medium text-foreground">Voice model (via Vapi):</span>{' '}
+                        {vapiTtsLabel(
+                          setupMode === 'assistant'
+                            ? selectedAssistant?.ttsModelId
+                            : selectedPersona?.ttsModelId,
+                        )}
                       </p>
                       <p className="text-[11px] text-muted-foreground">
                         <span className="font-medium text-foreground">Voice tuning:</span> stability{' '}

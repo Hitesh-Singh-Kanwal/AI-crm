@@ -28,14 +28,14 @@ import Switch from '@/components/ui/switch'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
-import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
+import LocationSelector from '@/components/shared/LocationSelector'
+import WorkingStudioPicker from './WorkingStudioPicker'
 import { cn } from '@/lib/utils'
 import { vapiLlmLabel } from '@/lib/vapiVoice'
 import {
   hasLocationSelection,
   initLocationID,
   locationBadgeLabel,
-  normalizeWorkingLocation,
   toLocationPayload,
   workingLocationQueryParam,
 } from './locationScope'
@@ -143,7 +143,10 @@ function parsePersonaRef(personaDoc) {
   return { id: String(personaDoc), meta: null }
 }
 
-export default function InboundIvrTab() {
+export default function InboundIvrTab({
+  workingLocationID = [],
+  onWorkingLocationChange,
+}) {
   const toast = useToast()
   const [routes, setRoutes] = useState([])
   const [assistants, setAssistants] = useState([])
@@ -155,9 +158,6 @@ export default function InboundIvrTab() {
   const [saving, setSaving] = useState(false)
   const [seeding, setSeeding] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
-
-  // Working studio scope for this tab (view + mutations)
-  const [workingLocationID, setWorkingLocationID] = useState([])
 
   // ── Inbound mode ──
   const [inboundMode, setInboundMode] = useState('ivr')
@@ -218,8 +218,8 @@ export default function InboundIvrTab() {
     setOptionsLoading(true)
     try {
       const [assistantsResult, personasResult] = await Promise.all([
-        api.get('/api/ai-assistant/'),
-        api.get('/api/ai-persona?page=1&limit=100'),
+        api.get(withLocationQuery('/api/ai-assistant/')),
+        api.get(withLocationQuery('/api/ai-persona?page=1&limit=100')),
       ])
       if (assistantsResult.success) setAssistants(extractList(assistantsResult))
       if (personasResult.success) setPersonas(extractList(personasResult))
@@ -228,7 +228,7 @@ export default function InboundIvrTab() {
     } finally {
       setOptionsLoading(false)
     }
-  }, [])
+  }, [withLocationQuery])
 
   const fetchRoutes = useCallback(async () => {
     const gen = ++settingsLoadGen.current
@@ -351,8 +351,22 @@ export default function InboundIvrTab() {
         toast.error({ title: 'Failed to save', message: result.error || 'Could not set direct assistant.' })
         return
       }
-      setDirectAssistantId(assistant._id)
-      toast.success({ title: 'Active', message: `${assistant.name} is now answering all inbound calls.` })
+      const id = String(assistant._id)
+      setDirectAssistantId(id)
+      setAssistants((prev) =>
+        prev.map((a) => ({
+          ...a,
+          isEffective: String(a._id) === id,
+        })),
+      )
+      toast.success({
+        title: 'Active',
+        message:
+          locationQuery && locationQuery !== 'all'
+            ? `${assistant.name} is now used for this studio (its script + KB).`
+            : `${assistant.name} is now answering all inbound calls.`,
+      })
+      await fetchRoutes()
     } catch (e) {
       console.error(e)
       toast.error({ title: 'Error', message: 'Could not set direct assistant.' })
@@ -599,20 +613,13 @@ export default function InboundIvrTab() {
           <h2 className="text-sm font-semibold text-foreground">Studio scope</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             Pick a studio (or All branches) to load and edit IVR routes and inbound settings for that scope.
+            The same studio selection is used on AI Assist, so you only assign assistants that belong here.
           </p>
         </div>
-        <LocationSelector
-          value={
-            workingLocationID === ALL_BRANCHES_VALUE
-              ? ALL_BRANCHES_VALUE
-              : Array.isArray(workingLocationID) && workingLocationID.length
-                ? workingLocationID[0]
-                : null
-          }
-          onChange={(id) => setWorkingLocationID(normalizeWorkingLocation(id))}
-          multiple={false}
-          allowAllBranches
-          showAllOption={false}
+        <WorkingStudioPicker
+          workingLocationID={workingLocationID}
+          onWorkingLocationChange={onWorkingLocationChange}
+          className=""
           placeholder="Select a studio…"
         />
         {!hasLocationSelection(workingLocationID) && (
@@ -976,7 +983,10 @@ export default function InboundIvrTab() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
               {assistants.map((assistant) => {
-                const isActive = assistant._id === directAssistantId
+                const viewingStudio = Boolean(locationQuery && locationQuery !== 'all')
+                const isActive = viewingStudio
+                  ? Boolean(assistant.isEffective)
+                  : assistant._id === directAssistantId
                 const isActivating = activatingId === assistant._id
 
                 return (
@@ -1020,7 +1030,7 @@ export default function InboundIvrTab() {
                         {isActive ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-[var(--studio-primary)] px-2 py-0.5 text-[10px] font-semibold text-white">
                             <Check className="h-2.5 w-2.5" />
-                            Active
+                            {viewingStudio ? 'Used for this studio' : 'Active'}
                           </span>
                         ) : (
                           <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground group-hover:border-[var(--studio-primary)]/40 group-hover:text-[var(--studio-primary)]">

@@ -15,7 +15,8 @@ import ScriptPreviewDialog from './ScriptPreviewDialog'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
-import { locationBadgeLabel } from './locationScope'
+import { locationBadgeLabel, workingLocationQueryParam, hasLocationSelection } from './locationScope'
+import WorkingStudioPicker from './WorkingStudioPicker'
 
 const SCRIPTS_PAGE_SIZE = 9
 
@@ -49,7 +50,10 @@ function extractScriptsPayload(result) {
   }
 }
 
-export default function ScriptsTab() {
+export default function ScriptsTab({
+  workingLocationID = [],
+  onWorkingLocationChange,
+}) {
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingScript, setEditingScript] = useState(null)
@@ -79,6 +83,12 @@ export default function ScriptsTab() {
     setPage(1)
   }, [debouncedSearch])
 
+  const locationQuery = workingLocationQueryParam(workingLocationID)
+
+  useEffect(() => {
+    setPage(1)
+  }, [locationQuery])
+
   const fetchScripts = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -88,6 +98,7 @@ export default function ScriptsTab() {
         limit: String(SCRIPTS_PAGE_SIZE),
       })
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
+      if (locationQuery) params.set('locationID', locationQuery)
       const result = await api.get(`/api/ai-script/paginated?${params.toString()}`)
       if (result.success) {
         const { list, total, totalPages: totalPagesFromApi } = extractScriptsPayload(result)
@@ -108,7 +119,7 @@ export default function ScriptsTab() {
     } finally {
       setLoading(false)
     }
-  }, [page, debouncedSearch])
+  }, [page, debouncedSearch, locationQuery])
 
   useEffect(() => {
     fetchScripts()
@@ -222,6 +233,13 @@ export default function ScriptsTab() {
             variant="gradient"
             className="w-full sm:w-auto"
             onClick={() => {
+              if (!hasLocationSelection(workingLocationID)) {
+                toast.error({
+                  title: 'Select a studio',
+                  message: 'Pick a working studio first so this script is saved for that location.',
+                })
+                return
+              }
               setEditingScript(null)
               setEditorOpen(true)
             }}
@@ -232,12 +250,19 @@ export default function ScriptsTab() {
         </div>
       </div>
 
+      <WorkingStudioPicker
+        workingLocationID={workingLocationID}
+        onWorkingLocationChange={onWorkingLocationChange}
+        className="max-w-md"
+      />
+
       <CategoriesDialog open={categoriesOpen} onClose={() => setCategoriesOpen(false)} />
       <ScriptEditorDialog
         open={editorOpen}
         onClose={() => setEditorOpen(false)}
         initialScript={editingScript}
         onSaved={fetchScripts}
+        defaultLocationID={workingLocationID}
       />
       <ScriptPreviewDialog open={!!previewScriptId} onClose={() => setPreviewScriptId(null)} scriptId={previewScriptId} />
 
