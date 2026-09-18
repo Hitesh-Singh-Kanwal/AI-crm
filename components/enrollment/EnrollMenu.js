@@ -61,6 +61,11 @@ export default function EnrollMenu({
   label = "Enroll",
   /** Extra classes for the trigger, so each caller keeps its own button shape. */
   triggerClassName,
+  /** Which edge of the trigger the menu hangs from — "right" (default, for a
+   * trigger near the right edge of its container, e.g. the header) or "left"
+   * (for a trigger near the left edge, e.g. a narrow side panel), so the
+   * menu opens toward whichever side actually has room. */
+  align = "right",
   onSelectMode,
   onSelectEvent,
 }) {
@@ -78,7 +83,7 @@ export default function EnrollMenu({
 
   return (
     <div
-      className="relative"
+      className="relative inline-block"
       ref={ref}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
@@ -106,7 +111,12 @@ export default function EnrollMenu({
 
       {open && (
         <div
-          className="absolute right-0 top-full pt-2 w-[300px] z-50 origin-top-right animate-scale-in"
+          className={cn(
+            "absolute top-full pt-2 w-[300px] z-50 animate-scale-in",
+            align === "left"
+              ? "left-0 origin-top-left"
+              : "right-0 origin-top-right",
+          )}
           role="menu"
           aria-label="Enrollment options"
         >

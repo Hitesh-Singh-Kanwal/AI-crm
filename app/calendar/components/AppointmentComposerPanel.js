@@ -24,6 +24,7 @@ import LocationSelector from "@/components/shared/LocationSelector";
 import SearchableSelect from "@/components/ui/searchable-select";
 // A session payment lands on CalendarEvent.payment.method, whose enum has no wallet.
 import { PURCHASE_METHODS as PAYMENT_METHODS } from "@/lib/paymentMethods";
+import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1922,19 +1923,11 @@ function AppointmentFields({
             </div>
             <div>
               <FieldLabel>Payment Method</FieldLabel>
-              <div className="relative">
-                <select
-                  value={form.session_payment_method}
-                  onChange={(e) => setField("session_payment_method", e.target.value)}
-                  className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[12px] text-foreground outline-none focus:border-success/20 transition-colors"
-                >
-                  <option value="">Select method…</option>
-                  {PAYMENT_METHODS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              </div>
+              <PaymentMethodPicker
+                methods={PAYMENT_METHODS}
+                value={form.session_payment_method}
+                onChange={(v) => setField("session_payment_method", v)}
+              />
             </div>
           </div>
         )}

@@ -17,6 +17,7 @@ import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 import { NO_DEVICE_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import WalletShortfallField, { walletPaymentFields } from '@/components/payments/WalletShortfallField'
+import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
 import { fetchWalletBalance } from '@/lib/wallet'
 
 const ANNUAL_FREEZE_CAP_DAYS = 60
@@ -102,13 +103,7 @@ function PayInstallmentDialog({ target, onClose, onPaid, locationID }) {
           Payment {index + 1} · <span className="font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</span>
         </p>
         <label className="text-[12px] font-medium text-foreground block mb-1">Method</label>
-        <select
-          value={method}
-          onChange={(e) => setMethod(e.target.value)}
-          className="h-9 w-full rounded-lg border border-border bg-background text-sm px-2.5 capitalize focus:outline-none focus:ring-2 focus:ring-brand/30"
-        >
-          {NO_DEVICE_PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-        </select>
+        <PaymentMethodPicker methods={NO_DEVICE_PAYMENT_METHODS} value={method} onChange={setMethod} />
         <label className="text-[12px] font-medium text-foreground block mb-1 mt-3">Payment date</label>
         <input
           type="date"

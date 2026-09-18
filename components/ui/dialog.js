@@ -73,7 +73,7 @@ function Dialog({ open, onClose, children, maxWidth = 'lg' }) {
     <div
       className="fixed inset-0 overflow-y-auto"
       role="presentation"
-      style={{ zIndex: 100 + layer }}
+      style={{ zIndex: 200 + layer }}
     >
       <div
         className="fixed inset-0 bg-background/80 backdrop-blur-sm"
@@ -85,7 +85,7 @@ function Dialog({ open, onClose, children, maxWidth = 'lg' }) {
           role="dialog"
           aria-modal="true"
           className={`relative my-auto w-full ${maxWidthClasses[maxWidth] || maxWidthClasses.lg} animate-scale-in`}
-          style={{ zIndex: 101 + layer }}
+          style={{ zIndex: 201 + layer }}
           onClick={(e) => e.stopPropagation()}
         >
           {children}

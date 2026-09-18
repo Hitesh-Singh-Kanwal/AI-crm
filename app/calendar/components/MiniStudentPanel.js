@@ -13,17 +13,50 @@ import {
 import api from "@/lib/api";
 import { formatStudioDate, formatStudioTime } from "@/lib/studioLocalDate";
 import { useStudioTimezone } from "@/lib/hooks/useStudioTimezone";
-import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
-import { NO_DEVICE_PAYMENT_METHODS } from "@/lib/paymentMethods";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
+import EnrollMenu from "@/components/enrollment/EnrollMenu";
+import { CreateEventPurchaseDialog } from "@/app/settings/setup/components/EventsPurchases";
+import PayInstallmentDialog from "@/components/payments/PayInstallmentDialog";
+import PaymentDueCard from "@/components/payments/PaymentDueCard";
 
 const TABS = [
   { key: "appointments", label: "Appointments" },
   { key: "enrollments", label: "Enrollments" },
+  { key: "purchases", label: "Events" },
   { key: "payments", label: "Payments" },
   { key: "notes", label: "Notes" },
   { key: "messages", label: "Messages" },
 ];
+
+function purchaseStatusColor(ps) {
+  return (
+    {
+      paid: "bg-success/10 text-success",
+      partial: "bg-warning/10 text-warning",
+      unpaid: "bg-rose-500/10 text-rose-600",
+      payment_pending: "bg-warning/10 text-warning",
+    }[ps] ?? "bg-muted text-muted-foreground"
+  );
+}
+
+function purchaseStatusLabel(ps) {
+  return ps === "payment_pending" ? "payment pending" : (ps ?? "unpaid");
+}
+
+function money(n) {
+  return `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function billingTypeLabel(bt) {
+  return (
+    {
+      flexible: "Flexible",
+      payment_plan: "Payment Plan",
+      pay_per_session: "Pay Per Session",
+      one_time: "One-time",
+    }[bt] ?? "Payment Plan"
+  );
+}
 
 const PAYMENT_TYPE_LABEL = {
   package_purchase: "Package payment",
@@ -102,6 +135,8 @@ export default function MiniStudentPanel({
 
   const [showCreateEnrollmentSheet, setShowCreateEnrollmentSheet] =
     useState(false);
+  const [enrollMode, setEnrollMode] = useState("service");
+  const [showEventPurchaseDialog, setShowEventPurchaseDialog] = useState(false);
   const [expandedEnrId, setExpandedEnrId] = useState(null);
 
   const [collectedPayments, setCollectedPayments] = useState([]);
@@ -110,11 +145,17 @@ export default function MiniStudentPanel({
   const [flexEnrollments, setFlexEnrollments] = useState([]);
   const [allFlexEnrollments, setAllFlexEnrollments] = useState([]);
   const [totalSessionsRemaining, setTotalSessionsRemaining] = useState(null);
-  const [flexPayForms, setFlexPayForms] = useState({});
   const [upcomingPayments, setUpcomingPayments] = useState([]); // unified sorted list
   const [planPayForms, setPlanPayForms] = useState({}); // planId_installmentIdx → { method, saving, error }
+  const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index, billingType }
+
+  const [purchases, setPurchases] = useState([]);
+  const [purchasePlans, setPurchasePlans] = useState([]);
+  const [loadingPurchases, setLoadingPurchases] = useState(false);
+  const [busyLineId, setBusyLineId] = useState(null);
   const [addInstallForms, setAddInstallForms] = useState({}); // planId → { open, dueDate, amount, saving, error }
   const [flexiblePlans, setFlexiblePlans] = useState([]); // plans with billingType=flexible for Add Payment button
+  const [purchaseNamesById, setPurchaseNamesById] = useState(new Map()); // purchase plans have no package doc to name them
   const [paymentView, setPaymentView] = useState("due");
 
   const [msgMode, setMsgMode] = useState("sms"); // "sms" | "email"
@@ -204,18 +245,67 @@ export default function MiniStudentPanel({
       setEnrollments(enrResult.data);
   }
 
+  useEffect(() => {
+    if (activeTab !== "purchases") return;
+    async function load() {
+      setLoadingPurchases(true);
+      const [pRes, planRes] = await Promise.all([
+        api.get(`/api/purchase?customerID=${customerId}&limit=50`),
+        api.get(`/api/payment-plan/customer/${customerId}`),
+      ]);
+      if (pRes.success && Array.isArray(pRes.data)) setPurchases(pRes.data);
+      if (planRes.success && Array.isArray(planRes.data))
+        setPurchasePlans(planRes.data);
+      setLoadingPurchases(false);
+    }
+    load();
+  }, [activeTab, customerId]);
+
+  async function reloadPurchases() {
+    const [pRes, planRes] = await Promise.all([
+      api.get(`/api/purchase?customerID=${customerId}&limit=50`),
+      api.get(`/api/payment-plan/customer/${customerId}`),
+    ]);
+    if (pRes.success && Array.isArray(pRes.data)) setPurchases(pRes.data);
+    if (planRes.success && Array.isArray(planRes.data))
+      setPurchasePlans(planRes.data);
+  }
+
+  async function toggleLineCheck(purchase, li) {
+    const next = li.checkStatus !== "checked";
+    setBusyLineId(li._id);
+    const res = await api.patch(
+      `/api/purchase/${purchase._id}/line/${li._id}/check`,
+      { checked: next },
+    );
+    setBusyLineId(null);
+    if (res.success) await reloadPurchases();
+  }
+
   async function refreshPaymentsData() {
-    const [calResult, enrResult, planResult, custResult, payResult] =
+    const [calResult, enrResult, planResult, custResult, payResult, purchResult] =
       await Promise.all([
         api.get(`/api/calendar/customer/${customerId}`),
         api.get(`/api/enrollment?customerID=${customerId}`),
         api.get(`/api/payment-plan/customer/${customerId}`),
         api.get(`/api/customer/${customerId}`),
         api.get(`/api/payment/customer/${customerId}?limit=200`),
+        api.get(`/api/purchase?customerID=${customerId}&limit=100`),
       ]);
 
     if (custResult.success) setCustomer(custResult.data);
     setCollectedPayments(extractCollectedPayments(payResult));
+
+    // A payment plan on an event/product purchase has no package doc to name
+    // it — the plan is tagged to the purchase itself instead — so look the
+    // purchase's own name up separately for those cards.
+    const purchaseNameById = new Map(
+      (purchResult.success && Array.isArray(purchResult.data)
+        ? purchResult.data
+        : []
+      ).map((p) => [String(p._id), p.name]),
+    );
+    setPurchaseNamesById(purchaseNameById);
 
     // Flexible enrollments that carry a tracked schedule surface as plan installments,
     // so exclude them from the single-due-date flexible cards to avoid double-counting.
@@ -289,25 +379,6 @@ export default function MiniStudentPanel({
           );
         }, 0);
       setTotalSessionsRemaining(totalRemaining);
-      const forms = {};
-      due.forEach((e) => {
-        const col = e.package.amountCollected ?? 0;
-        const rem = Math.max(0, (e.package.totalPaid ?? 0) - col);
-        const outstanding = rem;
-        forms[String(e._id)] = {
-          mode: null,
-          payType: "full",
-          sessions: 1,
-          amount: outstanding.toFixed(2),
-          method: "cash",
-          dueDate: e.package.dueDate
-            ? new Date(e.package.dueDate).toISOString().slice(0, 10)
-            : "",
-          saving: false,
-          error: null,
-        };
-      });
-      setFlexPayForms(forms);
     }
 
     const upcoming = [];
@@ -326,9 +397,6 @@ export default function MiniStudentPanel({
         const col = e.package.amountCollected ?? 0;
         const rem = Math.max(0, (e.package.totalPaid ?? 0) - col);
         const outstanding = rem;
-        const chargeableService = (e.package.services ?? []).find(
-          (s) => s.pricePerSession > 0,
-        );
         upcoming.push({
           type: "flexible",
           sortDate: e.package.dueDate
@@ -339,8 +407,32 @@ export default function MiniStudentPanel({
           amount: outstanding,
           dueDate: e.package.dueDate,
           isOverdue: e.package.dueDate && new Date(e.package.dueDate) < now,
-          pricePerSession: chargeableService?.pricePerSession ?? 0,
-          sessionsRemaining: chargeableService?.sessionsRemaining ?? 0,
+        });
+      });
+
+    // One-time packages carrying a static leftover balance with no plan or
+    // flexible schedule behind them (mainly migrated enrollments) — same
+    // Pay Now card as flexible, via the shared PaymentDueCard.
+    allEnr
+      .filter(
+        (e) =>
+          (!e.package?.billingType || e.package?.billingType === "one_time") &&
+          e.status === "active" &&
+          e.package?.status === "active" &&
+          !enrollmentsWithPlan.has(String(e._id)),
+      )
+      .forEach((e) => {
+        const schedulable =
+          e.package.dueAmount != null
+            ? Number(e.package.dueAmount)
+            : Math.max(0, (e.package.totalPaid ?? 0) - (e.package.amountCollected ?? 0));
+        if (schedulable <= 0) return;
+        upcoming.push({
+          type: "onetime",
+          sortDate: new Date(8640000000000000),
+          enrollmentId: String(e._id),
+          packageName: e.package.packageName,
+          amount: schedulable,
         });
       });
 
@@ -359,7 +451,12 @@ export default function MiniStudentPanel({
               planId: String(plan._id),
               installmentIdx: idx,
               plan,
-              packageName: plan.enrollmentID?.package?.packageName ?? "Package",
+              packageName:
+                plan.enrollmentID?.package?.packageName ??
+                purchaseNameById.get(
+                  String(plan.purchaseID?._id ?? plan.purchaseID),
+                ) ??
+                "Package",
               amount: inst.amount,
               dueDate: inst.dueDate,
               installmentNumber: idx + 1,
@@ -497,14 +594,26 @@ export default function MiniStudentPanel({
     if (activeTab !== "payments") return;
     async function load() {
       setLoadingPayments(true);
-      const [calResult, enrResult, planResult, payResult] = await Promise.all([
-        api.get(`/api/calendar/customer/${customerId}`),
-        api.get(`/api/enrollment?customerID=${customerId}`),
-        api.get(`/api/payment-plan/customer/${customerId}`),
-        api.get(`/api/payment/customer/${customerId}?limit=200`),
-      ]);
+      const [calResult, enrResult, planResult, payResult, purchResult] =
+        await Promise.all([
+          api.get(`/api/calendar/customer/${customerId}`),
+          api.get(`/api/enrollment?customerID=${customerId}`),
+          api.get(`/api/payment-plan/customer/${customerId}`),
+          api.get(`/api/payment/customer/${customerId}?limit=200`),
+          api.get(`/api/purchase?customerID=${customerId}&limit=100`),
+        ]);
 
       setCollectedPayments(extractCollectedPayments(payResult));
+
+      // A payment plan on an event/product purchase has no package doc to
+      // name it — look the purchase's own name up separately for those.
+      const purchaseNameById = new Map(
+        (purchResult.success && Array.isArray(purchResult.data)
+          ? purchResult.data
+          : []
+        ).map((p) => [String(p._id), p.name]),
+      );
+      setPurchaseNamesById(purchaseNameById);
 
       const activePlans = planResult.success
         ? (planResult.data || []).filter((p) => p.status === "active")
@@ -578,23 +687,6 @@ export default function MiniStudentPanel({
             );
           }, 0);
         setTotalSessionsRemaining(totalRemaining);
-        const forms = {};
-        due.forEach((e) => {
-          const col = e.package.amountCollected ?? 0;
-          const rem = Math.max(0, (e.package.totalPaid ?? 0) - col);
-          const outstanding = rem;
-          forms[String(e._id)] = {
-            mode: null,
-            amount: outstanding.toFixed(2),
-            method: "cash",
-            dueDate: e.package.dueDate
-              ? new Date(e.package.dueDate).toISOString().slice(0, 10)
-              : "",
-            saving: false,
-            error: null,
-          };
-        });
-        setFlexPayForms(forms);
       }
 
       // Build unified upcoming payments list
@@ -615,9 +707,6 @@ export default function MiniStudentPanel({
           const col = e.package.amountCollected ?? 0;
           const rem = Math.max(0, (e.package.totalPaid ?? 0) - col);
           const outstanding = rem;
-          const chargeableService = (e.package.services ?? []).find(
-            (s) => s.pricePerSession > 0,
-          );
           upcoming.push({
             type: "flexible",
             sortDate: e.package.dueDate
@@ -628,8 +717,31 @@ export default function MiniStudentPanel({
             amount: outstanding,
             dueDate: e.package.dueDate,
             isOverdue: e.package.dueDate && new Date(e.package.dueDate) < now,
-            pricePerSession: chargeableService?.pricePerSession ?? 0,
-            sessionsRemaining: chargeableService?.sessionsRemaining ?? 0,
+          });
+        });
+
+      // One-time packages carrying a static leftover balance with no plan or
+      // flexible schedule behind them (mainly migrated enrollments).
+      allEnr
+        .filter(
+          (e) =>
+            (!e.package?.billingType || e.package?.billingType === "one_time") &&
+            e.status === "active" &&
+            e.package?.status === "active" &&
+            !enrollmentsWithPlan.has(String(e._id)),
+        )
+        .forEach((e) => {
+          const schedulable =
+            e.package.dueAmount != null
+              ? Number(e.package.dueAmount)
+              : Math.max(0, (e.package.totalPaid ?? 0) - (e.package.amountCollected ?? 0));
+          if (schedulable <= 0) return;
+          upcoming.push({
+            type: "onetime",
+            sortDate: new Date(8640000000000000),
+            enrollmentId: String(e._id),
+            packageName: e.package.packageName,
+            amount: schedulable,
           });
         });
 
@@ -654,7 +766,11 @@ export default function MiniStudentPanel({
                 installmentIdx: idx,
                 plan,
                 packageName:
-                  plan.enrollmentID?.package?.packageName ?? "Package",
+                  plan.enrollmentID?.package?.packageName ??
+                  purchaseNameById.get(
+                    String(plan.purchaseID?._id ?? plan.purchaseID),
+                  ) ??
+                  "Package",
                 amount: inst.amount,
                 dueDate: inst.dueDate,
                 installmentNumber: idx + 1,
@@ -837,6 +953,13 @@ export default function MiniStudentPanel({
     return new Date(b.createdAt) - new Date(a.createdAt);
   });
 
+  const locationID = (() => {
+    const loc = customer?.locationID;
+    if (!loc) return undefined;
+    if (Array.isArray(loc)) return loc[0]?._id || loc[0] || undefined;
+    return loc._id || loc;
+  })();
+
   const tabs = (
     <div className="flex border-b border-border shrink-0">
       {TABS.map((tab) => (
@@ -987,14 +1110,16 @@ export default function MiniStudentPanel({
           {/* ── ENROLLMENTS ── */}
           {activeTab === "enrollments" && (
             <div className="space-y-3">
-              <button
-                type="button"
-                onClick={() => setShowCreateEnrollmentSheet(true)}
-                className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark"
-              >
-                <Plus className="h-3 w-3" />
-                New Enrollment
-              </button>
+              <EnrollMenu
+                label="New Enrollment"
+                triggerClassName="h-auto rounded-lg px-3 py-1.5 text-[11px]"
+                align="left"
+                onSelectMode={(mode) => {
+                  setEnrollMode(mode);
+                  setShowCreateEnrollmentSheet(true);
+                }}
+                onSelectEvent={() => setShowEventPurchaseDialog(true)}
+              />
 
               {loadingEnrollments ? (
                 <p className="text-[12px] text-muted-foreground animate-pulse">
@@ -1407,6 +1532,180 @@ export default function MiniStudentPanel({
             </div>
           )}
 
+          {/* ── EVENTS & PRODUCTS (purchases) ── */}
+          {activeTab === "purchases" && (
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setShowEventPurchaseDialog(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-semibold text-brand-foreground hover:bg-brand-dark"
+              >
+                <Plus className="h-3 w-3" />
+                New Purchase
+              </button>
+
+              {loadingPurchases ? (
+                <p className="text-[12px] text-muted-foreground animate-pulse">
+                  Loading…
+                </p>
+              ) : !purchases.length ? (
+                <p className="text-[12px] text-muted-foreground">
+                  No events or products yet.
+                </p>
+              ) : (
+                purchases.map((r) => {
+                  const due = Number(r.amountDue ?? r.total ?? 0);
+                  const lineItems = r.lineItems || [];
+                  const plan = purchasePlans.find(
+                    (pl) =>
+                      String(pl.purchaseID?._id ?? pl.purchaseID) ===
+                      String(r._id),
+                  );
+                  const hasPendingPlan = (plan?.installments || []).some(
+                    (i) => i.status === "pending",
+                  );
+                  const done = lineItems.filter(
+                    (li) => li.checkStatus === "checked",
+                  ).length;
+                  return (
+                    <div
+                      key={r._id}
+                      className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-semibold text-foreground truncate">
+                            {r.name}
+                          </p>
+                          {r.eventTypeID?.name && (
+                            <p className="text-[10px] text-muted-foreground">
+                              {r.eventTypeID.name}
+                            </p>
+                          )}
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${purchaseStatusColor(r.billingStatus)}`}
+                        >
+                          {purchaseStatusLabel(r.billingStatus)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: "Total", value: money(r.total) },
+                          {
+                            label: "Paid",
+                            value: money(r.amountPaid),
+                            cls: "text-success",
+                          },
+                          {
+                            label: "Due",
+                            value: money(due),
+                            cls: due > 0 ? "text-rose-500" : "text-muted-foreground",
+                          },
+                        ].map(({ label, value, cls }) => (
+                          <div
+                            key={label}
+                            className="rounded bg-muted/40 px-2 py-1.5 text-center"
+                          >
+                            <p className="text-[9px] text-muted-foreground mb-0.5">
+                              {label}
+                            </p>
+                            <p
+                              className={`text-[11px] font-semibold ${cls ?? "text-foreground"}`}
+                            >
+                              {value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {hasPendingPlan ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const idx = plan.installments.findIndex(
+                              (i) => i.status === "pending",
+                            );
+                            setPayInstallTarget({
+                              plan,
+                              index: idx,
+                              billingType: plan.billingType || r.billingType,
+                            });
+                          }}
+                          className="rounded-md bg-success hover:bg-success text-white text-[10px] font-semibold px-2 py-1"
+                        >
+                          Pay Next Installment
+                        </button>
+                      ) : (
+                        due > 0 && (
+                          <PaymentDueCard
+                            itemName={r.name}
+                            badgeLabel="Payment Due"
+                            amountDue={due}
+                            customerID={customerId}
+                            locationID={locationID}
+                            paymentType="event_purchase"
+                            paymentTarget={{ purchaseID: r._id }}
+                            onSuccess={reloadPurchases}
+                          />
+                        )
+                      )}
+
+                      {lineItems.length > 0 && (
+                        <div className="space-y-1 border-t border-border pt-2">
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
+                            Line Items · {done}/{lineItems.length} checked
+                          </p>
+                          {lineItems.map((li) => (
+                            <div
+                              key={li._id}
+                              className="flex items-center justify-between gap-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-[11px] text-foreground truncate">
+                                  {li.name}{" "}
+                                  <span className="text-muted-foreground">
+                                    × {li.quantity}
+                                  </span>
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-[10px] font-semibold text-foreground">
+                                  {money(li.total)}
+                                </span>
+                                {li.checkStatus === "checked" ? (
+                                  <span className="rounded-full bg-success/10 px-1.5 py-0.5 text-[9px] font-medium text-success">
+                                    ✓
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={busyLineId === li._id}
+                                    onClick={() => toggleLineCheck(r, li)}
+                                    className="rounded border border-border px-1.5 py-0.5 text-[9px] font-medium hover:bg-muted/60"
+                                  >
+                                    {busyLineId === li._id ? "…" : "Check"}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {r.notes && (
+                        <p className="text-[10px] text-muted-foreground italic border-t border-border pt-2">
+                          {r.notes}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
           {/* ── MESSAGES ── */}
           {activeTab === "messages" && (
             <div className="space-y-3">
@@ -1614,350 +1913,57 @@ export default function MiniStudentPanel({
                       Upcoming Payments
                     </p>
                     {upcomingPayments.map((item) => {
-                      if (item.type === "flexible") {
-                        const f = flexPayForms[item.enrollmentId] ?? {
-                          mode: null,
-                          payType: "full",
-                          sessions: 1,
-                          amount: item.amount.toFixed(2),
-                          method: "cash",
-                          dueDate: item.dueDate
-                            ? new Date(item.dueDate).toISOString().slice(0, 10)
-                            : "",
-                          saving: false,
-                          error: null,
-                        };
-                        const updateFlex = (patch) =>
-                          setFlexPayForms((prev) => ({
-                            ...prev,
-                            [item.enrollmentId]: {
-                              ...prev[item.enrollmentId],
-                              ...patch,
-                            },
-                          }));
+                      if (item.type === "onetime") {
                         return (
-                          <div
+                          <PaymentDueCard
+                            key={`onetime-${item.enrollmentId}`}
+                            itemName={item.packageName}
+                            badgeLabel="One-time"
+                            amountDue={item.amount}
+                            customerID={customerId}
+                            locationID={locationID}
+                            paymentType="package_purchase"
+                            paymentTarget={{ enrollmentID: item.enrollmentId }}
+                            sendLinkTarget={{
+                              kind: "package",
+                              enrollmentID: item.enrollmentId,
+                            }}
+                            onSuccess={refreshPaymentsData}
+                          />
+                        );
+                      }
+
+                      if (item.type === "flexible") {
+                        return (
+                          <PaymentDueCard
                             key={`flex-${item.enrollmentId}`}
-                            className={`rounded-lg border ${item.isOverdue ? "border-rose-300 bg-rose-50/30 dark:bg-rose-900/10" : "border-warning/20 bg-warning/10"} px-3 py-2.5 space-y-2`}
-                          >
-                            <div className="flex items-start justify-between gap-1.5">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <p className="text-[12px] font-semibold text-foreground truncate">
-                                    {item.packageName}
-                                  </p>
-                                  <span className="text-[9px] bg-violet-500/10 text-violet-600 rounded-full px-1.5 py-0.5 font-medium">
-                                    Flexible
-                                  </span>
-                                  {item.isOverdue && (
-                                    <span className="text-[9px] font-bold text-rose-600 bg-rose-500/10 rounded-full px-1.5 py-0.5">
-                                      Overdue
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-3 mt-0.5">
-                                  <span className="text-[11px] font-bold text-rose-600">
-                                    ${item.amount.toFixed(2)} due
-                                  </span>
-                                  {item.dueDate && (
-                                    <span
-                                      className={`text-[10px] ${item.isOverdue ? "text-rose-500" : "text-muted-foreground"}`}
-                                    >
-                                      {new Date(
-                                        item.dueDate,
-                                      ).toLocaleDateString("en-US", {
-                                        month: "short",
-                                        day: "numeric",
-                                        year: "numeric",
-                                      })}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              {f.mode === null && (
-                                <div className="flex flex-col gap-1 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => updateFlex({ mode: "pay" })}
-                                    className="rounded-md bg-success hover:bg-success text-white text-[10px] font-semibold px-2 py-1"
-                                  >
-                                    Pay Now
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateFlex({ mode: "change-date" })
-                                    }
-                                    className="rounded-md border border-border bg-background hover:bg-muted text-[10px] font-medium px-2 py-1 text-foreground"
-                                  >
-                                    Change Date
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            {f.error && (
-                              <p className="text-[10px] text-rose-500">
-                                {f.error}
-                              </p>
-                            )}
-                            {f.mode === "pay" &&
-                              (() => {
-                                const pps = item.pricePerSession ?? 0;
-                                const sessionAmt =
-                                  pps > 0
-                                    ? pps * Math.max(1, Number(f.sessions) || 1)
-                                    : null;
-                                const payAmt =
-                                  f.payType === "sessions" && sessionAmt != null
-                                    ? sessionAmt
-                                    : parseFloat(f.amount);
-                                return (
-                                  <form
-                                    onSubmit={async (e) => {
-                                      e.preventDefault();
-                                      const num = payAmt;
-                                      if (isNaN(num) || num <= 0) return;
-                                      const checkoutTab =
-                                        f.method === "card" ? openCheckoutTab() : null;
-                                      updateFlex({ saving: true, error: null });
-                                      const sessionCount =
-                                        f.payType === "sessions"
-                                          ? Math.max(1, Number(f.sessions) || 1)
-                                          : 0;
-                                      const res = await api.post(
-                                        "/api/payment",
-                                        {
-                                          customerID: customerId,
-                                          enrollmentID: item.enrollmentId,
-                                          type: "package_purchase",
-                                          amount: num,
-                                          method: f.method,
-                                          ...(sessionCount > 0 && {
-                                            sessions: sessionCount,
-                                          }),
-                                        },
-                                      );
-                                      if (res.success) {
-                                        if (res.data?.checkoutUrl)
-                                          navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
-                                        else closeCheckoutTab(checkoutTab);
-                                        await refreshPaymentsData();
-                                      } else {
-                                        closeCheckoutTab(checkoutTab);
-                                        updateFlex({
-                                          saving: false,
-                                          error: res.error || "Payment failed.",
-                                        });
-                                      }
-                                    }}
-                                    className="space-y-2 pt-1.5 border-t border-border/40"
-                                  >
-                                    {/* Payment type selector */}
-                                    {pps > 0 && (
-                                      <div className="flex rounded-md border border-border overflow-hidden">
-                                        {[
-                                          { v: "full", label: "Full Balance" },
-                                          {
-                                            v: "sessions",
-                                            label: "By Sessions",
-                                          },
-                                        ].map(({ v, label }) => (
-                                          <button
-                                            key={v}
-                                            type="button"
-                                            onClick={() =>
-                                              updateFlex({
-                                                payType: v,
-                                                sessions: 1,
-                                              })
-                                            }
-                                            className={`flex-1 h-7 text-[10px] font-medium transition-colors ${f.payType === v ? "bg-brand text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                                          >
-                                            {label}
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
-                                    {f.payType === "sessions" && pps > 0 ? (
-                                      <div className="space-y-1.5">
-                                        <div className="flex items-center gap-2">
-                                          <div className="flex-1">
-                                            <label className="block text-[9px] text-muted-foreground mb-0.5">
-                                              Sessions
-                                            </label>
-                                            <input
-                                              type="number"
-                                              min="1"
-                                              max={
-                                                item.sessionsRemaining || 999
-                                              }
-                                              step="1"
-                                              value={f.sessions}
-                                              onChange={(e) =>
-                                                updateFlex({
-                                                  sessions: e.target.value,
-                                                })
-                                              }
-                                              className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none focus:border-primary"
-                                            />
-                                          </div>
-                                          <div className="flex-1">
-                                            <label className="block text-[9px] text-muted-foreground mb-0.5">
-                                              Amount
-                                            </label>
-                                            <div className="h-7 rounded-md border border-border bg-muted/30 px-2 flex items-center text-[11px] font-semibold text-foreground">
-                                              $
-                                              {(
-                                                pps *
-                                                Math.max(
-                                                  1,
-                                                  Number(f.sessions) || 1,
-                                                )
-                                              ).toFixed(2)}
-                                            </div>
-                                          </div>
-                                        </div>
-                                        <p className="text-[9px] text-muted-foreground">
-                                          ${pps.toFixed(2)}/session ·{" "}
-                                          {item.sessionsRemaining} remaining
-                                        </p>
-                                      </div>
-                                    ) : (
-                                      <div className="space-y-1">
-                                        <div className="flex gap-1.5">
-                                          <div className="relative flex-1">
-                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
-                                              $
-                                            </span>
-                                            <input
-                                              type="number"
-                                              min="0.01"
-                                              step="0.01"
-                                              value={f.amount}
-                                              onChange={(e) =>
-                                                updateFlex({
-                                                  amount: e.target.value,
-                                                })
-                                              }
-                                              className="h-7 w-full rounded-md border border-border bg-background pl-5 pr-2 text-[11px] outline-none focus:border-primary"
-                                            />
-                                          </div>
-                                        </div>
-                                        {(() => {
-                                          const entered = parseFloat(f.amount);
-                                          const remaining =
-                                            item.amount -
-                                            (isNaN(entered) ? 0 : entered);
-                                          return !isNaN(entered) &&
-                                            entered > 0 &&
-                                            Math.abs(remaining) > 0.001 ? (
-                                            <p className="text-[9px] text-muted-foreground">
-                                              $
-                                              {Math.max(0, remaining).toFixed(
-                                                2,
-                                              )}{" "}
-                                              remaining after payment
-                                            </p>
-                                          ) : null;
-                                        })()}
-                                      </div>
-                                    )}
-                                    <div className="flex gap-1.5">
-                                      <select
-                                        value={f.method}
-                                        onChange={(e) =>
-                                          updateFlex({ method: e.target.value })
-                                        }
-                                        className="flex-1 h-7 rounded-md border border-border bg-background px-2 text-[11px] outline-none capitalize"
-                                      >
-                                        {NO_DEVICE_PAYMENT_METHODS.map((m) => (
-                                          <option key={m.value} value={m.value}>
-                                            {m.label}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                    <div className="flex gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          updateFlex({ mode: null })
-                                        }
-                                        className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted"
-                                      >
-                                        Cancel
-                                      </button>
-                                      <button
-                                        type="submit"
-                                        disabled={f.saving}
-                                        className="flex-1 h-7 rounded-md bg-success hover:bg-success text-white text-[10px] font-semibold disabled:opacity-50"
-                                      >
-                                        {f.saving
-                                          ? "Saving…"
-                                          : `Confirm $${isNaN(payAmt) ? "0.00" : payAmt.toFixed(2)}`}
-                                      </button>
-                                    </div>
-                                  </form>
-                                );
-                              })()}
-                            {f.mode === "change-date" && (
-                              <form
-                                onSubmit={async (e) => {
-                                  e.preventDefault();
-                                  if (!f.dueDate) return;
-                                  updateFlex({ saving: true, error: null });
-                                  const res = await api.patch(
-                                    `/api/customer-package/${item.enrollmentId}/flexible-due`,
-                                    { dueDate: f.dueDate },
-                                  );
-                                  if (res.success) {
-                                    await refreshPaymentsData();
-                                  } else {
-                                    updateFlex({
-                                      saving: false,
-                                      error: res.error || "Failed to update.",
-                                    });
-                                  }
-                                }}
-                                className="space-y-1.5 pt-1.5 border-t border-border/40"
-                              >
-                                <input
-                                  type="date"
-                                  value={f.dueDate}
-                                  onChange={(e) =>
-                                    updateFlex({ dueDate: e.target.value })
-                                  }
-                                  className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary"
-                                />
-                                <div className="flex gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => updateFlex({ mode: null })}
-                                    className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted"
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="submit"
-                                    disabled={f.saving || !f.dueDate}
-                                    className="flex-1 h-7 rounded-md bg-brand hover:opacity-90 text-white text-[10px] font-semibold disabled:opacity-50"
-                                  >
-                                    {f.saving ? "Saving…" : "Update"}
-                                  </button>
-                                </div>
-                              </form>
-                            )}
-                          </div>
+                            itemName={item.packageName}
+                            amountDue={item.amount}
+                            dueDate={item.dueDate}
+                            onChangeDueDate={(newDueDate) =>
+                              api.patch(
+                                `/api/customer-package/${item.enrollmentId}/flexible-due`,
+                                { dueDate: newDueDate },
+                              )
+                            }
+                            customerID={customerId}
+                            locationID={locationID}
+                            paymentType="package_purchase"
+                            paymentTarget={{ enrollmentID: item.enrollmentId }}
+                            sendLinkTarget={{
+                              kind: "package",
+                              enrollmentID: item.enrollmentId,
+                            }}
+                            onSuccess={refreshPaymentsData}
+                          />
                         );
                       }
 
                       if (item.type === "plan") {
                         const fkey = `${item.planId}_${item.installmentIdx}`;
                         const pf = planPayForms[fkey] ?? {
-                          method: "cash",
                           saving: false,
                           error: null,
-                          open: false,
                         };
                         const updatePlan = (patch) =>
                           setPlanPayForms((prev) => ({
@@ -1975,6 +1981,12 @@ export default function MiniStudentPanel({
                                   <p className="text-[12px] font-semibold text-foreground truncate">
                                     {item.packageName}
                                   </p>
+                                  <span className="text-[9px] bg-violet-500/10 text-violet-600 rounded-full px-1.5 py-0.5 font-medium">
+                                    {billingTypeLabel(
+                                      item.plan?.enrollmentID?.package
+                                        ?.billingType ?? item.plan?.billingType,
+                                    )}
+                                  </span>
                                   <span className="text-[9px] bg-info/10 text-info rounded-full px-1.5 py-0.5 font-medium">
                                     Payment {item.installmentNumber}/
                                     {item.totalInstallments}
@@ -2003,16 +2015,17 @@ export default function MiniStudentPanel({
                                   </span>
                                 </div>
                               </div>
-                              {!pf.open && pf.mode !== "change-date" && (
+                              {pf.mode !== "change-date" && (
                                 <div className="flex flex-col gap-1 shrink-0">
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      updatePlan({
-                                        open: true,
-                                        payAmount: item.amount != null
-                                          ? Number(item.amount).toFixed(2)
-                                          : "",
+                                      setPayInstallTarget({
+                                        plan: item.plan,
+                                        index: item.installmentIdx,
+                                        billingType:
+                                          item.plan?.enrollmentID?.package
+                                            ?.billingType,
                                       })
                                     }
                                     className="rounded-md bg-success hover:bg-success text-white text-[10px] font-semibold px-2 py-1"
@@ -2101,7 +2114,7 @@ export default function MiniStudentPanel({
                             {/* Add Payment — flexible plans only, shown on last installment */}
                             {item.plan?.enrollmentID?.package?.billingType === "flexible" &&
                               item.installmentNumber === item.totalInstallments &&
-                              !pf.open && pf.mode !== "change-date" && (() => {
+                              pf.mode !== "change-date" && (() => {
                                 const af = addInstallForms[item.planId] ?? { open: false, dueDate: "", amount: "", saving: false, error: null };
                                 const updateAdd = (patch) => setAddInstallForms((prev) => ({ ...prev, [item.planId]: { ...prev[item.planId], ...patch } }));
                                 return af.open ? (
@@ -2136,86 +2149,6 @@ export default function MiniStudentPanel({
                                   </button>
                                 );
                               })()}
-
-                            {pf.open && (
-                              <form
-                                onSubmit={async (e) => {
-                                  e.preventDefault();
-                                  const num = Number(pf.payAmount);
-                                  if (isNaN(num) || num <= 0) {
-                                    updatePlan({ error: "Enter a valid amount." });
-                                    return;
-                                  }
-                                  const checkoutTab =
-                                    pf.method === "card" ? openCheckoutTab() : null;
-                                  updatePlan({ saving: true, error: null });
-                                  const res = await api.post(
-                                    `/api/payment-plan/${item.planId}/pay-installment`,
-                                    {
-                                      installmentIndex: item.installmentIdx,
-                                      method: pf.method,
-                                      amount: num,
-                                    },
-                                  );
-                                  if (res.success) {
-                                    if (res.data?.checkoutUrl)
-                                      navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
-                                    else closeCheckoutTab(checkoutTab);
-                                    await refreshPaymentsData();
-                                  } else {
-                                    closeCheckoutTab(checkoutTab);
-                                    updatePlan({
-                                      saving: false,
-                                      error: res.error || "Payment failed.",
-                                    });
-                                  }
-                                }}
-                                className="space-y-1.5 pt-1.5 border-t border-border/40"
-                              >
-                                <label className="block text-[10px] text-muted-foreground mb-0.5">Amount ($)</label>
-                                <input
-                                  type="number"
-                                  min="0.01"
-                                  step="0.01"
-                                  value={pf.payAmount ?? ""}
-                                  onChange={(e) =>
-                                    updatePlan({ payAmount: e.target.value })
-                                  }
-                                  className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary"
-                                />
-                                <select
-                                  value={pf.method}
-                                  onChange={(e) =>
-                                    updatePlan({ method: e.target.value })
-                                  }
-                                  className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none capitalize"
-                                >
-                                  {NO_DEVICE_PAYMENT_METHODS.map((m) => (
-                                    <option key={m.value} value={m.value}>
-                                      {m.label}
-                                    </option>
-                                  ))}
-                                </select>
-                                <div className="flex gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => updatePlan({ open: false })}
-                                    className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted"
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="submit"
-                                    disabled={pf.saving || !pf.payAmount}
-                                    className="flex-1 h-7 rounded-md bg-success hover:bg-success text-white text-[10px] font-semibold disabled:opacity-50"
-                                  >
-                                    {pf.saving
-                                      ? "Saving…"
-                                      : `Pay $${(Number(pf.payAmount) || 0).toFixed(2)}`}
-                                  </button>
-                                </div>
-                              </form>
-                            )}
                           </div>
                         );
                       }
@@ -2276,7 +2209,12 @@ export default function MiniStudentPanel({
                 return (
                   <div key={String(plan._id)} className="rounded-lg border border-dashed border-border bg-muted/10 px-3 py-2.5">
                     <p className="text-[11px] font-semibold text-foreground mb-1.5">
-                      {plan.enrollmentID?.package?.packageName ?? "Package"} · Flexible
+                      {plan.enrollmentID?.package?.packageName ??
+                        purchaseNamesById.get(
+                          String(plan.purchaseID?._id ?? plan.purchaseID),
+                        ) ??
+                        "Package"}{" "}
+                      · Flexible
                     </p>
                     {af.open ? (
                       <form onSubmit={async (e) => {
@@ -2552,19 +2490,33 @@ export default function MiniStudentPanel({
   );
 
   const enrollmentSheet = (
-    <CreateEnrollmentSheet
-      open={showCreateEnrollmentSheet}
-      onClose={() => setShowCreateEnrollmentSheet(false)}
-      customerID={customerId}
-      customerName={customerName}
-      locationID={(() => {
-        const loc = customer?.locationID
-        if (!loc) return undefined
-        if (Array.isArray(loc)) return loc[0]?._id || loc[0] || undefined
-        return loc._id || loc
-      })()}
-      onSuccess={reloadEnrollments}
-    />
+    <>
+      <CreateEnrollmentSheet
+        open={showCreateEnrollmentSheet}
+        initialMode={enrollMode}
+        onClose={() => setShowCreateEnrollmentSheet(false)}
+        customerID={customerId}
+        customerName={customerName}
+        locationID={locationID}
+        onSuccess={reloadEnrollments}
+      />
+      <CreateEventPurchaseDialog
+        open={showEventPurchaseDialog}
+        onClose={() => setShowEventPurchaseDialog(false)}
+        initialCustomerID={customerId}
+        initialCustomerName={customerName}
+        onCreated={reloadPurchases}
+      />
+      <PayInstallmentDialog
+        open={!!payInstallTarget}
+        onClose={() => setPayInstallTarget(null)}
+        plan={payInstallTarget?.plan}
+        installmentIndex={payInstallTarget?.index}
+        billingType={payInstallTarget?.billingType}
+        locationID={locationID}
+        onSuccess={refreshPaymentsData}
+      />
+    </>
   );
 
   if (inline) {

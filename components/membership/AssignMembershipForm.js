@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
@@ -11,6 +11,13 @@ import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 
 import { PURCHASE_METHODS } from '@/lib/paymentMethods'
+import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
+
+function todayISO() {
+  const d = new Date()
+  const offset = d.getTimezoneOffset()
+  return new Date(d.getTime() - offset * 60 * 1000).toISOString().slice(0, 10)
+}
 
 // Shared membership-assignment form. Used inside the customer Memberships tab and
 // the enroll menu's Membership tab.
@@ -19,9 +26,12 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
   const [membershipID, setMembershipID] = useState('')
   const [billingType, setBillingType] = useState('one_time')
   const [method, setMethod] = useState('cash')
-  const [dueDate, setDueDate] = useState('')
-  const [scheduleMode, setScheduleMode] = useState('single')
-  const [customInstallments, setCustomInstallments] = useState([])
+  // Flexible billing — same "initial payment + future payments" builder as
+  // enrollments/events so staff see one consistent flow everywhere.
+  const [flexInitialAmount, setFlexInitialAmount] = useState('0')
+  const [flexInitialDate, setFlexInitialDate] = useState(todayISO())
+  const [flexFuturePayments, setFlexFuturePayments] = useState([{ _key: 'fp-0', dueDate: '', amount: '' }])
+  const [collectInitialNow, setCollectInitialNow] = useState(true)
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [walletBalance, setWalletBalance] = useState(null)
@@ -52,29 +62,55 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
   const remaining = Math.max(0, price - walletApplied)
   const walletOver = walletEligible && walletEntered > (walletBalance ?? 0)
 
-  // One-time card purchases settle through Clover's hosted page; everything else
-  // (cash, wallet, flexible schedules) is recorded directly.
+  const flexInitialAmountN = Number(flexInitialAmount || 0)
+  const flexFutureTotal = flexFuturePayments.reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
+  const flexAmountLeftToSchedule = price - flexInitialAmountN - flexFutureTotal
+  const flexBalanced = Math.abs(flexAmountLeftToSchedule) < 0.01
+  const collectingFlexInitial = billingType === 'flexible' && flexInitialAmountN > 0 && collectInitialNow
+
+  // One-time card purchases, and a flexible schedule's collected-now initial
+  // payment, settle through Clover's hosted page; everything else (cash,
+  // wallet, future-dated installments) is recorded directly.
   const payWithClover =
-    billingType === 'one_time' && method === 'card' && remaining > 0 && cloverReady
+    ((billingType === 'one_time' && remaining > 0) || collectingFlexInitial) && method === 'card' && cloverReady
   const cloverNotConnected =
-    billingType === 'one_time' && method === 'card' && remaining > 0 && !cloverReady
+    ((billingType === 'one_time' && remaining > 0) || collectingFlexInitial) && method === 'card' && !cloverReady
 
-  const customTotal = useMemo(
-    () => customInstallments.reduce((sum, c) => sum + (Number(c.amount) || 0), 0),
-    [customInstallments],
-  )
-
-  function addInstallment() {
-    setCustomInstallments((prev) => [
-      ...prev,
-      { _key: String(Date.now() + Math.random()), dueDate: '', amount: '' },
-    ])
+  // Adding/removing a row (or changing the initial payment) changes how many
+  // ways the remaining balance splits, so re-spread it evenly across all rows
+  // rather than leaving a stray $0 box or a stale amount.
+  function splitFlexEvenly(rows, remaining) {
+    const base = rows.length ? Math.floor((remaining / rows.length) * 100) / 100 : 0
+    return rows.map((r, i) => ({
+      ...r,
+      amount: (i === rows.length - 1 ? Number((remaining - base * (rows.length - 1)).toFixed(2)) : base).toFixed(2),
+    }))
   }
-  function updateInstallment(key, field, value) {
-    setCustomInstallments((prev) => prev.map((c) => (c._key === key ? { ...c, [field]: value } : c)))
+  function updateFlexInitialAmount(value) {
+    setFlexInitialAmount(value)
+    setFlexFuturePayments((prev) => splitFlexEvenly(prev, price - (Number(value) || 0)))
   }
-  function removeInstallment(key) {
-    setCustomInstallments((prev) => prev.filter((c) => c._key !== key))
+  function addFlexFuturePayment() {
+    setFlexFuturePayments((prev) => {
+      const rows = [...prev, { _key: String(Date.now() + Math.random()), dueDate: '', amount: '' }]
+      return splitFlexEvenly(rows, price - flexInitialAmountN)
+    })
+  }
+  function updateFlexFuturePayment(key, field, value) {
+    setFlexFuturePayments((prev) => {
+      if (field !== 'amount') return prev.map((r) => (r._key === key ? { ...r, [field]: value } : r))
+      const remaining = price - flexInitialAmountN
+      const leftover = Math.max(0, remaining - (Number(value) || 0))
+      const otherRows = prev.filter((r) => r._key !== key)
+      const splitOthers = splitFlexEvenly(otherRows, leftover)
+      return prev.map((r) => (r._key === key ? { ...r, amount: value } : splitOthers.find((o) => o._key === r._key)))
+    })
+  }
+  function removeFlexFuturePayment(key) {
+    setFlexFuturePayments((prev) => {
+      const rows = prev.filter((r) => r._key !== key)
+      return splitFlexEvenly(rows, price - flexInitialAmountN)
+    })
   }
 
   async function handleSubmit() {
@@ -91,17 +127,23 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
       if (walletApplied > 0) billing.walletAmount = walletApplied
     }
     else if (billingType === 'flexible') {
-      if (scheduleMode === 'custom') {
-        const valid = customInstallments.filter((c) => c.dueDate && Number(c.amount) > 0)
-        if (valid.length === 0) { toast.error('Add at least one scheduled payment with a date and amount'); return }
-        if (Math.abs(customTotal - price) > 0.01) {
-          toast.error(`Scheduled payments total $${customTotal.toFixed(2)} but the price is $${price.toFixed(2)}`); return
-        }
-        billing.customInstallments = valid.map((c) => ({ dueDate: c.dueDate, amount: Number(c.amount) }))
-      } else {
-        if (!dueDate) { toast.error('Due date is required for flexible billing'); return }
-        billing.dueDate = dueDate
+      if (!flexBalanced) {
+        toast.error(`Amount left to schedule is $${flexAmountLeftToSchedule.toFixed(2)} — it must be $0 before saving.`)
+        return
       }
+      if (flexInitialAmountN > 0 && !flexInitialDate) { toast.error('Please set the initial payment date'); return }
+      const futureRows = flexFuturePayments.filter((c) => Number(c.amount) > 0)
+      if (futureRows.some((c) => !c.dueDate)) { toast.error('Every future payment needs a due date'); return }
+
+      const scheduleRows = [
+        ...(flexInitialAmountN > 0 ? [{ dueDate: flexInitialDate, amount: flexInitialAmountN }] : []),
+        ...futureRows.map((c) => ({ dueDate: c.dueDate, amount: Number(c.amount) })),
+      ]
+      if (scheduleRows.length === 0) { toast.error('Add at least one payment'); return }
+
+      billing.customInstallments = scheduleRows
+      billing.method = method
+      if (flexInitialAmountN > 0) billing.collectNow = collectInitialNow
     }
 
     const checkoutTab = payWithClover ? openCheckoutTab() : null
@@ -247,13 +289,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
           {remaining > 0 && (
             <div className="flex flex-col gap-1.5">
               <Label>{walletApplied > 0 ? 'Remaining payment method' : 'Payment Method'}</Label>
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                className="h-9 rounded-lg border border-border bg-background text-sm px-2.5 focus:outline-none focus:ring-2 focus:ring-brand/30 capitalize"
-              >
-                {PURCHASE_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
+              <PaymentMethodPicker methods={PURCHASE_METHODS} value={method} onChange={setMethod} />
             </div>
           )}
 
@@ -261,71 +297,72 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
       )}
 
       {billingType === 'flexible' && (
-        <div className="space-y-3">
-          <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
-            {[
-              { v: 'single', label: 'Single due date' },
-              { v: 'custom', label: 'Scheduled payments' },
-            ].map((opt) => (
-              <button
-                key={opt.v}
-                type="button"
-                onClick={() => setScheduleMode(opt.v)}
-                className={[
-                  'h-7 px-3 rounded-md text-[11px] font-medium transition-colors',
-                  scheduleMode === opt.v ? 'bg-brand text-brand-foreground' : 'text-muted-foreground hover:text-foreground',
-                ].join(' ')}
-              >
-                {opt.label}
-              </button>
-            ))}
+        <div className="rounded-xl border border-border bg-muted/20 p-4 flex flex-col gap-4">
+          <p className="text-xs text-muted-foreground -mt-1">
+            This arrangement will be included in the student agreement — get it right here, it can&apos;t be changed on the payment step.
+          </p>
+
+          {/* Initial payment */}
+          <div className="flex flex-col gap-1.5">
+            <Label>Initial payment <span className="font-normal text-muted-foreground">(optional — enter $0 if none)</span></Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Input type="number" min="0" max={price} step="0.01" placeholder="0.00" value={flexInitialAmount} onChange={(e) => updateFlexInitialAmount(e.target.value)} />
+              <Input type="date" value={flexInitialDate} onChange={(e) => setFlexInitialDate(e.target.value)} />
+            </div>
           </div>
 
-          {scheduleMode === 'custom' ? (
-            <div className="space-y-2">
-              <p className="text-[11px] text-muted-foreground">
-                Add any number of payments, each with its own date and amount. Each is tracked and collected individually.
-              </p>
-              {customInstallments.map((c, i) => (
-                <div key={c._key} className="flex items-center gap-2">
-                  <span className="text-[11px] text-muted-foreground w-5 shrink-0">{i + 1}.</span>
-                  <Input type="date" value={c.dueDate} onChange={(e) => updateInstallment(c._key, 'dueDate', e.target.value)} className="h-8 flex-1" />
-                  <div className="relative w-28">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
-                    <Input type="number" min="0" step="0.01" placeholder="0.00" value={c.amount} onChange={(e) => updateInstallment(c._key, 'amount', e.target.value)} className="h-8 w-full pl-5" />
-                  </div>
-                  <button type="button" onClick={() => removeInstallment(c._key)} className="text-muted-foreground hover:text-destructive transition-colors" aria-label="Remove payment">
-                    <Trash2 className="h-3.5 w-3.5" />
+          {/* Future payments */}
+          <div className="flex flex-col gap-1.5 pt-2 border-t border-border">
+            <Label>Future payments</Label>
+            <p className="text-xs text-muted-foreground -mt-1">
+              One row is the remaining balance's single due date. Add more to split it into a schedule.
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {flexFuturePayments.map((r, i) => (
+                <div key={r._key} className="flex items-center gap-2">
+                  <span className="w-5 shrink-0 text-xs text-muted-foreground">{i + 1}.</span>
+                  <Input type="date" value={r.dueDate} onChange={(e) => updateFlexFuturePayment(r._key, 'dueDate', e.target.value)} className="flex-1" />
+                  <Input type="number" min="0" step="0.01" placeholder="0.00" value={r.amount} onChange={(e) => updateFlexFuturePayment(r._key, 'amount', e.target.value)} className="w-28" />
+                  <button type="button" onClick={() => removeFlexFuturePayment(r._key)} disabled={flexFuturePayments.length === 1}
+                    className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed"
+                    aria-label="Remove payment">
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               ))}
-              <button
-                type="button"
-                onClick={addInstallment}
-                className="flex items-center gap-1 h-7 px-2 rounded border border-dashed border-border bg-background text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-brand transition-colors"
-              >
-                <Plus className="h-3 w-3" /> Add Payment
-              </button>
-              <div className="rounded-lg border border-border bg-muted/20 p-2.5 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground">Scheduled total</span>
-                  <span className={`text-[12px] font-semibold ${Math.abs(customTotal - price) > 0.01 ? 'text-destructive' : 'text-foreground'}`}>
-                    ${customTotal.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground">Membership price</span>
-                  <span className="text-[12px] font-bold text-foreground">${price.toFixed(2)}</span>
-                </div>
-                {Math.abs(customTotal - price) > 0.01 && (
-                  <p className="text-[10px] text-destructive">Scheduled payments must add up to the membership price.</p>
-                )}
-              </div>
             </div>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              <Label>Due Date *</Label>
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="h-9" />
+            <button type="button" onClick={addFlexFuturePayment}
+              className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-dashed border-border px-3 h-8 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:border-brand/50">
+              <Plus className="h-3.5 w-3.5" /> Add another payment
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-1 pt-2 border-t border-border">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Amount left to schedule</span>
+              <span className={`text-sm font-semibold ${flexBalanced ? 'text-success' : 'text-destructive'}`}>${flexAmountLeftToSchedule.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Membership Price</span>
+              <span className="text-sm font-bold">${price.toFixed(2)}</span>
+            </div>
+            {!flexBalanced && (
+              <p className="text-[11px] text-destructive">Initial payment plus future payments must add up to the membership price.</p>
+            )}
+          </div>
+
+          {flexInitialAmountN > 0 && (
+            <div className="flex flex-col gap-3 pt-2 border-t border-border">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={collectInitialNow} onChange={(e) => setCollectInitialNow(e.target.checked)} />
+                Collect the initial payment now (${flexInitialAmountN.toFixed(2)})
+              </label>
+              {collectInitialNow && (
+                <div className="flex flex-col gap-1.5">
+                  <Label>Payment Method</Label>
+                  <PaymentMethodPicker methods={PURCHASE_METHODS} value={method} onChange={setMethod} />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -342,7 +379,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
         )}
         <div className="flex justify-end gap-2">
           {onCancel && <Button variant="outline" onClick={onCancel} disabled={submitting}>Cancel</Button>}
-          <Button onClick={() => handleSubmit()} disabled={submitting || walletOver || cloverNotConnected} className="bg-brand hover:bg-brand-dark text-brand-foreground">
+          <Button onClick={() => handleSubmit()} disabled={submitting || walletOver || cloverNotConnected || (billingType === 'flexible' && !flexBalanced)} className="bg-brand hover:bg-brand-dark text-brand-foreground">
             {submitting ? 'Assigning…' : payWithClover ? 'Pay by card' : 'Assign Membership'}
           </Button>
         </div>

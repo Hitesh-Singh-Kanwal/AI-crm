@@ -13,7 +13,10 @@ import { resolveLocationID } from '@/app/settings/payments/clover/useCloverConne
  *
  * When a Stripe reader is chosen, an optional "let the customer add a tip on the
  * reader" control appears; the parent reads it via `onTipConfig({ promptTip,
- * tipTeacherID })` and forwards those to /api/payment.
+ * tipTeacherID })` and forwards those alongside deviceID to whichever endpoint
+ * is charging (/api/payment, /api/payment-plan/:id/pay-installment, or
+ * /api/customer-package/add) — the tip is booked as its own Tip record once the
+ * webhook reports the reader-chosen amount, separate from the charge itself.
  */
 export default function TerminalDeviceField({
   method,

@@ -53,6 +53,8 @@ import CustomerInboxThread from "@/components/customers/CustomerInboxThread";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import LocationSelector from "@/components/shared/LocationSelector";
 import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
+import PayInstallmentDialog from "@/components/payments/PayInstallmentDialog";
+import PaymentDueCard from "@/components/payments/PaymentDueCard";
 import api from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
 import { resolveLocationID } from "@/app/settings/payments/clover/useCloverConnection";
@@ -64,11 +66,7 @@ import {
   CHECKOUT_TOAST,
 } from "@/lib/clover";
 import { PAYMENT_METHODS, NO_DEVICE_PAYMENT_METHODS } from "@/lib/paymentMethods";
-import { dateInputToISO, todayDateInput } from "@/lib/studioLocalDate";
-import WalletShortfallField, {
-  walletPaymentFields,
-} from "@/components/payments/WalletShortfallField";
-import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import { todayDateInput } from "@/lib/studioLocalDate";
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
 import { getInitials, formatDate } from "@/lib/utils";
@@ -1630,306 +1628,6 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
         </div>
       )}
     </div>
-  );
-}
-
-// ─── PayInstallmentDialog ────────────────────────────────────────────────────
-
-function PayInstallmentDialog({
-  open,
-  onClose,
-  plan,
-  installmentIndex,
-  billingType,
-  locationID,
-  onSuccess,
-}) {
-  const [method, setMethod] = useState("cash");
-  const [shortfallMethod, setShortfallMethod] = useState("cash");
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [amount, setAmount] = useState("");
-  const [paymentDate, setPaymentDate] = useState(todayDateInput);
-  const [deviceID, setDeviceID] = useState("");
-  const [saving, setSaving] = useState(false);
-  const toast = useToast();
-  const { ready: cloverReady } = useCardProcessor(locationID || plan);
-
-  useEffect(() => {
-    if (open && plan?.customerID) {
-      fetchWalletBalance(plan.customerID?._id ?? plan.customerID).then(
-        setWalletBalance,
-      );
-    }
-  }, [open, plan?.customerID]);
-
-  const amountEditable = billingType === "flexible";
-  const installment = plan?.installments?.[installmentIndex];
-  // Guards the shortfall reschedule below from running twice if the actual
-  // payment call fails (e.g. a declined card) and staff retries without
-  // closing the dialog — the schedule split already went through once.
-  const rescheduledRef = useRef(false);
-
-  // When the wallet cannot cover the installment, the shortfall method is what actually
-  // reaches Clover — so it, not the wallet, decides whether a checkout tab is needed.
-  const paymentFields = walletPaymentFields({
-    method,
-    shortfallMethod,
-    balance: walletBalance,
-    amountDue: Number(amount) || 0,
-  });
-  const payWithClover = paymentFields.method === "card" && cloverReady;
-  const cloverNotConnected = paymentFields.method === "card" && !cloverReady;
-  const payWithTerminal = paymentFields.method === "terminal";
-  const terminalNotSelected = payWithTerminal && !deviceID;
-
-  useEffect(() => {
-    if (installment) setAmount(Number(installment.amount).toFixed(2));
-    rescheduledRef.current = false;
-    setDeviceID("");
-  }, [installment]);
-
-  function validatedAmount() {
-    const num = Number(amount);
-    if (isNaN(num) || num <= 0) {
-      toast.error("Enter a valid amount.");
-      return null;
-    }
-    return num;
-  }
-
-  async function submitPayment() {
-    const num = validatedAmount();
-    if (num === null) return;
-    if (payWithTerminal && !deviceID) return;
-    const checkoutTab = payWithClover ? openCheckoutTab() : null;
-    setSaving(true);
-
-    // A flexible schedule promises the full balance gets collected. If this
-    // installment is being paid for less than its scheduled amount, carve
-    // the shortfall into the schedule *before* marking it paid — a
-    // single-installment plan otherwise has nothing left pending the moment
-    // this one clears, and the backend then has no pending row left to
-    // report the balance against, so the remainder silently disappears
-    // instead of staying payable. Reordering this ahead of the actual
-    // pay-installment call also sidesteps ever asking the backend to add a
-    // new installment to a plan it already considers fully paid/completed.
-    const shortfall = Number((installment.amount - num).toFixed(2));
-    if (billingType === "flexible" && shortfall > 0.01 && !rescheduledRef.current) {
-      const otherPending = plan.installments
-        .map((i, idx) => ({ ...i, idx }))
-        .filter((i) => i.idx !== installmentIndex && i.status === "pending");
-      let rescheduleOk;
-      if (otherPending.length > 0) {
-        const base = Math.floor((shortfall / otherPending.length) * 100) / 100;
-        const results = await Promise.all(
-          otherPending.map((i, i2) => {
-            const bump =
-              i2 === otherPending.length - 1
-                ? Number((shortfall - base * (otherPending.length - 1)).toFixed(2))
-                : base;
-            return api.patch(`/api/payment-plan/${plan._id}/installment/${i.idx}/due-date`, {
-              dueDate: new Date(i.dueDate).toISOString().slice(0, 10),
-              amount: Number((Number(i.amount) + bump).toFixed(2)),
-            });
-          }),
-        );
-        rescheduleOk = results.every((r) => r.success);
-      } else {
-        const addRes = await api.post(`/api/payment-plan/${plan._id}/installment`, {
-          dueDate: new Date(installment.dueDate).toISOString().slice(0, 10),
-          amount: shortfall,
-        });
-        rescheduleOk = addRes.success;
-      }
-      if (!rescheduleOk) {
-        closeCheckoutTab(checkoutTab);
-        setSaving(false);
-        toast.error("Couldn't reschedule the remaining balance — payment not recorded.");
-        return;
-      }
-      rescheduledRef.current = true;
-    }
-
-    const res = await api.post(
-      `/api/payment-plan/${plan._id}/pay-installment`,
-      {
-        installmentIndex,
-        amount: num,
-        paymentDate: dateInputToISO(paymentDate),
-        ...(payWithTerminal ? { deviceID } : {}),
-        ...walletPaymentFields({
-          method,
-          shortfallMethod,
-          balance: walletBalance,
-          amountDue: num,
-        }),
-      },
-    );
-    if (res.success) {
-      if (res.data?.checkoutUrl) {
-        navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
-        toast.success(CHECKOUT_TOAST);
-      } else if (res.data?.pending) {
-        // A Stripe Terminal charge is async — the PaymentIntent only succeeds
-        // once the customer taps their card, settled later by the webhook.
-        toast.success("Charge sent to the reader — waiting for the card.");
-      } else if (shortfall > 0.01) {
-        toast.success(
-          `Installment payment recorded — $${shortfall.toFixed(2)} shortfall scheduled as a new payment.`,
-        );
-      } else {
-        toast.success("Installment payment recorded.");
-      }
-      onSuccess();
-      onClose();
-    } else {
-      closeCheckoutTab(checkoutTab);
-      toast.error(res.error || "Failed to record payment.");
-    }
-    setSaving(false);
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    await submitPayment();
-  }
-
-  async function handleSaveAmount() {
-    const num = validatedAmount();
-    if (num === null) return;
-    setSaving(true);
-    const res = await api.patch(
-      `/api/payment-plan/${plan._id}/installment/${installmentIndex}/due-date`,
-      {
-        dueDate: new Date(installment.dueDate).toISOString().slice(0, 10),
-        amount: num,
-      },
-    );
-    if (res.success) {
-      toast.success("Amount updated.");
-      onSuccess();
-      onClose();
-    } else {
-      toast.error(res.error || "Failed to update amount.");
-    }
-    setSaving(false);
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) onClose();
-      }}
-    >
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Pay Installment</DialogTitle>
-        </DialogHeader>
-        {installment && (
-          <p className="text-[12px] text-muted-foreground -mt-1">
-            Payment {installmentIndex + 1} of {plan.numberOfInstallments} ·{" "}
-            <span className="text-foreground font-medium">
-              ${Number(installment.amount).toFixed(2)}
-            </span>{" "}
-            due{" "}
-            {new Date(installment.dueDate).toLocaleDateString("en-AU", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })}
-          </p>
-        )}
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          <FormField label="Amount" required>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              readOnly={!amountEditable}
-              disabled={!amountEditable}
-              className={`h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary ${
-                amountEditable ? "" : "cursor-not-allowed opacity-70"
-              }`}
-            />
-          </FormField>
-          <FormField label="Payment Method" required>
-            <div className="relative">
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                className="h-9 w-full appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-[13px] outline-none focus:border-primary capitalize"
-              >
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            </div>
-          </FormField>
-          <FormField label="Payment date" required>
-            <input
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
-            />
-          </FormField>
-          <TerminalDeviceField
-            method={method}
-            locationID={locationID}
-            deviceID={deviceID}
-            onDeviceChange={setDeviceID}
-          />
-          <WalletShortfallField
-            method={method}
-            balance={walletBalance}
-            amountDue={Number(amount) || 0}
-            shortfallMethod={shortfallMethod}
-            onShortfallMethodChange={setShortfallMethod}
-          />
-          {cloverNotConnected && (
-            <p className="text-[12px] text-muted-foreground">
-              Connect a card processor (Clover or Stripe) in Settings → Integrations to charge a card.
-            </p>
-          )}
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>
-              Cancel
-            </Button>
-            {amountEditable && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={saving}
-                onClick={handleSaveAmount}
-              >
-                Save
-              </Button>
-            )}
-            <Button
-              type="submit"
-              size="sm"
-              disabled={saving || cloverNotConnected || terminalNotSelected}
-              className="bg-success hover:bg-success text-white"
-            >
-              {saving
-                ? payWithTerminal
-                  ? "Waiting for terminal…"
-                  : "Recording…"
-                : payWithClover
-                  ? "Pay by card"
-                  : `Pay $${(Number(amount) || 0).toFixed(2)}`}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -5826,339 +5524,6 @@ function EnrollmentsTab({
 
 // ─── Payment History Tab ─────────────────────────────────────────────────────
 
-function PaymentDueCard({
-  itemName,
-  badgeLabel = "Flexible Billing",
-  amountDue,
-  dueDate,
-  onChangeDueDate,
-  customerID,
-  locationID,
-  paymentType,
-  paymentTarget,
-  sendLinkTarget,
-  onSuccess,
-}) {
-  const outstanding = Math.max(0, Number(amountDue) || 0);
-  const isOverdue = dueDate && outstanding > 0 && new Date(dueDate) < new Date();
-  const [mode, setMode] = useState(null); // "pay" | "change-date"
-  const [amount, setAmount] = useState(String(outstanding.toFixed(2)));
-  const [method, setMethod] = useState("cash");
-  const [paymentDate, setPaymentDate] = useState(todayDateInput);
-  const [shortfallMethod, setShortfallMethod] = useState("cash");
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [deviceID, setDeviceID] = useState("");
-  const [tipConfig, setTipConfig] = useState({ promptTip: false });
-  const [newDueDate, setNewDueDate] = useState(
-    dueDate ? new Date(dueDate).toISOString().slice(0, 10) : "",
-  );
-  const [saving, setSaving] = useState(false);
-  const toast = useToast();
-  const { ready: cloverReady } = useCardProcessor(locationID);
-
-  useEffect(() => {
-    if (mode === "pay") fetchWalletBalance(customerID).then(setWalletBalance);
-  }, [mode, customerID]);
-
-  // A wallet short of the amount is topped up by the shortfall method, and that is what
-  // reaches Clover — so it decides whether a checkout tab is opened.
-  const paymentFields = walletPaymentFields({
-    method,
-    shortfallMethod,
-    balance: walletBalance,
-    amountDue: parseFloat(amount) || 0,
-  });
-  const payWithClover = paymentFields.method === "card" && cloverReady;
-  const cloverNotConnected = paymentFields.method === "card" && !cloverReady;
-  const payWithTerminal = paymentFields.method === "terminal";
-  const terminalNotSelected = payWithTerminal && !deviceID;
-  const amountValid = parseFloat(amount) > 0;
-
-  async function submitPayment() {
-    const num = parseFloat(amount);
-    if (isNaN(num) || num <= 0) return;
-    if (payWithTerminal && !deviceID) return;
-    const checkoutTab = payWithClover ? openCheckoutTab() : null;
-    setSaving(true);
-    const res = await api.post("/api/payment", {
-      customerID,
-      ...paymentTarget,
-      type: paymentType,
-      amount: num,
-      ...walletPaymentFields({
-        method,
-        shortfallMethod,
-        balance: walletBalance,
-        amountDue: num,
-      }),
-      ...(payWithTerminal ? { deviceID, ...tipConfig } : {}),
-      ...(paymentDate ? { paymentDate: dateInputToISO(paymentDate) } : {}),
-    });
-    if (res.success) {
-      if (res.data?.checkoutUrl) {
-        navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
-        toast.success(CHECKOUT_TOAST);
-      } else if (res.data?.pending) {
-        // A Stripe Terminal charge is async — the PaymentIntent only
-        // succeeds once the customer taps their card, settled later by the
-        // webhook. Unlike Clover's synchronous device charge, there's
-        // nothing to confirm yet, so don't claim it's recorded.
-        toast.success("Charge sent to the reader — waiting for the card.");
-      } else {
-        toast.success(
-          num >= outstanding
-            ? "Payment recorded."
-            : "Partial payment recorded.",
-        );
-      }
-      setMode(null);
-      onSuccess();
-    } else {
-      closeCheckoutTab(checkoutTab);
-      toast.error(res.error || "Failed to record payment.");
-    }
-    setSaving(false);
-  }
-
-  async function handlePay(e) {
-    e.preventDefault();
-    await submitPayment();
-  }
-
-  async function handleChangeDate(e) {
-    e.preventDefault();
-    if (!newDueDate || !onChangeDueDate) return;
-    setSaving(true);
-    const res = await onChangeDueDate(newDueDate);
-    if (res.success) {
-      toast.success("Due date updated.");
-      setMode(null);
-      onSuccess();
-    } else {
-      toast.error(res.error || "Failed to update due date.");
-    }
-    setSaving(false);
-  }
-
-  return (
-    <div
-      className={`rounded-xl border ${isOverdue ? "border-rose-300 bg-rose-50/40 dark:bg-rose-900/10" : "border-warning/20 bg-warning/10"} p-4 space-y-3`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-[13px] font-semibold text-foreground">
-              {itemName}
-            </p>
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-500/10 text-violet-600">
-              {badgeLabel}
-            </span>
-            {isOverdue && (
-              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-rose-500/10 text-rose-600">
-                Overdue
-              </span>
-            )}
-          </div>
-          <div className="mt-1.5 flex items-center gap-4 flex-wrap">
-            <div>
-              <span className="text-[11px] text-muted-foreground">
-                Amount Due{" "}
-              </span>
-              <span className="text-[13px] font-bold text-rose-600">
-                ${outstanding.toFixed(2)}
-              </span>
-            </div>
-            {dueDate && (
-              <div>
-                <span className="text-[11px] text-muted-foreground">
-                  Due Date{" "}
-                </span>
-                <span
-                  className={`text-[12px] font-medium ${isOverdue ? "text-rose-600" : "text-foreground"}`}
-                >
-                  {new Date(dueDate).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-        {mode === null && (
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              size="sm"
-              className="h-7 px-3 text-[11px] bg-success hover:bg-success text-white"
-              onClick={() => setMode("pay")}
-            >
-              Pay Now
-            </Button>
-            {onChangeDueDate && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-3 text-[11px]"
-                onClick={() => setMode("change-date")}
-              >
-                Change Due Date
-              </Button>
-            )}
-            {sendLinkTarget && cloverReady && customerID && (
-              <SendPaymentLinkMenu
-                customerID={customerID}
-                target={sendLinkTarget}
-                onSent={onSuccess}
-              />
-            )}
-          </div>
-        )}
-      </div>
-
-      {mode === "pay" && (
-        <form
-          onSubmit={handlePay}
-          className="flex items-end gap-2 flex-wrap pt-2 border-t border-border/50"
-        >
-          <div className="flex-1 min-w-[120px]">
-            <label className="block text-[10px] font-medium text-muted-foreground mb-1">
-              Amount
-            </label>
-            <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
-                $
-              </span>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="h-8 w-full rounded-md border border-border bg-background pl-6 pr-2.5 text-[12px] outline-none focus:border-primary"
-              />
-            </div>
-          </div>
-          <div className="flex-1 min-w-[100px]">
-            <label className="block text-[10px] font-medium text-muted-foreground mb-1">
-              Method
-            </label>
-            <select
-              value={method}
-              onChange={(e) => setMethod(e.target.value)}
-              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary capitalize"
-            >
-              {PAYMENT_METHODS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex-1 min-w-[130px]">
-            <label className="block text-[10px] font-medium text-muted-foreground mb-1">
-              Payment Date
-            </label>
-            <input
-              type="date"
-              value={paymentDate}
-              max={todayDateInput()}
-              onChange={(e) => setPaymentDate(e.target.value)}
-              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5 w-full">
-            <WalletShortfallField
-              method={method}
-              balance={walletBalance}
-              amountDue={parseFloat(amount) || 0}
-              shortfallMethod={shortfallMethod}
-              onShortfallMethodChange={setShortfallMethod}
-            />
-            {cloverNotConnected && (
-              <p className="text-[11px] text-muted-foreground">
-                Connect a card processor (Clover or Stripe) in Settings → Integrations to charge a card.
-              </p>
-            )}
-            <TerminalDeviceField
-              method={method}
-              locationID={locationID}
-              deviceID={deviceID}
-              onDeviceChange={setDeviceID}
-              onTipConfig={setTipConfig}
-            />
-            <div className="flex gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 px-3 text-[11px]"
-                onClick={() => setMode(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                size="sm"
-                className="h-8 px-3 text-[11px]"
-                disabled={saving || !amountValid || cloverNotConnected || terminalNotSelected}
-              >
-                {saving
-                  ? payWithTerminal
-                    ? "Waiting for terminal…"
-                    : "Saving…"
-                  : payWithClover
-                    ? "Pay by card"
-                    : payWithTerminal
-                      ? "Charge Terminal"
-                      : "Confirm Payment"}
-              </Button>
-            </div>
-          </div>
-        </form>
-      )}
-
-      {mode === "change-date" && (
-        <form
-          onSubmit={handleChangeDate}
-          className="flex items-end gap-2 flex-wrap pt-2 border-t border-border/50"
-        >
-          <div className="flex-1 min-w-[160px]">
-            <label className="block text-[10px] font-medium text-muted-foreground mb-1">
-              New Due Date
-            </label>
-            <input
-              type="date"
-              value={newDueDate}
-              onChange={(e) => setNewDueDate(e.target.value)}
-              className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary"
-            />
-          </div>
-          <div className="flex gap-1.5">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 px-3 text-[11px]"
-              onClick={() => setMode(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              className="h-8 px-3 text-[11px]"
-              disabled={saving || !newDueDate}
-            >
-              {saving ? "Saving…" : "Update Date"}
-            </Button>
-          </div>
-        </form>
-      )}
-    </div>
-  );
-}
-
 function PurchasesTab({ customerID, customerName, locationID }) {
   const [rows, setRows] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -8649,7 +8014,7 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
                 Number(pkg.totalPaid ?? pkg.contractedValue ?? 0) -
                   Number(pkg.amountCollected || 0),
               );
-        return due > 0
+        return due >= 0.01
           ? {
               key: `enr-${enr._id}`,
               label: pkg.packageName || enrollmentDisplayName(enr),
@@ -8673,7 +8038,7 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
                 0,
                 Number(m.price || 0) - Number(m.amountCollected || 0),
               );
-        return due > 0
+        return due >= 0.01
           ? {
               key: `mem-${m._id}`,
               label: m.membershipName || "Membership",
@@ -8976,14 +8341,27 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
                     <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
                       {(m.name || "?").charAt(0).toUpperCase()}
                     </div>
-                    <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
-                      {m.name}
-                    </span>
-                    {m.relationship && (
-                      <span className="text-[11px] capitalize text-muted-foreground">
-                        · {m.relationship}
-                      </span>
-                    )}
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-medium text-foreground">
+                        {m.name}
+                        {m.relationship && (
+                          <span className="ml-1 text-[11px] font-normal capitalize text-muted-foreground">
+                            · {m.relationship}
+                          </span>
+                        )}
+                      </p>
+                      <div className="text-[11px] text-muted-foreground space-y-0.5">
+                        {m.email && <p className="truncate">{m.email}</p>}
+                        {m.phoneNumber && <p>{m.phoneNumber}</p>}
+                        {m.dateOfBirth && (
+                          <p>DOB: {new Date(m.dateOfBirth).toLocaleDateString()}</p>
+                        )}
+                        {m.gender && (
+                          <p className="capitalize">{m.gender.replace(/_/g, " ")}</p>
+                        )}
+                        {m.notes && <p className="italic">"{m.notes}"</p>}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
