@@ -14,7 +14,12 @@ function normalize(v) {
   return (v || '').trim()
 }
 
-export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded }) {
+export default function KnowledgeBaseUploadDialog({
+  open,
+  onClose,
+  onUploaded,
+  defaultLocationID,
+}) {
   const toast = useToast()
   const fileInputRef = useRef(null)
 
@@ -35,8 +40,12 @@ export default function KnowledgeBaseUploadDialog({ open, onClose, onUploaded })
     setName('')
     setDescription('')
     setFile(null)
-    setLocationID(initLocationID(null))
-  }, [open])
+    setLocationID(
+      hasLocationSelection(defaultLocationID)
+        ? defaultLocationID
+        : initLocationID(null),
+    )
+  }, [open, defaultLocationID])
 
   async function handleUpload() {
     if (!hasLocationSelection(locationID)) {

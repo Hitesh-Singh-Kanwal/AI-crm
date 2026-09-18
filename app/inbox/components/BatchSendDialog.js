@@ -14,7 +14,7 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { useToast } from '@/components/ui/toast'
 import { cn, getInitials } from '@/lib/utils'
 import api from '@/lib/api'
-import { htmlToPlainText, plainTextToHtml, toScheduleIsoOrNull, getScheduleMinLocalDatetime } from '@/lib/emailSend'
+import { htmlToPlainText, toScheduleIsoOrNull, getScheduleMinLocalDatetime } from '@/lib/emailSend'
 import { htmlHasStudioFooter } from '@/lib/email-footer'
 import { fetchInboxContacts, INBOX_CONTACT_PAGE_SIZE } from '@/lib/inbox-contact-search'
 import InboxContactPagination from '@/app/inbox/components/InboxContactPagination'
@@ -264,25 +264,27 @@ export default function BatchSendDialog({
           return
         }
       } else {
-        const htmlBody = String(contentHtml || '').trim()
-          ? String(contentHtml).trim()
-          : plainTextToHtml(message.trim())
-        const footerSaved = usingHtmlTemplate && htmlHasStudioFooter(htmlBody)
+        const usingHtml = Boolean(String(contentHtml || '').trim())
+        const htmlBody = usingHtml ? String(contentHtml).trim() : null
+        const footerSaved = usingHtml && htmlHasStudioFooter(htmlBody)
         const result = await api.post('/api/email/', {
           leads: leadsPayload,
           subject: subject.trim(),
-          html: htmlBody,
-          body: htmlBody,
-          scheduleNow: scheduleMode === 'now',
-          scheduleDate: scheduleIso,
-          ...(usingHtmlTemplate
+          ...(usingHtml
             ? {
+                html: htmlBody,
+                body: htmlBody,
                 useTemplate: true,
                 emailType: 'template',
                 hasFooter: footerSaved,
                 ...(footerSaved ? { skipStudioFooter: true } : {}),
               }
-            : {}),
+            : {
+                // Typed batch email — plain text, not HTML-wrapped.
+                text: message.trim(),
+              }),
+          scheduleNow: scheduleMode === 'now',
+          scheduleDate: scheduleIso,
         })
         if (!result.success) {
           toast.error({ title: 'Failed', message: result.error || 'Could not send email batch.' })
