@@ -1,12 +1,18 @@
 'use client'
 
-import { Banknote, CreditCard, Smartphone, Wallet } from 'lucide-react'
+import { Banknote, CreditCard, Link2, Smartphone, Wallet } from 'lucide-react'
 
 // Shared payment-method control — every payment surface (Pay Now balance,
 // pay-installment, new enrollment/package, membership assign, event
 // purchases) renders this instead of its own <select> so the method picker
 // looks and behaves identically everywhere.
-const METHOD_ICONS = { cash: Banknote, card: CreditCard, terminal: Smartphone, wallet: Wallet }
+const METHOD_ICONS = {
+  cash: Banknote,
+  card: CreditCard,
+  terminal: Smartphone,
+  wallet: Wallet,
+  link: Link2,
+}
 
 export default function PaymentMethodPicker({ methods, value, onChange, className }) {
   return (

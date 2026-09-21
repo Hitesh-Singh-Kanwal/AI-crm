@@ -14,10 +14,12 @@ import api from "@/lib/api";
 import { formatStudioDate, formatStudioTime } from "@/lib/studioLocalDate";
 import { useStudioTimezone } from "@/lib/hooks/useStudioTimezone";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
+import SellIntroSheet from "@/components/enrollment/SellIntroSheet";
 import EnrollMenu from "@/components/enrollment/EnrollMenu";
 import { CreateEventPurchaseDialog } from "@/app/settings/setup/components/EventsPurchases";
 import PayInstallmentDialog from "@/components/payments/PayInstallmentDialog";
 import PaymentDueCard from "@/components/payments/PaymentDueCard";
+import { hasPermission } from "@/lib/permissions";
 
 const TABS = [
   { key: "appointments", label: "Appointments" },
@@ -136,6 +138,7 @@ export default function MiniStudentPanel({
   const [showCreateEnrollmentSheet, setShowCreateEnrollmentSheet] =
     useState(false);
   const [enrollMode, setEnrollMode] = useState("service");
+  const [showSellIntroSheet, setShowSellIntroSheet] = useState(false);
   const [showEventPurchaseDialog, setShowEventPurchaseDialog] = useState(false);
   const [expandedEnrId, setExpandedEnrId] = useState(null);
 
@@ -1115,6 +1118,11 @@ export default function MiniStudentPanel({
                 triggerClassName="h-auto rounded-lg px-3 py-1.5 text-[11px]"
                 align="left"
                 onSelectMode={(mode) => {
+                  if (mode === "trial") {
+                    if (!hasPermission("settings", "Billings", "write")) return;
+                    setShowSellIntroSheet(true);
+                    return;
+                  }
                   setEnrollMode(mode);
                   setShowCreateEnrollmentSheet(true);
                 }}
@@ -2499,6 +2507,10 @@ export default function MiniStudentPanel({
         customerName={customerName}
         locationID={locationID}
         onSuccess={reloadEnrollments}
+      />
+      <SellIntroSheet
+        open={showSellIntroSheet}
+        onClose={() => setShowSellIntroSheet(false)}
       />
       <CreateEventPurchaseDialog
         open={showEventPurchaseDialog}

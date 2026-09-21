@@ -6230,6 +6230,14 @@ function IntroTab({ customer }) {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const rescheduleInFlightRef = useRef(false);
+  const [editingPurchase, setEditingPurchase] = useState(false);
+  const [savingPurchase, setSavingPurchase] = useState(false);
+  const [editForm, setEditForm] = useState({
+    amount: "",
+    description: "",
+    paidAt: "",
+    channel: "sms",
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -6351,6 +6359,60 @@ function IntroTab({ customer }) {
     } finally {
       rescheduleInFlightRef.current = false;
       setRescheduling(false);
+    }
+  }
+
+  function openEditPurchase() {
+    const p = data?.purchase;
+    if (!p) return;
+    const paid = p.paidAt ? new Date(p.paidAt) : null;
+    const paidAtLocal =
+      paid && !Number.isNaN(paid.getTime())
+        ? new Date(paid.getTime() - paid.getTimezoneOffset() * 60000)
+            .toISOString()
+            .slice(0, 16)
+        : "";
+    setEditForm({
+      amount: p.amount != null ? String(p.amount) : "",
+      description: p.description || "",
+      paidAt: paidAtLocal,
+      channel: p.channel || "sms",
+    });
+    setEditingPurchase(true);
+  }
+
+  async function handleSavePurchase() {
+    if (savingPurchase) return;
+    const amt = Number(editForm.amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast.error("Amount must be a positive number.");
+      return;
+    }
+    if (!String(editForm.description || "").trim()) {
+      toast.error("Description is required.");
+      return;
+    }
+    setSavingPurchase(true);
+    try {
+      const res = await api.patch(`/api/customer/${customer._id}/intro/purchase`, {
+        amount: amt,
+        description: String(editForm.description).trim(),
+        ...(editForm.paidAt
+          ? { paidAt: new Date(editForm.paidAt).toISOString() }
+          : {}),
+        channel: editForm.channel,
+      });
+      if (res.success) {
+        toast.success("Trial purchase updated.");
+        setEditingPurchase(false);
+        await load();
+      } else {
+        toast.error(res.error || "Failed to update purchase.");
+      }
+    } catch (err) {
+      toast.error(err?.message || "Failed to update purchase.");
+    } finally {
+      setSavingPurchase(false);
     }
   }
 
@@ -6550,29 +6612,142 @@ function IntroTab({ customer }) {
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Purchase card */}
         <div className="rounded-xl border border-border bg-card p-5 md:p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-              <Receipt className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+                <Receipt className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-[13px] font-semibold text-foreground">
+                  1st Purchase
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {purchase?.soldVia === "manual"
+                    ? "Sold by staff"
+                    : "Payment from AI / booking link"}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-[13px] font-semibold text-foreground">
-                1st Purchase
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                Payment from AI / booking link
-              </p>
-            </div>
+            {purchase && !editingPurchase && hasPermission("settings", "Billings", "write") && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 text-[11px]"
+                onClick={openEditPurchase}
+              >
+                <Pencil className="h-3 w-3" />
+                Edit
+              </Button>
+            )}
           </div>
 
           {purchase ? (
+            editingPurchase ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[11px] font-medium text-muted-foreground mb-1">
+                    Description
+                  </p>
+                  <input
+                    type="text"
+                    value={editForm.description}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, description: e.target.value }))
+                    }
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[11px] font-medium text-muted-foreground mb-1">
+                      Amount ($)
+                    </p>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={editForm.amount}
+                      onChange={(e) =>
+                        setEditForm((f) => ({ ...f, amount: e.target.value }))
+                      }
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium text-muted-foreground mb-1">
+                      Paid on
+                    </p>
+                    <input
+                      type="datetime-local"
+                      value={editForm.paidAt}
+                      onChange={(e) =>
+                        setEditForm((f) => ({ ...f, paidAt: e.target.value }))
+                      }
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium text-muted-foreground mb-1">
+                    Channel
+                  </p>
+                  <select
+                    value={editForm.channel}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, channel: e.target.value }))
+                    }
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                  >
+                    <option value="sms">SMS</option>
+                    <option value="email">Email</option>
+                    <option value="both">Both</option>
+                    <option value="in_person">In person</option>
+                  </select>
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={savingPurchase}
+                    onClick={() => setEditingPurchase(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={savingPurchase}
+                    onClick={handleSavePurchase}
+                  >
+                    {savingPurchase ? "Saving…" : "Save"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
             <div>
               <div className="mb-3 rounded-lg bg-muted/40 px-4 py-3.5">
-                <p className="text-[15px] font-semibold text-foreground">
-                  {purchase.description || "Trial Lesson"}
-                </p>
-                <p className="text-[22px] font-semibold tracking-tight mt-0.5">
-                  {formatIntroMoney(purchase.amount)}
-                </p>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[15px] font-semibold text-foreground">
+                      {purchase.description || "Trial Lesson"}
+                    </p>
+                    <p className="text-[22px] font-semibold tracking-tight mt-0.5">
+                      {formatIntroMoney(purchase.amount)}
+                    </p>
+                  </div>
+                  <span
+                    className={[
+                      "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0",
+                      purchase.soldVia === "manual"
+                        ? "border-[var(--studio-primary)]/30 bg-[var(--studio-primary)]/10 text-[var(--studio-primary)]"
+                        : "border-border bg-muted text-muted-foreground",
+                    ].join(" ")}
+                  >
+                    {purchase.soldVia === "manual" ? "Sold by Staff" : "Sold by Agent"}
+                  </span>
+                </div>
               </div>
               <div className="grid sm:grid-cols-2 gap-x-6">
                 <IntroMetaRow
@@ -6590,8 +6765,15 @@ function IntroTab({ customer }) {
                   label="Booked via"
                   value={
                     purchase.channel
-                      ? String(purchase.channel).toUpperCase()
+                      ? String(purchase.channel).replace("_", " ").toUpperCase()
                       : null
+                  }
+                />
+                <IntroMetaRow
+                  icon={User}
+                  label="Sold by"
+                  value={
+                    purchase.soldVia === "manual" ? "Staff (manual)" : "AI Agent"
                   }
                 />
                 <IntroMetaRow
@@ -6621,6 +6803,7 @@ function IntroTab({ customer }) {
                 </div>
               )}
             </div>
+            )
           ) : (
             <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
               <Sparkles className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" />
