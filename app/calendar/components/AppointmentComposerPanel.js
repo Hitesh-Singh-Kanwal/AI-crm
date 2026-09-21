@@ -2377,6 +2377,7 @@ export default function AppointmentComposerPanel({
         installmentIndex: firstPending,
         method,
         paymentDate: dateInputToISO(billing.collectDate),
+        ...(method === "saved_card" ? { cardToken: billing.savedCardID } : {}),
       });
       if (!payRes.success) {
         console.error("pay-installment failed", payRes);
@@ -2393,6 +2394,7 @@ export default function AppointmentComposerPanel({
         amount: Number(billing.collectAmount),
         method,
         paymentDate: dateInputToISO(billing.collectDate),
+        ...(method === "saved_card" ? { cardToken: billing.savedCardID } : {}),
       });
       return payRes.data?.checkoutUrl || null;
     }
@@ -2437,6 +2439,9 @@ export default function AppointmentComposerPanel({
           ? {
               method: payload.billing?.method || "cash",
               collectDate: payload.billing?.collectDate || undefined,
+              ...(payload.billing?.method === "saved_card"
+                ? { savedCardID: payload.billing?.savedCardID }
+                : {}),
             }
           : payload.billingType === "payment_plan"
             ? {
@@ -2461,10 +2466,10 @@ export default function AppointmentComposerPanel({
                 }
               : {},
       ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
-      ...(payload.tip?.teacherID && payload.tip?.amount
+      ...(payload.tip?.amount
         ? {
             tip: {
-              teacherID: payload.tip.teacherID,
+              teacherID: payload.tip.teacherID || undefined,
               amount: Number(payload.tip.amount),
               method: payload.tip.method || "cash",
               notes: payload.tip.notes,

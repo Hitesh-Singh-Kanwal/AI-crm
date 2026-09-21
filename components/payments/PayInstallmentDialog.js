@@ -23,12 +23,13 @@ import {
   closeCheckoutTab,
   CHECKOUT_TOAST,
 } from "@/lib/clover";
-import { PAYMENT_METHODS } from "@/lib/paymentMethods";
+import { PAYMENT_METHODS_WITH_SAVED_CARD } from "@/lib/paymentMethods";
 import { dateInputToISO, todayDateInput } from "@/lib/studioLocalDate";
 import WalletShortfallField, {
   walletPaymentFields,
 } from "@/components/payments/WalletShortfallField";
 import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import SavedCardField from "@/components/payments/SavedCardField";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
@@ -60,7 +61,7 @@ export default function PayInstallmentDialog({
   const [amount, setAmount] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayDateInput);
   const [deviceID, setDeviceID] = useState("");
-  const [tipConfig, setTipConfig] = useState({ promptTip: false });
+  const [savedCardID, setSavedCardID] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
   const { ready: cloverReady } = useCardProcessor(locationID || plan);
@@ -92,12 +93,14 @@ export default function PayInstallmentDialog({
   const cloverNotConnected = paymentFields.method === "card" && !cloverReady;
   const payWithTerminal = paymentFields.method === "terminal";
   const terminalNotSelected = payWithTerminal && !deviceID;
+  const payWithSavedCard = paymentFields.method === "saved_card";
+  const savedCardNotSelected = payWithSavedCard && !savedCardID;
 
   useEffect(() => {
     if (installment) setAmount(Number(installment.amount).toFixed(2));
     rescheduledRef.current = false;
     setDeviceID("");
-    setTipConfig({ promptTip: false });
+    setSavedCardID("");
   }, [installment]);
 
   function validatedAmount() {
@@ -113,6 +116,7 @@ export default function PayInstallmentDialog({
     const num = validatedAmount();
     if (num === null) return;
     if (payWithTerminal && !deviceID) return;
+    if (payWithSavedCard && !savedCardID) return;
     const checkoutTab = payWithClover ? openCheckoutTab() : null;
     setSaving(true);
 
@@ -168,7 +172,8 @@ export default function PayInstallmentDialog({
         installmentIndex,
         amount: num,
         paymentDate: dateInputToISO(paymentDate),
-        ...(payWithTerminal ? { deviceID, ...tipConfig } : {}),
+        ...(payWithTerminal ? { deviceID } : {}),
+        ...(payWithSavedCard ? { cardToken: savedCardID } : {}),
         ...walletPaymentFields({
           method,
           shortfallMethod,
@@ -183,8 +188,14 @@ export default function PayInstallmentDialog({
         toast.success(CHECKOUT_TOAST);
       } else if (res.data?.pending) {
         // A Stripe Terminal charge is async — the PaymentIntent only succeeds
-        // once the customer taps their card, settled later by the webhook.
-        toast.success("Charge sent to the reader — waiting for the card.");
+        // once the customer taps their card, settled later by the webhook. A
+        // saved-card charge settles the same way but with nobody at a reader, so
+        // it must not send staff looking for a tap that never comes.
+        toast.success(
+          payWithSavedCard
+            ? "Card charged — confirming with Stripe."
+            : "Charge sent to the reader — waiting for the card.",
+        );
       } else if (shortfall > 0.01) {
         toast.success(
           `Installment payment recorded — $${shortfall.toFixed(2)} shortfall scheduled as a new payment.`,
@@ -286,7 +297,7 @@ export default function PayInstallmentDialog({
           </FormField>
 
           <FormField label="Payment method" required>
-            <PaymentMethodPicker methods={PAYMENT_METHODS} value={method} onChange={setMethod} />
+            <PaymentMethodPicker methods={PAYMENT_METHODS_WITH_SAVED_CARD} value={method} onChange={setMethod} />
           </FormField>
 
           <FormField label="Payment date" required>
@@ -306,7 +317,13 @@ export default function PayInstallmentDialog({
             locationID={locationID}
             deviceID={deviceID}
             onDeviceChange={setDeviceID}
-            onTipConfig={setTipConfig}
+          />
+          <SavedCardField
+            method={method}
+            locationID={locationID}
+            customerID={plan?.customerID?._id ?? plan?.customerID}
+            cardToken={savedCardID}
+            onCardChange={setSavedCardID}
           />
           <WalletShortfallField
             method={method}
@@ -339,7 +356,7 @@ export default function PayInstallmentDialog({
             <Button
               type="submit"
               size="sm"
-              disabled={saving || cloverNotConnected || terminalNotSelected}
+              disabled={saving || cloverNotConnected || terminalNotSelected || savedCardNotSelected}
               className="bg-success hover:bg-success text-white shadow-sm"
             >
               {saving
@@ -348,7 +365,9 @@ export default function PayInstallmentDialog({
                   : "Recording…"
                 : payWithClover
                   ? "Pay by card"
-                  : `Pay $${(Number(amount) || 0).toFixed(2)}`}
+                  : payWithSavedCard
+                    ? "Charge saved card"
+                    : `Pay $${(Number(amount) || 0).toFixed(2)}`}
             </Button>
           </div>
         </form>

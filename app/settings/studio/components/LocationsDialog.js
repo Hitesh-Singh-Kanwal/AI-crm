@@ -238,6 +238,7 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
         status: editingLocation.status || 'active',
         timezone: editingLocation.timezone || DEFAULT_LOCATION_TIMEZONE,
         emailConversationEnabled: Boolean(editingLocation.emailConversationEnabled),
+        tipDestination: editingLocation.tipDestination || 'enrollment_teacher',
         defaultLessonMinutes: Number(editingLocation.defaultLessonMinutes) || 60,
         admin: String(editingLocation.admin || '').trim() || null,
         operatingHours: normalizeOperatingHours(editingLocation.operatingHours),
@@ -639,6 +640,71 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                   />
                 </button>
               </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-border">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Tips</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  The card reader asks the customer for a tip on its own screen, but never asks who
+                  it is for. This decides where those tips go.
+                </p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  {
+                    value: 'enrollment_teacher',
+                    title: 'Enrollment teacher',
+                    description:
+                      "Credited to the teacher on the student's enrollment, and counted in their commissions.",
+                  },
+                  {
+                    value: 'pool',
+                    title: 'Tip pool',
+                    description:
+                      'Collected into a shared pool for the studio to split. Kept out of teacher commissions.',
+                  },
+                ].map((option) => {
+                  const selected =
+                    (editingLocation.tipDestination || 'enrollment_teacher') === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() =>
+                        setEditingLocation((p) => ({ ...p, tipDestination: option.value }))
+                      }
+                      className={[
+                        'flex flex-col gap-1 rounded-md border p-3 text-left transition-colors',
+                        selected
+                          ? 'border-brand bg-brand/5'
+                          : 'border-border hover:border-muted-foreground/40',
+                      ].join(' ')}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={[
+                            'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
+                            selected ? 'border-brand' : 'border-muted-foreground/40',
+                          ].join(' ')}
+                        >
+                          {selected && <span className="h-2 w-2 rounded-full bg-brand" />}
+                        </span>
+                        <span className="text-sm font-medium text-foreground">{option.title}</span>
+                      </span>
+                      <span className="text-xs text-muted-foreground">{option.description}</span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <p className="text-[11px] text-muted-foreground">
+                Only affects tips taken from now on — tips already recorded keep the destination they
+                were collected under.
+              </p>
             </div>
 
             <div className="space-y-4 pt-4 border-t border-border">
