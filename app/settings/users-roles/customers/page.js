@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink, SlidersHorizontal, X, Users, MapPin, Wallet, ListPlus } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -450,7 +450,7 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
   )
 }
 
-export default function CustomersPage() {
+function CustomersPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const view = searchParams.get('view') === 'lists' ? 'lists' : 'all'
@@ -1274,5 +1274,13 @@ export default function CustomersPage() {
         onSent={clearSelection}
       />
     </MainLayout>
+  )
+}
+
+export default function CustomersPage() {
+  return (
+    <Suspense fallback={null}>
+      <CustomersPageInner />
+    </Suspense>
   )
 }

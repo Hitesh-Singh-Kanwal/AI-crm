@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, Phone, Mail, MessageSquare, MoreHorizontal, UserCheck } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -80,7 +80,7 @@ function toRecipientLead(lead) {
   }
 }
 
-export default function LeadsPage() {
+function LeadsPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const view = searchParams.get('view') === 'lists' ? 'lists' : 'all'
@@ -854,5 +854,13 @@ export default function LeadsPage() {
         />
       </div>
     </MainLayout>
+  )
+}
+
+export default function LeadsPage() {
+  return (
+    <Suspense fallback={null}>
+      <LeadsPageInner />
+    </Suspense>
   )
 }
