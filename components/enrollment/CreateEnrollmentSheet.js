@@ -190,9 +190,6 @@ export default function CreateEnrollmentSheet({
               ...(payload.billing?.method === 'terminal'
                 ? {
                     deviceID: payload.billing?.deviceID,
-                    ...(payload.billing?.promptTip
-                      ? { promptTip: true, tipTeacherID: payload.billing?.tipTeacherID }
-                      : {}),
                   }
                 : {}),
             }
@@ -266,9 +263,6 @@ export default function CreateEnrollmentSheet({
           ...(method === 'terminal'
             ? {
                 deviceID: payload.billing?.deviceID,
-                ...(payload.billing?.promptTip
-                  ? { promptTip: true, tipTeacherID: payload.billing?.tipTeacherID }
-                  : {}),
               }
             : {}),
         })
@@ -290,9 +284,6 @@ export default function CreateEnrollmentSheet({
         ...(method === 'terminal'
           ? {
               deviceID: payload.billing?.deviceID,
-              ...(payload.billing?.promptTip
-                ? { promptTip: true, tipTeacherID: payload.billing?.tipTeacherID }
-                : {}),
             }
           : {}),
       })

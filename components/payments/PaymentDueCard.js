@@ -19,12 +19,13 @@ import {
   closeCheckoutTab,
   CHECKOUT_TOAST,
 } from "@/lib/clover";
-import { PAYMENT_METHODS } from "@/lib/paymentMethods";
+import { PAYMENT_METHODS_WITH_SAVED_CARD } from "@/lib/paymentMethods";
 import { dateInputToISO, todayDateInput } from "@/lib/studioLocalDate";
 import WalletShortfallField, {
   walletPaymentFields,
 } from "@/components/payments/WalletShortfallField";
 import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import SavedCardField from "@/components/payments/SavedCardField";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
 import { fetchWalletBalance } from "@/lib/wallet";
@@ -52,7 +53,7 @@ export default function PaymentDueCard({
   const [shortfallMethod, setShortfallMethod] = useState("cash");
   const [walletBalance, setWalletBalance] = useState(0);
   const [deviceID, setDeviceID] = useState("");
-  const [tipConfig, setTipConfig] = useState({ promptTip: false });
+  const [savedCardID, setSavedCardID] = useState("");
   const [newDueDate, setNewDueDate] = useState(
     dueDate ? new Date(dueDate).toISOString().slice(0, 10) : "",
   );
@@ -76,12 +77,15 @@ export default function PaymentDueCard({
   const cloverNotConnected = paymentFields.method === "card" && !cloverReady;
   const payWithTerminal = paymentFields.method === "terminal";
   const terminalNotSelected = payWithTerminal && !deviceID;
+  const payWithSavedCard = paymentFields.method === "saved_card";
+  const savedCardNotSelected = payWithSavedCard && !savedCardID;
   const amountValid = parseFloat(amount) > 0;
 
   async function submitPayment() {
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) return;
     if (payWithTerminal && !deviceID) return;
+    if (payWithSavedCard && !savedCardID) return;
     const checkoutTab = payWithClover ? openCheckoutTab() : null;
     setSaving(true);
     const res = await api.post("/api/payment", {
@@ -95,7 +99,8 @@ export default function PaymentDueCard({
         balance: walletBalance,
         amountDue: num,
       }),
-      ...(payWithTerminal ? { deviceID, ...tipConfig } : {}),
+      ...(payWithTerminal ? { deviceID } : {}),
+      ...(payWithSavedCard ? { cardToken: savedCardID } : {}),
       ...(paymentDate ? { paymentDate: dateInputToISO(paymentDate) } : {}),
     });
     if (res.success) {
@@ -107,7 +112,15 @@ export default function PaymentDueCard({
         // succeeds once the customer taps their card, settled later by the
         // webhook. Unlike Clover's synchronous device charge, there's
         // nothing to confirm yet, so don't claim it's recorded.
-        toast.success("Charge sent to the reader — waiting for the card.");
+        //
+        // A saved-card charge is also settled by the webhook, but nobody is
+        // standing at a reader — saying "waiting for the card" would send staff
+        // looking for a tap that never comes.
+        toast.success(
+          payWithSavedCard
+            ? "Card charged — confirming with Stripe."
+            : "Charge sent to the reader — waiting for the card.",
+        );
       } else {
         toast.success(
           num >= outstanding
@@ -295,7 +308,7 @@ export default function PaymentDueCard({
               <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
                 Payment method
               </label>
-              <PaymentMethodPicker methods={PAYMENT_METHODS} value={method} onChange={setMethod} />
+              <PaymentMethodPicker methods={PAYMENT_METHODS_WITH_SAVED_CARD} value={method} onChange={setMethod} />
             </div>
 
             <WalletShortfallField
@@ -315,7 +328,13 @@ export default function PaymentDueCard({
               locationID={locationID}
               deviceID={deviceID}
               onDeviceChange={setDeviceID}
-              onTipConfig={setTipConfig}
+            />
+            <SavedCardField
+              method={method}
+              locationID={locationID}
+              customerID={customerID}
+              cardToken={savedCardID}
+              onCardChange={setSavedCardID}
             />
 
             <div className="flex justify-end gap-2 pt-2 border-t border-border/70 mt-1">
@@ -331,7 +350,7 @@ export default function PaymentDueCard({
                 type="submit"
                 size="sm"
                 className="bg-success hover:bg-success text-white shadow-sm"
-                disabled={saving || !amountValid || cloverNotConnected || terminalNotSelected}
+                disabled={saving || !amountValid || cloverNotConnected || terminalNotSelected || savedCardNotSelected}
               >
                 {saving
                   ? payWithTerminal
@@ -341,7 +360,9 @@ export default function PaymentDueCard({
                     ? "Pay by card"
                     : payWithTerminal
                       ? "Charge Terminal"
-                      : "Confirm Payment"}
+                      : payWithSavedCard
+                        ? "Charge saved card"
+                        : "Confirm Payment"}
               </Button>
             </div>
           </form>

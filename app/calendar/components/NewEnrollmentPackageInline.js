@@ -204,7 +204,6 @@ export default function NewEnrollmentPackageInline({
   const [catalogServices, setCatalogServices] = useState([]);
   const [walletBalance, setWalletBalance] = useState(null);
   const [deviceID, setDeviceID] = useState("");
-  const [tipConfig, setTipConfig] = useState({ promptTip: false });
   // Either processor being ready means a card payment can be taken; the backend
   // routes to whichever this location uses.
   const { ready: cardProcessorReady } = useCardProcessor(locationID);
@@ -586,7 +585,7 @@ export default function NewEnrollmentPackageInline({
         collectNow: collect,
         collectAmount: collect ? Number(form.billing.collectAmount) : 0,
         collectDate: effectiveCollectDate || undefined,
-        ...(collect && form.billing.method === "terminal" ? { deviceID, ...tipConfig } : {}),
+        ...(collect && form.billing.method === "terminal" ? { deviceID } : {}),
       },
     };
     if (form.tip.enabled && form.tip.amount && form.teacherID) {
@@ -1281,7 +1280,6 @@ export default function NewEnrollmentPackageInline({
                           locationID={locationID}
                           deviceID={deviceID}
                           onDeviceChange={setDeviceID}
-                          onTipConfig={setTipConfig}
                         />
                         {collectFromWallet && (
                           <p className={`text-[11px] ${collectWalletShort ? "text-destructive" : "text-muted-foreground"}`}>
@@ -1359,7 +1357,6 @@ export default function NewEnrollmentPackageInline({
                       locationID={locationID}
                       deviceID={deviceID}
                       onDeviceChange={setDeviceID}
-                      onTipConfig={setTipConfig}
                     />
                   )}
                   {form.billing.collectNow && (
@@ -1460,7 +1457,7 @@ export default function NewEnrollmentPackageInline({
         <div className="shrink-0 mt-3 rounded-lg border border-border bg-muted/20 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-medium text-muted-foreground">
-              Add a tip for the teacher?
+              Add a tip?
             </p>
             <button
               type="button"
@@ -1522,6 +1519,12 @@ export default function NewEnrollmentPackageInline({
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               </div>
             </div>
+          )}
+          {form.tip.enabled && (
+            <p className="text-[10px] text-muted-foreground">
+              Goes to this teacher, or to the studio tip pool if this location pools tips
+              (Settings → Studio → Locations).
+            </p>
           )}
         </div>
       )}
