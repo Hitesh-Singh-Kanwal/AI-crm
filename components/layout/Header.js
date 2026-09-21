@@ -187,6 +187,7 @@ import { Button } from "@/components/ui/button";
 import BranchSelector from "@/components/shared/BranchSelector";
 import StaffLocationSwitcher from "@/components/shared/StaffLocationSwitcher";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
+import SellIntroSheet from "@/components/enrollment/SellIntroSheet";
 import EnrollMenu from "@/components/enrollment/EnrollMenu";
 import { CreateEventPurchaseDialog } from "@/app/settings/setup/components/EventsPurchases";
 import { getCurrentUser, logout } from "@/lib/auth";
@@ -208,6 +209,7 @@ export default function Header({
 }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [createEnrollmentOpen, setCreateEnrollmentOpen] = useState(false);
+  const [sellIntroOpen, setSellIntroOpen] = useState(false);
   const [enrollMode, setEnrollMode] = useState("service");
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const profileRef = useRef(null);
@@ -468,6 +470,11 @@ export default function Header({
                   <EnrollMenu
                     label="Enroll"
                     onSelectMode={(mode) => {
+                      if (mode === "trial") {
+                        if (!hasPermission("settings", "Billings", "write")) return;
+                        setSellIntroOpen(true);
+                        return;
+                      }
                       setEnrollMode(mode);
                       setCreateEnrollmentOpen(true);
                     }}
@@ -532,6 +539,10 @@ export default function Header({
         open={createEnrollmentOpen}
         initialMode={enrollMode}
         onClose={() => setCreateEnrollmentOpen(false)}
+      />
+      <SellIntroSheet
+        open={sellIntroOpen}
+        onClose={() => setSellIntroOpen(false)}
       />
       <CreateEventPurchaseDialog
         open={purchaseOpen}

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink, SlidersHorizontal, X, Users, MapPin, Wallet, ListPlus } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import SearchInput from '@/components/ui/search-input'
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import CustomersFilterPanel from '@/components/customers/CustomersFilterPanel'
+import CustomerSavedListsPanel from '@/components/customers/CustomerSavedListsPanel'
 import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
 import DynamicListMemberSendDialog from '@/components/dynamic-list/DynamicListMemberSendDialog'
 import BulkSendActionBar from '@/components/shared/BulkSendActionBar'
@@ -449,8 +450,10 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
   )
 }
 
-export default function CustomersPage() {
+function CustomersPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const view = searchParams.get('view') === 'lists' ? 'lists' : 'all'
   const canWriteCustomers = hasPermission('customers', 'manage', 'write')
   const canDeleteCustomers = hasPermission('customers', 'manage', 'delete')
   const { statuses: lifecycleStatuses } = useCustomerLifecycleStatuses()
@@ -480,6 +483,8 @@ export default function CustomersPage() {
   const [filters, setFilters] = useState(EMPTY_CUSTOMER_FILTERS)
   const [listDialogOpen, setListDialogOpen] = useState(false)
   const [prefillList, setPrefillList] = useState(null)
+  const [savedListsRefreshKey, setSavedListsRefreshKey] = useState(0)
+  const [savedListsCount, setSavedListsCount] = useState(null)
 
   const [selectedIds, setSelectedIds] = useState([])
   const [selectedCustomersData, setSelectedCustomersData] = useState([])
@@ -488,6 +493,36 @@ export default function CustomersPage() {
   const [sendChannel, setSendChannel] = useState('SMS')
 
   const toast = useToast()
+
+  const setView = (nextView) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (nextView === 'lists') params.set('view', 'lists')
+    else params.delete('view')
+    const qs = params.toString()
+    router.replace(`/settings/users-roles/customers${qs ? `?${qs}` : ''}`, { scroll: false })
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    const loadCount = async () => {
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '1',
+        entityType: 'customer',
+        status: 'active',
+      })
+      const res = await api.get(`/api/dynamic-list?${params.toString()}`)
+      if (cancelled) return
+      if (res?.success) {
+        const totalLists = Number(res?.data?.total ?? res?.pagination?.total ?? 0)
+        setSavedListsCount(Number.isFinite(totalLists) ? totalLists : 0)
+      }
+    }
+    loadCount()
+    return () => {
+      cancelled = true
+    }
+  }, [savedListsRefreshKey])
 
   const isFiltered = hasActiveCustomerFilters({
     ...filters,
@@ -803,26 +838,81 @@ export default function CustomersPage() {
             <p className="mt-0.5 text-[13px] text-muted-foreground">Manage your studio's students and clients</p>
           </div>
           <div className="flex items-center gap-2">
-            <CustomerMigrationImportDialog
-              quickImportFields={CUSTOMER_CSV_FIELDS}
-              onQuickImportRows={canWriteCustomers ? handleImportCustomers : undefined}
-              getExportRows={handleExportCustomers}
-              disabled={isViewingAllBranches() || !canWriteCustomers}
-              disabledReason={
-                !canWriteCustomers
-                  ? "You don't have permission to import customers"
-                  : 'Select a specific branch to import or export customers'
-              }
-            />
-            {canWriteCustomers && (
-              <Button onClick={() => { setEditingCustomer(null); setDialogOpen(true) }}>
-                <Plus className="mr-1.5 h-4 w-4" />
-                Add Customer
-              </Button>
-            )}
+            {view === 'all' ? (
+              <>
+                <CustomerMigrationImportDialog
+                  quickImportFields={CUSTOMER_CSV_FIELDS}
+                  onQuickImportRows={canWriteCustomers ? handleImportCustomers : undefined}
+                  getExportRows={handleExportCustomers}
+                  disabled={isViewingAllBranches() || !canWriteCustomers}
+                  disabledReason={
+                    !canWriteCustomers
+                      ? "You don't have permission to import customers"
+                      : 'Select a specific branch to import or export customers'
+                  }
+                />
+                {canWriteCustomers && (
+                  <Button onClick={() => { setEditingCustomer(null); setDialogOpen(true) }}>
+                    <Plus className="mr-1.5 h-4 w-4" />
+                    Add Customer
+                  </Button>
+                )}
+              </>
+            ) : null}
           </div>
         </div>
 
+        <div className="border-b border-border">
+          <div className="flex items-center gap-6">
+            <button
+              type="button"
+              onClick={() => setView('all')}
+              className={cn(
+                'relative pb-2.5 text-[13px] font-medium transition-colors',
+                view === 'all'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              All customers
+              {view === 'all' ? (
+                <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--studio-primary)]" />
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('lists')}
+              className={cn(
+                'relative inline-flex items-center gap-2 pb-2.5 text-[13px] font-medium transition-colors',
+                view === 'lists'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Saved lists
+              {savedListsCount != null ? (
+                <span
+                  className={cn(
+                    'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold',
+                    view === 'lists'
+                      ? 'bg-[var(--studio-primary)] text-white'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {savedListsCount}
+                </span>
+              ) : null}
+              {view === 'lists' ? (
+                <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--studio-primary)]" />
+              ) : null}
+            </button>
+          </div>
+        </div>
+
+        {view === 'lists' ? (
+          <CustomerSavedListsPanel refreshKey={savedListsRefreshKey} />
+        ) : (
+          <>
         {/* Search */}
         <div className="flex items-center gap-3">
           <SearchInput
@@ -943,7 +1033,10 @@ export default function CustomersPage() {
           }}
           list={prefillList}
           entityType="customer"
-          onSaved={() => toast.success('Customer list created')}
+          onSaved={() => {
+            toast.success('Customer list created')
+            setSavedListsRefreshKey((k) => k + 1)
+          }}
         />
 
         <BulkSendActionBar
@@ -1141,6 +1234,8 @@ export default function CustomersPage() {
             )}
           </div>
         )}
+          </>
+        )}
       </div>
 
       {/* Add / Edit Dialog */}
@@ -1179,5 +1274,13 @@ export default function CustomersPage() {
         onSent={clearSelection}
       />
     </MainLayout>
+  )
+}
+
+export default function CustomersPage() {
+  return (
+    <Suspense fallback={null}>
+      <CustomersPageInner />
+    </Suspense>
   )
 }

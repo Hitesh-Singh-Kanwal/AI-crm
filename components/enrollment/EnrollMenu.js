@@ -1,13 +1,8 @@
-"use client";
-
-// The "+ Enroll" dropdown from the app header, extracted so any page that
-// offers the same "sell something to this student" action renders the exact
-// same menu instead of growing its own lookalike.
-
-import { useEffect, useRef, useState } from "react";
-import { CalendarDays, ChevronDown, ChevronRight, Layers, Plus, Repeat, Ticket } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays, ChevronDown, ChevronRight, Layers, Plus, Repeat, Sparkles, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { hasPermission } from "@/lib/permissions";
 
 export const ENROLL_OPTIONS = [
   {
@@ -27,6 +22,12 @@ export const ENROLL_OPTIONS = [
     label: "Memberships",
     description: "Recurring studio access",
     icon: Repeat,
+  },
+  {
+    mode: "trial",
+    label: "Trial / Intro",
+    description: "Sell a first lesson to a lead",
+    icon: Sparkles,
   },
 ];
 
@@ -71,6 +72,17 @@ export default function EnrollMenu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+
+  // Trial/Intro hits POST /api/payment-request/lead which requires
+  // settings/Billings/write — hide the option when the role can't sell.
+  const visibleOptions = useMemo(
+    () =>
+      ENROLL_OPTIONS.filter(
+        (o) =>
+          o.mode !== "trial" || hasPermission("settings", "Billings", "write"),
+      ),
+    [],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -137,7 +149,7 @@ export default function EnrollMenu({
             </div>
 
             <div className="px-1.5 pb-1.5">
-              {ENROLL_OPTIONS.map((o) => (
+              {visibleOptions.map((o) => (
                 <EnrollMenuItem
                   key={o.mode}
                   icon={o.icon}

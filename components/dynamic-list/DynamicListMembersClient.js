@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import api from '@/lib/api'
 import { cn, getInitials } from '@/lib/utils'
-import { MEMBERS_PAGE_SIZE, getDynamicListsHref } from '@/lib/dynamic-list-constants'
+import { MEMBERS_PAGE_SIZE } from '@/lib/dynamic-list-constants'
 import {
   buildMemberFilterParams,
   EMPTY_MEMBER_FILTERS,
@@ -332,11 +332,11 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <Link
-              href={getDynamicListsHref('lead')}
+              href="/leads?view=lists"
               className="mb-3 inline-flex items-center gap-2 text-[13px] font-medium text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back to dynamic lists
+              Back to saved lists
             </Link>
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-[28px] font-bold text-[var(--studio-primary)]">{list?.name || 'List members'}</h2>
