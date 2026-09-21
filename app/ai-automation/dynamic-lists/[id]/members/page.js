@@ -9,7 +9,7 @@ export default function DynamicListMembersPage() {
   const id = String(params?.id || '')
 
   return (
-    <MainLayout title="List Members" subtitle="View leads in this dynamic list">
+    <MainLayout>
       <DynamicListMembersClient listId={id} />
     </MainLayout>
   )

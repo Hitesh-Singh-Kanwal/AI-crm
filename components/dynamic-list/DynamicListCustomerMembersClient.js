@@ -2,18 +2,52 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { ArrowLeft, RefreshCw, RotateCcw } from 'lucide-react'
 import api from '@/lib/api'
-import { cn } from '@/lib/utils'
-import { summarizeConditions } from '@/lib/dynamic-list-normalize'
+import { cn, getInitials, formatDate } from '@/lib/utils'
+import { summarizeConditions, formatReasonLabel } from '@/lib/dynamic-list-normalize'
 import { buildCustomerQueryParams } from '@/lib/customer-filter-fields'
-import { getDynamicListsHref } from '@/lib/dynamic-list-constants'
+import { extractLeadReasonsList } from '@/lib/workflow-normalize'
+import {
+  customerLifecycleColor,
+  customerLifecycleLabel,
+} from '@/lib/customer-lifecycle'
+import { useCustomerLifecycleStatuses } from '@/lib/use-customer-lifecycle'
 import { toast } from '@/components/ui/toast'
 import ConfirmReEvaluateDialog from '@/components/dynamic-list/ConfirmReEvaluateDialog'
+import LoadingSpinner from '@/components/shared/LoadingSpinner'
+import StatusColorBadge from '@/components/shared/StatusColorBadge'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+
+function locationName(raw, locations) {
+  const ids = Array.isArray(raw)
+    ? raw.map((l) => String(l?._id ?? l)).filter(Boolean)
+    : raw
+      ? [String(raw?._id ?? raw)]
+      : []
+  if (!ids.length) return '—'
+  const names = ids.map((id) => locations.find((l) => String(l._id) === id)?.name).filter(Boolean)
+  if (!names.length) return '—'
+  if (names.length <= 2) return names.join(', ')
+  return `${names.slice(0, 2).join(', ')} +${names.length - 2}`
+}
 
 export default function DynamicListCustomerMembersClient({ listId }) {
+  const router = useRouter()
+  const { statuses: lifecycleStatuses } = useCustomerLifecycleStatuses()
   const [list, setList] = useState(null)
   const [customers, setCustomers] = useState([])
+  const [locations, setLocations] = useState([])
+  const [leadReasons, setLeadReasons] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [reEvaluateOpen, setReEvaluateOpen] = useState(false)
@@ -56,6 +90,15 @@ export default function DynamicListCustomerMembersClient({ listId }) {
     loadMembers()
   }, [loadMembers])
 
+  useEffect(() => {
+    api.get('/api/location?limit=200').then((res) => {
+      if (res?.success) setLocations(res.data || [])
+    })
+    api.get('/api/lead-reasons').then((res) => {
+      if (res?.success) setLeadReasons(extractLeadReasonsList(res))
+    })
+  }, [])
+
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
   const confirmReEvaluate = async () => {
@@ -80,19 +123,24 @@ export default function DynamicListCustomerMembersClient({ listId }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 p-6">
+    <div className="space-y-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link
-            href={getDynamicListsHref('customer')}
+            href="/settings/users-roles/customers?view=lists"
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-muted/40"
+            title="Back to saved lists"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold text-foreground">{list?.name || 'Customer list'}</h1>
+            <h1 className="text-xl font-semibold text-foreground">
+              {list?.name || 'Customer list'}
+            </h1>
             <p className="text-[13px] text-muted-foreground">
-              {list ? summarizeConditions(list, {}, 'customer') : 'Loading conditions…'}
+              {list
+                ? summarizeConditions(list, { leadReasons, locations }, 'customer')
+                : 'Loading conditions…'}
             </p>
           </div>
         </div>
@@ -126,63 +174,111 @@ export default function DynamicListCustomerMembersClient({ listId }) {
       ) : null}
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <table className="min-w-full text-left text-[13px]">
-          <thead className="border-b border-border bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3 font-semibold">Customer</th>
-              <th className="px-4 py-3 font-semibold">Email</th>
-              <th className="px-4 py-3 font-semibold">Phone</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/40">
+              <TableHead className="text-[12px] font-semibold">Customer</TableHead>
+              <TableHead className="text-[12px] font-semibold">Status</TableHead>
+              <TableHead className="text-[12px] font-semibold">Reason</TableHead>
+              <TableHead className="text-[12px] font-semibold">Contact</TableHead>
+              <TableHead className="text-[12px] font-semibold">Location</TableHead>
+              <TableHead className="text-[12px] font-semibold">Credits</TableHead>
+              <TableHead className="text-[12px] font-semibold">Joined</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-muted-foreground">
-                  Loading customers…
-                </td>
-              </tr>
+              <TableRow>
+                <TableCell colSpan={7} className="py-12 text-center">
+                  <LoadingSpinner />
+                </TableCell>
+              </TableRow>
             ) : customers.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-muted-foreground">
+              <TableRow>
+                <TableCell colSpan={7} className="py-14 text-center text-[13px] text-muted-foreground">
                   No customers match this list.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               customers.map((customer) => (
-                <tr key={customer._id} className="border-b border-border/70">
-                  <td className="px-4 py-3 font-medium text-foreground">{customer.name || '—'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{customer.email || '—'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{customer.phoneNumber || '—'}</td>
-                </tr>
+                <TableRow
+                  key={customer._id}
+                  className="cursor-pointer hover:bg-muted/20"
+                  onClick={() => router.push(`/settings/users-roles/customers/${customer._id}`)}
+                >
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
+                          {getInitials(customer.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <p className="text-[13px] font-medium text-foreground">
+                        {customer.name || '—'}
+                      </p>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <StatusColorBadge
+                      color={customerLifecycleColor(customer.lifecycleStatus, lifecycleStatuses)}
+                      className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                    >
+                      {customerLifecycleLabel(customer.lifecycleStatus, lifecycleStatuses)}
+                    </StatusColorBadge>
+                  </TableCell>
+                  <TableCell className="text-[12px] text-foreground">
+                    {customer.reason ? formatReasonLabel(customer.reason, leadReasons) : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <p className="text-[12px] text-foreground">{customer.email || '—'}</p>
+                    {customer.phoneNumber ? (
+                      <p className="text-[11px] text-muted-foreground">{customer.phoneNumber}</p>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-[12px] text-muted-foreground">
+                    {locationName(customer.locationID, locations)}
+                  </TableCell>
+                  <TableCell>
+                    <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
+                      ${Number(customer.prepaidBalance ?? customer.credits ?? 0).toFixed(2)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-[12px] text-muted-foreground">
+                    {formatDate(customer.createdAt)}
+                  </TableCell>
+                </TableRow>
               ))
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
-      {totalPages > 1 && (
+      {(total > 0 || totalPages > 1) && (
         <div className="flex items-center justify-between text-[13px]">
           <span className="text-muted-foreground">
-            Page {page} of {totalPages} · {total} customers
+            {total} customer{total !== 1 ? 's' : ''}
+            {totalPages > 1 ? ` · Page ${page} of ${totalPages}` : ''}
           </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
+          {totalPages > 1 ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
 

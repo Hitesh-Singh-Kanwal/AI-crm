@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, Phone, Mail, MessageSquare, MoreHorizontal, UserCheck } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,7 @@ import BulkCreateLeadsDialog from './components/BulkCreateLeadsDialog'
 import ImportExportCsv from '@/components/shared/ImportExportCsv'
 import LeadsQuickBar from '@/components/leads/LeadsQuickBar'
 import LeadsFilterPanel from '@/components/leads/LeadsFilterPanel'
+import SavedListsPanel from '@/components/shared/SavedListsPanel'
 import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
 import DynamicListMemberSendDialog from '@/components/dynamic-list/DynamicListMemberSendDialog'
 import BulkSendActionBar from '@/components/shared/BulkSendActionBar'
@@ -46,6 +48,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { hasPermission } from '@/lib/permissions'
 import { isViewingAllBranches, getBranchQueryParam } from '@/lib/branch-filter'
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
+import { cn } from '@/lib/utils'
 
 const LEAD_CSV_FIELDS = [
   { key: 'name', header: 'name', sample: 'John Doe' },
@@ -78,6 +81,9 @@ function toRecipientLead(lead) {
 }
 
 export default function LeadsPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const view = searchParams.get('view') === 'lists' ? 'lists' : 'all'
   const canWriteLeads = hasPermission('leads', 'manage', 'write')
   const canDeleteLeads = hasPermission('leads', 'manage', 'delete')
   const { stages: stageOptions } = useLeadStages()
@@ -100,6 +106,8 @@ export default function LeadsPage() {
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
   const [listDialogOpen, setListDialogOpen] = useState(false)
   const [prefillList, setPrefillList] = useState(null)
+  const [savedListsRefreshKey, setSavedListsRefreshKey] = useState(0)
+  const [savedListsCount, setSavedListsCount] = useState(null)
   const [leadReasons, setLeadReasons] = useState([])
   const [locations, setLocations] = useState([])
   const [forms, setForms] = useState([])
@@ -107,6 +115,36 @@ export default function LeadsPage() {
   const [convertingId, setConvertingId] = useState(null)
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const latestRequestRef = useRef(0)
+
+  const setView = (nextView) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (nextView === 'lists') params.set('view', 'lists')
+    else params.delete('view')
+    const qs = params.toString()
+    router.replace(`/leads${qs ? `?${qs}` : ''}`, { scroll: false })
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    const loadCount = async () => {
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '1',
+        entityType: 'lead',
+        status: 'active',
+      })
+      const res = await api.get(`/api/dynamic-list?${params.toString()}`)
+      if (cancelled) return
+      if (res?.success) {
+        const totalLists = Number(res?.data?.total ?? res?.pagination?.total ?? 0)
+        setSavedListsCount(Number.isFinite(totalLists) ? totalLists : 0)
+      }
+    }
+    loadCount()
+    return () => {
+      cancelled = true
+    }
+  }, [savedListsRefreshKey])
 
   const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize))
   const pageLeadIds = useMemo(() => leads.map((l) => l._id).filter(Boolean), [leads])
@@ -206,6 +244,7 @@ export default function LeadsPage() {
     setPrefillList({
       name: '',
       description: '',
+      entityType: 'lead',
       conditionLogic: sanitized.conditionLogic || 'AND',
       conditions: normalizeConditionsForForm(conditions),
       groupLogics: sanitized.groupLogics || {},
@@ -214,7 +253,7 @@ export default function LeadsPage() {
     setListDialogOpen(true)
   }
 
-  if (initialLoad) {
+  if (initialLoad && view !== 'lists') {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
@@ -453,39 +492,94 @@ export default function LeadsPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-semibold text-foreground">Leads</h1>
-              <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
-                {totalCount} leads
-              </span>
+              {view === 'all' ? (
+                <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium text-brand bg-background border border-border">
+                  {totalCount} leads
+                </span>
+              ) : null}
             </div>
             <p className="mt-0.5 text-[13px] text-muted-foreground">
               Manage leads and filter by any field. Save filters as dynamic lists for automation.
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <ImportExportCsv
-              entityLabel="Lead"
-              fields={LEAD_CSV_FIELDS}
-              getExportRows={handleExportLeads}
-              onImportRows={canWriteLeads ? handleImportLeads : undefined}
-              disabled={isViewingAllBranches() || !canWriteLeads}
-              disabledReason={
-                !canWriteLeads
-                  ? "You don't have permission to import leads"
-                  : 'Select a specific branch to import or export leads'
-              }
-            />
-            {canWriteLeads && (
-              <Button
-                className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
-                onClick={openCreateDialog}
-              >
-                <Plus className="h-4 w-4" />
-                Add Leads
-              </Button>
-            )}
+          {view === 'all' ? (
+            <div className="flex items-center gap-2 shrink-0">
+              <ImportExportCsv
+                entityLabel="Lead"
+                fields={LEAD_CSV_FIELDS}
+                getExportRows={handleExportLeads}
+                onImportRows={canWriteLeads ? handleImportLeads : undefined}
+                disabled={isViewingAllBranches() || !canWriteLeads}
+                disabledReason={
+                  !canWriteLeads
+                    ? "You don't have permission to import leads"
+                    : 'Select a specific branch to import or export leads'
+                }
+              />
+              {canWriteLeads && (
+                <Button
+                  className="h-9 px-4 rounded-lg bg-brand hover:bg-brand-dark text-brand-foreground text-sm font-medium gap-2 shrink-0"
+                  onClick={openCreateDialog}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Leads
+                </Button>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="border-b border-border">
+          <div className="flex items-center gap-6">
+            <button
+              type="button"
+              onClick={() => setView('all')}
+              className={cn(
+                'relative pb-2.5 text-[13px] font-medium transition-colors',
+                view === 'all'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              All leads
+              {view === 'all' ? (
+                <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--studio-primary)]" />
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('lists')}
+              className={cn(
+                'relative inline-flex items-center gap-2 pb-2.5 text-[13px] font-medium transition-colors',
+                view === 'lists'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Saved lists
+              {savedListsCount != null ? (
+                <span
+                  className={cn(
+                    'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold',
+                    view === 'lists'
+                      ? 'bg-[var(--studio-primary)] text-white'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {savedListsCount}
+                </span>
+              ) : null}
+              {view === 'lists' ? (
+                <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--studio-primary)]" />
+              ) : null}
+            </button>
           </div>
         </div>
 
+        {view === 'lists' ? (
+          <SavedListsPanel entityType="lead" refreshKey={savedListsRefreshKey} />
+        ) : (
+          <>
         <LeadsQuickBar
           filters={filters}
           onChange={(next) => {
@@ -714,6 +808,8 @@ export default function LeadsPage() {
           leadReasons={leadReasons}
           loadingOptions={loadingOptions}
         />
+          </>
+        )}
 
         <DynamicListFormDialog
           open={listDialogOpen}
@@ -722,10 +818,12 @@ export default function LeadsPage() {
             setPrefillList(null)
           }}
           list={prefillList}
+          entityType="lead"
           onSaved={() => {
             toast.success('Dynamic list created', {
               description: 'Your filtered leads have been saved as a dynamic list.',
             })
+            setSavedListsRefreshKey((k) => k + 1)
           }}
         />
 
