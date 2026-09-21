@@ -192,6 +192,12 @@ export default function CreateEnrollmentSheet({
                     deviceID: payload.billing?.deviceID,
                   }
                 : {}),
+              // A saved card is charged inside the add endpoint itself for a one-time
+              // sale, so it rides on the billing object under its own name — never
+              // as cardToken, which that endpoint reads as a Clover token.
+              ...(payload.billing?.method === 'saved_card'
+                ? { savedCardID: payload.billing?.savedCardID }
+                : {}),
             }
           : payload.billingType === 'payment_plan'
             ? (() => {
@@ -223,10 +229,10 @@ export default function CreateEnrollmentSheet({
                 }
               : {},
       ...(payload.purchaseDate ? { purchaseDate: payload.purchaseDate } : {}),
-      ...(payload.tip?.teacherID && payload.tip?.amount
+      ...(payload.tip?.amount
         ? {
             tip: {
-              teacherID: payload.tip.teacherID,
+              teacherID: payload.tip.teacherID || undefined,
               amount: Number(payload.tip.amount),
               method: payload.tip.method || 'cash',
             },
@@ -265,6 +271,7 @@ export default function CreateEnrollmentSheet({
                 deviceID: payload.billing?.deviceID,
               }
             : {}),
+          ...(method === 'saved_card' ? { cardToken: payload.billing?.savedCardID } : {}),
         })
         if (!payRes?.success) {
           setError(payRes?.error || 'Enrollment created but first installment payment failed.')
@@ -286,6 +293,7 @@ export default function CreateEnrollmentSheet({
               deviceID: payload.billing?.deviceID,
             }
           : {}),
+        ...(method === 'saved_card' ? { cardToken: payload.billing?.savedCardID } : {}),
       })
       if (!payRes?.success) {
         setError(payRes?.error || 'Enrollment created but initial payment failed.')

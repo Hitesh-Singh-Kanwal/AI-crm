@@ -20,6 +20,7 @@ import api from '@/lib/api'
 import { dateInputToISO, todayDateInput } from '@/lib/studioLocalDate'
 import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import SavedCardField from '@/components/payments/SavedCardField'
 
 const money = (n) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -559,7 +560,8 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const todayISO = todayDateInput
   const [billingType, setBillingType] = useState('one_time') // one_time | payment_plan | flexible
   const [collectNow, setCollectNow] = useState(true)
-  const [payMethod, setPayMethod] = useState('cash') // cash | card | cheque | other
+  const [payMethod, setPayMethod] = useState('cash') // cash | card | cheque | other | saved_card
+  const [savedCardID, setSavedCardID] = useState('')
   const [collectDate, setCollectDate] = useState(todayISO())
   const [useWallet, setUseWallet] = useState(false)
   const [walletAmount, setWalletAmount] = useState('')
@@ -583,7 +585,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     setCustomer(initialCustomerID ? { _id: initialCustomerID, name: initialCustomerName || '' } : null)
     setCustomerQuery(''); setEventTypeID(''); setTemplateID('')
     setName(''); setItems([]); setSaveAsTemplate(false)
-    setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setCollectDate(todayISO())
+    setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setSavedCardID(''); setCollectDate(todayISO())
     setUseWallet(false); setWalletAmount(''); setWalletBalance(null)
     setTipEnabled(false); setTipTeacherID(''); setTipAmount('')
     setPlanCount('3'); setPlanFreq('monthly'); setPlanStart(todayISO())
@@ -696,6 +698,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     if (!name.trim()) { toast.error('Enter a purchase name'); return }
     const lineItems = items.filter((li) => (li.name || '').trim())
     if (lineItems.length === 0) { toast.error('Add at least one line item'); return }
+    if (payable > 0 && collectsBySavedCard && !savedCardID) { toast.error('Select a saved card'); return }
     setSaving(true)
     try {
       const res = await api.post('/api/purchase', {
@@ -722,10 +725,12 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
             customerID: customer._id, purchaseID: purchase._id, type: 'event_purchase',
             amount: payable, method: payMethod, paymentDate: dateInputToISO(collectDate),
             walletAmount: walletApplied > 0 ? walletApplied : undefined, notes: name.trim(),
+            ...(payMethod === 'saved_card' ? { cardToken: savedCardID } : {}),
             tip,
           })
           if (!payRes.success) toast.error('Purchase saved, but payment failed', { description: payRes.error })
           else if (payRes.data?.checkoutUrl) { window.open(payRes.data.checkoutUrl, '_blank', 'noopener'); toast.success('Card checkout opened in a new tab') }
+          else if (payRes.data?.pending && payMethod === 'saved_card') toast.success('Events & products created — card charged, confirming with Stripe')
           else toast.success('Events & products created and paid')
         } else {
           toast.success('Events & products created')
@@ -734,7 +739,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         // payment_plan or flexible → build a payment plan
         let billing
         if (isPlan) {
-          billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: payMethod, collectDate }
+          billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}) }
         } else {
           const scheduleRows = [
             ...(flexInitialAmountN > 0 ? [{ dueDate: flexInitialDate, amount: flexInitialAmountN }] : []),
@@ -742,7 +747,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
               .filter((r) => r.dueDate && Number(r.amount) > 0)
               .map((r) => ({ dueDate: r.dueDate, amount: Number(r.amount) })),
           ]
-          billing = { customInstallments: scheduleRows, method: payMethod, collectDate }
+          billing = { customInstallments: scheduleRows, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}) }
         }
         const effectiveCollectNow = isPlan ? collectNow : flexInitialAmountN > 0 && collectNow
         const planRes = await api.post('/api/payment-plan/purchase', {
@@ -757,6 +762,13 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
       onClose()
     } finally { setSaving(false) }
   }
+
+  // A customer opened from a profile carries only an id and name, so fall back to the
+  // loaded customer list for the location the saved-card lookup needs.
+  const chargeLocation =
+    customer?.locationID ?? customers.find((c) => String(c._id) === String(customer?._id))?.locationID
+  const collectsBySavedCard = payMethod === 'saved_card' && collectNow
+  const savedCardMissing = collectsBySavedCard && !savedCardID
 
   const canProceed = customer && name.trim() && items.some((li) => (li.name || '').trim())
 
@@ -895,7 +907,15 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                     <option value="card">Card</option>
                     <option value="cheque">Cheque</option>
                     <option value="other">Bank transfer / other</option>
+                    <option value="saved_card">Saved card</option>
                   </select>
+                  <SavedCardField
+                    method={payMethod}
+                    locationID={chargeLocation}
+                    customerID={customer?._id}
+                    cardToken={savedCardID}
+                    onCardChange={setSavedCardID}
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="cep-date">Payment date</Label>

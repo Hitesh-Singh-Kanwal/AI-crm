@@ -36,16 +36,22 @@ export default function TerminalDeviceField({
     return () => { cancelled = true }
   }, [method, resolved, devices])
 
+  const options = devices.length > 0
+    ? devices.map((d) => ({ id: d._id, label: d.name || d.deviceId }))
+    : (stripeReaders || []).map((r) => ({ id: r._id, label: r.label || r.readerId }))
+
+  // One terminal is not a choice — preselect it so staff are not made to pick the only
+  // option. Runs only while nothing is chosen, so it never overrides a selection.
+  useEffect(() => {
+    if (method === 'terminal' && options.length === 1 && !deviceID) onDeviceChange(options[0].id)
+  }, [method, options, deviceID, onDeviceChange])
+
   if (method !== 'terminal') return null
 
   const note = className ?? 'text-[11px] text-muted-foreground'
 
   if (!resolved) return <p className={note}>No location on this customer — a terminal payment needs one.</p>
   if (loading) return <p className={note}>Loading terminals…</p>
-
-  const options = devices.length > 0
-    ? devices.map((d) => ({ id: d._id, label: d.name || d.deviceId }))
-    : (stripeReaders || []).map((r) => ({ id: r._id, label: r.label || r.readerId }))
 
   if (options.length === 0) {
     return (

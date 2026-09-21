@@ -8,8 +8,9 @@ import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST 
 import { toast } from "@/components/ui/toast";
 import SearchableSelect from "@/components/ui/searchable-select";
 
-import { PAYMENT_METHODS, TIP_METHODS } from "@/lib/paymentMethods";
+import { PAYMENT_METHODS_WITH_SAVED_CARD, TIP_METHODS } from "@/lib/paymentMethods";
 import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import SavedCardField from "@/components/payments/SavedCardField";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 
 function todayISO() {
@@ -204,6 +205,7 @@ export default function NewEnrollmentPackageInline({
   const [catalogServices, setCatalogServices] = useState([]);
   const [walletBalance, setWalletBalance] = useState(null);
   const [deviceID, setDeviceID] = useState("");
+  const [savedCardID, setSavedCardID] = useState("");
   // Either processor being ready means a card payment can be taken; the backend
   // routes to whichever this location uses.
   const { ready: cardProcessorReady } = useCardProcessor(locationID);
@@ -394,8 +396,8 @@ export default function NewEnrollmentPackageInline({
   // paymentPlan.controller.js#processInstallmentPayment).
   const collectMethodOptions =
     form.billingType === "one_time"
-      ? PAYMENT_METHODS.filter((m) => m.value !== "wallet")
-      : PAYMENT_METHODS;
+      ? PAYMENT_METHODS_WITH_SAVED_CARD.filter((m) => m.value !== "wallet")
+      : PAYMENT_METHODS_WITH_SAVED_CARD;
 
   // Non-one-time collection paid directly from the wallet via the method dropdown.
   const collectFromWallet =
@@ -501,6 +503,11 @@ export default function NewEnrollmentPackageInline({
     !cardProcessorReady;
   const terminalNotSelected =
     step === 2 && form.billing.collectNow && form.billing.method === "terminal" && !deviceID;
+  // The reader runs its own tip screen, so a tip typed in here as well would either
+  // double up or credit money the customer never chose on the device.
+  const readerCollectsTip = form.billing.collectNow && form.billing.method === "terminal";
+  const savedCardNotSelected =
+    step === 2 && form.billing.collectNow && form.billing.method === "saved_card" && !savedCardID;
 
   const defaultCollectAmount = useMemo(() => {
     if (form.billingType === "one_time") return total;
@@ -586,10 +593,12 @@ export default function NewEnrollmentPackageInline({
         collectAmount: collect ? Number(form.billing.collectAmount) : 0,
         collectDate: effectiveCollectDate || undefined,
         ...(collect && form.billing.method === "terminal" ? { deviceID } : {}),
+        ...(collect && form.billing.method === "saved_card" ? { savedCardID } : {}),
       },
     };
-    if (form.tip.enabled && form.tip.amount && form.teacherID) {
-      payload.tip = { teacherID: form.teacherID, amount: form.tip.amount, method: form.tip.method };
+    if (form.tip.enabled && form.tip.amount && !readerCollectsTip) {
+      // teacherID may be empty: an enrollment with no teacher can still take a tip.
+      payload.tip = { teacherID: form.teacherID || undefined, amount: form.tip.amount, method: form.tip.method };
     } else {
       payload.tip = undefined;
     }
@@ -631,7 +640,7 @@ export default function NewEnrollmentPackageInline({
             <SearchableSelect
               value={form.teacherID}
               onChange={(v) => setForm((p) => ({ ...p, teacherID: v }))}
-              options={teacherOptions}
+              options={[{ value: "", label: "No teacher" }, ...teacherOptions]}
               placeholder="Select teacher…"
             />
 
@@ -1281,6 +1290,13 @@ export default function NewEnrollmentPackageInline({
                           deviceID={deviceID}
                           onDeviceChange={setDeviceID}
                         />
+                        <SavedCardField
+                          method={form.billing.method}
+                          locationID={locationID}
+                          customerID={customerID}
+                          cardToken={savedCardID}
+                          onCardChange={setSavedCardID}
+                        />
                         {collectFromWallet && (
                           <p className={`text-[11px] ${collectWalletShort ? "text-destructive" : "text-muted-foreground"}`}>
                             Wallet balance: ${walletBalance.toFixed(2)}
@@ -1357,6 +1373,15 @@ export default function NewEnrollmentPackageInline({
                       locationID={locationID}
                       deviceID={deviceID}
                       onDeviceChange={setDeviceID}
+                    />
+                  )}
+                  {form.billing.collectNow && (
+                    <SavedCardField
+                      method={form.billing.method}
+                      locationID={locationID}
+                      customerID={customerID}
+                      cardToken={savedCardID}
+                      onCardChange={setSavedCardID}
                     />
                   )}
                   {form.billing.collectNow && (
@@ -1453,7 +1478,7 @@ export default function NewEnrollmentPackageInline({
       </div>
 
       {/* ── Tip for teacher ── */}
-      {step === 2 && form.teacherID && (
+      {step === 2 && !readerCollectsTip && (
         <div className="shrink-0 mt-3 rounded-lg border border-border bg-muted/20 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-medium text-muted-foreground">
@@ -1522,8 +1547,9 @@ export default function NewEnrollmentPackageInline({
           )}
           {form.tip.enabled && (
             <p className="text-[10px] text-muted-foreground">
-              Goes to this teacher, or to the studio tip pool if this location pools tips
-              (Settings → Studio → Locations).
+              {form.teacherID
+                ? "Goes to this teacher, or to the studio tip pool if this location pools tips (Settings → Studio → Locations)."
+                : "No teacher on this enrollment — it goes to the studio tip pool if this location pools tips, otherwise it is recorded without a teacher."}
             </p>
           )}
         </div>
@@ -1553,7 +1579,7 @@ export default function NewEnrollmentPackageInline({
             type="button"
             className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
             onClick={() => handleSubmit()}
-            disabled={loading || (serviceOnly ? form.services.length === 0 : !form.packageID) || walletOver || collectWalletShort || cloverNotConnected || terminalNotSelected}
+            disabled={loading || (serviceOnly ? form.services.length === 0 : !form.packageID) || walletOver || collectWalletShort || cloverNotConnected || terminalNotSelected || savedCardNotSelected}
           >
             {loading ? "Creating…" : payWithClover ? "Pay by card" : serviceOnly ? "Create Enrollment & Services" : "Create Enrollment & Package"}
           </button>
