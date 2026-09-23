@@ -450,7 +450,7 @@ function ServicesTab() {
         />
       </div>
 
-      <ServiceDialog open={dialogOpen} onClose={() => setDialogOpen(false)} service={editingService} onRefresh={() => loadServices(currentPage, searchQuery, serviceType)} />
+      <ServiceDialog open={dialogOpen} onClose={() => setDialogOpen(false)} service={editingService} defaultType={serviceType} onRefresh={() => loadServices(currentPage, searchQuery, serviceType)} />
     </div>
   )
 }

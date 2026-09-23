@@ -95,7 +95,7 @@ function StatusGroup({ value, onChange }) {
   );
 }
 
-export default function ServiceDialog({ open, onClose, service, onRefresh }) {
+export default function ServiceDialog({ open, onClose, service, onRefresh, defaultType }) {
   const isEdit = Boolean(service);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -126,9 +126,13 @@ export default function ServiceDialog({ open, onClose, service, onRefresh }) {
           : [],
       });
     } else {
-      setForm(EMPTY_FORM);
+      const type =
+        defaultType && SERVICE_TYPES.some((t) => t.value === defaultType)
+          ? defaultType
+          : "private";
+      setForm({ ...EMPTY_FORM, type });
     }
-  }, [open, service]);
+  }, [open, service, defaultType]);
 
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
