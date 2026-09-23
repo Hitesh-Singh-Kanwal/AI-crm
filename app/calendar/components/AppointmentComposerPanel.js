@@ -163,6 +163,7 @@ const EMPTY_FORM = {
   customer_ids: [],
   enrollment_id: "",
   customer_membership_id: "",
+  funding_source: "",
   date: "",
   start_time: "",
   end_time: "",
@@ -982,6 +983,62 @@ function MemberPicker({ members, selectedIds, onChange, label = "Attending membe
 
 // ─── WHO section ──────────────────────────────────────────────────────────────
 
+
+// ─── Paid intro funding option (already-purchased trial, not yet scheduled) ───
+
+function PaidIntroOption({ introSummary, selected, onSelect }) {
+  if (!introSummary?.canBookOrRebook) return null;
+  const purchase = introSummary.purchase || {};
+  const svc = purchase.slot?.calendarServiceID;
+  const svcObj = svc && typeof svc === "object" ? svc : null;
+  const name =
+    svcObj?.serviceName ||
+    purchase.description ||
+    "Paid Intro";
+  const color = svcObj?.color || null;
+  const price = svcObj?.price ?? purchase.amount;
+
+  return (
+    <div className="space-y-1">
+      <FieldLabel>Paid Intro</FieldLabel>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onSelect(introSummary)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") onSelect(introSummary);
+        }}
+        className={[
+          "flex items-center justify-between rounded-lg px-2.5 py-2 cursor-pointer border transition-colors",
+          selected
+            ? "border-brand bg-brand/10"
+            : "border-border bg-background hover:bg-muted/40",
+        ].join(" ")}
+      >
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {color && (
+            <span
+              className="h-2.5 w-2.5 rounded-full shrink-0"
+              style={{ background: color }}
+            />
+          )}
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium truncate">{name}</p>
+            <p className="text-[10px] text-muted-foreground">
+              Already paid — book without charging
+            </p>
+          </div>
+        </div>
+        {price != null && Number(price) > 0 && (
+          <span className="text-[11px] font-semibold text-foreground ml-2 shrink-0">
+            ${Number(price).toFixed(2)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function WhoSection({
   form,
   setField,
@@ -992,6 +1049,7 @@ function WhoSection({
   onOpenEnrollmentWizard,
   enrollments,
   allServices,
+  introSummary,
 }) {
   const selectedCustomer = rawCustomers?.find((c) => String(c._id) === form.customer_id);
   const selectedMembers = selectedCustomer?.members || [];
@@ -1013,6 +1071,7 @@ function WhoSection({
             setField("customer_membership_id", "");
             setField("service_id", "");
             setField("event_color", "");
+            setField("funding_source", "");
           }}
           options={customerOptions}
           placeholder="Select student…"
@@ -1049,6 +1108,25 @@ function WhoSection({
       )}
 
       {form.customer_id && (
+        <PaidIntroOption
+          introSummary={introSummary}
+          selected={form.funding_source === "paid_intro"}
+          onSelect={(summary) => {
+            setField("enrollment_id", "");
+            setField("customer_membership_id", "");
+            setField("service_id", "");
+            setField("session_payment_method", "");
+            setField("funding_source", "paid_intro");
+            setField("recurrence_enabled", false);
+            const svc = summary?.purchase?.slot?.calendarServiceID;
+            const color =
+              (svc && typeof svc === "object" && svc.color) || null;
+            if (color) setField("event_color", color);
+          }}
+        />
+      )}
+
+      {form.customer_id && form.funding_source !== "paid_intro" && (
         <MembershipServiceSelector
           customerId={form.customer_id}
           allServices={allServices}
@@ -1057,6 +1135,7 @@ function WhoSection({
           onSelect={(membershipId, serviceId, color) => {
             setField("enrollment_id", "");
             setField("session_payment_method", "");
+            setField("funding_source", "");
             setField("customer_membership_id", membershipId);
             setField("service_id", serviceId);
             if (color) setField("event_color", color);
@@ -1064,19 +1143,21 @@ function WhoSection({
         />
       )}
 
-      {form.customer_id && (
+      {form.customer_id && form.funding_source !== "paid_intro" && (
         <EnrollmentServiceSelector
           customerId={form.customer_id}
           enrollments={enrollments[form.customer_id] || []}
           selectedEnrollmentId={form.enrollment_id}
           onEnrollmentSelect={(v) => {
             setField("customer_membership_id", "");
+            setField("funding_source", "");
             setField("enrollment_id", v);
             setField("service_id", "");
             setField("session_payment_method", "");
           }}
           onServiceSelect={(serviceId, color) => {
             setField("customer_membership_id", "");
+            setField("funding_source", "");
             setField("service_id", serviceId);
             if (color) setField("event_color", color);
           }}
@@ -1861,6 +1942,7 @@ function AppointmentFields({
   onOpenEnrollmentWizard,
   enrollments,
   allServices,
+  introSummary,
 }) {
   const customerEnrollments = enrollments[form.customer_id] || [];
   const selectedEnr = customerEnrollments.find((e) => String(e._id) === form.enrollment_id);
@@ -1898,11 +1980,12 @@ function AppointmentFields({
         onOpenEnrollmentWizard={onOpenEnrollmentWizard}
         enrollments={enrollments}
         allServices={allServices}
+        introSummary={introSummary}
       />
       <WhenSection
         form={form}
         setField={setField}
-        withRecurrence
+        withRecurrence={form.funding_source !== "paid_intro"}
         lessonDuration={lessonDuration}
         slotStepMins={slotStepMins}
         slotAlignMins={slotAlignMins}
@@ -1912,7 +1995,7 @@ function AppointmentFields({
       <div className="space-y-3">
         <SectionDivider label="Notes & Payment" />
         <NotesBlock form={form} setField={setField} />
-        {showSessionPayment && (
+        {showSessionPayment && form.funding_source !== "paid_intro" && (
           <div className="rounded-xl border border-success/20 bg-success/5 px-3 py-2.5 space-y-2.5">
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -2141,6 +2224,7 @@ export default function AppointmentComposerPanel({
   const [packageTemplates, setPackageTemplates] = useState([]);
   const [allEnrollmentsForGroupFilter, setAllEnrollmentsForGroupFilter] = useState([]);
   const [enrollments, setEnrollments] = useState({});
+  const [introSummaries, setIntroSummaries] = useState({});
   const [showEnrollmentWizard, setShowEnrollmentWizard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -2293,6 +2377,30 @@ export default function AppointmentComposerPanel({
       })
       .catch(() => {});
   }, [form.customer_id]);
+
+  // Load paid-intro summary for Appointment tab (bookable trial entitlement)
+  useEffect(() => {
+    if (!form.customer_id || activeTab !== "Appointment") return;
+    let cancelled = false;
+    api
+      .get(`/api/customer/${form.customer_id}/intro`)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          setIntroSummaries((prev) => ({ ...prev, [form.customer_id]: res.data }));
+        } else {
+          setIntroSummaries((prev) => ({ ...prev, [form.customer_id]: null }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIntroSummaries((prev) => ({ ...prev, [form.customer_id]: null }));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.customer_id, activeTab]);
 
   const SERVICE_TYPE_MAP = {
     Appointment: "private",
@@ -2542,6 +2650,68 @@ export default function AppointmentComposerPanel({
     // Validate: Appointment tab requires a student to be selected
     if (activeTab === "Appointment" && !form.customer_id) {
       setError("Please select a student before booking.");
+      setIsSaving(false);
+      return;
+    }
+
+    // Paid intro: book via reschedule endpoint (already paid — no session deduct / charge)
+    if (activeTab === "Appointment" && form.funding_source === "paid_intro") {
+      if (!form.date || !form.start_time || !form.end_time) {
+        setError("Pick a date and time for the intro lesson.");
+        setIsSaving(false);
+        return;
+      }
+      const selectedCustomer = rawCustomers.find(
+        (c) => String(c._id) === String(form.customer_id),
+      );
+      const activeBranchId = getEffectiveBranch();
+      const firstLoc = (raw) => {
+        if (!raw) return undefined;
+        const ids = Array.isArray(raw)
+          ? raw.map((r) => r?._id || r).filter(Boolean)
+          : [raw._id || raw];
+        if (!ids.length) return undefined;
+        const activeMatch =
+          activeBranchId && ids.find((id) => String(id) === String(activeBranchId));
+        return activeMatch || ids[0];
+      };
+      const createLocationID = firstLoc(selectedCustomer?.locationID) || undefined;
+
+      const startISO = studioWallTimeToUtcISO(form.date, form.start_time, studioTz);
+      const endISO = studioWallTimeToUtcISO(form.date, form.end_time, studioTz);
+      if (!startISO || !endISO) {
+        setError("Could not resolve the selected time.");
+        setIsSaving(false);
+        return;
+      }
+
+      const introSummary = introSummaries[form.customer_id];
+      const serviceType =
+        introSummary?.purchase?.slot?.calendarServiceID?.serviceName ||
+        introSummary?.purchase?.description ||
+        "Trial Lesson";
+
+      try {
+        const res = await api.post(
+          `/api/customer/${form.customer_id}/intro/reschedule`,
+          {
+            start: startISO,
+            end: endISO,
+            serviceType,
+            locationID: createLocationID,
+            teacherID: form.instructor_id || undefined,
+          },
+        );
+        if (!res?.success) {
+          setError(res?.error || "Could not book the intro lesson.");
+          setIsSaving(false);
+          return;
+        }
+        onCreated?.();
+        onClose();
+      } catch (err) {
+        setError(err?.message || "Could not book the intro lesson.");
+      }
       setIsSaving(false);
       return;
     }
@@ -2860,6 +3030,7 @@ export default function AppointmentComposerPanel({
     rawCustomers,
     onNewCustomer: handleNewCustomer,
     onOpenEnrollmentWizard: (open = true) => setShowEnrollmentWizard(Boolean(open)),
+    introSummary: introSummaries[form.customer_id] || null,
   };
 
   const tabContent = useMemo(() => {

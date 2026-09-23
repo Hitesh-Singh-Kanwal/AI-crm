@@ -6271,26 +6271,6 @@ function formatIntroMoney(amount) {
   return `$${Number(amount).toFixed(2)}`;
 }
 
-function groupIntroSlotsByDay(slots, timeZone) {
-  const groups = [];
-  const map = new Map();
-  for (const slot of slots || []) {
-    const dayKey = new Date(slot.start).toLocaleDateString("en-US", {
-      ...(timeZone ? { timeZone } : {}),
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-    if (!map.has(dayKey)) {
-      const g = { dayKey, slots: [] };
-      map.set(dayKey, g);
-      groups.push(g);
-    }
-    map.get(dayKey).slots.push(slot);
-  }
-  return groups;
-}
-
 function IntroMetaRow({ label, value, icon: Icon }) {
   if (value == null || value === "" || value === "—") return null;
   return (
@@ -6347,12 +6327,6 @@ function IntroTab({ customer }) {
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
-  const [rescheduling, setRescheduling] = useState(false);
-  const [showRescheduleForm, setShowRescheduleForm] = useState(false);
-  const [availSlots, setAvailSlots] = useState([]);
-  const [slotsLoading, setSlotsLoading] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState(null);
-  const rescheduleInFlightRef = useRef(false);
   const [editingPurchase, setEditingPurchase] = useState(false);
   const [savingPurchase, setSavingPurchase] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -6400,7 +6374,6 @@ function IntroTab({ customer }) {
       const res = await api.delete(`/api/calendar/${data.upcoming._id}`);
       if (res.success) {
         toast.success("Trial lesson cancelled.");
-        setShowRescheduleForm(false);
         await load();
       } else {
         toast.error(res.error || "Failed to cancel.");
@@ -6409,79 +6382,6 @@ function IntroTab({ customer }) {
       toast.error(err?.message || "Failed to cancel.");
     } finally {
       setCancelling(false);
-    }
-  }
-
-  async function openReschedule() {
-    setShowRescheduleForm(true);
-    setSelectedSlot(null);
-    setSlotsLoading(true);
-    setAvailSlots([]);
-    const locationID = Array.isArray(customer.locationID)
-      ? customer.locationID[0]?._id || customer.locationID[0]
-      : customer.locationID?._id || customer.locationID;
-    if (!locationID) {
-      toast.error("Customer has no location — cannot load slots.");
-      setSlotsLoading(false);
-      return;
-    }
-    try {
-      const res = await api.get(
-        `/api/calendar/availability?locationID=${locationID}&days=14&maxSlots=20`,
-      );
-      if (res.success) setAvailSlots(res.data?.slots || res.data || []);
-      else toast.error("Failed to load available slots.");
-    } catch (err) {
-      toast.error(err?.message || "Failed to load available slots.");
-    } finally {
-      setSlotsLoading(false);
-    }
-  }
-
-  async function handleReschedule() {
-    if (!selectedSlot || rescheduleInFlightRef.current) return;
-    rescheduleInFlightRef.current = true;
-    setRescheduling(true);
-    const locationID = Array.isArray(customer.locationID)
-      ? customer.locationID[0]?._id || customer.locationID[0]
-      : customer.locationID?._id || customer.locationID;
-    const isMovingUpcoming = Boolean(data?.upcoming);
-
-    try {
-      // Backend moves an existing upcoming lesson in place, or books a new one if none.
-      const res = await api.post(
-        `/api/customer/${customer._id}/intro/reschedule`,
-        {
-          start: selectedSlot.start,
-          end: selectedSlot.end,
-          locationID,
-        },
-      );
-      if (res.success) {
-        toast.success(
-          isMovingUpcoming
-            ? "Trial lesson rescheduled successfully."
-            : "Trial lesson booked successfully.",
-        );
-        setShowRescheduleForm(false);
-        setSelectedSlot(null);
-        await load();
-      } else {
-        toast.error(
-          res.error ||
-            (isMovingUpcoming ? "Failed to reschedule." : "Failed to book."),
-        );
-        await load();
-      }
-    } catch (err) {
-      toast.error(
-        err?.message ||
-          (isMovingUpcoming ? "Failed to reschedule." : "Failed to book."),
-      );
-      await load();
-    } finally {
-      rescheduleInFlightRef.current = false;
-      setRescheduling(false);
     }
   }
 
@@ -6576,20 +6476,8 @@ function IntroTab({ customer }) {
   const hadCancelledTrial = (history || []).some((ev) =>
     String(ev?.status || "").startsWith("cancelled"),
   );
-  // Staff: move upcoming in place, or book/rebook when paid + unscheduled.
-  const canOpenScheduler =
-    Boolean(purchased) &&
-    !introConsumed &&
-    (Boolean(upcoming) || canBookOrRebook !== false);
-  const showSchedulerActions = canOpenScheduler && !showRescheduleForm;
-  const schedulingMode = upcoming
-    ? "reschedule"
-    : hadCancelledTrial
-      ? "rebook"
-      : "book";
   const originalSlot = purchase?.slot;
   const lessonForTaken = takenLesson || null;
-  const slotGroups = groupIntroSlotsByDay(availSlots, studioTimezone);
 
   const stepPurchased = Boolean(purchased);
   const stepScheduled = Boolean(upcoming) || Boolean(taken);
@@ -6634,36 +6522,8 @@ function IntroTab({ customer }) {
       : upcoming
         ? "Purchased and scheduled — waiting for the lesson."
         : hadCancelledTrial
-          ? "Purchased, but the trial was cancelled. Free rebook is available."
-          : "Purchased, but not scheduled yet. Book a free time whenever they’re ready.";
-
-  const primaryActionLabel =
-    schedulingMode === "reschedule"
-      ? "Reschedule"
-      : schedulingMode === "rebook"
-        ? "Rebook free"
-        : "Book trial";
-
-  const confirmActionLabel =
-    schedulingMode === "reschedule"
-      ? "Confirm reschedule"
-      : schedulingMode === "rebook"
-        ? "Confirm rebook"
-        : "Confirm booking";
-
-  const schedulerTitle =
-    schedulingMode === "reschedule"
-      ? "Pick a new time"
-      : schedulingMode === "rebook"
-        ? "Rebook trial"
-        : "Schedule trial";
-
-  const schedulerSubcopy =
-    schedulingMode === "reschedule"
-      ? "Free reschedule — payment already collected. The current booking will move to the new time."
-      : schedulingMode === "rebook"
-        ? "Free rebook — payment already collected."
-        : "Free booking — payment already collected.";
+          ? "Purchased, but the trial was cancelled. Book a new time from the calendar."
+          : "Purchased, but not scheduled yet. Book a time from the calendar.";
 
   return (
     <div className="space-y-5">
@@ -7077,8 +6937,8 @@ function IntroTab({ customer }) {
                 </p>
                 <p className="text-[12px] text-muted-foreground mt-1 max-w-sm mx-auto">
                   {hadCancelledTrial
-                    ? "They already paid — rebook a free time whenever they’re ready."
-                    : "They already paid — book a free trial time whenever they’re ready."}
+                    ? "They already paid — book a new time from the calendar."
+                    : "They already paid — book a time from the calendar."}
                 </p>
               </div>
             ) : (
@@ -7094,134 +6954,23 @@ function IntroTab({ customer }) {
             )}
           </div>
 
-          {(upcoming || (purchased && !introConsumed)) && (
+          {upcoming && (
             <div className="flex flex-wrap gap-2 pt-4 mt-auto border-t border-border">
-              {showSchedulerActions && (
-                <Button
-                  size="sm"
-                  variant={upcoming ? "outline" : "default"}
-                  onClick={openReschedule}
-                >
-                  <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-                  {primaryActionLabel}
-                </Button>
-              )}
-              {upcoming && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                  onClick={handleCancel}
-                  disabled={cancelling}
-                >
-                  <CalendarX className="h-3.5 w-3.5 mr-1.5" />
-                  {cancelling ? "Cancelling…" : "Cancel — No Charge"}
-                </Button>
-              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                onClick={handleCancel}
+                disabled={cancelling}
+              >
+                <CalendarX className="h-3.5 w-3.5 mr-1.5" />
+                {cancelling ? "Cancelling…" : "Cancel — No Charge"}
+              </Button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Reschedule / book picker — full width */}
-      {showRescheduleForm && (
-        <div className="rounded-xl border border-border bg-card p-5 md:p-6 space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[13px] font-semibold text-foreground">
-                {schedulerTitle}
-              </p>
-              <p className="text-[12px] text-muted-foreground mt-0.5">
-                {schedulerSubcopy}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-              onClick={() => {
-                setShowRescheduleForm(false);
-                setSelectedSlot(null);
-              }}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {slotsLoading && (
-            <div className="flex items-center gap-2 py-8 justify-center text-[13px] text-muted-foreground">
-              <LoadingSpinner />
-              Loading available slots…
-            </div>
-          )}
-
-          {!slotsLoading && !availSlots.length && (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-[13px] text-muted-foreground">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              No open slots found. Try again later.
-            </div>
-          )}
-
-          {!slotsLoading && slotGroups.length > 0 && (
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5 max-h-[360px] overflow-y-auto pr-1">
-              {slotGroups.map((group) => (
-                <div key={group.dayKey}>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                    {group.dayKey}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {group.slots.map((slot) => {
-                      const active = selectedSlot?.start === slot.start;
-                      return (
-                        <button
-                          key={slot.start}
-                          type="button"
-                          onClick={() => setSelectedSlot(slot)}
-                          className={[
-                            "rounded-lg border px-3 py-2 text-[12px] font-medium transition-colors",
-                            active
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-muted/40",
-                          ].join(" ")}
-                        >
-                          {slot.label ||
-                            formatIntroTime(slot.start, studioTimezone)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {selectedSlot && (
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border">
-              <p className="text-[12px] text-muted-foreground">
-                Selected:{" "}
-                <span className="font-medium text-foreground">
-                  {formatIntroDateTime(selectedSlot.start, studioTimezone)}
-                </span>
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSelectedSlot(null)}
-                >
-                  Clear
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleReschedule}
-                  disabled={rescheduling}
-                >
-                  {rescheduling ? "Saving…" : confirmActionLabel}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* History — full width */}
       {history && history.length > 0 && (
