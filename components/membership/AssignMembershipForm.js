@@ -12,6 +12,7 @@ import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST 
 
 import { PURCHASE_METHODS } from '@/lib/paymentMethods'
 import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
+import CheckNumberField from '@/components/payments/CheckNumberField'
 
 function todayISO() {
   const d = new Date()
@@ -26,6 +27,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
   const [membershipID, setMembershipID] = useState('')
   const [billingType, setBillingType] = useState('one_time')
   const [method, setMethod] = useState('cash')
+  const [checkNumber, setCheckNumber] = useState('')
   // Flexible billing — same "initial payment + future payments" builder as
   // enrollments/events so staff see one consistent flow everywhere.
   const [flexInitialAmount, setFlexInitialAmount] = useState('0')
@@ -44,6 +46,13 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
       if (res.success) setTemplates(Array.isArray(res.data) ? res.data : [])
     })
   }, [])
+
+  // One membership is not a choice — preselect it so staff aren't made to pick
+  // the only option, same reasoning as TerminalDeviceField preselecting a lone
+  // reader. Runs only while nothing is chosen yet, so it never overrides a pick.
+  useEffect(() => {
+    if (!membershipID && templates.length === 1) setMembershipID(templates[0]._id)
+  }, [templates, membershipID])
 
   useEffect(() => {
     if (!customerID) { setWalletBalance(null); return }
@@ -124,6 +133,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
     const billing = {}
     if (billingType === 'one_time') {
       billing.method = method
+      if (method === 'cheque') billing.checkNumber = checkNumber
       if (walletApplied > 0) billing.walletAmount = walletApplied
     }
     else if (billingType === 'flexible') {
@@ -143,6 +153,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
 
       billing.customInstallments = scheduleRows
       billing.method = method
+      if (method === 'cheque') billing.checkNumber = checkNumber
       if (flexInitialAmountN > 0) billing.collectNow = collectInitialNow
     }
 
@@ -290,6 +301,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
             <div className="flex flex-col gap-1.5">
               <Label>{walletApplied > 0 ? 'Remaining payment method' : 'Payment Method'}</Label>
               <PaymentMethodPicker methods={PURCHASE_METHODS} value={method} onChange={setMethod} />
+              <CheckNumberField method={method} checkNumber={checkNumber} onChange={setCheckNumber} />
             </div>
           )}
 
@@ -361,6 +373,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
                 <div className="flex flex-col gap-1.5">
                   <Label>Payment Method</Label>
                   <PaymentMethodPicker methods={PURCHASE_METHODS} value={method} onChange={setMethod} />
+                  <CheckNumberField method={method} checkNumber={checkNumber} onChange={setCheckNumber} />
                 </div>
               )}
             </div>

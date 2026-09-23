@@ -399,8 +399,9 @@ export default function PayPage() {
         <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed text-muted-foreground">
           <Lock aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>
-            You’ll be taken to {processor} to enter your card. {request.studioName} never sees your
-            card details. This link works for 24 hours.
+            You’ll be taken to {processor} to pay by{' '}
+            {request.provider === 'stripe' ? 'card or bank transfer' : 'card'}. {request.studioName} never
+            sees your payment details. This link works for 24 hours.
           </span>
         </p>
       </div>

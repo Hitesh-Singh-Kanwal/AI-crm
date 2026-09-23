@@ -26,6 +26,7 @@ import WalletShortfallField, {
 } from "@/components/payments/WalletShortfallField";
 import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
 import SavedCardField from "@/components/payments/SavedCardField";
+import CheckNumberField from "@/components/payments/CheckNumberField";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
 import { fetchWalletBalance } from "@/lib/wallet";
@@ -54,12 +55,13 @@ export default function PaymentDueCard({
   const [walletBalance, setWalletBalance] = useState(0);
   const [deviceID, setDeviceID] = useState("");
   const [savedCardID, setSavedCardID] = useState("");
+  const [checkNumber, setCheckNumber] = useState("");
   const [newDueDate, setNewDueDate] = useState(
     dueDate ? new Date(dueDate).toISOString().slice(0, 10) : "",
   );
   const [saving, setSaving] = useState(false);
   const toast = useToast();
-  const { ready: cloverReady } = useCardProcessor(locationID);
+  const { ready: cloverReady, provider } = useCardProcessor(locationID);
 
   useEffect(() => {
     if (mode === "pay") fetchWalletBalance(customerID).then(setWalletBalance);
@@ -75,10 +77,15 @@ export default function PaymentDueCard({
   });
   const payWithClover = paymentFields.method === "card" && cloverReady;
   const cloverNotConnected = paymentFields.method === "card" && !cloverReady;
+  // ACH is a Stripe-only hosted checkout — Clover has no ACH product, so being
+  // "ready" on Clover alone doesn't make this payable.
+  const payWithACH = paymentFields.method === "ach" && provider === "stripe";
+  const achNotAvailable = paymentFields.method === "ach" && provider !== "stripe";
   const payWithTerminal = paymentFields.method === "terminal";
   const terminalNotSelected = payWithTerminal && !deviceID;
   const payWithSavedCard = paymentFields.method === "saved_card";
   const savedCardNotSelected = payWithSavedCard && !savedCardID;
+  const payWithCheque = paymentFields.method === "cheque";
   const amountValid = parseFloat(amount) > 0;
 
   async function submitPayment() {
@@ -86,7 +93,8 @@ export default function PaymentDueCard({
     if (isNaN(num) || num <= 0) return;
     if (payWithTerminal && !deviceID) return;
     if (payWithSavedCard && !savedCardID) return;
-    const checkoutTab = payWithClover ? openCheckoutTab() : null;
+    if (achNotAvailable) return;
+    const checkoutTab = payWithClover || payWithACH ? openCheckoutTab() : null;
     setSaving(true);
     const res = await api.post("/api/payment", {
       customerID,
@@ -101,6 +109,7 @@ export default function PaymentDueCard({
       }),
       ...(payWithTerminal ? { deviceID } : {}),
       ...(payWithSavedCard ? { cardToken: savedCardID } : {}),
+      ...(payWithCheque ? { checkNumber } : {}),
       ...(paymentDate ? { paymentDate: dateInputToISO(paymentDate) } : {}),
     });
     if (res.success) {
@@ -323,6 +332,11 @@ export default function PaymentDueCard({
                 Connect a card processor (Clover or Stripe) in Settings → Integrations to charge a card.
               </p>
             )}
+            {achNotAvailable && (
+              <p className="text-[12px] text-muted-foreground">
+                ACH needs Stripe — connect it in Settings → Integrations.
+              </p>
+            )}
             <TerminalDeviceField
               method={method}
               locationID={locationID}
@@ -335,6 +349,11 @@ export default function PaymentDueCard({
               customerID={customerID}
               cardToken={savedCardID}
               onCardChange={setSavedCardID}
+            />
+            <CheckNumberField
+              method={payWithCheque ? "cheque" : ""}
+              checkNumber={checkNumber}
+              onChange={setCheckNumber}
             />
 
             <div className="flex justify-end gap-2 pt-2 border-t border-border/70 mt-1">
@@ -350,7 +369,7 @@ export default function PaymentDueCard({
                 type="submit"
                 size="sm"
                 className="bg-success hover:bg-success text-white shadow-sm"
-                disabled={saving || !amountValid || cloverNotConnected || terminalNotSelected || savedCardNotSelected}
+                disabled={saving || !amountValid || cloverNotConnected || achNotAvailable || terminalNotSelected || savedCardNotSelected}
               >
                 {saving
                   ? payWithTerminal
@@ -358,11 +377,13 @@ export default function PaymentDueCard({
                     : "Saving…"
                   : payWithClover
                     ? "Pay by card"
-                    : payWithTerminal
-                      ? "Charge Terminal"
-                      : payWithSavedCard
-                        ? "Charge saved card"
-                        : "Confirm Payment"}
+                    : payWithACH
+                      ? "Pay by bank transfer"
+                      : payWithTerminal
+                        ? "Charge Terminal"
+                        : payWithSavedCard
+                          ? "Charge saved card"
+                          : "Confirm Payment"}
               </Button>
             </div>
           </form>

@@ -1410,6 +1410,77 @@ function PaymentSchedule({
   );
 }
 
+// ─── BounceableCheque ────────────────────────────────────────────────────────
+// Surfaces "Mark bounced" up on the enrollment header too, next to Change
+// validity / Cancel — Payment History still has it (per-payment, since a
+// customer could in principle have more than one cheque against the same
+// enrollment), but staff shouldn't have to expand history just to find the
+// action for the common case of one outstanding cheque.
+function BounceableCheque({ customerID, enrollmentID, onBounced }) {
+  const [payment, setPayment] = useState(null); // the bounceable cheque, or null
+  const [bouncing, setBouncing] = useState(false);
+  const toast = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get(`/api/payment/customer/${customerID}?enrollmentID=${enrollmentID}&limit=100`)
+      .then((res) => {
+        if (cancelled || !res.success) return;
+        const bounceable = (res.data || []).find(
+          (p) =>
+            p.method === "cheque" &&
+            p.status === "completed" &&
+            p.checkStatus !== "bounced" &&
+            p.type !== "refund",
+        );
+        setPayment(bounceable || null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customerID, enrollmentID]);
+
+  if (!payment) return null;
+
+  async function markBounced() {
+    if (
+      !window.confirm(
+        `Mark cheque${payment.checkNumber ? ` #${payment.checkNumber}` : ""} for $${Number(payment.amount).toFixed(2)} as bounced? This reverses the payment and adds the studio's bounced-cheque penalty (set in Settings → Billing).`,
+      )
+    ) {
+      return;
+    }
+    setBouncing(true);
+    const res = await api.post(`/api/payment/${payment._id}/bounce`);
+    setBouncing(false);
+    if (!res.success) {
+      toast.error(res.error || "Couldn't mark this cheque bounced.");
+      return;
+    }
+    const penalty = Number(res.data?.penalty);
+    toast.success(
+      Number.isFinite(penalty)
+        ? `Cheque marked bounced — $${penalty.toFixed(2)} penalty added to the balance.`
+        : "Cheque marked bounced — penalty added to the balance.",
+    );
+    setPayment(null);
+    onBounced?.();
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={bouncing}
+      className="h-7 px-2.5 text-[11px] font-medium border-rose-500/40 text-rose-600 hover:bg-rose-500/10"
+      onClick={markBounced}
+    >
+      {bouncing ? "Marking…" : "Mark bounced"}
+    </Button>
+  );
+}
+
 // ─── PaymentTimeline ─────────────────────────────────────────────────────────
 
 function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments }) {
@@ -1417,6 +1488,7 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
   const [fetchedPayments, setFetchedPayments] = useState(null); // null = not yet loaded
   const [loading, setLoading] = useState(false);
   const [syncingId, setSyncingId] = useState(null);
+  const [bouncingId, setBouncingId] = useState(null);
   const toast = useToast();
   // A caller that already has the customer's full payment list (e.g. the
   // Events & Products tab) passes it pre-filtered — skips the redundant
@@ -1458,6 +1530,29 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
     } else {
       toast.success("Stripe still shows this as processing — try again shortly.");
     }
+    load(true);
+  }
+
+  // Studio owner acts on this after a bank tells them a customer's cheque bounced —
+  // the payment never had real money behind it, so this reverses the credit and adds
+  // the flat penalty (see bounceCheck on the backend).
+  async function markBounced(p) {
+    if (!window.confirm(`Mark cheque${p.checkNumber ? ` #${p.checkNumber}` : ""} for $${Number(p.amount).toFixed(2)} as bounced? This reverses the payment and adds the studio's bounced-cheque penalty (set in Settings → Billing).`)) {
+      return;
+    }
+    setBouncingId(p._id);
+    const res = await api.post(`/api/payment/${p._id}/bounce`);
+    setBouncingId(null);
+    if (!res.success) {
+      toast.error(res.error || "Couldn't mark this cheque bounced.");
+      return;
+    }
+    const penalty = Number(res.data?.penalty);
+    toast.success(
+      Number.isFinite(penalty)
+        ? `Cheque marked bounced — $${penalty.toFixed(2)} penalty added to the balance.`
+        : "Cheque marked bounced — penalty added to the balance.",
+    );
     load(true);
   }
 
@@ -1538,7 +1633,7 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-[12px] font-medium text-foreground">
-                              {typeLabel[p.type] ?? p.type}
+                              {p.isBounceReversal ? "Bounced Cheque" : (typeLabel[p.type] ?? p.type)}
                             </p>
                             {p.enrollmentID && (
                               <span className="text-[10px] font-medium bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border">
@@ -1573,6 +1668,11 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
                             })}
                             {p.processedBy?.name && ` · ${p.processedBy.name}`}
                           </p>
+                          {p.method === "cheque" && p.checkNumber && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              Cheque #{p.checkNumber}
+                            </p>
+                          )}
                           {p.notes && (
                             <p className="text-[11px] text-muted-foreground mt-0.5 italic">
                               {p.notes}
@@ -1616,6 +1716,24 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
                                 {syncingId === p._id ? "Checking…" : "Check status"}
                               </button>
                             )}
+                            {p.method === "cheque" && p.checkStatus === "bounced" && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600">
+                                bounced
+                              </span>
+                            )}
+                            {p.method === "cheque" &&
+                              p.status === "completed" &&
+                              p.checkStatus !== "bounced" &&
+                              !isRefund && (
+                                <button
+                                  type="button"
+                                  disabled={bouncingId === p._id}
+                                  onClick={() => markBounced(p)}
+                                  className="text-[10px] font-medium text-rose-600 hover:text-rose-700 underline underline-offset-2 disabled:opacity-50"
+                                >
+                                  {bouncingId === p._id ? "Marking…" : "Mark bounced"}
+                                </button>
+                              )}
                           </div>
                         </div>
                       </div>
@@ -4053,6 +4171,11 @@ function EnrollmentsTab({
                               Change validity
                             </Button>
                           )}
+                        <BounceableCheque
+                          customerID={customerID}
+                          enrollmentID={enr._id}
+                          onBounced={load}
+                        />
                         {cp.status === "active" && (
                           <Button
                             variant="outline"
