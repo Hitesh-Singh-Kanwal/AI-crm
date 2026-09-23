@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react'
 import { formatDate } from './billingData'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
+import api from '@/lib/api'
+import { useToast } from '@/components/ui/toast'
 
 function paymentTypeBadge(type) {
   return {
@@ -7,6 +10,70 @@ function paymentTypeBadge(type) {
     credit_topup: { label: 'Credit Top-up', cls: 'bg-violet-500/10 text-violet-600' },
     refund: { label: 'Refund', cls: 'bg-rose-500/10 text-rose-600' },
   }[type] ?? { label: type, cls: 'bg-muted text-muted-foreground' }
+}
+
+// Studios vary on what they charge back when a customer's cheque bounces — this
+// is the studio's own setting (Organisation.billingSettings.bouncedCheckFee),
+// not a fixed amount, so it's editable here rather than baked into the backend.
+function BouncedCheckFeeSettings() {
+  const [fee, setFee] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const toast = useToast()
+
+  useEffect(() => {
+    api.get('/api/organisation/billing-settings').then((res) => {
+      if (res.success) setFee(String(res.data?.bouncedCheckFee ?? 15))
+      setLoading(false)
+    })
+  }, [])
+
+  async function save() {
+    const n = Number(fee)
+    if (!Number.isFinite(n) || n < 0) {
+      toast.error('Enter a valid, non-negative amount.')
+      return
+    }
+    setSaving(true)
+    const res = await api.patch('/api/organisation/billing-settings', { bouncedCheckFee: n })
+    setSaving(false)
+    if (res.success) toast.success('Bounced cheque fee updated.')
+    else toast.error(res.error || 'Failed to update the fee.')
+  }
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <h2 className="text-sm font-semibold text-foreground">Bounced Cheque Fee</h2>
+      <p className="text-xs text-muted-foreground mt-0.5">
+        Added on top of the original amount when staff mark a cheque as bounced.
+      </p>
+      {loading ? (
+        <div className="mt-3"><LoadingSpinner /></div>
+      ) : (
+        <div className="mt-3 flex items-center gap-2">
+          <div className="relative w-32">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={fee}
+              onChange={(e) => setFee(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background pl-6 pr-2.5 text-[13px] outline-none focus:border-primary"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-[13px] font-medium disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      )}
+    </section>
+  )
 }
 
 export default function OverviewTab({
@@ -72,6 +139,8 @@ export default function OverviewTab({
           </div>
         )}
       </section>
+
+      <BouncedCheckFeeSettings />
     </>
   )
 }

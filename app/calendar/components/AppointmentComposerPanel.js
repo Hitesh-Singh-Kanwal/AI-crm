@@ -546,8 +546,6 @@ function EnrollmentServiceSelector({
   allServices,
   onOpenEnrollmentWizard,
 }) {
-  if (!customerId) return null;
-
   // An unallocated booking must not carry any package/enrollment selection, or
   // the backend funds the session from that enrollment's credits. Clear the
   // enrollment (and, via onServiceSelect, the membership) before selecting.
@@ -559,6 +557,45 @@ function EnrollmentServiceSelector({
   const activeEnrollments = enrollments.filter(
     (e) => e.status === "active" && e.package?.status !== "cancelled",
   );
+
+  // Computed here (ahead of the early returns below) so the auto-select effect
+  // can see it on every render — hooks can't follow a conditional return.
+  const bookableEnrollments = activeEnrollments.filter(
+    (e) =>
+      e.package &&
+      (e.package.services ?? []).some(
+        (s) =>
+          s.sessionsRemaining > 0 &&
+          allServices.some((cat) => cat.serviceCode === s.serviceCode),
+      ),
+  );
+
+  const handleEnrollmentChange = (v) => {
+    onEnrollmentSelect(v);
+    const enr = bookableEnrollments.find((e) => String(e._id) === v);
+    const svcs = (enr?.package?.services ?? []).filter(
+      (s) => s.sessionsRemaining > 0 && allServices.some((cat) => cat.serviceCode === s.serviceCode),
+    );
+    if (svcs.length === 1) {
+      const info = allServices.find((s) => s.serviceCode === svcs[0].serviceCode);
+      if (info) onServiceSelect(String(info._id), svcs[0].color || info.color);
+    }
+  };
+
+  // One bookable package/service is not a choice — preselect it so staff aren't
+  // made to pick the only option, same reasoning as TerminalDeviceField
+  // preselecting a lone reader. Runs only while nothing is chosen yet, so it
+  // never overrides a real pick.
+  const onlyBookableId = bookableEnrollments.length === 1 ? String(bookableEnrollments[0]._id) : null;
+  useEffect(() => {
+    if (!customerId || selectedEnrollmentId || !onlyBookableId) return;
+    handleEnrollmentChange(onlyBookableId);
+    // handleEnrollmentChange is recreated each render but does the same thing for
+    // the same id; keying on the id itself is what actually matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId, selectedEnrollmentId, onlyBookableId]);
+
+  if (!customerId) return null;
 
   if (enrollments.length === 0) {
     return (
@@ -621,29 +658,10 @@ function EnrollmentServiceSelector({
   // Enrollments with sessions left for a service in this tab, split by whether
   // they are a real package or a services-only sale. When the student has both,
   // each kind gets its own dropdown; otherwise a single one, labelled to match.
-  const bookableEnrollments = activeEnrollments.filter(
-    (e) =>
-      e.package &&
-      (e.package.services ?? []).some(
-        (s) =>
-          s.sessionsRemaining > 0 &&
-          allServices.some((cat) => cat.serviceCode === s.serviceCode),
-      ),
-  );
+  // (bookableEnrollments/handleEnrollmentChange are computed above, ahead of
+  // the early returns, so the auto-select effect can see them.)
   const packageEnrollments = bookableEnrollments.filter((e) => e.package.packageRef);
   const serviceEnrollments = bookableEnrollments.filter((e) => !e.package.packageRef);
-
-  const handleEnrollmentChange = (v) => {
-    onEnrollmentSelect(v);
-    const enr = bookableEnrollments.find((e) => String(e._id) === v);
-    const svcs = (enr?.package?.services ?? []).filter(
-      (s) => s.sessionsRemaining > 0 && allServices.some((cat) => cat.serviceCode === s.serviceCode),
-    );
-    if (svcs.length === 1) {
-      const info = allServices.find((s) => s.serviceCode === svcs[0].serviceCode);
-      if (info) onServiceSelect(String(info._id), svcs[0].color || info.color);
-    }
-  };
 
   const packageOptions = packageEnrollments.map((e) => ({
     value: String(e._id),

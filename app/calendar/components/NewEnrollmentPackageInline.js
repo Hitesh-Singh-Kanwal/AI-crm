@@ -269,6 +269,16 @@ export default function NewEnrollmentPackageInline({
     }));
   }
 
+  // One package is not a choice — preselect it so staff aren't made to pick the
+  // only option, same reasoning as TerminalDeviceField preselecting a lone reader.
+  // Runs only while nothing is chosen yet, so it never overrides a real pick, and
+  // re-evaluates if the list itself changes (e.g. a service-code filter narrows
+  // it down to exactly one after the customer/context loads).
+  useEffect(() => {
+    if (serviceOnly || form.packageID) return;
+    if (packageTemplates.length === 1) handlePkgChange(packageTemplates[0]._id);
+  }, [packageTemplates, serviceOnly, form.packageID]);
+
   function updateSvc(key, field, value) {
     setForm((prev) => {
       const services = prev.services.map((s) => {

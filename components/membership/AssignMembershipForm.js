@@ -47,6 +47,13 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
     })
   }, [])
 
+  // One membership is not a choice — preselect it so staff aren't made to pick
+  // the only option, same reasoning as TerminalDeviceField preselecting a lone
+  // reader. Runs only while nothing is chosen yet, so it never overrides a pick.
+  useEffect(() => {
+    if (!membershipID && templates.length === 1) setMembershipID(templates[0]._id)
+  }, [templates, membershipID])
+
   useEffect(() => {
     if (!customerID) { setWalletBalance(null); return }
     api.get(`/api/wallet/${customerID}/balance`).then((res) => {
