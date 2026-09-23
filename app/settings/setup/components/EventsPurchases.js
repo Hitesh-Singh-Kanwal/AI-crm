@@ -21,6 +21,7 @@ import { dateInputToISO, todayDateInput } from '@/lib/studioLocalDate'
 import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import SavedCardField from '@/components/payments/SavedCardField'
+import CheckNumberField from '@/components/payments/CheckNumberField'
 
 const money = (n) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -562,6 +563,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const [collectNow, setCollectNow] = useState(true)
   const [payMethod, setPayMethod] = useState('cash') // cash | card | cheque | other | saved_card
   const [savedCardID, setSavedCardID] = useState('')
+  const [checkNumber, setCheckNumber] = useState('')
   const [collectDate, setCollectDate] = useState(todayISO())
   const [useWallet, setUseWallet] = useState(false)
   const [walletAmount, setWalletAmount] = useState('')
@@ -585,7 +587,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     setCustomer(initialCustomerID ? { _id: initialCustomerID, name: initialCustomerName || '' } : null)
     setCustomerQuery(''); setEventTypeID(''); setTemplateID('')
     setName(''); setItems([]); setSaveAsTemplate(false)
-    setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setSavedCardID(''); setCollectDate(todayISO())
+    setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setSavedCardID(''); setCheckNumber(''); setCollectDate(todayISO())
     setUseWallet(false); setWalletAmount(''); setWalletBalance(null)
     setTipEnabled(false); setTipTeacherID(''); setTipAmount('')
     setPlanCount('3'); setPlanFreq('monthly'); setPlanStart(todayISO())
@@ -726,6 +728,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
             amount: payable, method: payMethod, paymentDate: dateInputToISO(collectDate),
             walletAmount: walletApplied > 0 ? walletApplied : undefined, notes: name.trim(),
             ...(payMethod === 'saved_card' ? { cardToken: savedCardID } : {}),
+            ...(payMethod === 'cheque' ? { checkNumber } : {}),
             tip,
           })
           if (!payRes.success) toast.error('Purchase saved, but payment failed', { description: payRes.error })
@@ -739,7 +742,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         // payment_plan or flexible → build a payment plan
         let billing
         if (isPlan) {
-          billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}) }
+          billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}) }
         } else {
           const scheduleRows = [
             ...(flexInitialAmountN > 0 ? [{ dueDate: flexInitialDate, amount: flexInitialAmountN }] : []),
@@ -747,7 +750,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
               .filter((r) => r.dueDate && Number(r.amount) > 0)
               .map((r) => ({ dueDate: r.dueDate, amount: Number(r.amount) })),
           ]
-          billing = { customInstallments: scheduleRows, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}) }
+          billing = { customInstallments: scheduleRows, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}) }
         }
         const effectiveCollectNow = isPlan ? collectNow : flexInitialAmountN > 0 && collectNow
         const planRes = await api.post('/api/payment-plan/purchase', {
@@ -916,6 +919,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                     cardToken={savedCardID}
                     onCardChange={setSavedCardID}
                   />
+                  <CheckNumberField method={payMethod} checkNumber={checkNumber} onChange={setCheckNumber} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="cep-date">Payment date</Label>

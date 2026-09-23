@@ -25,6 +25,7 @@ import SearchableSelect from "@/components/ui/searchable-select";
 // A session payment lands on CalendarEvent.payment.method, whose enum has no wallet.
 import { PURCHASE_METHODS as PAYMENT_METHODS } from "@/lib/paymentMethods";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
+import CheckNumberField from "@/components/payments/CheckNumberField";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,7 @@ const EMPTY_FORM = {
   payment_amount: "",
   payment_method: "",
   session_payment_method: "",
+  session_check_number: "",
   group_sell_package: false,
   group_package_id: "",
   member_ids: [],
@@ -1928,6 +1930,11 @@ function AppointmentFields({
                 value={form.session_payment_method}
                 onChange={(v) => setField("session_payment_method", v)}
               />
+              <CheckNumberField
+                method={form.session_payment_method}
+                checkNumber={form.session_check_number}
+                onChange={(v) => setField("session_check_number", v)}
+              />
             </div>
           </div>
         )}
@@ -2378,6 +2385,7 @@ export default function AppointmentComposerPanel({
         method,
         paymentDate: dateInputToISO(billing.collectDate),
         ...(method === "saved_card" ? { cardToken: billing.savedCardID } : {}),
+        ...(method === "cheque" ? { checkNumber: billing.checkNumber } : {}),
       });
       if (!payRes.success) {
         console.error("pay-installment failed", payRes);
@@ -2395,6 +2403,7 @@ export default function AppointmentComposerPanel({
         method,
         paymentDate: dateInputToISO(billing.collectDate),
         ...(method === "saved_card" ? { cardToken: billing.savedCardID } : {}),
+        ...(method === "cheque" ? { checkNumber: billing.checkNumber } : {}),
       });
       return payRes.data?.checkoutUrl || null;
     }
@@ -2441,6 +2450,9 @@ export default function AppointmentComposerPanel({
               collectDate: payload.billing?.collectDate || undefined,
               ...(payload.billing?.method === "saved_card"
                 ? { savedCardID: payload.billing?.savedCardID }
+                : {}),
+              ...(payload.billing?.method === "cheque"
+                ? { checkNumber: payload.billing?.checkNumber }
                 : {}),
             }
           : payload.billingType === "payment_plan"
@@ -2648,7 +2660,12 @@ export default function AppointmentComposerPanel({
           }
         : undefined,
       billing: form.session_payment_method
-        ? { method: form.session_payment_method }
+        ? {
+            method: form.session_payment_method,
+            ...(form.session_payment_method === "cheque"
+              ? { checkNumber: form.session_check_number }
+              : {}),
+          }
         : undefined,
     };
 

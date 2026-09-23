@@ -30,6 +30,7 @@ import WalletShortfallField, {
 } from "@/components/payments/WalletShortfallField";
 import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
 import SavedCardField from "@/components/payments/SavedCardField";
+import CheckNumberField from "@/components/payments/CheckNumberField";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
@@ -62,9 +63,10 @@ export default function PayInstallmentDialog({
   const [paymentDate, setPaymentDate] = useState(todayDateInput);
   const [deviceID, setDeviceID] = useState("");
   const [savedCardID, setSavedCardID] = useState("");
+  const [checkNumber, setCheckNumber] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
-  const { ready: cloverReady } = useCardProcessor(locationID || plan);
+  const { ready: cloverReady, provider } = useCardProcessor(locationID || plan);
 
   useEffect(() => {
     if (open && plan?.customerID) {
@@ -91,10 +93,14 @@ export default function PayInstallmentDialog({
   });
   const payWithClover = paymentFields.method === "card" && cloverReady;
   const cloverNotConnected = paymentFields.method === "card" && !cloverReady;
+  // ACH is Stripe-only — Clover has no ACH product.
+  const payWithACH = paymentFields.method === "ach" && provider === "stripe";
+  const achNotAvailable = paymentFields.method === "ach" && provider !== "stripe";
   const payWithTerminal = paymentFields.method === "terminal";
   const terminalNotSelected = payWithTerminal && !deviceID;
   const payWithSavedCard = paymentFields.method === "saved_card";
   const savedCardNotSelected = payWithSavedCard && !savedCardID;
+  const payWithCheque = paymentFields.method === "cheque";
 
   useEffect(() => {
     if (installment) setAmount(Number(installment.amount).toFixed(2));
@@ -117,7 +123,8 @@ export default function PayInstallmentDialog({
     if (num === null) return;
     if (payWithTerminal && !deviceID) return;
     if (payWithSavedCard && !savedCardID) return;
-    const checkoutTab = payWithClover ? openCheckoutTab() : null;
+    if (achNotAvailable) return;
+    const checkoutTab = payWithClover || payWithACH ? openCheckoutTab() : null;
     setSaving(true);
 
     // A flexible schedule promises the full balance gets collected. If this
@@ -174,6 +181,7 @@ export default function PayInstallmentDialog({
         paymentDate: dateInputToISO(paymentDate),
         ...(payWithTerminal ? { deviceID } : {}),
         ...(payWithSavedCard ? { cardToken: savedCardID } : {}),
+        ...(payWithCheque ? { checkNumber } : {}),
         ...walletPaymentFields({
           method,
           shortfallMethod,
@@ -325,6 +333,11 @@ export default function PayInstallmentDialog({
             cardToken={savedCardID}
             onCardChange={setSavedCardID}
           />
+          <CheckNumberField
+            method={payWithCheque ? "cheque" : ""}
+            checkNumber={checkNumber}
+            onChange={setCheckNumber}
+          />
           <WalletShortfallField
             method={method}
             balance={walletBalance}
@@ -335,6 +348,11 @@ export default function PayInstallmentDialog({
           {cloverNotConnected && (
             <p className="text-[12px] text-muted-foreground">
               Connect a card processor (Clover or Stripe) in Settings → Integrations to charge a card.
+            </p>
+          )}
+          {achNotAvailable && (
+            <p className="text-[12px] text-muted-foreground">
+              ACH needs Stripe — connect it in Settings → Integrations.
             </p>
           )}
 
@@ -356,7 +374,7 @@ export default function PayInstallmentDialog({
             <Button
               type="submit"
               size="sm"
-              disabled={saving || cloverNotConnected || terminalNotSelected || savedCardNotSelected}
+              disabled={saving || cloverNotConnected || achNotAvailable || terminalNotSelected || savedCardNotSelected}
               className="bg-success hover:bg-success text-white shadow-sm"
             >
               {saving
@@ -365,9 +383,11 @@ export default function PayInstallmentDialog({
                   : "Recording…"
                 : payWithClover
                   ? "Pay by card"
-                  : payWithSavedCard
-                    ? "Charge saved card"
-                    : `Pay $${(Number(amount) || 0).toFixed(2)}`}
+                  : payWithACH
+                    ? "Pay by bank transfer"
+                    : payWithSavedCard
+                      ? "Charge saved card"
+                      : `Pay $${(Number(amount) || 0).toFixed(2)}`}
             </Button>
           </div>
         </form>

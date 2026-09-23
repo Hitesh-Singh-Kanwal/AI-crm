@@ -1,6 +1,6 @@
 'use client'
 
-import { Banknote, CreditCard, Link2, Smartphone, Wallet, WalletCards } from 'lucide-react'
+import { Banknote, CreditCard, FileCheck2, Landmark, Link2, Smartphone, Wallet, WalletCards } from 'lucide-react'
 
 // Shared payment-method control — every payment surface (Pay Now balance,
 // pay-installment, new enrollment/package, membership assign, event
@@ -8,7 +8,9 @@ import { Banknote, CreditCard, Link2, Smartphone, Wallet, WalletCards } from 'lu
 // looks and behaves identically everywhere.
 const METHOD_ICONS = {
   cash: Banknote,
+  cheque: FileCheck2,
   card: CreditCard,
+  ach: Landmark,
   terminal: Smartphone,
   wallet: Wallet,
   link: Link2,

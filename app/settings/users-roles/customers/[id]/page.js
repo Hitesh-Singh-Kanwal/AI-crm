@@ -1417,6 +1417,7 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
   const [fetchedPayments, setFetchedPayments] = useState(null); // null = not yet loaded
   const [loading, setLoading] = useState(false);
   const [syncingId, setSyncingId] = useState(null);
+  const [bouncingId, setBouncingId] = useState(null);
   const toast = useToast();
   // A caller that already has the customer's full payment list (e.g. the
   // Events & Products tab) passes it pre-filtered — skips the redundant
@@ -1458,6 +1459,24 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
     } else {
       toast.success("Stripe still shows this as processing — try again shortly.");
     }
+    load(true);
+  }
+
+  // Studio owner acts on this after a bank tells them a customer's cheque bounced —
+  // the payment never had real money behind it, so this reverses the credit and adds
+  // the flat penalty (see bounceCheck on the backend).
+  async function markBounced(p) {
+    if (!window.confirm(`Mark cheque${p.checkNumber ? ` #${p.checkNumber}` : ""} for $${Number(p.amount).toFixed(2)} as bounced? This reverses the payment and adds a $15 penalty.`)) {
+      return;
+    }
+    setBouncingId(p._id);
+    const res = await api.post(`/api/payment/${p._id}/bounce`);
+    setBouncingId(null);
+    if (!res.success) {
+      toast.error(res.error || "Couldn't mark this cheque bounced.");
+      return;
+    }
+    toast.success("Cheque marked bounced — $15 penalty added to the balance.");
     load(true);
   }
 
@@ -1573,6 +1592,11 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
                             })}
                             {p.processedBy?.name && ` · ${p.processedBy.name}`}
                           </p>
+                          {p.method === "cheque" && p.checkNumber && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              Cheque #{p.checkNumber}
+                            </p>
+                          )}
                           {p.notes && (
                             <p className="text-[11px] text-muted-foreground mt-0.5 italic">
                               {p.notes}
@@ -1616,6 +1640,24 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
                                 {syncingId === p._id ? "Checking…" : "Check status"}
                               </button>
                             )}
+                            {p.method === "cheque" && p.checkStatus === "bounced" && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600">
+                                bounced
+                              </span>
+                            )}
+                            {p.method === "cheque" &&
+                              p.status === "completed" &&
+                              p.checkStatus !== "bounced" &&
+                              !isRefund && (
+                                <button
+                                  type="button"
+                                  disabled={bouncingId === p._id}
+                                  onClick={() => markBounced(p)}
+                                  className="text-[10px] font-medium text-rose-600 hover:text-rose-700 underline underline-offset-2 disabled:opacity-50"
+                                >
+                                  {bouncingId === p._id ? "Marking…" : "Mark bounced"}
+                                </button>
+                              )}
                           </div>
                         </div>
                       </div>

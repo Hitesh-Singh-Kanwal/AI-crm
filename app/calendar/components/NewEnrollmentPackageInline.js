@@ -11,6 +11,7 @@ import SearchableSelect from "@/components/ui/searchable-select";
 import { PAYMENT_METHODS_WITH_SAVED_CARD, TIP_METHODS } from "@/lib/paymentMethods";
 import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
 import SavedCardField from "@/components/payments/SavedCardField";
+import CheckNumberField from "@/components/payments/CheckNumberField";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 
 function todayISO() {
@@ -206,6 +207,7 @@ export default function NewEnrollmentPackageInline({
   const [walletBalance, setWalletBalance] = useState(null);
   const [deviceID, setDeviceID] = useState("");
   const [savedCardID, setSavedCardID] = useState("");
+  const [checkNumber, setCheckNumber] = useState("");
   // Either processor being ready means a card payment can be taken; the backend
   // routes to whichever this location uses.
   const { ready: cardProcessorReady } = useCardProcessor(locationID);
@@ -594,6 +596,7 @@ export default function NewEnrollmentPackageInline({
         collectDate: effectiveCollectDate || undefined,
         ...(collect && form.billing.method === "terminal" ? { deviceID } : {}),
         ...(collect && form.billing.method === "saved_card" ? { savedCardID } : {}),
+        ...(collect && form.billing.method === "cheque" ? { checkNumber } : {}),
       },
     };
     if (form.tip.enabled && form.tip.amount && !readerCollectsTip) {
@@ -1297,6 +1300,11 @@ export default function NewEnrollmentPackageInline({
                           cardToken={savedCardID}
                           onCardChange={setSavedCardID}
                         />
+                        <CheckNumberField
+                          method={form.billing.method}
+                          checkNumber={checkNumber}
+                          onChange={setCheckNumber}
+                        />
                         {collectFromWallet && (
                           <p className={`text-[11px] ${collectWalletShort ? "text-destructive" : "text-muted-foreground"}`}>
                             Wallet balance: ${walletBalance.toFixed(2)}
@@ -1382,6 +1390,13 @@ export default function NewEnrollmentPackageInline({
                       customerID={customerID}
                       cardToken={savedCardID}
                       onCardChange={setSavedCardID}
+                    />
+                  )}
+                  {form.billing.collectNow && (
+                    <CheckNumberField
+                      method={form.billing.method}
+                      checkNumber={checkNumber}
+                      onChange={setCheckNumber}
                     />
                   )}
                   {form.billing.collectNow && (

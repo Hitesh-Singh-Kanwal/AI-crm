@@ -17,6 +17,7 @@ import { studioWallTimeToUtcISO, utcToStudioWallTime } from "@/lib/studio-time";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
 import { NO_DEVICE_PAYMENT_METHODS } from "@/lib/paymentMethods";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
+import CheckNumberField from "@/components/payments/CheckNumberField";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import LocationSelector from "@/components/shared/LocationSelector";
 import MiniStudentPanel from "./MiniStudentPanel";
@@ -361,7 +362,7 @@ function GroupStudentRoster({
   const [newCustomerSheetOpen, setNewCustomerSheetOpen] = useState(false);
   const [saving, setSaving] = useState(null);
   const [payingId, setPayingId] = useState(null); // student currently showing the pay form
-  const [payForm, setPayForm] = useState({ amount: "", method: "cash" });
+  const [payForm, setPayForm] = useState({ amount: "", method: "cash", checkNumber: "" });
   const [pendingAdd, setPendingAdd] = useState(null); // { customer, memberIds: [], absent } - waiting for member selection
   const [editingMembersId, setEditingMembersId] = useState(null); // customerId currently editing attending members
   const [editingMemberIds, setEditingMemberIds] = useState([]); // draft member selection while editing
@@ -807,6 +808,7 @@ function GroupStudentRoster({
     setPayForm({
       amount: servicePrice != null ? String(servicePrice) : "",
       method: "cash",
+      checkNumber: "",
     });
   };
 
@@ -817,6 +819,7 @@ function GroupStudentRoster({
       customerID: cid,
       method: payForm.method,
       amount: payForm.amount !== "" ? Number(payForm.amount) : undefined,
+      ...(payForm.method === "cheque" ? { checkNumber: payForm.checkNumber } : {}),
     });
     if (res.success) {
       if (res.data?.checkoutUrl) navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
@@ -1423,6 +1426,12 @@ function GroupStudentRoster({
                           methods={NO_DEVICE_PAYMENT_METHODS}
                           value={payForm.method}
                           onChange={(v) => setPayForm((p) => ({ ...p, method: v }))}
+                        />
+                        <CheckNumberField
+                          method={payForm.method}
+                          checkNumber={payForm.checkNumber}
+                          onChange={(v) => setPayForm((p) => ({ ...p, checkNumber: v }))}
+                          className="mt-1.5"
                         />
                       </div>
                     </div>
