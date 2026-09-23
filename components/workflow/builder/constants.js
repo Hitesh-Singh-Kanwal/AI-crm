@@ -42,13 +42,13 @@ export const PALETTE_CATEGORIES = [
         icon: Mail,
         category: 'action',
       },
-      {
-        type: 'send_sms',
-        label: 'Send SMS',
-        description: 'Send a text message',
-        icon: MessageSquare,
-        category: 'action',
-      },
+      // {
+      //   type: 'send_sms',
+      //   label: 'Send SMS',
+      //   description: 'Send a text message',
+      //   icon: MessageSquare,
+      //   category: 'action',
+      // },
       {
         type: 'ai_agent',
         label: 'AI Call',
