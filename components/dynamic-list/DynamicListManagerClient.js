@@ -157,7 +157,7 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 text-[16px]">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <div className="text-[11px] font-bold uppercase tracking-wide text-brand">Total Lists</div>
           <div className="mt-2 text-3xl font-bold text-foreground">{total}</div>
@@ -172,16 +172,16 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-[26px] font-bold text-foreground">Dynamic Lists</h2>
-            <p className="text-[15px] text-muted-foreground">
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 md:flex-1">
+            <h2 className="text-[22px] font-bold text-foreground sm:text-[26px]">Dynamic Lists</h2>
+            <p className="text-[14px] text-muted-foreground sm:text-[15px]">
               Segment {entityType === 'customer' ? 'customers' : 'leads'} by conditions.
               {entityType === 'lead' ? ' Workflows link to lists and fire when leads enter.' : ''}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 md:max-w-[60%] md:justify-end">
             <div className="inline-flex rounded-xl border border-border bg-background p-1">
               {Object.entries(DYNAMIC_LIST_ENTITY_LABELS).map(([value, label]) => (
                 <button
@@ -237,7 +237,7 @@ export default function DynamicListManagerClient({ membersPathBase = '/ai-automa
         )}
 
         <div className="mt-5 overflow-x-auto rounded-xl border border-border">
-          <table className="min-w-full text-left text-[13px]">
+          <table className="w-full min-w-[820px] text-left text-[13px]">
             <thead className="border-b border-border bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 font-semibold">Name</th>

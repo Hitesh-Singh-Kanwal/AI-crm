@@ -75,12 +75,33 @@ function followupFromApi(item) {
   })
 }
 
+function emptyFirstMessage(overrides = {}) {
+  return {
+    enabled: false,
+    useAiMessage: true,
+    message: '',
+    ...overrides,
+  }
+}
+
+function firstMessageFromApi(entry) {
+  if (!entry || typeof entry !== 'object') return emptyFirstMessage()
+  const message = entry.message ?? null
+  const hasCustomMessage = typeof message === 'string' && message.trim().length > 0
+  return emptyFirstMessage({
+    enabled: true,
+    useAiMessage: !hasCustomMessage,
+    message: hasCustomMessage ? message : '',
+  })
+}
+
 function emptyStageConfig(overrides = {}) {
   return {
     /** Local-only id for new unsaved cards */
     draftKey: null,
     stage: '',
     followupPrompt: '',
+    firstMessage: emptyFirstMessage(),
     followups: DEFAULT_FOLLOWUPS.map((f) => ({ ...f })),
     ...overrides,
   }
@@ -91,6 +112,7 @@ function stageConfigFromApi(entry) {
     draftKey: null,
     stage: String(entry?.stage || '').trim().toLowerCase(),
     followupPrompt: typeof entry?.followupPrompt === 'string' ? entry.followupPrompt : '',
+    firstMessage: firstMessageFromApi(entry?.firstMessage),
     followups:
       Array.isArray(entry?.followups) && entry.followups.length > 0
         ? entry.followups.map(followupFromApi)
@@ -448,9 +470,29 @@ export default function FollowupSettingsPage() {
       })
     }
 
+    if (config.firstMessage?.enabled) {
+      if (
+        !config.firstMessage.useAiMessage &&
+        !String(config.firstMessage.message || '').trim()
+      ) {
+        toast.error({
+          title: 'Validation',
+          message: `${label} · First message: enter a message or enable AI-generated.`,
+        })
+        return null
+      }
+    }
+
     return {
       stage,
       followupPrompt: String(config.followupPrompt || '').trim() || null,
+      firstMessage: config.firstMessage?.enabled
+        ? {
+            message: config.firstMessage.useAiMessage
+              ? null
+              : String(config.firstMessage.message || '').trim(),
+          }
+        : null,
       followups: steps,
     }
   }
@@ -531,6 +573,7 @@ export default function FollowupSettingsPage() {
         locationID: scope,
         stage: payload.stage,
         followupPrompt: payload.followupPrompt,
+        firstMessage: payload.firstMessage,
         followups: payload.followups,
       })
       if (!result.success) {
@@ -748,6 +791,7 @@ export default function FollowupSettingsPage() {
                               ) : null}
                             </div>
                             <p className="mt-0.5 text-xs text-muted-foreground">
+                              {config.firstMessage?.enabled ? 'First message · ' : ''}
                               {config.followups.length} step
                               {config.followups.length === 1 ? '' : 's'}
                               {config.followupPrompt?.trim() ? ' · custom prompt' : ''}
@@ -812,12 +856,97 @@ export default function FollowupSettingsPage() {
                               </p>
                             </div>
 
+                            <div className="space-y-3 rounded-lg border border-border bg-muted/10 p-4">
+                              <div className="flex items-center justify-between gap-4">
+                                <div>
+                                  <div className="text-sm font-semibold text-foreground">
+                                    First message
+                                  </div>
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    Sent once when a lead first enters this stage. Not resent after a
+                                    reply — restarts begin at Follow-up 1.
+                                  </p>
+                                </div>
+                                <Switch
+                                  checked={Boolean(config.firstMessage?.enabled)}
+                                  onCheckedChange={(checked) =>
+                                    updateStageConfig(stageIndex, {
+                                      firstMessage: {
+                                        ...(config.firstMessage || emptyFirstMessage()),
+                                        enabled: checked,
+                                      },
+                                    })
+                                  }
+                                  disabled={busy || scheduleDisabled}
+                                />
+                              </div>
+
+                              {config.firstMessage?.enabled ? (
+                                <div className="space-y-3 rounded-lg border border-border bg-background p-3">
+                                  <div className="flex items-center justify-between gap-4">
+                                    <div>
+                                      <div className="text-sm font-medium">AI-generated message</div>
+                                      <p className="mt-0.5 text-xs text-muted-foreground">
+                                        When on, the AI writes this first touch. When off, use a
+                                        fixed message.
+                                      </p>
+                                    </div>
+                                    <Switch
+                                      checked={Boolean(config.firstMessage?.useAiMessage)}
+                                      onCheckedChange={(checked) =>
+                                        updateStageConfig(stageIndex, {
+                                          firstMessage: {
+                                            ...(config.firstMessage || emptyFirstMessage()),
+                                            enabled: true,
+                                            useAiMessage: checked,
+                                            message: checked
+                                              ? ''
+                                              : config.firstMessage?.message || '',
+                                          },
+                                        })
+                                      }
+                                      disabled={busy || scheduleDisabled}
+                                    />
+                                  </div>
+
+                                  {!config.firstMessage?.useAiMessage ? (
+                                    <div className="space-y-2">
+                                      <label
+                                        htmlFor={`first-message-${cardKey}`}
+                                        className="text-sm font-medium"
+                                      >
+                                        Fixed message
+                                      </label>
+                                      <Textarea
+                                        id={`first-message-${cardKey}`}
+                                        rows={3}
+                                        value={config.firstMessage?.message || ''}
+                                        onChange={(e) =>
+                                          updateStageConfig(stageIndex, {
+                                            firstMessage: {
+                                              ...(config.firstMessage || emptyFirstMessage()),
+                                              enabled: true,
+                                              useAiMessage: false,
+                                              message: e.target.value,
+                                            },
+                                          })
+                                        }
+                                        placeholder="Hi! Thanks for reaching out — happy to help you get started."
+                                        disabled={busy || scheduleDisabled}
+                                      />
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+
                             <div className="flex items-center justify-between gap-3">
                               <div>
                                 <div className="text-sm font-medium">Follow-up steps</div>
                                 <p className="mt-0.5 text-xs text-muted-foreground">
-                                  Each step waits its interval after the previous message, then
-                                  sends.
+                                  After the first message (if enabled), or when a chain restarts,
+                                  these steps run in order. Each waits its interval after the
+                                  previous message.
                                 </p>
                               </div>
                               <Button
