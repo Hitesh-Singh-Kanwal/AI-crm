@@ -32,6 +32,7 @@ import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
 import SavedCardField from "@/components/payments/SavedCardField";
 import CheckNumberField from "@/components/payments/CheckNumberField";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
+import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
 
@@ -354,6 +355,25 @@ export default function PayInstallmentDialog({
             <p className="text-[12px] text-muted-foreground">
               ACH needs Stripe — connect it in Settings → Integrations.
             </p>
+          )}
+          {payWithACH && plan?.customerID && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+              <p className="text-[11px] text-foreground">
+                Bank transfer redirects off-screen — send a link instead and let the customer pay from their phone.
+              </p>
+              <SendPaymentLinkMenu
+                customerID={plan.customerID?._id ?? plan.customerID}
+                target={{
+                  kind: "installment",
+                  paymentPlanID: plan._id,
+                  installmentIndex,
+                }}
+                onSent={() => {
+                  onSuccess();
+                  onClose();
+                }}
+              />
+            </div>
           )}
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border/70 mt-1">

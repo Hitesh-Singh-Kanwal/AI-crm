@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -19,6 +19,8 @@ import EnrollMenu from "@/components/enrollment/EnrollMenu";
 import { CreateEventPurchaseDialog } from "@/app/settings/setup/components/EventsPurchases";
 import PayInstallmentDialog from "@/components/payments/PayInstallmentDialog";
 import PaymentDueCard from "@/components/payments/PaymentDueCard";
+import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
+import { useCardProcessor } from "@/app/settings/payments/useCardProcessor";
 import { hasPermission } from "@/lib/permissions";
 
 const TABS = [
@@ -141,6 +143,8 @@ export default function MiniStudentPanel({
   const [showSellIntroSheet, setShowSellIntroSheet] = useState(false);
   const [showEventPurchaseDialog, setShowEventPurchaseDialog] = useState(false);
   const [expandedEnrId, setExpandedEnrId] = useState(null);
+  const [justCreatedPurchaseID, setJustCreatedPurchaseID] = useState(null);
+  const purchaseRowRefs = useRef({});
 
   const [collectedPayments, setCollectedPayments] = useState([]);
   const [serviceCharges, setServiceCharges] = useState([]);
@@ -273,6 +277,16 @@ export default function MiniStudentPanel({
     if (planRes.success && Array.isArray(planRes.data))
       setPurchasePlans(planRes.data);
   }
+
+  // Scrolls the just-created purchase into view once its row exists in the
+  // reloaded list, since new rows aren't guaranteed to land at the top.
+  useEffect(() => {
+    if (!justCreatedPurchaseID) return;
+    const el = purchaseRowRefs.current[justCreatedPurchaseID];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = setTimeout(() => setJustCreatedPurchaseID(null), 3000);
+    return () => clearTimeout(timer);
+  }, [justCreatedPurchaseID, purchases]);
 
   async function toggleLineCheck(purchase, li) {
     const next = li.checkStatus !== "checked";
@@ -962,6 +976,7 @@ export default function MiniStudentPanel({
     if (Array.isArray(loc)) return loc[0]?._id || loc[0] || undefined;
     return loc._id || loc;
   })();
+  const { ready: cardProcessorReady } = useCardProcessor(locationID);
 
   const tabs = (
     <div className="flex border-b border-border shrink-0">
@@ -1578,7 +1593,12 @@ export default function MiniStudentPanel({
                   return (
                     <div
                       key={r._id}
-                      className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-2"
+                      ref={(el) => { purchaseRowRefs.current[r._id] = el; }}
+                      className={`rounded-lg border px-3 py-2.5 space-y-2 transition-colors ${
+                        String(r._id) === String(justCreatedPurchaseID)
+                          ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                          : "border-border bg-muted/30"
+                      }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -2040,6 +2060,17 @@ export default function MiniStudentPanel({
                                   >
                                     Pay Now
                                   </button>
+                                  {cardProcessorReady && customerId && (
+                                    <SendPaymentLinkMenu
+                                      customerID={customerId}
+                                      target={{
+                                        kind: "installment",
+                                        paymentPlanID: item.plan?._id,
+                                        installmentIndex: item.installmentIdx,
+                                      }}
+                                      onSent={onPaymentSuccess}
+                                    />
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -2506,7 +2537,10 @@ export default function MiniStudentPanel({
         customerID={customerId}
         customerName={customerName}
         locationID={locationID}
-        onSuccess={reloadEnrollments}
+        onSuccess={({ enrollmentID } = {}) => {
+          setExpandedEnrId(enrollmentID ? String(enrollmentID) : null);
+          reloadEnrollments();
+        }}
       />
       <SellIntroSheet
         open={showSellIntroSheet}
@@ -2517,7 +2551,10 @@ export default function MiniStudentPanel({
         onClose={() => setShowEventPurchaseDialog(false)}
         initialCustomerID={customerId}
         initialCustomerName={customerName}
-        onCreated={reloadPurchases}
+        onCreated={(purchase) => {
+          setJustCreatedPurchaseID(purchase?._id ?? null);
+          reloadPurchases();
+        }}
       />
       <PayInstallmentDialog
         open={!!payInstallTarget}

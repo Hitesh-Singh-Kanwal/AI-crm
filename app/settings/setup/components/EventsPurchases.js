@@ -22,6 +22,10 @@ import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import SavedCardField from '@/components/payments/SavedCardField'
 import CheckNumberField from '@/components/payments/CheckNumberField'
+import TerminalDeviceField from '@/components/payments/TerminalDeviceField'
+import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
+import { PAYMENT_METHODS_WITH_SAVED_CARD } from '@/lib/paymentMethods'
+import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
 
 const money = (n) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -561,8 +565,9 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const todayISO = todayDateInput
   const [billingType, setBillingType] = useState('one_time') // one_time | payment_plan | flexible
   const [collectNow, setCollectNow] = useState(true)
-  const [payMethod, setPayMethod] = useState('cash') // cash | card | cheque | other | saved_card
+  const [payMethod, setPayMethod] = useState('cash') // cash | card | ach | terminal | cheque | other | saved_card
   const [savedCardID, setSavedCardID] = useState('')
+  const [deviceID, setDeviceID] = useState('')
   const [checkNumber, setCheckNumber] = useState('')
   const [collectDate, setCollectDate] = useState(todayISO())
   const [useWallet, setUseWallet] = useState(false)
@@ -587,7 +592,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     setCustomer(initialCustomerID ? { _id: initialCustomerID, name: initialCustomerName || '' } : null)
     setCustomerQuery(''); setEventTypeID(''); setTemplateID('')
     setName(''); setItems([]); setSaveAsTemplate(false)
-    setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setSavedCardID(''); setCheckNumber(''); setCollectDate(todayISO())
+    setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setSavedCardID(''); setDeviceID(''); setCheckNumber(''); setCollectDate(todayISO())
     setUseWallet(false); setWalletAmount(''); setWalletBalance(null)
     setTipEnabled(false); setTipTeacherID(''); setTipAmount('')
     setPlanCount('3'); setPlanFreq('monthly'); setPlanStart(todayISO())
@@ -701,6 +706,8 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     const lineItems = items.filter((li) => (li.name || '').trim())
     if (lineItems.length === 0) { toast.error('Add at least one line item'); return }
     if (payable > 0 && collectsBySavedCard && !savedCardID) { toast.error('Select a saved card'); return }
+    if (payable > 0 && collectNow && achNotAvailable) { toast.error('ACH needs Stripe — connect it in Settings → Integrations.'); return }
+    if (payable > 0 && collectNow && terminalDeviceMissing) { toast.error('Select a terminal device'); return }
     setSaving(true)
     try {
       const res = await api.post('/api/purchase', {
@@ -729,11 +736,13 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
             walletAmount: walletApplied > 0 ? walletApplied : undefined, notes: name.trim(),
             ...(payMethod === 'saved_card' ? { cardToken: savedCardID } : {}),
             ...(payMethod === 'cheque' ? { checkNumber } : {}),
+            ...(payMethod === 'terminal' ? { deviceID } : {}),
             tip,
           })
           if (!payRes.success) toast.error('Purchase saved, but payment failed', { description: payRes.error })
-          else if (payRes.data?.checkoutUrl) { window.open(payRes.data.checkoutUrl, '_blank', 'noopener'); toast.success('Card checkout opened in a new tab') }
+          else if (payRes.data?.checkoutUrl) { window.open(payRes.data.checkoutUrl, '_blank', 'noopener'); toast.success(payMethod === 'ach' ? 'Bank transfer checkout opened in a new tab' : 'Card checkout opened in a new tab') }
           else if (payRes.data?.pending && payMethod === 'saved_card') toast.success('Events & products created — card charged, confirming with Stripe')
+          else if (payRes.data?.pending && payMethod === 'terminal') toast.success('Charge sent to the reader — waiting for the card.')
           else toast.success('Events & products created and paid')
         } else {
           toast.success('Events & products created')
@@ -742,7 +751,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         // payment_plan or flexible → build a payment plan
         let billing
         if (isPlan) {
-          billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}) }
+          billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}), ...(payMethod === 'terminal' ? { deviceID } : {}) }
         } else {
           const scheduleRows = [
             ...(flexInitialAmountN > 0 ? [{ dueDate: flexInitialDate, amount: flexInitialAmountN }] : []),
@@ -750,7 +759,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
               .filter((r) => r.dueDate && Number(r.amount) > 0)
               .map((r) => ({ dueDate: r.dueDate, amount: Number(r.amount) })),
           ]
-          billing = { customInstallments: scheduleRows, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}) }
+          billing = { customInstallments: scheduleRows, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}), ...(payMethod === 'terminal' ? { deviceID } : {}) }
         }
         const effectiveCollectNow = isPlan ? collectNow : flexInitialAmountN > 0 && collectNow
         const planRes = await api.post('/api/payment-plan/purchase', {
@@ -770,8 +779,13 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   // loaded customer list for the location the saved-card lookup needs.
   const chargeLocation =
     customer?.locationID ?? customers.find((c) => String(c._id) === String(customer?._id))?.locationID
+  // ACH is Stripe-only hosted checkout — Clover has no ACH product, same guard as
+  // every other payment form (PaymentDueCard, NewEnrollmentPackageInline, …).
+  const { provider: cardProvider } = useCardProcessor(chargeLocation)
+  const achNotAvailable = payMethod === 'ach' && cardProvider !== 'stripe'
   const collectsBySavedCard = payMethod === 'saved_card' && collectNow
   const savedCardMissing = collectsBySavedCard && !savedCardID
+  const terminalDeviceMissing = payMethod === 'terminal' && collectNow && !deviceID
 
   const canProceed = customer && name.trim() && items.some((li) => (li.name || '').trim())
 
@@ -901,17 +915,29 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                 ))}
               </div>
 
-              {/* Method + date (shared) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Method + date (shared) — stacked, not side by side: the method
+                  picker's button grid needs full width to read cleanly, and
+                  squeezing it into half a row next to the date field left it
+                  lopsided against a much shorter field. */}
+              <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
                   <Label>Payment method</Label>
-                  <select className={selectCls} value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="cheque">Cheque</option>
-                    <option value="other">Bank transfer / other</option>
-                    <option value="saved_card">Saved card</option>
-                  </select>
+                  <PaymentMethodPicker
+                    methods={PAYMENT_METHODS_WITH_SAVED_CARD.filter((m) => m.value !== 'wallet')}
+                    value={payMethod}
+                    onChange={setPayMethod}
+                  />
+                  {achNotAvailable && (
+                    <p className="text-[12px] text-muted-foreground">
+                      ACH needs Stripe — connect it in Settings → Integrations.
+                    </p>
+                  )}
+                  <TerminalDeviceField
+                    method={payMethod}
+                    locationID={chargeLocation}
+                    deviceID={deviceID}
+                    onDeviceChange={setDeviceID}
+                  />
                   <SavedCardField
                     method={payMethod}
                     locationID={chargeLocation}
@@ -1091,7 +1117,15 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
               <Button
                 type="button"
                 onClick={submit}
-                disabled={saving || walletOver || (isPlan && planCountN < 2) || (isFlex && !flexBalanced)}
+                disabled={
+                  saving ||
+                  walletOver ||
+                  (isPlan && planCountN < 2) ||
+                  (isFlex && !flexBalanced) ||
+                  (collectNow && savedCardMissing) ||
+                  (collectNow && achNotAvailable) ||
+                  (collectNow && terminalDeviceMissing)
+                }
               >
                 {saving
                   ? 'Saving…'
@@ -1100,7 +1134,11 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                     : isFlex
                       ? 'Create schedule'
                       : collectNow
-                        ? (payMethod === 'card' ? 'Create & open checkout' : 'Create & record payment')
+                        ? (payMethod === 'card'
+                            ? 'Create & open checkout'
+                            : payMethod === 'ach'
+                              ? 'Create & pay by bank transfer'
+                              : 'Create & record payment')
                         : 'Create purchase'}
               </Button>
             </>

@@ -539,6 +539,19 @@ export default function Header({
         open={createEnrollmentOpen}
         initialMode={enrollMode}
         onClose={() => setCreateEnrollmentOpen(false)}
+        onSuccess={({ customerID, enrollmentID } = {}) => {
+          setCreateEnrollmentOpen(false);
+          // This sheet has no fixed customer — it isn't opened from a profile
+          // page — so opening what was just created means navigating there.
+          if (customerID) {
+            const params = new URLSearchParams({ section: "services", view: "active-enrollments" });
+            if (enrollmentID) params.set("enrollment", enrollmentID);
+            // A hard nav, not router.push: this page reads its section/view/id
+            // from window.location.search only once on mount, not reactively —
+            // pushing to the same customer already open wouldn't refresh it.
+            window.location.href = `/settings/users-roles/customers/${customerID}?${params.toString()}`;
+          }
+        }}
       />
       <SellIntroSheet
         open={sellIntroOpen}
@@ -547,6 +560,15 @@ export default function Header({
       <CreateEventPurchaseDialog
         open={purchaseOpen}
         onClose={() => setPurchaseOpen(false)}
+        onCreated={(purchase) => {
+          setPurchaseOpen(false);
+          const customerID = purchase?.customerID?._id ?? purchase?.customerID;
+          if (customerID) {
+            const params = new URLSearchParams({ section: "services", view: "purchases" });
+            if (purchase?._id) params.set("purchase", purchase._id);
+            window.location.href = `/settings/users-roles/customers/${customerID}?${params.toString()}`;
+          }
+        }}
       />
     </>
   );

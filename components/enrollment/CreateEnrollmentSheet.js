@@ -305,7 +305,7 @@ export default function CreateEnrollmentSheet({
 
     setSubmitting(false)
     handleClose()
-    onSuccess?.()
+    onSuccess?.({ customerID: resolvedCustomerID, enrollmentID })
     return { ok: true, checkoutUrl }
   }
 

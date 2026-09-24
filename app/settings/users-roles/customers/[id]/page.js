@@ -2726,7 +2726,6 @@ function PackagesTab({ customerID, locationID }) {
                       onChangeDate={setChangeInstallDateTarget}
                       onAddInstallment={setAddInstallTarget}
                       onSent={load}
-                      defaultOpen
                     />
                   </div>
                 )}
@@ -4261,7 +4260,6 @@ function EnrollmentsTab({
                         onChangeDate={setChangeInstallDateTarget}
                         onAddInstallment={setAddInstallTarget}
                         onSent={load}
-                        defaultOpen
                       />
                     )}
 
@@ -4937,8 +4935,9 @@ function EnrollmentsTab({
         customerID={customerID}
         customerName={customerName}
         locationID={locationID}
-        onSuccess={() => {
+        onSuccess={({ enrollmentID } = {}) => {
           toast.success("Enrollment and package created.");
+          setSelectedEnrId(enrollmentID ? String(enrollmentID) : null);
           load();
         }}
       />
@@ -5647,12 +5646,13 @@ function EnrollmentsTab({
 
 // ─── Payment History Tab ─────────────────────────────────────────────────────
 
-function PurchasesTab({ customerID, customerName, locationID }) {
+function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID = null }) {
   const [rows, setRows] = useState([]);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [createPurchaseOpen, setCreatePurchaseOpen] = useState(false);
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState(initialPurchaseID);
   const toast = useToast();
 
   const [plans, setPlans] = useState([]);
@@ -5704,12 +5704,33 @@ function PurchasesTab({ customerID, customerName, locationID }) {
       </div>
     );
 
+  // Rows arrive newest-first (createdAt: -1) — falls back to the newest
+  // purchase, same convention as the Enrollments dropdown above.
+  const selectedRow =
+    rows.find((r) => String(r._id) === String(selectedPurchaseId)) ?? rows[0] ?? null;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[13px] text-muted-foreground">
-          {rows.length} purchase{rows.length !== 1 ? "s" : ""}
-        </p>
+        {rows.length > 0 ? (
+          <div className="relative">
+            <select
+              value={selectedRow ? String(selectedRow._id) : ""}
+              onChange={(e) => setSelectedPurchaseId(e.target.value)}
+              className="h-8 rounded-lg border border-border bg-background pl-3 pr-8 text-[12px] font-medium text-foreground outline-none focus:border-primary appearance-none cursor-pointer"
+            >
+              {rows.map((r) => (
+                <option key={r._id} value={String(r._id)}>
+                  {r.name}
+                  {r.createdAt ? ` — ${formatDate(r.createdAt)}` : ""}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          </div>
+        ) : (
+          <p className="text-[13px] text-muted-foreground">0 purchases</p>
+        )}
         <Button
           size="sm"
           className="h-8 text-[12px]"
@@ -5719,13 +5740,13 @@ function PurchasesTab({ customerID, customerName, locationID }) {
         </Button>
       </div>
 
-      {rows.length === 0 ? (
+      {!selectedRow ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
           No events or products yet. Click "Enroll" to create one.
         </div>
       ) : (
-        <div className="space-y-4">
-          {rows.map((r) => {
+        (() => {
+            const r = selectedRow;
             const due = Number(r.amountDue ?? r.total ?? 0);
             const lineItems = r.lineItems || [];
             const rowPayments = paymentsFor(r._id);
@@ -5802,7 +5823,6 @@ function PurchasesTab({ customerID, customerName, locationID }) {
                         onChangeDate={setChangeInstallDateTarget}
                         onAddInstallment={setAddInstallTarget}
                         onSent={load}
-                        defaultOpen
                       />
                     )}
 
@@ -5928,8 +5948,7 @@ function PurchasesTab({ customerID, customerName, locationID }) {
                 </div>
               </div>
             );
-          })}
-        </div>
+        })()
       )}
 
       <CreateEventPurchaseDialog
@@ -5937,8 +5956,9 @@ function PurchasesTab({ customerID, customerName, locationID }) {
         onClose={() => setCreatePurchaseOpen(false)}
         initialCustomerID={customerID}
         initialCustomerName={customerName}
-        onCreated={() => {
+        onCreated={(purchase) => {
           toast.success("Purchase created");
+          setSelectedPurchaseId(purchase?._id ?? null);
           load();
         }}
       />
@@ -7680,6 +7700,7 @@ function useAccountSummary(customerID) {
     memberships: [],
     events: [],
     payments: [],
+    purchases: [],
     wallet: 0,
     sessions: { total: 0, used: 0, remaining: 0 },
   });
@@ -7695,13 +7716,14 @@ function useAccountSummary(customerID) {
       end: to.toISOString(),
     });
 
-    const [enrRes, memRes, calRes, payRes, wallet] = await Promise.all([
+    const [enrRes, memRes, calRes, payRes, purchRes, wallet] = await Promise.all([
       // The list endpoint pages at 20 by default — a long-tenured student would
       // otherwise lose every enrollment past the first page.
       api.get(`/api/enrollment?customerID=${customerID}&limit=500`),
       api.get(`/api/customer-membership/customer/${customerID}`),
       api.get(`/api/calendar/customer/${customerID}?${calParams}`),
       api.get(`/api/payment/customer/${customerID}?page=1&limit=500`),
+      api.get(`/api/purchase?customerID=${customerID}&limit=500`),
       fetchWalletBalance(customerID),
     ]);
 
@@ -7736,6 +7758,7 @@ function useAccountSummary(customerID) {
       events:
         calRes.success && Array.isArray(calRes.data) ? calRes.data : [],
       payments: payRes.success ? payRes.data || [] : [],
+      purchases: purchRes.success ? purchRes.data || [] : [],
       wallet: Number(wallet) || 0,
       sessions,
     });
@@ -7871,6 +7894,24 @@ function SectionIndex({ section, summary, onOpen }) {
               hint: pkg?.status ?? enr.status,
               open: () =>
                 onOpen("active-enrollments", { enrollmentID: String(enr._id) }),
+            };
+          }),
+        };
+      }
+      case "purchases": {
+        const purchases = summary.purchases;
+        return {
+          value: `${purchases.length} total`,
+          hint: purchases.length ? "Events & Products" : "None yet",
+          children: purchases.map((p) => {
+            const due = Number(p.amountDue ?? p.total ?? 0);
+            return {
+              id: String(p._id),
+              title: p.name,
+              sub: `Purchased ${formatDate(p.createdAt)}`,
+              value: due > 0 ? `${money(due)} due` : "Paid in full",
+              hint: paymentStatusLabel(p.billingStatus),
+              open: () => onOpen("purchases", { purchaseID: String(p._id) }),
             };
           }),
         };
@@ -8566,12 +8607,22 @@ export default function CustomerDetailPage() {
       ? params.get("section")
       : "overview";
     const view = VIEW_META[params.get("view")] ? params.get("view") : null;
-    return { section, view, enrollmentID: params.get("enrollment") || null };
+    return {
+      section,
+      view,
+      enrollmentID: params.get("enrollment") || null,
+      purchaseID: params.get("purchase") || null,
+    };
   });
   const summary = useAccountSummary(id);
 
   const go = useCallback((section, view = null, extra = {}) => {
-    setNav({ section, view, enrollmentID: extra.enrollmentID ?? null });
+    setNav({
+      section,
+      view,
+      enrollmentID: extra.enrollmentID ?? null,
+      purchaseID: extra.purchaseID ?? null,
+    });
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     params.set("section", section);
@@ -8579,6 +8630,8 @@ export default function CustomerDetailPage() {
     else params.delete("view");
     if (extra.enrollmentID) params.set("enrollment", extra.enrollmentID);
     else params.delete("enrollment");
+    if (extra.purchaseID) params.set("purchase", extra.purchaseID);
+    else params.delete("purchase");
     window.history.replaceState(null, "", `?${params.toString()}`);
   }, []);
 
@@ -8662,6 +8715,7 @@ export default function CustomerDetailPage() {
         customerID={customer._id}
         customerName={customer.name || customer.email || ""}
         locationID={resolveLocationID(customer)}
+        initialPurchaseID={nav.purchaseID}
       />
     ),
     payments: () => <PaymentsTab customerID={customer._id} />,
