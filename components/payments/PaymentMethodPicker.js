@@ -46,9 +46,10 @@ export default function PaymentMethodPicker({ methods, value, onChange, classNam
       className={`grid gap-1.5 ${className || ''}`}
       // Fixed at `repeat(methods.length, 1fr)` squeezed every option into one row no
       // matter how many there were — fine at 4-5 methods, unreadable once cheque/ACH
-      // pushed it to 7. auto-fill instead sizes columns to a sane minimum and wraps
-      // the rest onto new rows, so it stays readable as more methods get added.
-      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))' }}
+      // pushed it to 7. auto-fit (not auto-fill) sizes columns to a sane minimum,
+      // wraps the rest onto new rows, and — unlike auto-fill — collapses any empty
+      // trailing column tracks instead of reserving their width as dead space.
+      style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))' }}
     >
       {visible.map((m) => {
         const Icon = METHOD_ICONS[m.value]

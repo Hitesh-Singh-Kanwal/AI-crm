@@ -337,6 +337,21 @@ export default function PaymentDueCard({
                 ACH needs Stripe — connect it in Settings → Integrations.
               </p>
             )}
+            {payWithACH && sendLinkTarget && customerID && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+                <p className="text-[11px] text-foreground">
+                  Bank transfer redirects off-screen — send a link instead and let the customer pay from their phone.
+                </p>
+                <SendPaymentLinkMenu
+                  customerID={customerID}
+                  target={sendLinkTarget}
+                  onSent={() => {
+                    setMode(null);
+                    onSuccess();
+                  }}
+                />
+              </div>
+            )}
             <TerminalDeviceField
               method={method}
               locationID={locationID}

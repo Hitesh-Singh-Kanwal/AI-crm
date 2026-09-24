@@ -3072,7 +3072,7 @@ export default function AppointmentComposerPanel({
                 setField("service_id", "");
               }
               setShowEnrollmentWizard(false);
-              return { ok: true, checkoutUrl: created?.checkoutUrl || null };
+              return { ok: true, checkoutUrl: created?.checkoutUrl || null, enrollmentID: createdId };
             }
             return { ok: false, checkoutUrl: null };
           }}
