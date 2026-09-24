@@ -78,6 +78,8 @@ function followupFromApi(item) {
 function emptyFirstMessage(overrides = {}) {
   return {
     enabled: false,
+    intervalHours: '0',
+    intervalMinutes: '0',
     useAiMessage: true,
     message: '',
     ...overrides,
@@ -90,6 +92,8 @@ function firstMessageFromApi(entry) {
   const hasCustomMessage = typeof message === 'string' && message.trim().length > 0
   return emptyFirstMessage({
     enabled: true,
+    intervalHours: String(entry.intervalHours ?? 0),
+    intervalMinutes: String(entry.intervalMinutes ?? 0),
     useAiMessage: !hasCustomMessage,
     message: hasCustomMessage ? message : '',
   })
@@ -470,29 +474,42 @@ export default function FollowupSettingsPage() {
       })
     }
 
+    let firstMessage = null
     if (config.firstMessage?.enabled) {
+      const firstLabel = `${label} · First message`
+      const hours = Number(config.firstMessage.intervalHours || 0)
+      const minutes = Number(config.firstMessage.intervalMinutes || 0)
+      if (!Number.isInteger(hours) || hours < 0 || hours > 72) {
+        toast.error({ title: 'Validation', message: `${firstLabel}: hours must be 0–72.` })
+        return null
+      }
+      if (!Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+        toast.error({ title: 'Validation', message: `${firstLabel}: minutes must be 0–59.` })
+        return null
+      }
       if (
         !config.firstMessage.useAiMessage &&
         !String(config.firstMessage.message || '').trim()
       ) {
         toast.error({
           title: 'Validation',
-          message: `${label} · First message: enter a message or enable AI-generated.`,
+          message: `${firstLabel}: enter a message or enable AI-generated.`,
         })
         return null
+      }
+      firstMessage = {
+        intervalHours: hours,
+        intervalMinutes: minutes,
+        message: config.firstMessage.useAiMessage
+          ? null
+          : String(config.firstMessage.message || '').trim(),
       }
     }
 
     return {
       stage,
       followupPrompt: String(config.followupPrompt || '').trim() || null,
-      firstMessage: config.firstMessage?.enabled
-        ? {
-            message: config.firstMessage.useAiMessage
-              ? null
-              : String(config.firstMessage.message || '').trim(),
-          }
-        : null,
+      firstMessage,
       followups: steps,
     }
   }
@@ -863,8 +880,10 @@ export default function FollowupSettingsPage() {
                                     First message
                                   </div>
                                   <p className="mt-0.5 text-xs text-muted-foreground">
-                                    Sent once when a lead first enters this stage. Not resent after a
-                                    reply — restarts begin at Follow-up 1.
+                                    Sent once to new leads added manually, by bulk upload, or from a
+                                    form into this stage. Leads from SMS, email, or calls skip it
+                                    (they already got a live reply), and so do existing leads moved
+                                    into this stage. Never resent — restarts begin at Follow-up 1.
                                   </p>
                                 </div>
                                 <Switch
@@ -880,6 +899,65 @@ export default function FollowupSettingsPage() {
                                   disabled={busy || scheduleDisabled}
                                 />
                               </div>
+
+                              {config.firstMessage?.enabled ? (
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                  <div className="space-y-2">
+                                    <label
+                                      htmlFor={`first-message-hours-${cardKey}`}
+                                      className="text-sm font-medium"
+                                    >
+                                      Wait (hours)
+                                    </label>
+                                    <Input
+                                      id={`first-message-hours-${cardKey}`}
+                                      type="number"
+                                      min={0}
+                                      max={72}
+                                      value={config.firstMessage?.intervalHours ?? '0'}
+                                      onChange={(e) =>
+                                        updateStageConfig(stageIndex, {
+                                          firstMessage: {
+                                            ...(config.firstMessage || emptyFirstMessage()),
+                                            enabled: true,
+                                            intervalHours: e.target.value,
+                                          },
+                                        })
+                                      }
+                                      disabled={busy || scheduleDisabled}
+                                    />
+                                    <p className="text-xs text-muted-foreground">0–72 hours</p>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label
+                                      htmlFor={`first-message-minutes-${cardKey}`}
+                                      className="text-sm font-medium"
+                                    >
+                                      Wait (minutes)
+                                    </label>
+                                    <Input
+                                      id={`first-message-minutes-${cardKey}`}
+                                      type="number"
+                                      min={0}
+                                      max={59}
+                                      value={config.firstMessage?.intervalMinutes ?? '0'}
+                                      onChange={(e) =>
+                                        updateStageConfig(stageIndex, {
+                                          firstMessage: {
+                                            ...(config.firstMessage || emptyFirstMessage()),
+                                            enabled: true,
+                                            intervalMinutes: e.target.value,
+                                          },
+                                        })
+                                      }
+                                      disabled={busy || scheduleDisabled}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                      0–59 minutes · 0h 0m sends right away
+                                    </p>
+                                  </div>
+                                </div>
+                              ) : null}
 
                               {config.firstMessage?.enabled ? (
                                 <div className="space-y-3 rounded-lg border border-border bg-background p-3">
