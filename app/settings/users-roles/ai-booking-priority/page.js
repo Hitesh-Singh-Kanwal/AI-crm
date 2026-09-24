@@ -9,6 +9,7 @@ import {
   Clock3,
   Users,
   ArrowDown,
+  Palette,
 } from 'lucide-react'
 import {
   DndContext,
@@ -144,6 +145,8 @@ export default function AiBookingPriorityPage() {
   const [prioritized, setPrioritized] = useState([])
   const [available, setAvailable] = useState([])
   const [loadError, setLoadError] = useState('')
+  const [agentBookingColor, setAgentBookingColor] = useState(null)
+  const [colorSaving, setColorSaving] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -191,9 +194,43 @@ export default function AiBookingPriorityPage() {
     }
   }, [])
 
+  const loadAgentBookingColor = useCallback(async () => {
+    try {
+      const result = await api.get('/api/ai-settings')
+      if (result?.success) {
+        setAgentBookingColor(result.data?.agentBookingColor || null)
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, [])
+
   useEffect(() => {
     load()
-  }, [load])
+    loadAgentBookingColor()
+  }, [load, loadAgentBookingColor])
+
+  async function saveAgentBookingColor(value) {
+    setColorSaving(true)
+    try {
+      const result = await api.put('/api/ai-settings', { agentBookingColor: value })
+      if (result?.success) {
+        setAgentBookingColor(result.data?.agentBookingColor || null)
+        toast.success(
+          value
+            ? 'Agent booking color updated'
+            : 'Agent booking color reset to default',
+        )
+      } else {
+        toast.error(result?.error || result?.message || 'Unable to save color')
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('Unexpected error saving color')
+    } finally {
+      setColorSaving(false)
+    }
+  }
 
   async function persist(nextPrioritized, nextAvailable) {
     setSaving(true)
@@ -302,6 +339,51 @@ export default function AiBookingPriorityPage() {
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               Slots come from studio hours and each teacher’s existing calendar bookings.
             </p>
+          </div>
+        </div>
+
+        {/* Agent booking color */}
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+              <Palette className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">Agent booking color</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Bookings the AI agent makes (e.g. intro lessons sold by text/voice) use this color
+                on the calendar when no Setup service color applies.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  type="color"
+                  value={agentBookingColor || '#6366f1'}
+                  onChange={(e) => saveAgentBookingColor(e.target.value)}
+                  disabled={colorSaving}
+                  className="h-9 w-12 cursor-pointer rounded-lg border border-border bg-background p-0.5 disabled:opacity-50"
+                  aria-label="Agent booking color"
+                />
+                <span className="font-mono text-sm text-muted-foreground">
+                  {agentBookingColor || 'Default'}
+                </span>
+                {agentBookingColor ? (
+                  <button
+                    type="button"
+                    onClick={() => saveAgentBookingColor(null)}
+                    disabled={colorSaving}
+                    className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  >
+                    Reset to default
+                  </button>
+                ) : null}
+                {colorSaving ? (
+                  <Badge variant="secondary" className="gap-1.5">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
+                    Saving
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
           </div>
         </div>
 
