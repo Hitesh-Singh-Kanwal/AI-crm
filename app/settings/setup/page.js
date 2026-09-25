@@ -160,8 +160,6 @@ function SortableServiceRow({ service, selectedIds, toggleOne, onEdit, onDelete,
       <TableCell className="py-3 px-4 max-w-[200px]"><p className="text-sm text-muted-foreground truncate">{service.description || '—'}</p></TableCell>
       <TableCell className="py-3 px-4"><p className="text-sm text-foreground">{service.price != null ? `$${Number(service.price).toFixed(2)}` : '—'}</p></TableCell>
       <TableCell className="py-3 px-4"><BoolBadge value={service.isChargeable} /></TableCell>
-      <TableCell className="py-3 px-4"><BoolBadge value={service.isSundry} /></TableCell>
-      <TableCell className="py-3 px-4"><BoolBadge value={service.countOnCalendar} /></TableCell>
       <TableCell className="py-3 px-4">
         {service.documents?.length > 0 ? (
           <div className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-sm text-foreground">{service.documents.length}</span></div>
@@ -407,8 +405,6 @@ function ServicesTab() {
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Description</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Price</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Chargeable</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Sundry</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">On Calendar</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Documents</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Memberships</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Status</TableHead>

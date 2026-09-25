@@ -27,6 +27,10 @@ export default function CreateEnrollmentSheet({
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [mode, setMode] = useState(initialMode)
+  // Set while a "Review and Pay" agreement session is pending student
+  // acceptance — the enrollment/package isn't created and nothing is charged
+  // until this resolves to 'signed' (see resolveAndMaybeGate).
+  const [agreementGate, setAgreementGate] = useState(null)
 
   useEffect(() => {
     if (open) setMode(initialMode)
@@ -126,7 +130,7 @@ export default function CreateEnrollmentSheet({
     onClose?.()
   }
 
-  async function handleCreateEnrollmentAndPackage(payload) {
+  async function handleCreateEnrollmentAndPackage(payload, linkContractID = null) {
     if (!resolvedCustomerID) {
       setError('Please select a student.')
       return { ok: false }
@@ -303,10 +307,181 @@ export default function CreateEnrollmentSheet({
       checkoutUrl = payRes.data?.checkoutUrl || null
     }
 
+    if (linkContractID) {
+      api.patch(`/api/agreement-session/${linkContractID}/link-payment`, { enrollmentID }).catch(() => {})
+    }
+
     setSubmitting(false)
     handleClose()
     onSuccess?.({ customerID: resolvedCustomerID, enrollmentID })
     return { ok: true, checkoutUrl }
+  }
+
+  // Mirrors NewEnrollmentPackageInline's own installment preview math, so the
+  // agreement the student sees lists the same schedule they'll actually get —
+  // this only needs to exist for the pre-creation "Review and Pay" render.
+  function buildSchedulePreview(payload) {
+    const total = (payload.services || []).reduce((sum, s) => sum + Number(s.finalAmount || 0), 0)
+
+    if (payload.billingType === 'payment_plan') {
+      const b = payload.billing || {}
+      const mode = b.installmentMode || 'count'
+      let n
+      let baseAmt
+      if (mode === 'amount') {
+        const amt = Number(b.installmentAmount || 0)
+        if (!amt) return []
+        n = Math.ceil(total / amt)
+        baseAmt = amt
+      } else {
+        n = Number(b.numberOfInstallments || 0)
+        if (!n) return []
+        baseAmt = Number((total / n).toFixed(2))
+      }
+      if (!b.startDate) return []
+      let d = new Date(b.startDate)
+      const rows = []
+      for (let i = 0; i < n; i++) {
+        const isLast = i === n - 1
+        const amount = isLast ? Number((total - baseAmt * (n - 1)).toFixed(2)) : baseAmt
+        rows.push({ description: `Installment ${i + 1}`, amount, dueDate: new Date(d), status: 'upcoming' })
+        if (b.frequency === 'weekly') d = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000)
+        else if (b.frequency === 'biweekly') d = new Date(d.getTime() + 14 * 24 * 60 * 60 * 1000)
+        else { d = new Date(d); d.setMonth(d.getMonth() + 1) }
+      }
+      return rows
+    }
+
+    if (payload.billingType === 'flexible') {
+      const b = payload.billing || {}
+      const rows = []
+      if (Number(b.initialAmount) > 0 && b.initialDate) {
+        rows.push({ description: 'Initial payment', amount: Number(b.initialAmount), dueDate: new Date(b.initialDate), status: b.collectNow === false ? 'upcoming' : 'paid' })
+      }
+      for (const c of b.futurePayments || []) {
+        if (c.dueDate && Number(c.amount) > 0) {
+          rows.push({ description: 'Scheduled payment', amount: Number(c.amount), dueDate: new Date(c.dueDate), status: 'upcoming' })
+        }
+      }
+      return rows
+    }
+
+    return []
+  }
+
+  // Company-level gate: some enrollment types require the student to accept
+  // an agreement packet (via studio iPad or texted link) before anything is
+  // created or charged — see settings/documents "Agreement Settings".
+  async function resolveAndMaybeGate(payload) {
+    if (!resolvedCustomerID) {
+      setError('Please select a student.')
+      return { ok: false }
+    }
+
+    const resolveRes = await api.get(`/api/agreement-session/resolve?enrollmentType=${mode}`)
+    if (!resolveRes?.success || !resolveRes.data?.required) {
+      return handleCreateEnrollmentAndPackage(payload)
+    }
+
+    setError('')
+    setSubmitting(true)
+
+    const totalPaid = (payload.services || []).reduce((sum, s) => sum + Number(s.finalAmount || 0), 0)
+    const totalDiscount = (payload.services || []).reduce((sum, s) => sum + Number(s.discountAmount || 0), 0)
+    const schedule = buildSchedulePreview(payload)
+
+    const sessionRes = await api.post('/api/agreement-session', {
+      customerID: resolvedCustomerID,
+      enrollmentType: mode,
+      isRecurringBilling: payload.billingType === 'payment_plan',
+      draftEnrollment: {
+        label: payload?.label?.trim() || undefined,
+        purchaseDate: new Date(),
+        services: payload.services || [],
+        totalPaid,
+        totalDiscount,
+        amountCollected: 0,
+        billingType: payload.billingType,
+        schedule,
+      },
+    })
+
+    setSubmitting(false)
+
+    if (!sessionRes?.success) {
+      setError(sessionRes?.error || 'Failed to send the agreement for review.')
+      return { ok: false }
+    }
+
+    setAgreementGate({
+      contractID: sessionRes.data.contract._id,
+      ipadUrl: sessionRes.data.ipadUrl,
+      smsUrl: sessionRes.data.smsUrl,
+      payload,
+      status: 'sent',
+    })
+
+    return { ok: true, pendingAgreement: true }
+  }
+
+  useEffect(() => {
+    if (!agreementGate || agreementGate.status !== 'sent') return
+    const interval = setInterval(async () => {
+      const statusRes = await api.get(`/api/agreement-session/${agreementGate.contractID}/status`)
+      if (!statusRes?.success) return
+      if (statusRes.data.status === 'signed') {
+        clearInterval(interval)
+        setAgreementGate(null)
+        await handleCreateEnrollmentAndPackage(agreementGate.payload, agreementGate.contractID)
+      }
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [agreementGate])
+
+  async function handleResendAgreement() {
+    if (!agreementGate) return
+    const result = await api.post(`/api/agreement-session/${agreementGate.contractID}/resend`, {})
+    if (result?.success) {
+      setAgreementGate((p) => ({ ...p, smsUrl: result.data.smsUrl, ipadUrl: result.data.ipadUrl }))
+    }
+  }
+
+  if (agreementGate) {
+    return (
+      <Sheet open={open} onClose={() => {}} width={SHEET_WIDTH}>
+        <SheetContent className="flex flex-col items-center justify-center gap-4 p-8 text-center">
+          <p className="text-[15px] font-semibold text-foreground">Waiting for student acceptance</p>
+          <p className="text-[13px] text-muted-foreground max-w-sm">
+            The enrollment agreement has been sent to the student&apos;s phone. Open it on the studio iPad, or wait for
+            them to accept on their device. The enrollment won&apos;t be created and nothing will be charged until they accept.
+          </p>
+          <a
+            href={agreementGate.ipadUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[13px] text-brand hover:underline font-medium"
+          >
+            Open on studio iPad
+          </a>
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={handleResendAgreement}
+              className="text-[12px] text-muted-foreground hover:text-foreground underline"
+            >
+              Resend link
+            </button>
+            <button
+              type="button"
+              onClick={() => setAgreementGate(null)}
+              className="text-[12px] text-muted-foreground hover:text-foreground underline"
+            >
+              Cancel
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    )
   }
 
   return (
@@ -371,7 +546,7 @@ export default function CreateEnrollmentSheet({
                 customerID={resolvedCustomerID}
                 locationID={resolvedLocationID}
                 onCancel={handleClose}
-                onSubmit={handleCreateEnrollmentAndPackage}
+                onSubmit={resolveAndMaybeGate}
               />
 
               {error && (

@@ -8748,7 +8748,9 @@ export default function CustomerDetailPage() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-[22px] font-semibold leading-tight text-foreground truncate">
-                  {customer.name}
+                  {[customer.name, ...(customer.members || []).map((m) => m.name)]
+                    .filter(Boolean)
+                    .join(" & ")}
                 </h1>
                 <StatusColorBadge
                   color={customerLifecycleColor(
@@ -9340,6 +9342,14 @@ function ContractsTab({ customerID }) {
     } else toast.error(res.error || "Failed to revoke.");
   }
 
+  async function handleResendAgreement(c) {
+    const res = await api.post(`/api/agreement-session/${c._id}/resend`, {});
+    if (res.success) toast.success("Agreement link resent.");
+    else toast.error(res.error || "Failed to resend.");
+  }
+
+  const needsSignatureCount = contracts.filter((c) => c.status === "sent").length;
+
   async function handleDelete(c) {
     if (!window.confirm(`Delete "${c.title}"?`)) return;
     const res = await api.delete(`/api/contract/${c._id}`);
@@ -9351,6 +9361,11 @@ function ContractsTab({ customerID }) {
 
   return (
     <div className="space-y-4">
+      {needsSignatureCount > 0 && (
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-3 py-1 text-[12px] font-medium text-warning">
+          {needsSignatureCount} Needs Signature
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <p className="text-[13px] text-muted-foreground">
           {contracts.length} contract{contracts.length !== 1 ? "s" : ""}
@@ -9399,12 +9414,22 @@ function ContractsTab({ customerID }) {
                   </div>
                   {c.signedByName && (
                     <p className="text-[12px] text-success">
-                      Signed by {c.signedByName} · {formatDate(c.signedAt)}
+                      Accepted by {c.signedByName} · {formatDate(c.signedAt)}
+                      {c.acceptedVia && ` · via ${c.acceptedVia === "ipad" ? "studio iPad" : "text link"}`}
                     </p>
                   )}
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     Created {formatDate(c.createdAt)}
                   </p>
+                  {c.documentsIncluded?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {c.documentsIncluded.map((d, i) => (
+                        <span key={i} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                          {d.name} v{d.version}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
@@ -9452,15 +9477,28 @@ function ContractsTab({ customerID }) {
                     </>
                   )}
                   {c.status === "sent" && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-warning hover:text-warning"
-                      title="Revoke"
-                      onClick={() => handleRevoke(c)}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
+                    <>
+                      {c.documentsIncluded?.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-info hover:text-info"
+                          title="Resend link"
+                          onClick={() => handleResendAgreement(c)}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-warning hover:text-warning"
+                        title="Revoke"
+                        onClick={() => handleRevoke(c)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -9481,9 +9519,10 @@ function ContractsTab({ customerID }) {
       <Dialog
         open={Boolean(viewingContract)}
         onClose={() => setViewingContract(null)}
+        maxWidth="4xl"
       >
         <DialogContent
-          className="max-w-2xl max-h-[90vh] overflow-y-auto"
+          className="max-h-[90vh] overflow-y-auto"
           onClose={() => setViewingContract(null)}
         >
           <DialogHeader>
@@ -9498,9 +9537,10 @@ function ContractsTab({ customerID }) {
                   {viewingContract.status}
                 </span>
               </div>
-              <div className="rounded-lg border border-border bg-muted/30 p-4 text-[13px] text-foreground whitespace-pre-wrap max-h-72 overflow-y-auto">
-                {viewingContract.content}
-              </div>
+              <div
+                className="agreement-doc rounded-lg border border-border bg-card p-6 max-h-[65vh] overflow-y-auto"
+                dangerouslySetInnerHTML={{ __html: viewingContract.content }}
+              />
               {viewingContract.signedByName && (
                 <div className="rounded-lg border border-success/20 bg-success/10 p-3 text-[12px] text-success space-y-0.5">
                   <p className="font-semibold">Signature Record</p>

@@ -1548,6 +1548,7 @@ export default function EventDetailPanel({
 
   const [teacherOptions, setTeacherOptions] = useState([]);
   const [customerOptions, setCustomerOptions] = useState([]);
+  const [rawCustomers, setRawCustomers] = useState([]);
   const [customerDetails, setCustomerDetails] = useState([]);
   const [teacherDetail, setTeacherDetail] = useState(null);
 
@@ -1569,6 +1570,10 @@ export default function EventDetailPanel({
       end_time,
       teacherID: String(ev.teacherID?._id ?? ev.teacherID ?? ""),
       customerID: String(ev.customerIDs?.[0]?._id ?? ev.customerIDs?.[0] ?? ""),
+      member_ids: (ev.memberIDs || []).map((m) => String(m?._id ?? m)),
+      member_absent: (ev.absentCustomerIDs || [])
+        .map((id) => String(id?._id ?? id))
+        .includes(String(ev.customerIDs?.[0]?._id ?? ev.customerIDs?.[0] ?? "")),
       // Use effectiveStatus (auto-completed for past events) if no explicit terminal status
       status: ev.effectiveStatus || ev.status || "scheduled",
       type: ev.type || "",
@@ -1661,11 +1666,15 @@ export default function EventDetailPanel({
         );
       }
       if (customersRes.success && Array.isArray(customersRes.data)) {
+        setRawCustomers(customersRes.data);
         setCustomerOptions(
-          customersRes.data.map((c) => ({
-            value: String(c._id ?? c.id),
-            label: c.name || c.email || String(c._id),
-          })),
+          customersRes.data.map((c) => {
+            const names = [c.name, ...(c.members || []).map((m) => m.name)].filter(Boolean);
+            return {
+              value: String(c._id ?? c.id),
+              label: names.join(" & ") || c.email || String(c._id),
+            };
+          }),
         );
       }
     }
@@ -1715,6 +1724,12 @@ export default function EventDetailPanel({
         : form.customerID
           ? [form.customerID]
           : undefined,
+      memberIDs: isGroupClass ? undefined : form.member_ids,
+      absentCustomerIDs: isGroupClass
+        ? undefined
+        : form.member_absent && form.member_ids.length > 0 && form.customerID
+          ? [form.customerID]
+          : [],
       status: form.status,
       type: form.type || undefined,
       notes: form.notes || undefined,
@@ -1887,21 +1902,9 @@ export default function EventDetailPanel({
               {selectedStudentName}
             </button>
           ) : (
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="truncate text-[14px] font-semibold text-foreground">
-                {event.title}
-              </span>
-              {/* An unallocated lesson is held out of auto-completion, so
-                  effectiveStatus must not present a past one as Completed. */}
-              <StatusBadge
-                status={
-                  isUnallocated(event)
-                    ? event.status
-                    : event.effectiveStatus || event.status
-                }
-              />
-              {isUnallocated(event) && <UnallocatedBadge />}
-            </div>
+            <span className="text-[13px] font-medium text-muted-foreground">
+              Lesson details
+            </span>
           )}
           {!selectedStudentId && !isEditing && (
             <button
@@ -1914,10 +1917,11 @@ export default function EventDetailPanel({
               // background visually covers this one entirely, making Edit
               // look like it doesn't exist even though it's still rendered
               // and clickable underneath.
-              className="grid h-7 w-7 mr-9 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="flex items-center gap-1.5 h-7 mr-9 px-3 rounded-lg border border-border text-[12px] font-medium text-foreground hover:bg-muted transition-colors"
               aria-label="Edit event"
             >
               <Pencil className="h-3.5 w-3.5" />
+              Edit lesson
             </button>
           )}
         </div>
@@ -1998,13 +2002,74 @@ export default function EventDetailPanel({
                       (close editing to add/remove students).
                     </p>
                   ) : (
-                    <Field label="Customer">
-                      <Select
-                        value={form.customerID}
-                        onChange={(v) => setField("customerID", v)}
-                        options={customerOptions}
-                      />
-                    </Field>
+                    <>
+                      <Field label="Customer">
+                        <Select
+                          value={form.customerID}
+                          onChange={(v) => {
+                            setField("customerID", v);
+                            setField("member_ids", []);
+                            setField("member_absent", false);
+                          }}
+                          options={customerOptions}
+                        />
+                      </Field>
+                      {(() => {
+                        const selectedCustomer = rawCustomers.find(
+                          (c) => String(c._id ?? c.id) === form.customerID,
+                        );
+                        const members = selectedCustomer?.members || [];
+                        if (members.length === 0) return null;
+                        return (
+                          <div className="space-y-2">
+                            <div className="rounded-xl border border-border bg-muted/20 px-3 py-2.5 space-y-1.5">
+                              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                                Attending members
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {members.map((m) => {
+                                  const mid = String(m._id);
+                                  const selected = form.member_ids.includes(mid);
+                                  return (
+                                    <button
+                                      key={mid}
+                                      type="button"
+                                      onClick={() => {
+                                        const set = new Set(form.member_ids);
+                                        selected ? set.delete(mid) : set.add(mid);
+                                        const ids = [...set];
+                                        setField("member_ids", ids);
+                                        if (ids.length === 0) setField("member_absent", false);
+                                      }}
+                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors ${
+                                        selected
+                                          ? "border-primary bg-primary/10 text-primary"
+                                          : "border-border bg-background text-muted-foreground hover:bg-muted/50"
+                                      }`}
+                                    >
+                                      {m.name}
+                                      {m.relationship && (
+                                        <span className="opacity-60 capitalize">· {m.relationship}</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            {form.member_ids.length > 0 && (
+                              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <input
+                                  type="checkbox"
+                                  checked={form.member_absent}
+                                  onChange={(e) => setField("member_absent", e.target.checked)}
+                                />
+                                {selectedCustomer?.name} is not attending — member(s) attend alone
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </>
                   )}
                   {fundingEditable && (
                     <Field label="Package / Membership">
@@ -2056,129 +2121,43 @@ export default function EventDetailPanel({
                 </>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                    <Field label="Date">
-                      <ReadValue>
-                        {formatDisplayDate(event.startDateTime)}
-                      </ReadValue>
-                    </Field>
-                    <Field label="Type">
-                      <ReadValue>
-                        {event.type
-                          ? event.type.charAt(0).toUpperCase() +
-                            event.type.slice(1)
-                          : "—"}
-                      </ReadValue>
-                    </Field>
-                    <Field label="Start">
-                      <ReadValue>
-                        {formatDisplayTime(event.startDateTime, studioTz)}
-                      </ReadValue>
-                    </Field>
-                    <Field label="End">
-                      <ReadValue>
-                        {formatDisplayTime(event.endDateTime, studioTz)}
-                      </ReadValue>
-                    </Field>
-                  </div>
-
-                  {/* Service info */}
-                  {event.calendarServiceID && (
-                    <div>
-                      <Label>Service</Label>
-                      <div className="mt-1 rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-[13px] font-semibold text-foreground truncate">
-                            {event.calendarServiceID.serviceName}
-                          </p>
-                          {event.calendarServiceID.serviceCode && (
-                            <p className="text-[10px] text-muted-foreground">
-                              {event.calendarServiceID.serviceCode}
-                            </p>
-                          )}
-                        </div>
-                        {event.calendarServiceID.isChargeable &&
-                          event.calendarServiceID.price > 0 && (
-                            <span className="shrink-0 rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-semibold text-success">
-                              $
-                              {Number(event.calendarServiceID.price).toFixed(2)}{" "}
-                              / session
-                            </span>
-                          )}
-                      </div>
-                      {/* Billing status */}
-                      {event.calendarServiceID.isChargeable && (
-                        <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
-                          {event.chargeApplied ? (
-                            <>
-                              <span className="h-1.5 w-1.5 rounded-full bg-success shrink-0" />
-                              <span className="text-[11px] text-success font-medium">
-                                {event.chargeMethod === "package" &&
-                                  event.packageBillingType !==
-                                    "pay_per_session" &&
-                                  "Paid · Package"}
-                                {event.chargeMethod === "package" &&
-                                  event.packageBillingType ===
-                                    "pay_per_session" &&
-                                  "Paid · Per session"}
-                                {event.chargeMethod === "membership" &&
-                                  "Covered · Membership"}
-                                {event.chargeMethod === "credits" &&
-                                  `$${Number(event.calendarServiceID.price).toFixed(2)} deducted from credits`}
-                                {event.chargeMethod === "mixed" &&
-                                  "Charged via package + credits"}
-                                {event.chargeMethod === "none" && "Charged"}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
-                              <span className="text-[11px] text-muted-foreground">
-                                Not charged (refunded or waived)
-                              </span>
-                            </>
-                          )}
-                        </div>
+                  <div className="space-y-1.5">
+                    <h2 className="text-[22px] font-bold text-foreground leading-tight">
+                      {event.type
+                        ? `${event.type.charAt(0).toUpperCase()}${event.type.slice(1)} lesson`
+                        : event.title}
+                    </h2>
+                    <p className="text-[13px] text-foreground">
+                      {formatDisplayDate(event.startDateTime)} ·{" "}
+                      {formatDisplayTime(event.startDateTime, studioTz)}–
+                      {formatDisplayTime(event.endDateTime, studioTz)}
+                    </p>
+                    <p className="text-[12px] text-muted-foreground">
+                      {Math.round(
+                        (new Date(event.endDateTime) - new Date(event.startDateTime)) / 60000,
+                      )}{" "}
+                      minutes
+                      {teacherDetail?.name ? ` · Teacher: ${teacherDetail.name}` : ""}
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <StatusBadge
+                        status={
+                          isUnallocated(event)
+                            ? event.status
+                            : event.effectiveStatus || event.status
+                        }
+                      />
+                      {isUnallocated(event) && <UnallocatedBadge />}
+                      {event.calendarServiceID?.isChargeable && event.chargeApplied && (
+                        <span className="text-[12px] text-muted-foreground">
+                          {event.chargeMethod === "package" && "Paid with package"}
+                          {event.chargeMethod === "membership" && "Covered by membership"}
+                          {event.chargeMethod === "credits" && "Paid with credits"}
+                          {event.chargeMethod === "mixed" && "Paid with package + credits"}
+                          {event.chargeMethod === "none" && "Paid"}
+                        </span>
                       )}
                     </div>
-                  )}
-
-                  {/* Teacher details */}
-                  <div>
-                    <Label>Teacher</Label>
-                    {!teacherDetail ? (
-                      <p className="text-[13px] text-muted-foreground">—</p>
-                    ) : (
-                      <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5 mt-1">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                            {(teacherDetail.name || "?")
-                              .charAt(0)
-                              .toUpperCase()}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="text-[13px] font-semibold text-foreground truncate">
-                              {teacherDetail.name}
-                            </p>
-                            {teacherDetail.specialties?.length > 0 && (
-                              <p className="text-[10px] text-muted-foreground truncate">
-                                {teacherDetail.specialties.join(", ")}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        {teacherDetail.email && (
-                          <p className="text-[11px] text-muted-foreground truncate">
-                            {teacherDetail.email}
-                          </p>
-                        )}
-                        {teacherDetail.phoneNumber && (
-                          <p className="text-[11px] text-muted-foreground">
-                            {teacherDetail.phoneNumber}
-                          </p>
-                        )}
-                      </div>
-                    )}
                   </div>
 
                   {/* Customer details */}
@@ -2205,37 +2184,21 @@ export default function EventDetailPanel({
                           {customerDetails.map((c) => (
                             <div
                               key={c._id}
-                              className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5"
+                              className="rounded-xl bg-primary/5 px-4 py-3.5 flex items-center justify-between gap-3"
                             >
-                              <div className="flex items-center justify-between gap-2">
-                                <div
-                                  className="flex items-center gap-2 min-w-0 cursor-pointer group"
-                                  onClick={() => {
-                                    setSelectedStudentId(String(c._id));
-                                    setSelectedStudentName(c.name || "Student");
-                                  }}
-                                >
-                                  <span className="h-7 w-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                                    {(c.name || "?").charAt(0).toUpperCase()}
-                                  </span>
-                                  <span className="text-[13px] font-semibold text-foreground truncate group-hover:text-primary group-hover:underline">
-                                    {c.name || "—"}
-                                  </span>
-                                </div>
-                                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                                  ${Number(c.credits ?? 0).toFixed(2)}
-                                </span>
-                              </div>
-                              {c.email && (
-                                <p className="text-[11px] text-muted-foreground truncate">
-                                  {c.email}
-                                </p>
-                              )}
-                              {c.phoneNumber && (
-                                <p className="text-[11px] text-muted-foreground">
-                                  {c.phoneNumber}
-                                </p>
-                              )}
+                              <span className="text-[16px] font-medium text-foreground truncate">
+                                {c.name || "—"}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedStudentId(String(c._id));
+                                  setSelectedStudentName(c.name || "Student");
+                                }}
+                                className="shrink-0 text-[13px] font-medium text-primary hover:underline"
+                              >
+                                Open quick view →
+                              </button>
                             </div>
                           ))}
                         </div>
@@ -2244,11 +2207,14 @@ export default function EventDetailPanel({
                   )}
 
                   {event.notes && (
-                    <Field label="Notes">
-                      <p className="text-[12px] text-foreground whitespace-pre-wrap">
+                    <div className="rounded-lg border-l-4 border-warning bg-warning/10 px-4 py-3 space-y-1">
+                      <p className="text-[13px] font-semibold text-foreground">
+                        Note for this lesson
+                      </p>
+                      <p className="text-[13px] text-foreground whitespace-pre-wrap">
                         {event.notes}
                       </p>
-                    </Field>
+                    </div>
                   )}
 
                   {event.payment?.collected && (
@@ -2486,55 +2452,58 @@ export default function EventDetailPanel({
                 {/* Quick status actions — only shown when event is still scheduled */}
                 {event.effectiveStatus === "scheduled" ||
                 event.status === "scheduled" ? (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Mark as
+                  <div className="space-y-3">
+                    <p className="text-[14px] font-medium text-foreground">
+                      Cancellation &amp; no-show
                     </p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {/* Unallocated lessons are never auto-completed, so they
-                          need an explicit way out — either allocate above, or
-                          complete as a comp if permitted. */}
-                      {isUnallocated(event) && (
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStatus("completed")}
-                          disabled={isSaving}
-                          className="col-span-2 h-9 rounded-lg border border-success/30 bg-background text-[11px] font-semibold text-success hover:bg-success/10 disabled:opacity-50 transition-colors"
-                        >
-                          Completed
-                        </button>
-                      )}
+                    {/* Unallocated lessons are never auto-completed, so they
+                        need an explicit way out — either allocate above, or
+                        complete as a comp if permitted. */}
+                    {isUnallocated(event) && (
+                      <button
+                        type="button"
+                        onClick={() => handleQuickStatus("completed")}
+                        disabled={isSaving}
+                        className="w-full h-9 rounded-lg border border-success/30 bg-background text-[12px] font-semibold text-success hover:bg-success/10 disabled:opacity-50 transition-colors"
+                      >
+                        Mark Completed
+                      </button>
+                    )}
+                    <div className="grid grid-cols-[auto_1fr_1fr] items-center gap-x-4 gap-y-2.5">
+                      <span className="text-[13px] text-foreground">Cancel lesson</span>
                       <button
                         type="button"
                         onClick={() => handleQuickStatus("cancelled_no_charge")}
                         disabled={isSaving}
-                        className="h-9 rounded-lg border border-border bg-background text-[11px] font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+                        className="h-10 rounded-lg border border-border bg-background text-[13px] font-medium text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
                       >
-                        Cancel – No Charge
+                        No charge
                       </button>
                       <button
                         type="button"
                         onClick={() => handleQuickStatus("cancelled_charged")}
                         disabled={isSaving}
-                        className="h-9 rounded-lg border border-destructive/20 bg-background text-[11px] font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
+                        className="h-10 rounded-lg border border-destructive/30 bg-background text-[13px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
                       >
-                        Cancel – Charged
+                        Use 1 lesson credit
                       </button>
+
+                      <span className="text-[13px] text-foreground">Student didn&apos;t show</span>
                       <button
                         type="button"
                         onClick={() => handleQuickStatus("no_show_no_charge")}
                         disabled={isSaving}
-                        className="h-9 rounded-lg border border-warning/40 dark:border-warning/40 bg-background text-[11px] font-semibold text-warning hover:bg-warning dark:hover:bg-warning/40 disabled:opacity-50 transition-colors"
+                        className="h-10 rounded-lg border border-border bg-background text-[13px] font-medium text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
                       >
-                        No Show – No Charge
+                        No charge
                       </button>
                       <button
                         type="button"
                         onClick={() => handleQuickStatus("no_show_charged")}
                         disabled={isSaving}
-                        className="h-9 rounded-lg border border-warning/40 dark:border-warning/40 bg-background text-[11px] font-semibold text-warning hover:bg-warning dark:hover:bg-warning/40 disabled:opacity-50 transition-colors"
+                        className="h-10 rounded-lg border border-destructive/30 bg-background text-[13px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
                       >
-                        No Show – Charged
+                        Use 1 lesson credit
                       </button>
                     </div>
                   </div>
