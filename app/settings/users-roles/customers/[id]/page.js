@@ -8709,7 +8709,9 @@ export default function CustomerDetailPage() {
         locationID={resolveLocationID(customer)}
       />
     ),
-    wallet: () => <CustomerWalletTab customerID={customer._id} />,
+    wallet: () => (
+      <CustomerWalletTab customerID={customer._id} locationID={resolveLocationID(customer)} />
+    ),
     purchases: () => (
       <PurchasesTab
         customerID={customer._id}

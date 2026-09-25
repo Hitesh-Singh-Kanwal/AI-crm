@@ -21,6 +21,18 @@ import { toast } from "@/components/ui/toast";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import api from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
+import { useCardProcessor } from "@/app/settings/payments/useCardProcessor";
+import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
+import { PAYMENT_METHODS_WITH_SAVED_CARD } from "@/lib/paymentMethods";
+import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
+import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import SavedCardField from "@/components/payments/SavedCardField";
+import CheckNumberField from "@/components/payments/CheckNumberField";
+import { resolveLocationID } from "@/app/settings/payments/clover/useCloverConnection";
+
+// "Add Money" is a real payment collected from the customer — wallet is excluded
+// from the method list since you can't fund the wallet from itself.
+const ADD_MONEY_METHODS = PAYMENT_METHODS_WITH_SAVED_CARD.filter((m) => m.value !== "wallet");
 
 const TYPE_LABELS = {
   credit_added: "Credit Added",
@@ -48,19 +60,38 @@ function FormField({ label, required, children }) {
   );
 }
 
-function AdjustWalletDialog({ open, mode, customerID, onClose, onSuccess }) {
+function AdjustWalletDialog({ open, mode, customerID, locationID, onClose, onSuccess }) {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [description, setDescription] = useState("");
+  const [method, setMethod] = useState("cash");
+  const [deviceID, setDeviceID] = useState("");
+  const [savedCardID, setSavedCardID] = useState("");
+  const [checkNumber, setCheckNumber] = useState("");
   const [saving, setSaving] = useState(false);
 
   const isAddMoney = mode === "add";
   const isCredit = mode === "add" || mode === "credit";
+  const { ready: cloverReady, provider } = useCardProcessor(locationID);
+  const resolvedLocationID = resolveLocationID(locationID);
+
+  const payWithClover = isAddMoney && method === "card" && cloverReady;
+  const cloverNotConnected = isAddMoney && method === "card" && !cloverReady;
+  const payWithACH = isAddMoney && method === "ach" && provider === "stripe";
+  const achNotAvailable = isAddMoney && method === "ach" && provider !== "stripe";
+  const payWithTerminal = isAddMoney && method === "terminal";
+  const terminalNotSelected = payWithTerminal && !deviceID;
+  const payWithSavedCard = isAddMoney && method === "saved_card";
+  const savedCardNotSelected = payWithSavedCard && !savedCardID;
 
   function reset() {
     setAmount("");
     setNote("");
     setDescription("");
+    setMethod("cash");
+    setDeviceID("");
+    setSavedCardID("");
+    setCheckNumber("");
   }
 
   async function handleSubmit(e) {
@@ -71,31 +102,50 @@ function AdjustWalletDialog({ open, mode, customerID, onClose, onSuccess }) {
       toast.error("A reason/note is required for manual adjustments.");
       return;
     }
+    if (isAddMoney) {
+      if (terminalNotSelected || savedCardNotSelected || achNotAvailable) return;
+    }
     setSaving(true);
 
     let res;
     if (isAddMoney) {
-      res = await api.post("/api/wallet/add-money", {
+      const checkoutTab = payWithClover || payWithACH ? openCheckoutTab() : null;
+      res = await api.post("/api/payment", {
         customerID,
+        type: "wallet_topup",
         amount: num,
-        description: description.trim() || undefined,
+        method,
+        notes: description.trim() || undefined,
+        ...(payWithTerminal ? { deviceID } : {}),
+        ...(payWithSavedCard ? { cardToken: savedCardID } : {}),
+        ...(method === "cheque" ? { checkNumber } : {}),
       });
+      if (res.success && res.data?.checkoutUrl) {
+        navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
+        toast.success(CHECKOUT_TOAST);
+      } else if (res.success && res.data?.pending) {
+        toast.success(
+          payWithSavedCard
+            ? "Card charged — confirming with Stripe."
+            : "Charge sent to the reader — waiting for the card.",
+        );
+      } else if (res.success) {
+        toast.success("Funds added to wallet.");
+      } else {
+        closeCheckoutTab(checkoutTab);
+      }
     } else {
       res = await api.post(`/api/wallet/admin/${mode}`, {
         customerID,
         amount: num,
         note: note.trim(),
       });
+      if (res.success) {
+        toast.success(mode === "credit" ? "Wallet credited." : "Wallet debited.");
+      }
     }
 
     if (res.success) {
-      toast.success(
-        isAddMoney
-          ? "Funds added to wallet."
-          : mode === "credit"
-            ? "Wallet credited."
-            : "Wallet debited.",
-      );
       reset();
       onSuccess();
       onClose();
@@ -121,7 +171,7 @@ function AdjustWalletDialog({ open, mode, customerID, onClose, onSuccess }) {
         }
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent className={isAddMoney ? "max-w-md" : "max-w-sm"}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -145,15 +195,44 @@ function AdjustWalletDialog({ open, mode, customerID, onClose, onSuccess }) {
           </FormField>
 
           {isAddMoney ? (
-            <FormField label="Description (optional)">
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Top-up via card"
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            <>
+              <FormField label="Payment method">
+                <PaymentMethodPicker methods={ADD_MONEY_METHODS} value={method} onChange={setMethod} />
+              </FormField>
+              {cloverNotConnected && (
+                <p className="text-[11px] text-muted-foreground">
+                  Connect a card processor (Clover or Stripe) in Settings → Integrations to charge a card.
+                </p>
+              )}
+              {achNotAvailable && (
+                <p className="text-[11px] text-muted-foreground">
+                  ACH needs Stripe — connect it in Settings → Integrations.
+                </p>
+              )}
+              <TerminalDeviceField
+                method={method}
+                locationID={resolvedLocationID}
+                deviceID={deviceID}
+                onDeviceChange={setDeviceID}
               />
-            </FormField>
+              <SavedCardField
+                method={method}
+                locationID={resolvedLocationID}
+                customerID={customerID}
+                cardToken={savedCardID}
+                onCardChange={setSavedCardID}
+              />
+              <CheckNumberField method={method} checkNumber={checkNumber} onChange={setCheckNumber} />
+              <FormField label="Description (optional)">
+                <input
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="e.g. Top-up via card"
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+                />
+              </FormField>
+            </>
           ) : (
             <FormField label="Reason / Note" required>
               <input
@@ -181,14 +260,23 @@ function AdjustWalletDialog({ open, mode, customerID, onClose, onSuccess }) {
             <Button
               type="submit"
               size="sm"
-              disabled={saving || !amount}
+              disabled={
+                saving ||
+                !amount ||
+                (isAddMoney &&
+                  (cloverNotConnected || achNotAvailable || terminalNotSelected || savedCardNotSelected))
+              }
               className={
                 isCredit
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                   : "bg-rose-600 hover:bg-rose-700 text-white"
               }
             >
-              {saving ? "Saving…" : title}
+              {saving
+                ? payWithTerminal
+                  ? "Waiting for terminal…"
+                  : "Saving…"
+                : title}
             </Button>
           </div>
         </form>
@@ -197,7 +285,7 @@ function AdjustWalletDialog({ open, mode, customerID, onClose, onSuccess }) {
   );
 }
 
-export default function CustomerWalletTab({ customerID }) {
+export default function CustomerWalletTab({ customerID, locationID }) {
   const [wallet, setWallet] = useState(null);
   const [txns, setTxns] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -505,6 +593,7 @@ export default function CustomerWalletTab({ customerID }) {
         open={Boolean(dialogMode)}
         mode={dialogMode}
         customerID={customerID}
+        locationID={locationID}
         onClose={() => setDialogMode(null)}
         onSuccess={refresh}
       />
