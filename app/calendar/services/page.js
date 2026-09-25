@@ -186,8 +186,6 @@ export default function CalendarServicesPage() {
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Price</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Chargeable</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Group</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Sundry</TableHead>
-                  <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">On Calendar</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Sort Order</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Documents</TableHead>
                   <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Status</TableHead>
@@ -250,12 +248,6 @@ export default function CalendarServicesPage() {
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <BoolBadge value={service.isGroup} />
-                      </TableCell>
-                      <TableCell className="py-3 px-4">
-                        <BoolBadge value={service.isSundry} />
-                      </TableCell>
-                      <TableCell className="py-3 px-4">
-                        <BoolBadge value={service.countOnCalendar} />
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <p className="text-sm text-foreground">{service.sortByOrder ?? 0}</p>

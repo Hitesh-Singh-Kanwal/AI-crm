@@ -953,3 +953,59 @@
     background: hsl(var(--card));
   }
 }
+
+/* Rendered agreement/waiver/contract HTML — the Template Builder preview and
+ * the student-facing sign page both drop merged content into `.agreement-doc`.
+ * No typography plugin is installed, so table/heading styling has to live
+ * here rather than on a `prose` class (which silently does nothing). */
+.agreement-doc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: hsl(var(--foreground));
+}
+.agreement-doc h1 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+.agreement-doc h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 20px 0 8px;
+}
+.agreement-doc h3 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+  margin: 20px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.agreement-doc p {
+  margin: 0 0 8px;
+}
+.agreement-doc strong {
+  font-weight: 600;
+}
+.agreement-doc table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0 12px;
+}
+.agreement-doc th,
+.agreement-doc td {
+  border: 1px solid hsl(var(--border));
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 12px;
+}
+.agreement-doc th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: hsl(var(--muted-foreground));
+}

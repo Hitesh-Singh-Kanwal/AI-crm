@@ -186,8 +186,16 @@ const EMPTY_FORM = {
   group_sell_package: false,
   group_package_id: "",
   member_ids: [],
+  member_absent: false,
   group_member_ids: {},
 };
+
+// Includes member (partner/family) names so they show up and are searchable
+// alongside the main student in every student picker.
+function customerLabel(c) {
+  const names = [c.name, ...(c.members || []).map((m) => m.name)].filter(Boolean);
+  return names.join(" & ") || c.email || String(c._id ?? c.id ?? "");
+}
 
 // ─── Primitive UI ─────────────────────────────────────────────────────────────
 
@@ -1066,6 +1074,7 @@ function WhoSection({
           onChange={(v) => {
             setField("customer_id", v);
             setField("member_ids", []);
+            setField("member_absent", false);
             onOpenEnrollmentWizard?.(false);
             setField("enrollment_id", "");
             setField("customer_membership_id", "");
@@ -1103,8 +1112,22 @@ function WhoSection({
         <MemberPicker
           members={selectedMembers}
           selectedIds={form.member_ids}
-          onChange={(ids) => setField("member_ids", ids)}
+          onChange={(ids) => {
+            setField("member_ids", ids);
+            if (ids.length === 0) setField("member_absent", false);
+          }}
         />
+      )}
+
+      {form.member_ids.length > 0 && (
+        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={form.member_absent}
+            onChange={(e) => setField("member_absent", e.target.checked)}
+          />
+          {selectedCustomer?.name} is not attending — member(s) attend alone
+        </label>
       )}
 
       {form.customer_id && (
@@ -2309,7 +2332,7 @@ export default function AppointmentComposerPanel({
           setCustomerOptions(
             customersRes.data.map((c) => ({
               value: String(c._id ?? c.id),
-              label: c.name || c.email || String(c._id),
+              label: customerLabel(c),
             })),
           );
         }
@@ -2800,6 +2823,10 @@ export default function AppointmentComposerPanel({
             ? [form.customer_id]
             : undefined,
       memberIDs: form.member_ids?.length > 0 ? form.member_ids : undefined,
+      absentCustomerIDs:
+        form.member_absent && form.member_ids?.length > 0 && form.customer_id
+          ? [form.customer_id]
+          : undefined,
       lessonID: form.lesson_id || undefined,
       calendarServiceID: form.service_id || undefined,
       enrollmentID: activeTab === "Group Class" ? undefined : form.enrollment_id || undefined,

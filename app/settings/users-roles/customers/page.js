@@ -1135,7 +1135,11 @@ function CustomersPageInner() {
                             {getInitials(customer.name)}
                           </AvatarFallback>
                         </Avatar>
-                        <p className="text-[13px] font-medium text-foreground">{customer.name}</p>
+                        <p className="text-[13px] font-medium text-foreground">
+                          {[customer.name, ...(customer.members || []).map((m) => m.name)]
+                            .filter(Boolean)
+                            .join(" & ")}
+                        </p>
                       </div>
                     </TableCell>
                     <TableCell>

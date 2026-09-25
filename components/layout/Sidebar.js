@@ -94,6 +94,7 @@ const navItems = [
       { name: 'Users & Roles', href: '/settings/users-roles' },
       { name: 'Curriculum', href: '/settings/curriculum' },
       { name: 'Goals', href: '/settings/goals' },
+      { name: 'Document Library', href: '/settings/documents' },
       { name: 'Setup', href: '/settings/setup' },
       { name: 'Integrations', href: '/settings/integrations' },
       { name: 'Billing', href: '/settings/billing' },

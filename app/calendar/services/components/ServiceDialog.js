@@ -33,8 +33,6 @@ const EMPTY_FORM = {
   price: "",
   type: "private",
   isChargeable: false,
-  isSundry: false,
-  countOnCalendar: true,
   isActive: true,
   documents: [],
 };
@@ -116,8 +114,6 @@ export default function ServiceDialog({ open, onClose, service, onRefresh, defau
         description: service.description || "",
         isChargeable: service.isChargeable ?? false,
         type: service.type || "private",
-        isSundry: service.isSundry ?? false,
-        countOnCalendar: service.countOnCalendar ?? true,
         isActive: service.isActive ?? true,
         color: service.color || "",
         price: service.price != null ? String(service.price) : "",
@@ -178,8 +174,6 @@ export default function ServiceDialog({ open, onClose, service, onRefresh, defau
         price: form.price !== "" ? Number(form.price) : undefined,
         type: form.type,
         isChargeable: form.isChargeable,
-        isSundry: form.isSundry,
-        countOnCalendar: form.countOnCalendar,
         isActive: form.isActive,
         documents: validDocs,
       };
@@ -303,8 +297,6 @@ export default function ServiceDialog({ open, onClose, service, onRefresh, defau
 
             <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border">
               <RadioGroup label="Is Chargeable?" value={form.isChargeable} onChange={(v) => set("isChargeable", v)} />
-              <RadioGroup label="Is Sundry?" value={form.isSundry} onChange={(v) => set("isSundry", v)} />
-              <RadioGroup label="Count on Calendar?" value={form.countOnCalendar} onChange={(v) => set("countOnCalendar", v)} />
             </div>
           </div>
 

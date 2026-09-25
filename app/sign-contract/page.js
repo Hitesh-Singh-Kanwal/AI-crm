@@ -10,9 +10,11 @@ function SignContractContent() {
   const searchParams = useSearchParams()
   const contractId = searchParams.get('id')
   const token = searchParams.get('token')
+  const isIpad = searchParams.get('device') === 'ipad'
 
   const [step, setStep] = useState('loading') // loading | preview | signing | success | error
   const [contract, setContract] = useState(null)
+  const [documents, setDocuments] = useState([])
   const [errorMsg, setErrorMsg] = useState('')
   const [signedByName, setSignedByName] = useState('')
   const [agreed, setAgreed] = useState(false)
@@ -29,12 +31,26 @@ function SignContractContent() {
     fetch(`${baseUrl}/api/contract/${contractId}/sign?token=${encodeURIComponent(token)}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.success) {
-          setContract(data.data)
-          setStep('preview')
-        } else {
+        if (!data.success) {
           setErrorMsg(data.message || 'This signing link is invalid or has expired.')
           setStep('error')
+          return
+        }
+        setContract(data.data)
+        if (data.data.completed) {
+          // Locked by the other device already (or reopened after completion) —
+          // show the receipt, not the sign form. Spec: completed links must
+          // show the final result rather than expiring.
+          setSignedByName(data.data.signedByName || '')
+          setStep('success')
+          return
+        }
+        setStep('preview')
+        if (data.data.documentsIncluded?.length) {
+          fetch(`${baseUrl}/api/contract/${contractId}/documents?token=${encodeURIComponent(token)}`)
+            .then((r) => r.json())
+            .then((docsData) => { if (docsData.success) setDocuments(docsData.data || []) })
+            .catch(() => {})
         }
       })
       .catch(() => {
@@ -70,7 +86,7 @@ function SignContractContent() {
 
   return (
     <div className="min-h-screen bg-muted/40 flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-2xl">
+      <div className="w-full max-w-4xl">
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">
           <div className="h-10 w-10 rounded-xl bg-brand flex items-center justify-center">
@@ -105,12 +121,33 @@ function SignContractContent() {
         {step === 'preview' && contract && (
           <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
             <div className="bg-brand/10 border-b border-brand/20 px-6 py-4">
-              <p className="text-xs text-brand font-medium uppercase tracking-wide mb-1">Please review and sign</p>
+              <p className="text-xs text-brand font-medium uppercase tracking-wide mb-1">
+                {isIpad ? 'Please review and accept on this iPad' : 'Please review and accept'}
+              </p>
               <h1 className="text-xl font-bold text-foreground">{contract.title}</h1>
             </div>
 
             <div className="px-6 py-5 max-h-[400px] overflow-y-auto border-b border-border">
-              <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">{contract.content}</pre>
+              <div
+                className="agreement-doc"
+                dangerouslySetInnerHTML={{ __html: contract.content }}
+              />
+              {documents.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-border space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Also included in this agreement</p>
+                  {documents.map((doc) => (
+                    <a
+                      key={doc.documentID}
+                      href={doc.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block text-sm text-brand hover:underline"
+                    >
+                      {doc.name}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="px-6 py-5 space-y-4">
@@ -134,7 +171,7 @@ function SignContractContent() {
                   className="mt-0.5 h-4 w-4 rounded border-border text-brand focus:ring-brand"
                 />
                 <span className="text-sm text-muted-foreground">
-                  I have read and understood the contract above, and I agree to its terms. I understand that typing my name constitutes my digital signature.
+                  I have read and agree to the document(s) above.
                 </span>
               </label>
 
@@ -146,12 +183,12 @@ function SignContractContent() {
                 {submitting ? (
                   <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Submitting…</span>
                 ) : (
-                  'Sign Contract'
+                  'Accept and Continue to Payment'
                 )}
               </Button>
 
               <p className="text-xs text-muted-foreground text-center">
-                By clicking "Sign Contract", your signature, IP address, and timestamp will be recorded.
+                By accepting, your name, IP address, and timestamp will be recorded as your electronic acceptance.
               </p>
             </div>
           </div>
@@ -162,13 +199,13 @@ function SignContractContent() {
           <div className="bg-card rounded-2xl border border-success/20 shadow-sm p-10 flex flex-col items-center gap-4 text-center">
             <CheckCircle className="h-12 w-12 text-success" />
             <div>
-              <p className="text-lg font-bold text-foreground mb-1">Contract Signed!</p>
+              <p className="text-lg font-bold text-foreground mb-1">Agreement Accepted</p>
               <p className="text-sm text-muted-foreground">
-                Thank you, <strong>{signedByName}</strong>. Your signature has been recorded and a confirmation email has been sent to you.
+                Thank you, <strong>{signedByName}</strong>. Your acceptance has been recorded.
               </p>
             </div>
             <div className="rounded-xl bg-success/10 border border-success/20 px-4 py-3 text-sm text-success">
-              Signed on {new Date().toLocaleString()}
+              Accepted on {contract?.signedAt ? new Date(contract.signedAt).toLocaleString() : new Date().toLocaleString()}
             </div>
           </div>
         )}

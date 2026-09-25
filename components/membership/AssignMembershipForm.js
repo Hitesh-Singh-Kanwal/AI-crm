@@ -40,6 +40,9 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
   const [useWallet, setUseWallet] = useState(false)
   const [walletAmount, setWalletAmount] = useState('')
   const { ready: cloverReady } = useCardProcessor(locationID)
+  // Set while a "Review and Pay" agreement session is pending acceptance —
+  // the membership isn't assigned and nothing is charged until this resolves.
+  const [agreementGate, setAgreementGate] = useState(null)
 
   useEffect(() => {
     api.get('/api/membership?isActive=true&limit=200').then((res) => {
@@ -60,6 +63,22 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
       if (res.success) setWalletBalance(Number(res.data?.balance ?? 0))
     })
   }, [customerID])
+
+  useEffect(() => {
+    if (!agreementGate || agreementGate.status !== 'sent') return
+    const interval = setInterval(async () => {
+      const statusRes = await api.get(`/api/agreement-session/${agreementGate.contractID}/status`)
+      if (!statusRes?.success) return
+      if (statusRes.data.status === 'signed') {
+        clearInterval(interval)
+        const contractID = agreementGate.contractID
+        setAgreementGate(null)
+        await performAssign(contractID)
+      }
+    }, 4000)
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agreementGate])
 
   const selected = templates.find((t) => t._id === membershipID)
   const price = Number(selected?.price ?? 0)
@@ -130,6 +149,60 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
       return
     }
 
+    const resolveRes = await api.get('/api/agreement-session/resolve?enrollmentType=membership')
+    if (resolveRes?.success && resolveRes.data?.required) {
+      setSubmitting(true)
+      // Mirrors this form's own flexible-billing schedule so the agreement
+      // the student sees lists the same payments they'll actually get.
+      const schedule = billingType === 'flexible'
+        ? [
+            ...(flexInitialAmountN > 0 && flexInitialDate
+              ? [{ description: 'Initial payment', amount: flexInitialAmountN, dueDate: flexInitialDate, status: collectInitialNow ? 'paid' : 'upcoming' }]
+              : []),
+            ...flexFuturePayments
+              .filter((c) => c.dueDate && Number(c.amount) > 0)
+              .map((c) => ({ description: 'Scheduled payment', amount: Number(c.amount), dueDate: c.dueDate, status: 'upcoming' })),
+          ]
+        : []
+      const sessionRes = await api.post('/api/agreement-session', {
+        customerID,
+        enrollmentType: 'membership',
+        isRecurringBilling: Boolean(selected?.autoRenew),
+        draftEnrollment: {
+          label: selected?.membershipName,
+          purchaseDate: new Date(),
+          services: [{
+            serviceName: selected?.membershipName,
+            sessionsTotal: 1,
+            pricePerSession: price,
+            discountType: 'none',
+            discountAmount: 0,
+            finalAmount: price,
+          }],
+          totalPaid: price,
+          totalDiscount: 0,
+          amountCollected: 0,
+          billingType,
+          schedule,
+        },
+      })
+      setSubmitting(false)
+      if (!sessionRes?.success) {
+        toast.error('Failed to send the agreement for review', { description: sessionRes?.error })
+        return
+      }
+      setAgreementGate({
+        contractID: sessionRes.data.contract._id,
+        ipadUrl: sessionRes.data.ipadUrl,
+        status: 'sent',
+      })
+      return
+    }
+
+    return performAssign()
+  }
+
+  async function performAssign(linkContractID = null) {
     const billing = {}
     if (billingType === 'one_time') {
       billing.method = method
@@ -175,6 +248,11 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
           closeCheckoutTab(checkoutTab)
           toast.success('Membership assigned')
         }
+        if (linkContractID) {
+          api.patch(`/api/agreement-session/${linkContractID}/link-payment`, {
+            paymentID: result.data?.paymentID || result.data?._id,
+          }).catch(() => {})
+        }
         onSuccess?.()
       } else {
         closeCheckoutTab(checkoutTab)
@@ -183,6 +261,40 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (agreementGate) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
+        <p className="text-[15px] font-semibold text-foreground">Waiting for student acceptance</p>
+        <p className="text-[13px] text-muted-foreground max-w-sm">
+          The membership agreement has been sent to the student&apos;s phone. Open it on the studio iPad, or wait for
+          them to accept on their device. Nothing will be charged until they accept.
+        </p>
+        <a href={agreementGate.ipadUrl} target="_blank" rel="noreferrer" className="text-[13px] text-brand hover:underline font-medium">
+          Open on studio iPad
+        </a>
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            onClick={async () => {
+              const res = await api.post(`/api/agreement-session/${agreementGate.contractID}/resend`, {})
+              if (res?.success) setAgreementGate((p) => ({ ...p, ipadUrl: res.data.ipadUrl }))
+            }}
+            className="text-[12px] text-muted-foreground hover:text-foreground underline"
+          >
+            Resend link
+          </button>
+          <button
+            type="button"
+            onClick={() => setAgreementGate(null)}
+            className="text-[12px] text-muted-foreground hover:text-foreground underline"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
