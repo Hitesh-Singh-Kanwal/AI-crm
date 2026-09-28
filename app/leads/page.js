@@ -25,6 +25,7 @@ import BulkCreateLeadsDialog from './components/BulkCreateLeadsDialog'
 import ImportExportCsv from '@/components/shared/ImportExportCsv'
 import LeadsQuickBar from '@/components/leads/LeadsQuickBar'
 import LeadsFilterPanel from '@/components/leads/LeadsFilterPanel'
+import { getLeadAttemptCount } from '@/components/leads/LeadEngagementHistory'
 import SavedListsPanel from '@/components/shared/SavedListsPanel'
 import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
 import DynamicListMemberSendDialog from '@/components/dynamic-list/DynamicListMemberSendDialog'
@@ -676,7 +677,17 @@ function LeadsPageInner() {
                         {lead.name?.charAt(0) || '?'}
                       </div>
                       <div>
-                        <p className="text-sm font-normal text-foreground leading-tight">{nameWithMembers(lead)}</p>
+                        <p className="flex items-center gap-1.5 text-sm font-normal text-foreground leading-tight">
+                          <span>{nameWithMembers(lead)}</span>
+                          {getLeadAttemptCount(lead) > 1 && (
+                            <span
+                              className="inline-flex items-center rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium leading-none text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                              title="Times this lead has submitted the form"
+                            >
+                              {getLeadAttemptCount(lead)} attempts
+                            </span>
+                          )}
+                        </p>
                         {lead.location && (
                           <p className="text-xs font-normal text-muted-foreground leading-tight mt-0.5">
                             {lead.location}
