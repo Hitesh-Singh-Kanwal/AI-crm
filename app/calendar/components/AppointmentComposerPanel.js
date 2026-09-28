@@ -2763,6 +2763,13 @@ export default function AppointmentComposerPanel({
             locationID: createLocationID,
             teacherID: form.instructor_id || undefined,
             paymentRequestID: String(selectedPurchase._id),
+            // Same couple attendance as a private lesson so the calendar label
+            // shows main / both / partner-only.
+            memberIDs: form.member_ids?.length > 0 ? form.member_ids : undefined,
+            absentCustomerIDs:
+              form.member_absent && form.member_ids?.length > 0 && form.customer_id
+                ? [form.customer_id]
+                : undefined,
           },
         );
         if (!res?.success) {
@@ -2770,7 +2777,19 @@ export default function AppointmentComposerPanel({
           setIsSaving(false);
           return;
         }
-        onCreated?.();
+        const selMemberNames = (selectedCustomer?.members || [])
+          .filter((m) => form.member_ids?.map(String).includes(String(m._id)))
+          .map((m) => m.name)
+          .filter(Boolean);
+        const eventId =
+          res.data?.calendarEvent?._id ?? res.data?._id ?? res.data?.id;
+        if (form.customer_id && selMemberNames.length > 0 && eventId) {
+          onCreated?.({
+            [String(eventId)]: { [String(form.customer_id)]: selMemberNames },
+          });
+        } else {
+          onCreated?.();
+        }
         onClose();
       } catch (err) {
         setError(err?.message || "Could not book the intro lesson.");

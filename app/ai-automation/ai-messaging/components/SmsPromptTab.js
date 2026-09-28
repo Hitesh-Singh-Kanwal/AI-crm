@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Pencil, Trash2, CheckCircle, Lock, Brain, Zap, DollarSign, Loader2, CheckCircle2, Eye, Sparkles, Crown, Settings2, ChevronDown, Tags, Wrench } from 'lucide-react'
+import { Plus, Pencil, Trash2, CheckCircle, Lock, DollarSign, Loader2, CheckCircle2, Eye, Sparkles, Crown, Settings2, ChevronDown, Wrench } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -197,149 +197,10 @@ function ViewDialog({ open, onClose, prompt }) {
   )
 }
 
-// ─── Model selector ───────────────────────────────────────────────────────────
-
-const LEGACY_SMS_MODEL_LABELS = {
-  'gpt-4o-mini': 'GPT-4o Mini',
-  'gpt-3.5-turbo': 'GPT-3.5 Turbo',
-}
-
-const SMS_MODELS = [
-  {
-    value: 'gpt-4.1',
-    label: 'GPT-4.1',
-    badge: 'Recommended',
-    badgeClass: 'bg-success/10 text-success',
-    icon: Brain,
-    iconClass: 'text-success',
-    price: '$2 / $8 per 1M tokens',
-    perText: '~$0.009 / typical text',
-    speed: 'Replies instantly',
-    description: 'Best everyday choice for booking texts. Follows the studio prompt well and catches inconsistent details without slowing every reply.',
-    pros: [
-      'Accurate on booking details before offering times',
-      'Handles constraints and objections naturally',
-      'Instant replies — good for live texting',
-    ],
-    cons: [
-      'Not the cheapest option',
-      'Won’t pause to double-check the rarest confusing messages',
-    ],
-  },
-  {
-    value: 'gpt-4.1-mini',
-    label: 'GPT-4.1 Mini',
-    badge: 'Lower cost',
-    badgeClass: 'bg-info/10 text-info',
-    icon: Zap,
-    iconClass: 'text-info',
-    price: '$0.40 / $1.60 per 1M tokens',
-    perText: '~$0.002 / typical text',
-    speed: 'Replies instantly',
-    description: 'Lower-cost option for straightforward booking chats. Fast when the request is clear; weaker when details conflict.',
-    pros: [
-      'Much cheaper at high text volume',
-      'Follows the studio prompt on simple chats',
-      'Instant replies',
-    ],
-    cons: [
-      'More likely to miss inconsistent details',
-      'Weaker on complex objections',
-    ],
-  },
-  {
-    value: 'gpt-4o',
-    label: 'GPT-4o',
-    badge: 'Standard',
-    badgeClass: 'bg-muted text-muted-foreground',
-    icon: Brain,
-    iconClass: 'text-muted-foreground',
-    price: '$2.50 / $10 per 1M tokens',
-    perText: '~$0.011 / typical text',
-    speed: 'Replies instantly',
-    description: 'The model already running for most studios. Keep it while you compare, or switch to GPT-4.1 for similar speed at a lower cost.',
-    pros: [
-      'Already in production — no surprise change in tone',
-      'Instant replies',
-    ],
-    cons: [
-      'Can miss inconsistent booking details',
-      'Costs more than GPT-4.1 for similar quality',
-    ],
-  },
-  {
-    value: 'gpt-5.6-terra',
-    label: 'GPT-5.6 Terra',
-    badge: 'Checks details',
-    badgeClass: 'bg-primary/10 text-primary',
-    icon: Sparkles,
-    iconClass: 'text-primary',
-    price: '$2 / $12 per 1M tokens',
-    perText: '~$0.013 / typical text',
-    speed: 'Pauses 1–3 seconds to check',
-    description: 'Newer model that thinks briefly before it replies. Strong option if you want extra care on messy requests without paying for Sol.',
-    pros: [
-      'Stronger at checking details before offering times',
-      'Better on messy or conflicting requests',
-      'Cost is close to GPT-4.1',
-    ],
-    cons: [
-      'Replies take 1–3 seconds longer',
-      'A little more expensive than GPT-4.1',
-    ],
-  },
-  {
-    value: 'gpt-5.6-luna',
-    label: 'GPT-5.6 Luna',
-    badge: 'Cheapest new model',
-    badgeClass: 'bg-warning/10 text-warning',
-    icon: DollarSign,
-    iconClass: 'text-warning',
-    price: '$0.20 / $1.20 per 1M tokens',
-    perText: '~$0.001 / typical text',
-    speed: 'Usually fast',
-    description: 'Cheapest newer model. Fine for simple chats. Not the best choice if booking accuracy is the priority.',
-    pros: [
-      'Lowest cost if you send a lot of texts',
-      'Fast among the newer models',
-    ],
-    cons: [
-      'More likely to miss details or sound scripted',
-      'Not recommended as the main booking agent',
-    ],
-  },
-  {
-    value: 'gpt-5.6-sol',
-    label: 'GPT-5.6 Sol',
-    badge: 'Highest quality',
-    badgeClass: 'bg-brand/10 text-brand',
-    icon: Crown,
-    iconClass: 'text-brand',
-    price: '$5 / $30 per 1M tokens',
-    perText: '~$0.029 / typical text',
-    speed: 'Slowest replies here',
-    description: 'Strongest model on this list. Use it for hard conversations. Too expensive and slow for everyday studio texting.',
-    pros: [
-      'Best at clarifying unclear requests before booking',
-      'Best at tricky objections',
-    ],
-    cons: [
-      'Most expensive card on this list',
-      'Slowest replies — not a good everyday default',
-    ],
-  },
-]
-
-function modelLabel(value) {
-  return SMS_MODELS.find((m) => m.value === value)?.label || LEGACY_SMS_MODEL_LABELS[value] || value
-}
-
-// ─── Agent setup: architecture (step 1) + model for that architecture (step 2) ──
+// ─── Agent model selector (tool-calling text agent) ───────────────────────────
 
 // Temporarily OpenAI-only (cheap / balanced / premium) while only an OpenAI
-// key is configured — mirrors TEXT_AGENT_MODELS in aiSettings.model.js on the
-// backend. claude-sonnet-5 and gemini-3.6-flash are already fully wired
-// server-side; add them back here once Anthropic/Google keys exist.
+// key is configured — mirrors TEXT_AGENT_MODELS in aiSettings.model.js.
 const TEXT_AGENT_MODELS = [
   {
     value: 'gpt-5.6-luna',
@@ -373,8 +234,6 @@ function textAgentModelLabel(value) {
 
 function AgentSetupSelector() {
   const toast = useToast()
-  const [textAgentMode, setTextAgentMode] = useState(null)
-  const [smsModel, setSmsModel] = useState(null)
   const [textAgentModel, setTextAgentModel] = useState(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -384,62 +243,14 @@ function AgentSetupSelector() {
     api.get('/api/ai-settings')
       .then((r) => {
         if (r.success) {
-          setTextAgentMode(r.data?.textAgentMode || 'legacy_tags')
-          setSmsModel(r.data?.smsModel || 'gpt-4o')
           setTextAgentModel(r.data?.textAgentModel || 'gpt-5.6-terra')
         }
       })
       .catch(() => {
-        setTextAgentMode('legacy_tags')
-        setSmsModel('gpt-4o')
         setTextAgentModel('gpt-5.6-terra')
       })
       .finally(() => setLoading(false))
   }, [])
-
-  const saveMode = async (value) => {
-    if (value === textAgentMode) return
-    setSaving(true)
-    try {
-      const result = await api.put('/api/ai-settings', { textAgentMode: value })
-      if (result.success) {
-        setTextAgentMode(result.data?.textAgentMode || value)
-        toast.success({
-          title: 'Agent architecture updated',
-          message: value === 'tool_calling'
-            ? 'This studio now runs the new tool-calling agent.'
-            : 'This studio is back on the old tag-based agent.',
-        })
-      } else {
-        toast.error({ title: 'Error', message: result.error || 'Unable to update agent architecture' })
-      }
-    } catch {
-      toast.error({ title: 'Error', message: 'Unexpected error' })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const saveSmsModel = async (value) => {
-    if (value === smsModel) return
-    setSaving(true)
-    try {
-      const result = await api.put('/api/ai-settings', { smsModel: value })
-      if (result.success) {
-        setSmsModel(result.data?.smsModel || value)
-        toast.success({
-          title: 'Model updated',
-          message: `Old agent will now use ${modelLabel(result.data?.smsModel || value)}`,
-        })
-      } else {
-        toast.error({ title: 'Error', message: result.error || 'Unable to update model' })
-      }
-    } catch {
-      toast.error({ title: 'Error', message: 'Unexpected error' })
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const saveTextAgentModel = async (value) => {
     if (value === textAgentModel) return
@@ -450,7 +261,7 @@ function AgentSetupSelector() {
         setTextAgentModel(result.data?.textAgentModel || value)
         toast.success({
           title: 'Model updated',
-          message: `New agent will now use ${textAgentModelLabel(result.data?.textAgentModel || value)}`,
+          message: `Text agent will now use ${textAgentModelLabel(result.data?.textAgentModel || value)}`,
         })
       } else {
         toast.error({ title: 'Error', message: result.error || 'Unable to update model' })
@@ -461,10 +272,6 @@ function AgentSetupSelector() {
       setSaving(false)
     }
   }
-
-  const isToolCalling = textAgentMode === 'tool_calling'
-  const smsModelMeta = SMS_MODELS.find((m) => m.value === smsModel)
-  const smsModelIsUnlisted = Boolean(smsModel) && !smsModelMeta && !loading
 
   return (
     <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-sm">
@@ -477,25 +284,14 @@ function AgentSetupSelector() {
             )}>
               {loading
                 ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                : isToolCalling
-                  ? <Wrench className="h-4 w-4 text-primary" />
-                  : <Tags className="h-4 w-4 text-muted-foreground" />}
+                : <Wrench className="h-4 w-4 text-primary" />}
             </div>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <p className="text-sm font-semibold text-foreground">Agent setup</p>
-                {isToolCalling && (
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                    Testing
-                  </span>
-                )}
-              </div>
+              <p className="text-sm font-semibold text-foreground">Agent model</p>
               <p className="truncate text-xs text-muted-foreground">
                 {loading
                   ? 'Loading…'
-                  : isToolCalling
-                    ? <>New (tool-calling) · <span className="font-medium text-foreground">{textAgentModelLabel(textAgentModel)}</span></>
-                    : <>Old (legacy, tag-based) · <span className="font-medium text-foreground">{modelLabel(smsModel)}</span></>}
+                  : <>Tool-calling · <span className="font-medium text-foreground">{textAgentModelLabel(textAgentModel)}</span></>}
               </p>
             </div>
           </div>
@@ -523,193 +319,41 @@ function AgentSetupSelector() {
         {open && (
           <div className="mt-4 border-t border-border/80 pt-4">
             <p className="mb-4 text-xs text-muted-foreground">
-              Pick the architecture first — that decides which model list applies below it.
-              Change takes effect on this studio&apos;s next conversation. Use this to compare
-              the two before deciding which to keep.
+              Choose which model powers SMS and email replies for this studio.
+              Change takes effect on the next conversation.
             </p>
-
-            {/* Step 1: architecture */}
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Step 1 · Architecture
-            </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => saveMode('legacy_tags')}
-                className={cn(
-                  'group relative flex flex-col gap-2 rounded-xl border p-4 text-left transition-all duration-150',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                  textAgentMode === 'legacy_tags'
-                    ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
-                    : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
-                  saving && 'cursor-not-allowed opacity-60',
-                )}
-              >
-                {textAgentMode === 'legacy_tags' && (
-                  <span className="absolute right-3 top-3">
-                    <CheckCircle2 className="h-4 w-4 text-primary" />
-                  </span>
-                )}
-                <div className="flex items-center gap-2 pr-6">
-                  <Tags className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold text-foreground">Old (legacy, tag-based)</span>
-                </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Current production default. Booking, payment, reschedule, and cancel actions are
-                  driven by rules and text tags in the prompt.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => saveMode('tool_calling')}
-                className={cn(
-                  'group relative flex flex-col gap-2 rounded-xl border p-4 text-left transition-all duration-150',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                  textAgentMode === 'tool_calling'
-                    ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
-                    : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
-                  saving && 'cursor-not-allowed opacity-60',
-                )}
-              >
-                {textAgentMode === 'tool_calling' && (
-                  <span className="absolute right-3 top-3">
-                    <CheckCircle2 className="h-4 w-4 text-primary" />
-                  </span>
-                )}
-                <div className="flex items-center gap-2 pr-6">
-                  <Wrench className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold text-foreground">New (tool-calling)</span>
-                </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Model owns the conversation and calls tools only to check availability, send
-                  payment links, reschedule, or cancel.
-                </p>
-              </button>
-            </div>
-
-            {/* Step 2: model for whichever architecture is selected above */}
-            <div className="mt-5">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Step 2 · Model for the {isToolCalling ? 'new' : 'old'} agent
-              </p>
-
-              {isToolCalling ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {TEXT_AGENT_MODELS.map(({ value, label, provider, icon: Icon, iconClass, price }) => {
-                    const isSelected = textAgentModel === value
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        disabled={saving}
-                        onClick={() => saveTextAgentModel(value)}
-                        className={cn(
-                          'group relative flex flex-col gap-2 rounded-xl border p-3 text-left transition-all duration-150',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                          isSelected
-                            ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
-                            : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
-                          saving && 'cursor-not-allowed opacity-60',
-                        )}
-                      >
-                        {isSelected && (
-                          <span className="absolute right-3 top-3">
-                            <CheckCircle2 className="h-4 w-4 text-primary" />
-                          </span>
-                        )}
-                        <div className="flex items-center gap-2 pr-6">
-                          <Icon className={cn('h-4 w-4', isSelected ? 'text-primary' : iconClass)} />
-                          <span className="text-sm font-semibold text-foreground">{label}</span>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">{provider}</p>
-                        <p className="text-[11px] font-medium text-foreground">{price}</p>
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : (
-                <>
-                  {smsModelIsUnlisted && (
-                    <p className="mb-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-muted-foreground">
-                      This studio is still on <span className="font-medium text-foreground">{modelLabel(smsModel)}</span> from
-                      an older list. Choose a model below to switch.
-                    </p>
-                  )}
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {SMS_MODELS.map(({
-                      value, label, badge, badgeClass, description, icon: Icon, iconClass,
-                      price, perText, speed, pros, cons,
-                    }) => {
-                      const isSelected = smsModel === value
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          disabled={saving}
-                          onClick={() => saveSmsModel(value)}
-                          className={cn(
-                            'group relative flex flex-col gap-3 rounded-xl border p-4 text-left transition-all duration-150',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                            isSelected
-                              ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
-                              : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
-                            saving && 'cursor-not-allowed opacity-60',
-                          )}
-                        >
-                          {isSelected && (
-                            <span className="absolute right-3 top-3">
-                              <CheckCircle2 className="h-4 w-4 text-primary" />
-                            </span>
-                          )}
-                          <div className="flex items-start gap-3 pr-6">
-                            <div className={cn(
-                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-                              isSelected ? 'bg-primary/10' : 'bg-muted',
-                            )}>
-                              <Icon className={cn('h-4 w-4', isSelected ? 'text-primary' : iconClass)} />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="text-sm font-semibold text-foreground">{label}</span>
-                                <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', badgeClass)}>
-                                  {badge}
-                                </span>
-                              </div>
-                              <p className="mt-1 text-[11px] font-medium text-foreground">{price}</p>
-                              <p className="text-[11px] text-muted-foreground">{perText} · {speed}</p>
-                            </div>
-                          </div>
-                          <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-wide text-success">Pros</p>
-                              <ul className="mt-1 space-y-0.5">
-                                {pros.map((item) => (
-                                  <li key={item} className="text-[11px] leading-snug text-muted-foreground">• {item}</li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-wide text-warning">Cons</p>
-                              <ul className="mt-1 space-y-0.5">
-                                {cons.map((item) => (
-                                  <li key={item} className="text-[11px] leading-snug text-muted-foreground">• {item}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <p className="mt-3 text-[11px] text-muted-foreground">
-                    Prices are OpenAI list rates (input / output per 1M tokens). Typical text ≈ 4,000 input + 100 output tokens.
-                  </p>
-                </>
-              )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {TEXT_AGENT_MODELS.map(({ value, label, provider, icon: Icon, iconClass, price }) => {
+                const isSelected = textAgentModel === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => saveTextAgentModel(value)}
+                    className={cn(
+                      'group relative flex flex-col gap-2 rounded-xl border p-3 text-left transition-all duration-150',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                      isSelected
+                        ? 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30'
+                        : 'border-border bg-card hover:border-border/80 hover:bg-muted/30',
+                      saving && 'cursor-not-allowed opacity-60',
+                    )}
+                  >
+                    {isSelected && (
+                      <span className="absolute right-3 top-3">
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
+                      </span>
+                    )}
+                    <div className="flex items-center gap-2 pr-6">
+                      <Icon className={cn('h-4 w-4', isSelected ? 'text-primary' : iconClass)} />
+                      <span className="text-sm font-semibold text-foreground">{label}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">{provider}</p>
+                    <p className="text-[11px] font-medium text-foreground">{price}</p>
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
