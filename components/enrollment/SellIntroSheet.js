@@ -39,8 +39,8 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
   const toast = useToast()
   const studioTz = useStudioTimezone()
 
-  const [leadOptions, setLeadOptions] = useState([])
-  const [selectedLeadID, setSelectedLeadID] = useState('')
+  const [contactOptions, setContactOptions] = useState([])
+  const [selectedContactKey, setSelectedContactKey] = useState('')
   const [introCatalog, setIntroCatalog] = useState([])
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [selectedIntroID, setSelectedIntroID] = useState('')
@@ -56,12 +56,13 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
+  const [warning, setWarning] = useState(null)
 
-  const selectedLead = useMemo(
-    () => leadOptions.find((l) => l.value === selectedLeadID) || null,
-    [leadOptions, selectedLeadID],
+  const selectedContact = useMemo(
+    () => contactOptions.find((c) => c.value === selectedContactKey) || null,
+    [contactOptions, selectedContactKey],
   )
-  const locationID = selectedLead?.locationID || null
+  const locationID = selectedContact?.locationID || null
 
   const locationIntros = useMemo(
     () =>
@@ -85,7 +86,8 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     let cancelled = false
     setError('')
     setResult(null)
-    setSelectedLeadID('')
+    setWarning(null)
+    setSelectedContactKey('')
     setSelectedIntroID('')
     setMethod('link')
     setChannel('sms')
@@ -98,36 +100,74 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
 
     async function load() {
       setCatalogLoading(true)
-      const [leadsRes, introsRes, teachersRes, locationsRes] = await Promise.all([
+      const [leadsRes, customersRes, introsRes, teachersRes, locationsRes] = await Promise.all([
         api.get('/api/lead?limit=200&page=1'),
+        api.get('/api/customer?limit=200&page=1'),
         api.get('/api/calendar-service?type=intro&limit=200'),
         api.get('/api/teacher?limit=200&status=active'),
         api.get('/api/location?limit=50'),
       ])
       if (cancelled) return
 
+      const options = []
+      const convertedCustomerIds = new Set()
+
       if (leadsRes?.success && Array.isArray(leadsRes.data)) {
-        setLeadOptions(
-          leadsRes.data.map((lead) => {
-            const loc = lead.locationID
-            const locId = Array.isArray(loc)
-              ? loc[0]?._id || loc[0] || null
-              : loc?._id || loc || null
-            return {
-              value: String(lead._id ?? lead.id),
-              label: [nameWithMembers(lead) || 'Unnamed lead', lead.phoneNumber || lead.email || null]
-                .filter(Boolean)
-                .join(' · '),
-              locationID: locId ? String(locId) : null,
-              phoneNumber: lead.phoneNumber || null,
-              email: lead.email || null,
-              stage: lead.stage || null,
-            }
-          }),
-        )
-      } else {
-        setLeadOptions([])
+        for (const lead of leadsRes.data) {
+          const loc = lead.locationID
+          const locId = Array.isArray(loc)
+            ? loc[0]?._id || loc[0] || null
+            : loc?._id || loc || null
+          const convertedId = lead.convertedCustomerID
+            ? String(lead.convertedCustomerID?._id || lead.convertedCustomerID)
+            : null
+          if (convertedId) convertedCustomerIds.add(convertedId)
+          options.push({
+            value: convertedId ? `customer:${convertedId}` : `lead:${lead._id ?? lead.id}`,
+            label: [
+              nameWithMembers(lead) || 'Unnamed lead',
+              lead.phoneNumber || lead.email || null,
+              convertedId ? 'Customer' : 'Lead',
+            ]
+              .filter(Boolean)
+              .join(' · '),
+            kind: convertedId ? 'customer' : 'lead',
+            leadID: String(lead._id ?? lead.id),
+            customerID: convertedId,
+            locationID: locId ? String(locId) : null,
+            phoneNumber: lead.phoneNumber || null,
+            email: lead.email || null,
+            stage: lead.stage || null,
+          })
+        }
       }
+
+      if (customersRes?.success && Array.isArray(customersRes.data)) {
+        for (const cust of customersRes.data) {
+          const id = String(cust._id ?? cust.id)
+          if (convertedCustomerIds.has(id)) continue
+          const loc = cust.locationID
+          const locId = Array.isArray(loc)
+            ? loc[0]?._id || loc[0] || null
+            : loc?._id || loc || null
+          options.push({
+            value: `customer:${id}`,
+            label: [cust.name || 'Unnamed customer', cust.phoneNumber || cust.email || null, 'Customer']
+              .filter(Boolean)
+              .join(' · '),
+            kind: 'customer',
+            leadID: null,
+            customerID: id,
+            locationID: locId ? String(locId) : null,
+            phoneNumber: cust.phoneNumber || null,
+            email: cust.email || null,
+            stage: null,
+          })
+        }
+      }
+
+      options.sort((a, b) => String(a.label).localeCompare(String(b.label)))
+      setContactOptions(options)
 
       if (introsRes?.success && Array.isArray(introsRes.data)) {
         setIntroCatalog(introsRes.data)
@@ -147,7 +187,7 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
       }
 
       if (locationsRes?.success && Array.isArray(locationsRes.data)) {
-        const loc = locationsRes.data.find((l) => String(l._id) === String(locationID)) || locationsRes.data[0]
+        const loc = locationsRes.data[0]
         const mins = Number(loc?.defaultLessonMinutes)
         if (Number.isFinite(mins) && mins >= 15) setDurationMins(mins)
       }
@@ -159,7 +199,7 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     return () => {
       cancelled = true
     }
-  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps -- reset+load on open only
+  }, [open])
 
   useEffect(() => {
     if (!selectedIntroID) return
@@ -168,16 +208,21 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     }
   }, [locationIntros, selectedIntroID])
 
+  useEffect(() => {
+    setWarning(null)
+  }, [selectedContactKey])
+
   function handleClose() {
     setError('')
     setResult(null)
+    setWarning(null)
     setSubmitting(false)
     onClose?.()
   }
 
-  async function handleSubmit() {
-    if (!selectedLeadID) {
-      setError('Please select a lead.')
+  async function submitSale({ confirmOverride = false } = {}) {
+    if (!selectedContact) {
+      setError('Please select a lead or customer.')
       return
     }
     if (!selectedIntro) {
@@ -189,12 +234,12 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
       return
     }
     if (method === 'link') {
-      if (channel !== 'email' && !selectedLead?.phoneNumber) {
-        setError('This lead has no phone number — pick Email or add a phone first.')
+      if (channel !== 'email' && !selectedContact?.phoneNumber) {
+        setError('This contact has no phone number — pick Email or add a phone first.')
         return
       }
-      if (channel !== 'sms' && !selectedLead?.email) {
-        setError('This lead has no email — pick SMS or add an email first.')
+      if (channel !== 'sms' && !selectedContact?.email) {
+        setError('This contact has no email — pick SMS or add an email first.')
         return
       }
     }
@@ -228,11 +273,13 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     setResult(null)
 
     const body = {
-      leadID: selectedLeadID,
       calendarServiceID: selectedIntro._id,
       amount: Number(selectedIntro.price),
       description: selectedIntro.serviceName,
       method,
+      confirmOverride: confirmOverride || undefined,
+      ...(selectedContact.leadID ? { leadID: selectedContact.leadID } : {}),
+      ...(selectedContact.customerID ? { customerID: selectedContact.customerID } : {}),
       ...(method === 'link' ? { channel } : {}),
       ...(method === 'terminal' ? { billing: { deviceID } } : {}),
       ...(slotPayload ? { slot: slotPayload } : {}),
@@ -241,21 +288,36 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     try {
       const res = await api.post('/api/payment-request/lead', body)
       if (!res?.success) {
+        const flags = res?.errorData
+        if (
+          res?.status === 409 ||
+          flags?.needsConfirm ||
+          /already has an intro|active package/i.test(String(res?.error || ''))
+        ) {
+          setWarning({
+            alreadyTookIntro: Boolean(flags?.alreadyTookIntro),
+            isActiveCustomer: Boolean(flags?.isActiveCustomer),
+            message: res?.error || 'Confirm to sell another intro.',
+          })
+          setSubmitting(false)
+          return
+        }
         setError(res?.error || 'Failed to sell the intro.')
         setSubmitting(false)
         return
       }
 
       const data = res.data || {}
+      setWarning(null)
       setResult({
         method,
         message: res.message || 'Done',
         checkoutUrl: data.checkoutUrl || null,
-        customerID: data.customerID || null,
+        customerID: data.customerID || selectedContact.customerID || null,
         pending: Boolean(data.pending),
       })
 
-      if (method === 'link') toast.success('Payment link sent to lead.')
+      if (method === 'link') toast.success('Payment link sent.')
       else if (method === 'cash') toast.success('Trial sold — cash collected.')
       else if (method === 'card') toast.success('Checkout opened — complete payment on the card page.')
       else if (data.pending) toast.success('Charge sent to the reader — waiting for the card.')
@@ -269,13 +331,22 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     }
   }
 
+  async function handleSubmit() {
+    await submitSale({ confirmOverride: false })
+  }
+
+  async function handleConfirmOverride() {
+    await submitSale({ confirmOverride: true })
+  }
+
   return (
     <Sheet open={open} onClose={handleClose} width={SHEET_WIDTH}>
       <SheetContent onClose={handleClose} className="flex flex-col overflow-hidden p-0">
         <div className="shrink-0 border-b border-border bg-muted/30 px-5 pt-5 pb-3">
           <p className="text-[14px] font-bold text-foreground">Sell Trial / Intro</p>
           <p className="text-[12px] text-muted-foreground mt-1">
-            Sell a Setup intro to a lead — share a payment link or collect cash, card, or terminal in person.
+            Sell a Setup intro to a lead or customer — share a payment link or collect cash, card, or
+            terminal in person.
           </p>
         </div>
 
@@ -306,7 +377,8 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
               )}
               {result.pending && (
                 <p className="text-[12px] text-muted-foreground">
-                  Waiting for the customer to tap their card on the reader. The lead will convert once payment clears.
+                  Waiting for the customer to tap their card on the reader. They will convert once
+                  payment clears.
                 </p>
               )}
               <div className="pt-1">
@@ -317,18 +389,56 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
             </div>
           ) : (
             <>
+              {warning && (
+                <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 space-y-2">
+                  <p className="text-[13px] font-semibold text-foreground">Confirm before selling</p>
+                  <ul className="list-disc pl-4 space-y-1 text-[12px] text-muted-foreground">
+                    {warning.alreadyTookIntro && (
+                      <li>This customer already took an intro. Sell another one anyway?</li>
+                    )}
+                    {warning.isActiveCustomer && (
+                      <li>This customer already has an active package. Sell an intro anyway?</li>
+                    )}
+                    {!warning.alreadyTookIntro && !warning.isActiveCustomer && (
+                      <li>{warning.message}</li>
+                    )}
+                  </ul>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleConfirmOverride}
+                      disabled={submitting}
+                    >
+                      {submitting ? 'Selling…' : 'Yes, sell another intro'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setWarning(null)}
+                      disabled={submitting}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-xl border border-border bg-card p-3">
-                <p className="text-[11px] font-medium text-muted-foreground mb-1">Lead</p>
+                <p className="text-[11px] font-medium text-muted-foreground mb-1">
+                  Lead or customer
+                </p>
                 <SearchableSelect
-                  value={selectedLeadID}
-                  onChange={setSelectedLeadID}
-                  options={leadOptions}
-                  placeholder="Select lead…"
+                  value={selectedContactKey}
+                  onChange={setSelectedContactKey}
+                  options={contactOptions}
+                  placeholder="Search lead or customer…"
                 />
-                {selectedLead?.stage && (
+                {selectedContact?.stage && (
                   <p className="mt-1.5 text-[11px] text-muted-foreground">
                     Current stage:{' '}
-                    <span className="font-medium text-foreground">{selectedLead.stage}</span>
+                    <span className="font-medium text-foreground">{selectedContact.stage}</span>
                   </p>
                 )}
               </div>

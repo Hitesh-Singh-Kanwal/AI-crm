@@ -6379,8 +6379,10 @@ function IntroTab({ customer }) {
     load();
   }, [load]);
 
-  async function handleCancel() {
-    if (!data?.upcoming || cancelling) return;
+  async function handleCancel(eventId) {
+    const rawId = eventId && typeof eventId === "string" ? eventId : null;
+    const targetId = rawId || data?.upcoming?._id;
+    if (!targetId || cancelling) return;
     if (
       !confirm(
         "Cancel this trial lesson? No charge will apply. They can rebook free since they already paid.",
@@ -6389,7 +6391,7 @@ function IntroTab({ customer }) {
       return;
     setCancelling(true);
     try {
-      const res = await api.delete(`/api/calendar/${data.upcoming._id}`);
+      const res = await api.delete(`/api/calendar/${targetId}`);
       if (res.success) {
         toast.success("Trial lesson cancelled.");
         await load();
@@ -6478,6 +6480,8 @@ function IntroTab({ customer }) {
 
   const {
     purchase,
+    purchases,
+    openPurchases,
     upcoming,
     takenLesson,
     history,
@@ -6490,6 +6494,18 @@ function IntroTab({ customer }) {
     timezone: studioTimezone,
   } = data || {};
 
+  const purchaseList =
+    Array.isArray(purchases) && purchases.length
+      ? purchases
+      : purchase
+        ? [purchase]
+        : [];
+  const openCount = Array.isArray(openPurchases)
+    ? openPurchases.length
+    : canBookOrRebook
+      ? 1
+      : 0;
+
   const introConsumed = taken || rescheduleBlockReason === "intro_consumed";
   const hadCancelledTrial = (history || []).some((ev) =>
     String(ev?.status || "").startsWith("cancelled"),
@@ -6499,19 +6515,21 @@ function IntroTab({ customer }) {
 
   const stepPurchased = Boolean(purchased);
   const stepScheduled = Boolean(upcoming) || Boolean(taken);
-  const stepTaken = Boolean(taken);
+  const stepTaken = Boolean(taken) && openCount === 0;
 
   const resolvedStatus =
     status ||
     (!purchased
       ? "not_purchased"
-      : taken
-        ? "taken"
-        : upcoming
-          ? "purchased_scheduled"
-          : hadCancelledTrial
-            ? "purchased_cancelled"
-            : "purchased_not_taken");
+      : openCount > 0 && !upcoming
+        ? "purchased_not_taken"
+        : taken && openCount === 0
+          ? "taken"
+          : upcoming
+            ? "purchased_scheduled"
+            : hadCancelledTrial
+              ? "purchased_cancelled"
+              : "purchased_not_taken");
 
   const resolvedStatusLabel =
     statusLabel ||
@@ -6534,14 +6552,16 @@ function IntroTab({ customer }) {
           : "border-border bg-muted/30";
 
   const heroSubcopy = !purchased
-    ? "This customer has not purchased their first trial lesson yet."
-    : taken
-      ? "Purchase complete and the trial lesson has been taken."
-      : upcoming
-        ? "Purchased and scheduled — waiting for the lesson."
-        : hadCancelledTrial
-          ? "Purchased, but the trial was cancelled. Book a new time from the calendar."
-          : "Purchased, but not scheduled yet. Book a time from the calendar.";
+    ? "This customer has not purchased a trial lesson yet."
+    : purchaseList.length > 1
+      ? `They have ${purchaseList.length} intro purchases${openCount ? ` (${openCount} still open to book)` : ""}. Book or cancel each from the calendar.`
+      : taken
+        ? "Purchase complete and the trial lesson has been taken."
+        : upcoming
+          ? "Purchased and scheduled — waiting for the lesson."
+          : hadCancelledTrial
+            ? "Purchased, but the trial was cancelled. Book a new time from the calendar."
+            : "Purchased, but not scheduled yet. Book a time from the calendar.";
 
   return (
     <div className="space-y-5">
@@ -6562,7 +6582,9 @@ function IntroTab({ customer }) {
           {purchased && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-background/80 border border-border px-2.5 py-1 text-[11px] font-medium text-foreground shrink-0">
               <CheckCircle className="h-3 w-3 text-success" />
-              Paid {formatIntroMoney(purchase?.amount)}
+              {purchaseList.length > 1
+                ? `${purchaseList.length} purchases`
+                : `Paid ${formatIntroMoney(purchase?.amount)}`}
             </span>
           )}
         </div>
@@ -6978,7 +7000,7 @@ function IntroTab({ customer }) {
                 size="sm"
                 variant="outline"
                 className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                onClick={handleCancel}
+                onClick={() => handleCancel()}
                 disabled={cancelling}
               >
                 <CalendarX className="h-3.5 w-3.5 mr-1.5" />

@@ -107,6 +107,7 @@ function FieldPicker({
         <div className="max-h-[360px] overflow-y-auto p-2">
           {step === 'group'
             ? catalog.FILTER_GROUPS.map((g) => {
+                if (g.hiddenInFilter) return null
                 const available = g.fields.filter((f) => !hiddenFields.has(f.value))
                 if (available.length === 0) return null
                 const allMuted = available.every((f) => mutedFields.has(f.value))
