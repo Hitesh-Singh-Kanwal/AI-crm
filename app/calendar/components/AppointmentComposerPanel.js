@@ -164,6 +164,7 @@ const EMPTY_FORM = {
   enrollment_id: "",
   customer_membership_id: "",
   funding_source: "",
+  paid_intro_purchase_id: "",
   date: "",
   start_time: "",
   end_time: "",
@@ -994,54 +995,69 @@ function MemberPicker({ members, selectedIds, onChange, label = "Attending membe
 
 // ─── Paid intro funding option (already-purchased trial, not yet scheduled) ───
 
-function PaidIntroOption({ introSummary, selected, onSelect }) {
-  if (!introSummary?.canBookOrRebook) return null;
-  const purchase = introSummary.purchase || {};
-  const svc = purchase.slot?.calendarServiceID;
-  const svcObj = svc && typeof svc === "object" ? svc : null;
-  const name =
-    svcObj?.serviceName ||
-    purchase.description ||
-    "Paid Intro";
-  const color = svcObj?.color || null;
-  const price = svcObj?.price ?? purchase.amount;
+function PaidIntroOptions({ introSummary, selectedPurchaseId, onSelectPurchase }) {
+  const openPurchases = Array.isArray(introSummary?.openPurchases)
+    ? introSummary.openPurchases
+    : introSummary?.canBookOrRebook && introSummary?.purchase
+      ? [introSummary.purchase]
+      : [];
+  if (!openPurchases.length) return null;
 
   return (
     <div className="space-y-1">
-      <FieldLabel>Paid Intro</FieldLabel>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => onSelect(introSummary)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") onSelect(introSummary);
-        }}
-        className={[
-          "flex items-center justify-between rounded-lg px-2.5 py-2 cursor-pointer border transition-colors",
-          selected
-            ? "border-brand bg-brand/10"
-            : "border-border bg-background hover:bg-muted/40",
-        ].join(" ")}
-      >
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          {color && (
-            <span
-              className="h-2.5 w-2.5 rounded-full shrink-0"
-              style={{ background: color }}
-            />
-          )}
-          <div className="min-w-0">
-            <p className="text-[11px] font-medium truncate">{name}</p>
-            <p className="text-[10px] text-muted-foreground">
-              Already paid — book without charging
-            </p>
-          </div>
-        </div>
-        {price != null && Number(price) > 0 && (
-          <span className="text-[11px] font-semibold text-foreground ml-2 shrink-0">
-            ${Number(price).toFixed(2)}
-          </span>
-        )}
+      <FieldLabel>
+        {openPurchases.length > 1 ? "Paid Intros" : "Paid Intro"}
+      </FieldLabel>
+      <div className="space-y-1.5">
+        {openPurchases.map((purchase) => {
+          const svc = purchase.slot?.calendarServiceID;
+          const svcObj = svc && typeof svc === "object" ? svc : null;
+          const name =
+            svcObj?.serviceName ||
+            purchase.description ||
+            "Paid Intro";
+          const color = svcObj?.color || null;
+          const price = svcObj?.price ?? purchase.amount;
+          const pid = String(purchase._id);
+          const selected = String(selectedPurchaseId || "") === pid;
+          return (
+            <div
+              key={pid}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelectPurchase(purchase)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") onSelectPurchase(purchase);
+              }}
+              className={[
+                "flex items-center justify-between rounded-lg px-2.5 py-2 cursor-pointer border transition-colors",
+                selected
+                  ? "border-brand bg-brand/10"
+                  : "border-border bg-background hover:bg-muted/40",
+              ].join(" ")}
+            >
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                {color && (
+                  <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ background: color }}
+                  />
+                )}
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium truncate">{name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Already paid — book without charging
+                  </p>
+                </div>
+              </div>
+              {price != null && Number(price) > 0 && (
+                <span className="text-[11px] font-semibold text-foreground ml-2 shrink-0">
+                  ${Number(price).toFixed(2)}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1081,6 +1097,7 @@ function WhoSection({
             setField("service_id", "");
             setField("event_color", "");
             setField("funding_source", "");
+            setField("paid_intro_purchase_id", "");
           }}
           options={customerOptions}
           placeholder="Select student…"
@@ -1131,17 +1148,20 @@ function WhoSection({
       )}
 
       {form.customer_id && (
-        <PaidIntroOption
+        <PaidIntroOptions
           introSummary={introSummary}
-          selected={form.funding_source === "paid_intro"}
-          onSelect={(summary) => {
+          selectedPurchaseId={
+            form.funding_source === "paid_intro" ? form.paid_intro_purchase_id : ""
+          }
+          onSelectPurchase={(purchase) => {
             setField("enrollment_id", "");
             setField("customer_membership_id", "");
             setField("service_id", "");
             setField("session_payment_method", "");
             setField("funding_source", "paid_intro");
+            setField("paid_intro_purchase_id", String(purchase._id));
             setField("recurrence_enabled", false);
-            const svc = summary?.purchase?.slot?.calendarServiceID;
+            const svc = purchase?.slot?.calendarServiceID;
             const color =
               (svc && typeof svc === "object" && svc.color) || null;
             if (color) setField("event_color", color);
@@ -1159,6 +1179,7 @@ function WhoSection({
             setField("enrollment_id", "");
             setField("session_payment_method", "");
             setField("funding_source", "");
+            setField("paid_intro_purchase_id", "");
             setField("customer_membership_id", membershipId);
             setField("service_id", serviceId);
             if (color) setField("event_color", color);
@@ -1174,6 +1195,7 @@ function WhoSection({
           onEnrollmentSelect={(v) => {
             setField("customer_membership_id", "");
             setField("funding_source", "");
+            setField("paid_intro_purchase_id", "");
             setField("enrollment_id", v);
             setField("service_id", "");
             setField("session_payment_method", "");
@@ -1181,6 +1203,7 @@ function WhoSection({
           onServiceSelect={(serviceId, color) => {
             setField("customer_membership_id", "");
             setField("funding_source", "");
+            setField("paid_intro_purchase_id", "");
             setField("service_id", serviceId);
             if (color) setField("event_color", color);
           }}
@@ -2709,9 +2732,25 @@ export default function AppointmentComposerPanel({
       }
 
       const introSummary = introSummaries[form.customer_id];
+      const openPurchases = Array.isArray(introSummary?.openPurchases)
+        ? introSummary.openPurchases
+        : introSummary?.purchase
+          ? [introSummary.purchase]
+          : [];
+      const selectedPurchase =
+        openPurchases.find(
+          (p) => String(p._id) === String(form.paid_intro_purchase_id),
+        ) || openPurchases[0] || null;
+
+      if (!selectedPurchase?._id) {
+        setError("Select which paid intro to book.");
+        setIsSaving(false);
+        return;
+      }
+
       const serviceType =
-        introSummary?.purchase?.slot?.calendarServiceID?.serviceName ||
-        introSummary?.purchase?.description ||
+        selectedPurchase?.slot?.calendarServiceID?.serviceName ||
+        selectedPurchase?.description ||
         "Trial Lesson";
 
       try {
@@ -2723,6 +2762,7 @@ export default function AppointmentComposerPanel({
             serviceType,
             locationID: createLocationID,
             teacherID: form.instructor_id || undefined,
+            paymentRequestID: String(selectedPurchase._id),
           },
         );
         if (!res?.success) {
