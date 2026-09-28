@@ -11,7 +11,7 @@ import {
   Tag,
 } from 'lucide-react'
 import api from '@/lib/api'
-import { cn, getInitials } from '@/lib/utils'
+import { cn, getInitials, nameWithMembers } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -139,7 +139,7 @@ export default function MemberLeadViewDialog({
 
   const source = lead?.utm_source || lead?.source || ''
   const locationLabel = resolveLocationLabel(lead, locations)
-  const leadName = lead?.name || 'Lead'
+  const leadName = nameWithMembers(lead) || 'Lead'
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="2xl">

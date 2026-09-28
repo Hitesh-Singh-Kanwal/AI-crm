@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, MoreHorizontal, Trash2, X } from 'lucide-react'
+import { Plus, MoreHorizontal, Trash2, X, GripVertical } from 'lucide-react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -58,6 +61,39 @@ function Shell({ count, noun, onAdd, addLabel, search, setSearch, children }) {
         {children}
       </div>
     </div>
+  )
+}
+
+/* Drag-to-reorder rows, same behaviour as the Scheduled Offerings tables. */
+function SortableRow({ id, disabled, onClick, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+  return (
+    <TableRow ref={setNodeRef} style={style} className="border-b border-border hover:bg-muted/30 transition-colors cursor-pointer" onClick={onClick}>
+      <TableCell className="py-3 pl-2 pr-0 w-8" onClick={(e) => e.stopPropagation()}>
+        <button type="button" disabled={disabled} aria-label="Drag to reorder" title={disabled ? 'Clear search to reorder' : undefined}
+          className="cursor-grab active:cursor-grabbing p-1 text-muted-foreground hover:text-foreground touch-none disabled:opacity-30 disabled:cursor-not-allowed" {...attributes} {...listeners}>
+          <GripVertical className="h-4 w-4" />
+        </button>
+      </TableCell>
+      {children}
+    </TableRow>
+  )
+}
+
+function SortableTable({ rows, setRows, url, reload, children }) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  async function onDragEnd({ active, over }) {
+    if (!over || active.id === over.id) return
+    const next = arrayMove(rows, rows.findIndex((r) => r._id === active.id), rows.findIndex((r) => r._id === over.id))
+    setRows(next)
+    const res = await api.patch(`${url}/reorder`, { order: next.map((r) => r._id), startIndex: 0 })
+    if (!res.success) { toast.error('Failed to save order', { description: res.error }); reload() }
+  }
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <Table>{children}</Table>
+    </DndContext>
   )
 }
 
@@ -149,9 +185,10 @@ export function ProductsTab() {
 
   return (
     <Shell count={count} noun="products" addLabel="Add Product" onAdd={() => { setEditing(null); setDialogOpen(true) }} search={search} setSearch={setSearch}>
-      <Table>
+      <SortableTable rows={rows} setRows={setRows} url="/api/product" reload={() => load(search)}>
         <TableHeader>
           <TableRow className="border-b border-border hover:bg-transparent bg-muted/30">
+            <TableHead className="w-8 py-3 pl-2 pr-0" />
             <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Name</TableHead>
             <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Description</TableHead>
             <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Default Price</TableHead>
@@ -160,10 +197,11 @@ export function ProductsTab() {
           </TableRow>
         </TableHeader>
         <TableBody>
+          <SortableContext items={rows.map((r) => r._id)} strategy={verticalListSortingStrategy}>
           {rows.length === 0 ? (
-            <TableRow><TableCell colSpan={5} className="py-16 text-center text-sm text-muted-foreground">{search ? 'No products match your search.' : 'No products yet. Click "Add Product" to create one.'}</TableCell></TableRow>
+            <TableRow><TableCell colSpan={6} className="py-16 text-center text-sm text-muted-foreground">{search ? 'No products match your search.' : 'No products yet. Click "Add Product" to create one.'}</TableCell></TableRow>
           ) : rows.map((row) => (
-            <TableRow key={row._id} className="border-b border-border hover:bg-muted/30 cursor-pointer" onClick={() => { setEditing(row); setDialogOpen(true) }}>
+            <SortableRow key={row._id} id={row._id} disabled={!!search} onClick={() => { setEditing(row); setDialogOpen(true) }}>
               <TableCell className="py-3 px-4 text-sm font-medium text-foreground">{row.name}</TableCell>
               <TableCell className="py-3 px-4 text-sm text-muted-foreground max-w-[280px] truncate">{row.description || '—'}</TableCell>
               <TableCell className="py-3 px-4 text-sm text-foreground">{money(row.defaultPrice)}</TableCell>
@@ -178,10 +216,11 @@ export function ProductsTab() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>
-            </TableRow>
+            </SortableRow>
           ))}
+          </SortableContext>
         </TableBody>
-      </Table>
+      </SortableTable>
       <ProductDialog open={dialogOpen} onClose={() => setDialogOpen(false)} product={editing} onRefresh={() => load(search)} />
     </Shell>
   )
@@ -269,9 +308,10 @@ export function EventTypesTab() {
 
   return (
     <Shell count={count} noun="event types" addLabel="Add Event Type" onAdd={() => { setEditing(null); setDialogOpen(true) }} search={search} setSearch={setSearch}>
-      <Table>
+      <SortableTable rows={rows} setRows={setRows} url="/api/event-type" reload={() => load(search)}>
         <TableHeader>
           <TableRow className="border-b border-border hover:bg-transparent bg-muted/30">
+            <TableHead className="w-8 py-3 pl-2 pr-0" />
             <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Name</TableHead>
             <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Description</TableHead>
             <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Status</TableHead>
@@ -279,10 +319,11 @@ export function EventTypesTab() {
           </TableRow>
         </TableHeader>
         <TableBody>
+          <SortableContext items={rows.map((r) => r._id)} strategy={verticalListSortingStrategy}>
           {rows.length === 0 ? (
-            <TableRow><TableCell colSpan={4} className="py-16 text-center text-sm text-muted-foreground">{search ? 'No event types match your search.' : 'No event types yet. Click "Add Event Type" to create one.'}</TableCell></TableRow>
+            <TableRow><TableCell colSpan={5} className="py-16 text-center text-sm text-muted-foreground">{search ? 'No event types match your search.' : 'No event types yet. Click "Add Event Type" to create one.'}</TableCell></TableRow>
           ) : rows.map((row) => (
-            <TableRow key={row._id} className="border-b border-border hover:bg-muted/30 cursor-pointer" onClick={() => { setEditing(row); setDialogOpen(true) }}>
+            <SortableRow key={row._id} id={row._id} disabled={!!search} onClick={() => { setEditing(row); setDialogOpen(true) }}>
               <TableCell className="py-3 px-4 text-sm font-medium text-foreground">{row.name}</TableCell>
               <TableCell className="py-3 px-4 text-sm text-muted-foreground max-w-[320px] truncate">{row.description || '—'}</TableCell>
               <TableCell className="py-3 px-4"><StatusBadge active={row.isActive} /></TableCell>
@@ -296,10 +337,11 @@ export function EventTypesTab() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>
-            </TableRow>
+            </SortableRow>
           ))}
+          </SortableContext>
         </TableBody>
-      </Table>
+      </SortableTable>
       <EventTypeDialog open={dialogOpen} onClose={() => setDialogOpen(false)} eventType={editing} onRefresh={() => load(search)} />
     </Shell>
   )
@@ -500,9 +542,10 @@ export function SavedTemplatesTab() {
 
   return (
     <Shell count={count} noun="templates" addLabel="Add Template" onAdd={() => { setEditing(null); setDialogOpen(true) }} search={search} setSearch={setSearch}>
-      <Table>
+      <SortableTable rows={rows} setRows={setRows} url="/api/purchase-template" reload={() => load(search)}>
         <TableHeader>
           <TableRow className="border-b border-border hover:bg-transparent bg-muted/30">
+            <TableHead className="w-8 py-3 pl-2 pr-0" />
             <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Template Name</TableHead>
             <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Event Type</TableHead>
             <TableHead className="py-3 px-4 text-xs font-medium text-muted-foreground">Default Products</TableHead>
@@ -512,10 +555,11 @@ export function SavedTemplatesTab() {
           </TableRow>
         </TableHeader>
         <TableBody>
+          <SortableContext items={rows.map((r) => r._id)} strategy={verticalListSortingStrategy}>
           {rows.length === 0 ? (
-            <TableRow><TableCell colSpan={6} className="py-16 text-center text-sm text-muted-foreground">{search ? 'No templates match your search.' : 'No saved templates yet. Click "Add Template" to create one.'}</TableCell></TableRow>
+            <TableRow><TableCell colSpan={7} className="py-16 text-center text-sm text-muted-foreground">{search ? 'No templates match your search.' : 'No saved templates yet. Click "Add Template" to create one.'}</TableCell></TableRow>
           ) : rows.map((row) => (
-            <TableRow key={row._id} className="border-b border-border hover:bg-muted/30 cursor-pointer" onClick={() => openEdit(row)}>
+            <SortableRow key={row._id} id={row._id} disabled={!!search} onClick={() => openEdit(row)}>
               <TableCell className="py-3 px-4 text-sm font-medium text-foreground">{row.name}</TableCell>
               <TableCell className="py-3 px-4 text-sm text-foreground">{row.eventTypeID?.name || '—'}</TableCell>
               <TableCell className="py-3 px-4 text-sm text-muted-foreground">{row.lineItems?.length ?? 0} product{(row.lineItems?.length ?? 0) !== 1 ? 's' : ''}</TableCell>
@@ -531,10 +575,11 @@ export function SavedTemplatesTab() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>
-            </TableRow>
+            </SortableRow>
           ))}
+          </SortableContext>
         </TableBody>
-      </Table>
+      </SortableTable>
       <TemplateDialog open={dialogOpen} onClose={() => setDialogOpen(false)} template={editing} products={products} eventTypes={eventTypes} onRefresh={() => load(search)} />
     </Shell>
   )

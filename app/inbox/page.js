@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { nameWithMembers } from '@/lib/utils'
 import MainLayout from '@/components/layout/MainLayout'
 import ContactList from '@/app/inbox/components/ContactList'
 import ConversationView from '@/app/inbox/components/ConversationView'
@@ -90,7 +91,7 @@ function buildInboxData(smsRecords, emailRecords) {
       contactGroups[key] = {
         contact: {
           id: lead?._id || rec.phoneNumber,
-          name: lead?.name || resolvedPhone || rec.phoneNumber,
+          name: nameWithMembers(lead) || resolvedPhone || rec.phoneNumber,
           type: resolveContactType(lead || {}),
           stage: lead?.stage || '',
           nextVisit: '',
@@ -105,7 +106,7 @@ function buildInboxData(smsRecords, emailRecords) {
     }
     contactGroups[key].messages.push({
       id: rec._id,
-      sender: isInbound ? (lead?.name || resolvedPhone || 'Unknown') : 'You',
+      sender: isInbound ? (nameWithMembers(lead) || resolvedPhone || 'Unknown') : 'You',
       direction: isInbound ? 'inbound' : 'outbound',
       content: rec.message,
       timestamp: rec.createdAt,
@@ -127,7 +128,7 @@ function buildInboxData(smsRecords, emailRecords) {
       contactGroups[key] = {
         contact: {
           id: lead?._id || email,
-          name: lead?.name || email,
+          name: nameWithMembers(lead) || email,
           type: resolveContactType(lead || {}),
           stage: lead?.stage || '',
           nextVisit: '',
@@ -493,7 +494,7 @@ function InboxPageContent() {
                   email: lead.email || c.contact.email,
                   phoneNumber: lead.phoneNumber || '',
                   stage: lead.stage || c.contact.stage,
-                  name: lead.name || c.contact.name,
+                  name: nameWithMembers(lead) || c.contact.name,
                   // Pending Payment / Engaged stay Leads until payment converts them.
                   // Preserve Teacher if this thread was already classified that way.
                   type: resolveLeadProfileInboxType(lead, c.contact.type),

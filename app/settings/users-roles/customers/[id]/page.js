@@ -4146,16 +4146,14 @@ function EnrollmentsTab({
                         >
                           {cp.status}
                         </span>
-                        {canEditValidity &&
-                          cp.status !== "cancelled" &&
-                          cp.expiryDate && (
+                        {canEditValidity && cp.status !== "cancelled" && (
                             <Button
                               variant="outline"
                               size="sm"
                               className="h-7 px-2.5 text-[11px] font-medium"
                               onClick={() => {
                                 setExtendDate(
-                                  new Date(cp.expiryDate)
+                                  new Date(cp.expiryDate || Date.now())
                                     .toISOString()
                                     .slice(0, 10),
                                 );
@@ -7734,12 +7732,20 @@ function useAccountSummary(customerID) {
     const live = enrollments.filter(
       (e) => e.status !== "cancelled" && e.package?.status === "active",
     );
-    const details = await Promise.all(
-      live.map((e) => api.get(`/api/customer-package/${e._id}/details`)),
+    const [details, privRes] = await Promise.all([
+      Promise.all(
+        live.map((e) => api.get(`/api/customer-package/${e._id}/details`)),
+      ),
+      api.get("/api/calendar-service?type=private&limit=200"),
+    ]);
+    const privateCodes = new Set(
+      (privRes.success ? privRes.data || [] : []).map((s) => s.serviceCode),
     );
     const sessions = details.reduce(
       (acc, res) => {
-        (res.success ? res.data?.services ?? [] : []).forEach((svc) => {
+        (res.success ? res.data?.services ?? [] : [])
+          .filter((svc) => privateCodes.has(svc.serviceCode))
+          .forEach((svc) => {
           const total = svc.sessionsTotal ?? 0;
           const used = svc.sessionsUsed ?? 0;
           acc.total += total;

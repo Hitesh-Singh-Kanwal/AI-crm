@@ -362,6 +362,11 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
               .filter(Boolean)
             const memberNames =
               persistedNames.length > 0 ? persistedNames : refMembers[String(c._id)] || []
+            // "Not attending — member(s) attend alone": show only the members.
+            const isAbsent = (appt.absentCustomerIDs || []).some(
+              (a) => String(a?._id ?? a) === String(c._id),
+            )
+            if (isAbsent && memberNames.length > 0) return memberNames.join(", ")
             return memberNames.length > 0 ? `${base} & ${memberNames.join(", ")}` : base
           })
           .filter(Boolean)
@@ -1867,6 +1872,12 @@ function formatTime(dateInput) {
   });
 }
 
+// Header "N today · N/wk" badge: a lesson that fell through with no charge is
+// gone; a charged cancel / charged no-show still counts (it was paid for).
+const isCountedEvent = (e) =>
+  !e.extendedProps?.isTodo &&
+  !["cancelled_no_charge", "no_show_no_charge"].includes(e.extendedProps?.effectiveStatus);
+
 function isCancelledEventStatus(status) {
   return status === "cancelled_no_charge" || status === "cancelled_charged";
 }
@@ -2356,7 +2367,7 @@ function TutorDayCalendar({
     const weekStart = startOfWeekSunday(focusDate);
     const weekEnd = addDays(weekStart, 7);
     allEvents.forEach((event) => {
-      if (event.extendedProps?.isTodo) return;
+      if (!isCountedEvent(event)) return;
       const d = new Date(event.start);
       if (d >= weekStart && d < weekEnd) {
         const key = event.extendedProps?.tutorKey || "unknown";
@@ -2410,9 +2421,9 @@ function TutorDayCalendar({
             <div className="flex" style={{ minWidth: effectiveTutors.length * MIN_COL_WIDTH }}>
           {effectiveTutors.map((tutor, idx) => {
             const todayCount =
-              dayTimedEvents.filter((e) => !e.extendedProps?.isTodo && eventBelongsToTutor(e, tutor.key))
+              dayTimedEvents.filter((e) => isCountedEvent(e) && eventBelongsToTutor(e, tutor.key))
                 .length +
-              (byTutorAllDay[tutor.key]?.filter((e) => !e.extendedProps?.isTodo).length ?? 0);
+              (byTutorAllDay[tutor.key]?.filter(isCountedEvent).length ?? 0);
             const weekCount = weekCountByTutor[tutor.key] ?? 0;
             return (
               <div
@@ -4172,10 +4183,12 @@ function CalendarPageInner() {
                       setIsAppointmentPanelOpen(true);
                     }}
                     onColumnReorder={(orderedKeys) => {
-                      setInstructors((prev) => {
-                        const orderMap = new Map(orderedKeys.map((k, i) => [k, i]));
-                        return [...prev].sort((a, b) => (orderMap.get(a.key) ?? 999) - (orderMap.get(b.key) ?? 999));
-                      });
+                      const orderMap = new Map(orderedKeys.map((k, i) => [k, i]));
+                      const byOrder = (a, b) => (orderMap.get(a.key) ?? 999) - (orderMap.get(b.key) ?? 999);
+                      // fetchCalendarEvents rebuilds the columns from this ref on every
+                      // refetch (month change, TZ load), so it must carry the new order too.
+                      allTeachersRef.current = [...allTeachersRef.current].sort(byOrder);
+                      setInstructors((prev) => [...prev].sort(byOrder));
                       api.patch("/api/teacher/reorder", { order: orderedKeys });
                     }}
                     customSlotMins={customSlotMins}

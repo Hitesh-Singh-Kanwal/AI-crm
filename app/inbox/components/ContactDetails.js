@@ -1,13 +1,13 @@
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getInitials } from '@/lib/utils'
+import { getInitials, nameWithMembers } from '@/lib/utils'
 
 export default function ContactDetails({ contact, leadData, onClose }) {
   if (!contact) return null
 
   // Use leadData (full API response) when available, fall back to contact
   const lead = leadData || {}
-  const name = lead.name || contact.name
+  const name = nameWithMembers(lead) || contact.name
   const email = lead.email || contact.email || ''
   const phoneNumber = lead.phoneNumber || contact.phoneNumber || ''
   const stage = lead.stage ? capitalize(lead.stage) : null

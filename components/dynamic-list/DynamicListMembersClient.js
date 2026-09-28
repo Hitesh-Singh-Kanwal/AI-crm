@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import api from '@/lib/api'
-import { cn, getInitials } from '@/lib/utils'
+import { cn, getInitials, nameWithMembers } from '@/lib/utils'
 import { MEMBERS_PAGE_SIZE } from '@/lib/dynamic-list-constants'
 import {
   buildMemberFilterParams,
@@ -497,7 +497,7 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
                     const selectableLead = getMembershipLead(membership)
                     const leadId = selectableLead?._id
                     const isSelected = leadId ? selectedLeadIds.includes(leadId) : false
-                    const leadName = lead?.name || 'Unnamed'
+                    const leadName = nameWithMembers(lead) || 'Unnamed'
                     return (
                       <tr key={`${lead?._id || lead?.id || idx}`} className="border-b border-border/70 hover:bg-muted/20">
                         <td className="px-4 py-4">
