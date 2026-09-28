@@ -48,7 +48,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { hasPermission } from '@/lib/permissions'
 import { isViewingAllBranches, getBranchQueryParam } from '@/lib/branch-filter'
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
-import { cn } from '@/lib/utils'
+import { cn, nameWithMembers } from '@/lib/utils'
 
 const LEAD_CSV_FIELDS = [
   { key: 'name', header: 'name', sample: 'John Doe' },
@@ -343,17 +343,17 @@ function LeadsPageInner() {
 
   const handleConvertToCustomer = async (lead) => {
     if (lead.convertedCustomerID) {
-      toast.info('Already a customer', { description: `${lead.name} has already been converted to a customer.` })
+      toast.info('Already a customer', { description: `${nameWithMembers(lead)} has already been converted to a customer.` })
       return
     }
-    const confirmed = window.confirm(`Convert "${lead.name}" to a customer? This will create a Customer record and mark the lead as Converted.`)
+    const confirmed = window.confirm(`Convert "${nameWithMembers(lead)}" to a customer? This will create a Customer record and mark the lead as Converted.`)
     if (!confirmed) return
 
     setConvertingId(lead._id)
     try {
       const result = await api.post(`/api/lead/${lead._id}/convert-to-customer`, {})
       if (result.success) {
-        toast.success('Converted', { description: `${lead.name} has been converted to a customer.` })
+        toast.success('Converted', { description: `${nameWithMembers(lead)} has been converted to a customer.` })
         refreshLeads()
       } else {
         toast.error('Conversion failed', { description: result.error || 'Unable to convert lead' })
@@ -676,7 +676,7 @@ function LeadsPageInner() {
                         {lead.name?.charAt(0) || '?'}
                       </div>
                       <div>
-                        <p className="text-sm font-normal text-foreground leading-tight">{lead.name}</p>
+                        <p className="text-sm font-normal text-foreground leading-tight">{nameWithMembers(lead)}</p>
                         {lead.location && (
                           <p className="text-xs font-normal text-muted-foreground leading-tight mt-0.5">
                             {lead.location}

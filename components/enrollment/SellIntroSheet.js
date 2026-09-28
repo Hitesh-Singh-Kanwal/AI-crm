@@ -9,6 +9,7 @@ import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
 import TerminalDeviceField from '@/components/payments/TerminalDeviceField'
 import LessonSlotPicker, { slotWallTimesToUtcRange } from '@/components/calendar/LessonSlotPicker'
 import { Button } from '@/components/ui/button'
+import { nameWithMembers } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
 import { useStudioTimezone } from '@/lib/hooks/useStudioTimezone'
 import api from '@/lib/api'
@@ -124,7 +125,7 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
           options.push({
             value: convertedId ? `customer:${convertedId}` : `lead:${lead._id ?? lead.id}`,
             label: [
-              lead.name || 'Unnamed lead',
+              nameWithMembers(lead) || 'Unnamed lead',
               lead.phoneNumber || lead.email || null,
               convertedId ? 'Customer' : 'Lead',
             ]
