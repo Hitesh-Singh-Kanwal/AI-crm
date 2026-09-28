@@ -636,27 +636,31 @@ function getSelectPlaceholder(field) {
  * current page URL.
  */
 function normalizeStandaloneRedirectUrl(raw) {
-  let url = String(raw || '').trim()
+  let url = String(raw || '').replace(/\s+/g, '')
   if (!url) return ''
 
-  // If a previous relative resolve already mangled it, prefer the last http(s) URL.
-  const embedded = url.match(/https?:\/\/[^\s"']+/gi)
-  if (embedded && embedded.length > 1) {
-    url = embedded[embedded.length - 1]
+  // Concatenated values (old URL + new URL, or a host page URL that absorbed the
+  // redirect) keep only the last URL. Anything after ?/# is a query value, not a new URL.
+  const beforeQuery = (s) => s.split(/[?#]/)[0]
+  const lower = url.toLowerCase()
+  const lastScheme = Math.max(lower.lastIndexOf('http://'), lower.lastIndexOf('https://'))
+  if (lastScheme > 0 && !/[?#]/.test(url.slice(0, lastScheme))) {
+    url = url.slice(lastScheme)
+  }
+  const wwwIdx = beforeQuery(url).toLowerCase().lastIndexOf('www.')
+  if (
+    wwwIdx > 0 &&
+    !/^https?:\/\/$/i.test(url.slice(0, wwwIdx)) &&
+    /^www\.[a-z0-9-]+\.[a-z]/i.test(url.slice(wwwIdx))
+  ) {
+    url = url.slice(wwwIdx)
   }
 
-  // Recover paths that absorbed a www.* host as a relative segment, e.g.
-  // https://site.com/studio/form/www.example.com → https://www.example.com
-  const wwwTail = url.match(
-    /^(https?:\/\/.+)\/(www\.[a-z0-9.-]+\.[a-z]{2,})(\/.*)?$/i
-  )
-  if (wwwTail) {
-    url = `https://${wwwTail[2]}${wwwTail[3] || ''}`
-  }
-
-  if (/^[a-z][a-z0-9+.-]*:/i.test(url)) return url
+  if (/^(javascript|data|vbscript):/i.test(url)) return ''
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(url) || /^(mailto|tel):/i.test(url)) return url
   if (url.startsWith('//')) return `https:${url}`
-  return `https://${url.replace(/^\/+/, '')}`
+  if (url.startsWith('/')) return url
+  return `https://${url}`
 }
 
 /** Empty / prompt options like "Select Reason" — not real reason choices. */
@@ -3099,13 +3103,10 @@ ${getFormPhoneExportRuntimeScript()}
         if (!url) return '';
         var s = String(url).trim();
         if (!s) return '';
-        var matches = s.match(/https?:\\/\\/[^\\s"']+/gi);
-        if (matches && matches.length > 1) s = matches[matches.length - 1];
-        var wwwTail = s.match(/^(https?:\\/\\/.+)\\/(www\\.[a-z0-9.-]+\\.[a-z]{2,})(\\/.*)?$/i);
-        if (wwwTail) s = 'https://' + wwwTail[2] + (wwwTail[3] || '');
-        if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return s;
+        if (/^[a-z][a-z0-9+.-]*:\\/\\//i.test(s) || /^(mailto|tel):/i.test(s)) return s;
         if (s.indexOf('//') === 0) return 'https:' + s;
-        return 'https://' + s.replace(/^\\/+/, '');
+        if (s.charAt(0) === '/') return s;
+        return 'https://' + s;
       }
 
       function goToRedirect() {
