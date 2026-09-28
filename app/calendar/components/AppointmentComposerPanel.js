@@ -402,8 +402,8 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
   const [isCreating, setIsCreating] = useState(false);
 
   async function handleCreate() {
-    if (!name.trim() || !email.trim()) {
-      setError("Name and email are required.");
+    if (!name.trim()) {
+      setError("Name is required.");
       return;
     }
     if (!Array.isArray(locationID) || locationID.length === 0) {
@@ -427,7 +427,7 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
       <p className="text-[11px] font-semibold text-brand">New Student</p>
       <StyledInput placeholder="Full name *" value={name} onChange={setName} />
       <StyledInput
-        placeholder="Email address *"
+        placeholder="Email address"
         value={email}
         onChange={setEmail}
         type="email"

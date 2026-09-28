@@ -251,8 +251,8 @@ export default function LeadsDialog({
     if (viewOnly) return
     if (!editingLead) return
 
-    if (!editingLead.name || !editingLead.email || !editingLead.phoneNumber) {
-      toast.error({ title: 'Validation Error', message: 'Name, email, and phone number are required' })
+    if (!editingLead.name || !editingLead.phoneNumber) {
+      toast.error({ title: 'Validation Error', message: 'Name and phone number are required' })
       return
     }
 
@@ -389,7 +389,7 @@ export default function LeadsDialog({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Email *</label>
+              <label className="block text-sm font-medium mb-1">Email</label>
               <Input
                 type="email"
                 value={editingLead.email || ''}

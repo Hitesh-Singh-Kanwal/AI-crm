@@ -158,6 +158,8 @@ const LEAD_PROPERTIES = [
 
 const LEAD_PROPERTY_NAMES = new Set(LEAD_PROPERTIES.map((p) => p.name))
 const CORE_LEAD_PROPERTY_NAMES = ['name', 'email', 'phoneNumber', 'locationID', 'reason']
+/** In the lead template by default, but optional and removable. */
+const OPTIONAL_CORE_LEAD_PROPERTY_NAMES = new Set(['email'])
 
 const fieldTypes = [
   { id: 'text', name: 'Text Input', icon: Type },
@@ -401,11 +403,12 @@ function createMetadataField(type = 'text', label = 'Custom field') {
 function buildRequiredLeadFields(leadReasons = [], locations = []) {
   return CORE_LEAD_PROPERTY_NAMES.map((name) => {
     const prop = LEAD_PROPERTIES.find((p) => p.name === name)
+    const optional = OPTIONAL_CORE_LEAD_PROPERTY_NAMES.has(name)
     const field = createLeadPropertyField(prop, {
       leadReasons,
       locations,
-      locked: true,
-      required: true,
+      locked: !optional,
+      required: !optional,
     })
     // Stable ids for core required fields (easier option sync / import)
     field.id = `req-${name === 'locationID' ? 'studio' : name}`
@@ -428,7 +431,7 @@ const FORM_TYPE_OPTIONS = [
   {
     id: 'lead',
     title: 'Lead form',
-    description: 'Includes required lead fields (name, email, phone, studio, reason). Add Source, Location, or metadata from the sidebar.',
+    description: 'Includes required lead fields (name, phone, studio, reason) plus an optional email. Add Source, Location, or metadata from the sidebar.',
     icon: UserRound,
   },
 ]
@@ -442,7 +445,7 @@ function buildInitialFormFields(formType, leadReasons = [], locations = []) {
 
 function detectFormTypeFromInferred(inferred = []) {
   const names = new Set(inferred.map((f) => f?.name).filter(Boolean))
-  const hasLeadCore = ['name', 'email', 'phoneNumber'].every((n) => names.has(n))
+  const hasLeadCore = ['name', 'phoneNumber'].every((n) => names.has(n))
   const hasLeadExtras = names.has('reason') || names.has('locationID')
   return hasLeadCore && hasLeadExtras ? 'lead' : 'blank'
 }
@@ -558,7 +561,7 @@ function FormTypePreview({ formType }) {
   if (formType === 'lead') {
     const previewFields = [
       { label: 'Name', required: true },
-      { label: 'Email', required: true },
+      { label: 'Email', required: false },
       { label: 'Phone Number', required: true },
       { label: 'Studio', required: true },
       { label: 'Reason', required: true },

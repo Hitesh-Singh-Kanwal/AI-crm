@@ -595,7 +595,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
 
   async function saveProfile(e) {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) return;
+    if (!form.name.trim()) return;
     if (!Array.isArray(form.locationID) || form.locationID.length === 0) {
       toast.error("Please select at least one location.");
       return;
@@ -660,7 +660,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
                     className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
                   />
                 </FormField>
-                <FormField label="Email" required>
+                <FormField label="Email">
                   <input
                     type="email"
                     value={form.email}

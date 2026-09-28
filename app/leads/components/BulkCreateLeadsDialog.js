@@ -32,7 +32,7 @@ export default function BulkCreateLeadsDialog({ open, onClose, onRefresh }) {
     }
 
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
-    const requiredHeaders = ['name', 'email', 'phonenumber', 'location']
+    const requiredHeaders = ['name', 'phonenumber', 'location']
     const missingHeaders = requiredHeaders.filter(h => !headers.includes(h))
     
     if (missingHeaders.length > 0) {
@@ -69,7 +69,7 @@ export default function BulkCreateLeadsDialog({ open, onClose, onRefresh }) {
         else if (header === 'isescalated' || header === 'is escalated') lead.isEscalated = value?.toLowerCase() === 'true'
       })
 
-      if (!lead.name || !lead.email || !lead.phoneNumber || !lead.location) {
+      if (!lead.name || !lead.phoneNumber || !lead.location) {
         throw new Error(`Row ${i + 1} is missing required fields`)
       }
 
@@ -170,8 +170,8 @@ Bob Johnson,bob.johnson@example.com,+1555555555,Chicago,pending_payment,,,,,,,,,
           <div>
             <label className="block text-sm font-medium mb-2">CSV Format</label>
             <div className="bg-muted/40 border border-border rounded-lg p-3 text-xs font-mono">
-              <div className="text-muted-foreground mb-2">Required columns: name, email, phonenumber, location</div>
-              <div className="text-muted-foreground">Optional columns: stage, reason, dateofbirth, gender, street, city, state, zipcode, country, bookingstatus, assignedhumanagent, assignedaiagent, isescalated</div>
+              <div className="text-muted-foreground mb-2">Required columns: name, phonenumber, location</div>
+              <div className="text-muted-foreground">Optional columns: email, stage, reason, dateofbirth, gender, street, city, state, zipcode, country, bookingstatus, assignedhumanagent, assignedaiagent, isescalated</div>
             </div>
           </div>
 

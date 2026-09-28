@@ -221,8 +221,8 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
   const [saving, setSaving] = useState(false);
 
   async function handleCreate() {
-    if (!name.trim() || !email.trim()) {
-      setError("Name and email are required.");
+    if (!name.trim()) {
+      setError("Name is required.");
       return;
     }
     if (!Array.isArray(locationID) || locationID.length === 0) {
@@ -273,7 +273,7 @@ function NewGroupCustomerForm({ onSuccess, onCancel }) {
         </div>
         <div>
           <p className="text-[11px] font-medium text-muted-foreground mb-1">
-            Email *
+            Email
           </p>
           <input
             className={inputCls}

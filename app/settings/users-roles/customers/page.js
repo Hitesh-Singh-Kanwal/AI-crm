@@ -189,8 +189,8 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError(null)
-    if (!form.name.trim() || !form.email.trim()) {
-      setError('Name and email are required.')
+    if (!form.name.trim()) {
+      setError('Name is required.')
       return
     }
     if (!Array.isArray(form.locationID) || form.locationID.length === 0) {
@@ -279,7 +279,7 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
                     className={inputClass}
                   />
                 </FormField>
-                <FormField label="Email" required>
+                <FormField label="Email">
                   <input
                     type="email"
                     value={form.email}
