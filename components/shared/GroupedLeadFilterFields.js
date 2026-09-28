@@ -135,6 +135,7 @@ function ReportColumnFilters({
   const fields = catalog.FILTER_GROUPS.flatMap((g) =>
     g.fields
       .filter((f) => !hiddenFields.has(f.value))
+      .filter((f) => !g.hiddenInFilter || conditions.some((c) => c.field === f.value))
       .map((f) => ({ ...f, groupId: g.id }))
   )
 
@@ -551,6 +552,7 @@ export default function GroupedLeadFilterFields({
               const groupConditions = conditions.filter(
                 (c) => c.groupId === group.id || availableFields.some((f) => f.value === c.field)
               )
+              if (group.hiddenInFilter && groupConditions.length === 0) return null
 
               return (
                 <GroupToggleRow
