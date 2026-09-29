@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { nameWithMembers } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
 import { useStudioTimezone } from '@/lib/hooks/useStudioTimezone'
+import { resolveLessonMinutes, resolveStudioDayHours, locationSlotSettings } from '@/lib/studioSlotHours'
 import api from '@/lib/api'
 
 const SHEET_WIDTH = '560px'
@@ -52,7 +53,9 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
   const [teacherID, setTeacherID] = useState('')
   const [slotDate, setSlotDate] = useState('')
   const [selectedSlot, setSelectedSlot] = useState(null)
-  const [durationMins, setDurationMins] = useState(50)
+  const [locationsById, setLocationsById] = useState({})
+  /** Location ids whose by-id fetch failed — unlock generic fallback hours. */
+  const [locationFetchFailed, setLocationFetchFailed] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
@@ -63,6 +66,22 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     [contactOptions, selectedContactKey],
   )
   const locationID = selectedContact?.locationID || null
+  const selectedLocation = locationID ? locationsById[String(locationID)] || null : null
+  const hoursReady =
+    !locationID ||
+    Boolean(selectedLocation) ||
+    Boolean(locationFetchFailed[String(locationID)])
+  const hoursLoading = Boolean(locationID && !hoursReady)
+  const slotTz = selectedLocation?.timezone || studioTz || null
+  const durationMins = locationID
+    ? resolveLessonMinutes(selectedLocation?.defaultLessonMinutes)
+    : 60
+
+  const dayHours = useMemo(() => {
+    // Wait for the location document — do not invent fallback chips while loading.
+    if (!hoursReady) return { closed: false, openMin: null, closeMin: null }
+    return resolveStudioDayHours(selectedLocation?.operatingHours, slotDate, slotTz)
+  }, [hoursReady, selectedLocation, slotDate, slotTz])
 
   const locationIntros = useMemo(
     () =>
@@ -96,6 +115,8 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     setTeacherID('')
     setSlotDate('')
     setSelectedSlot(null)
+    setLocationsById({})
+    setLocationFetchFailed({})
     setSubmitting(false)
 
     async function load() {
@@ -187,9 +208,14 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
       }
 
       if (locationsRes?.success && Array.isArray(locationsRes.data)) {
-        const loc = locationsRes.data[0]
-        const mins = Number(loc?.defaultLessonMinutes)
-        if (Number.isFinite(mins) && mins >= 15) setDurationMins(mins)
+        const byId = {}
+        for (const loc of locationsRes.data) {
+          const settings = locationSlotSettings(loc)
+          if (settings) byId[String(loc._id ?? loc.id)] = settings
+        }
+        setLocationsById(byId)
+      } else {
+        setLocationsById({})
       }
 
       setCatalogLoading(false)
@@ -211,6 +237,46 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
   useEffect(() => {
     setWarning(null)
   }, [selectedContactKey])
+
+  // Locations list is capped at 50 — pull the contact's studio by id when missing.
+  useEffect(() => {
+    if (!locationID) return
+    const id = String(locationID)
+    if (locationsById[id] || locationFetchFailed[id]) return
+    let cancelled = false
+    api
+      .get(`/api/location/${id}`)
+      .then((res) => {
+        if (cancelled) return
+        if (!res?.success || !res.data) {
+          setLocationFetchFailed((prev) => (prev[id] ? prev : { ...prev, [id]: true }))
+          return
+        }
+        const settings = locationSlotSettings(res.data)
+        if (!settings) {
+          setLocationFetchFailed((prev) => (prev[id] ? prev : { ...prev, [id]: true }))
+          return
+        }
+        setLocationsById((prev) => (prev[id] ? prev : { ...prev, [id]: settings }))
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLocationFetchFailed((prev) => (prev[id] ? prev : { ...prev, [id]: true }))
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [locationID, locationsById, locationFetchFailed])
+
+  // A slot picked for one studio or lesson length is not valid for another.
+  useEffect(() => {
+    setSelectedSlot(null)
+  }, [locationID, durationMins])
+
+  useEffect(() => {
+    if (dayHours.closed) setSelectedSlot(null)
+  }, [dayHours.closed, slotDate])
 
   function handleClose() {
     setError('')
@@ -250,11 +316,19 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
 
     let slotPayload
     if (includeSlot) {
+      if (hoursLoading) {
+        setError('Studio hours are still loading. Wait a moment, then pick a slot.')
+        return
+      }
+      if (dayHours.closed) {
+        setError('The studio is closed that day. Pick another date, or turn off “Hold a slot”.')
+        return
+      }
       if (!teacherID || !slotDate || !selectedSlot) {
         setError('Pick a teacher, date, and time slot, or turn off “Hold a slot”.')
         return
       }
-      const range = slotWallTimesToUtcRange(slotDate, selectedSlot, studioTz)
+      const range = slotWallTimesToUtcRange(slotDate, selectedSlot, slotTz)
       if (!range) {
         setError('Could not resolve the selected slot time.')
         return
@@ -590,7 +664,11 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
                         onSlotChange={setSelectedSlot}
                         durationMins={durationMins}
                         slotStepMins={durationMins}
-                        studioTz={studioTz}
+                        slotAlignMins={dayHours.openMin ?? undefined}
+                        dayEndMin={dayHours.closeMin ?? undefined}
+                        dayClosed={dayHours.closed}
+                        hoursLoading={hoursLoading}
+                        studioTz={slotTz}
                       />
                     )}
                   </>
