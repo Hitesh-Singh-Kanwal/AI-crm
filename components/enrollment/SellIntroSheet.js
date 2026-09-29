@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { nameWithMembers } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
 import { useStudioTimezone } from '@/lib/hooks/useStudioTimezone'
+import { resolveLessonMinutes, resolveStudioDayHours } from '@/lib/studioSlotHours'
 import api from '@/lib/api'
 
 const SHEET_WIDTH = '560px'
@@ -52,7 +53,7 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
   const [teacherID, setTeacherID] = useState('')
   const [slotDate, setSlotDate] = useState('')
   const [selectedSlot, setSelectedSlot] = useState(null)
-  const [durationMins, setDurationMins] = useState(50)
+  const [locationsById, setLocationsById] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
@@ -63,6 +64,16 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     [contactOptions, selectedContactKey],
   )
   const locationID = selectedContact?.locationID || null
+  const selectedLocation = locationID ? locationsById[String(locationID)] || null : null
+  const slotTz = selectedLocation?.timezone || studioTz || null
+  const durationMins = locationID
+    ? resolveLessonMinutes(selectedLocation?.defaultLessonMinutes)
+    : 60
+
+  const dayHours = useMemo(
+    () => resolveStudioDayHours(selectedLocation?.operatingHours, slotDate, slotTz),
+    [selectedLocation, slotDate, slotTz],
+  )
 
   const locationIntros = useMemo(
     () =>
@@ -96,6 +107,7 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     setTeacherID('')
     setSlotDate('')
     setSelectedSlot(null)
+    setLocationsById({})
     setSubmitting(false)
 
     async function load() {
@@ -187,9 +199,17 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
       }
 
       if (locationsRes?.success && Array.isArray(locationsRes.data)) {
-        const loc = locationsRes.data[0]
-        const mins = Number(loc?.defaultLessonMinutes)
-        if (Number.isFinite(mins) && mins >= 15) setDurationMins(mins)
+        const byId = {}
+        for (const loc of locationsRes.data) {
+          byId[String(loc._id ?? loc.id)] = {
+            operatingHours: Array.isArray(loc.operatingHours) ? loc.operatingHours : [],
+            defaultLessonMinutes: loc.defaultLessonMinutes,
+            timezone: loc.timezone || null,
+          }
+        }
+        setLocationsById(byId)
+      } else {
+        setLocationsById({})
       }
 
       setCatalogLoading(false)
@@ -211,6 +231,15 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
   useEffect(() => {
     setWarning(null)
   }, [selectedContactKey])
+
+  // A slot picked for one studio or lesson length is not valid for another.
+  useEffect(() => {
+    setSelectedSlot(null)
+  }, [locationID, durationMins])
+
+  useEffect(() => {
+    if (dayHours.closed) setSelectedSlot(null)
+  }, [dayHours.closed, slotDate])
 
   function handleClose() {
     setError('')
@@ -250,11 +279,15 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
 
     let slotPayload
     if (includeSlot) {
+      if (dayHours.closed) {
+        setError('The studio is closed that day. Pick another date, or turn off “Hold a slot”.')
+        return
+      }
       if (!teacherID || !slotDate || !selectedSlot) {
         setError('Pick a teacher, date, and time slot, or turn off “Hold a slot”.')
         return
       }
-      const range = slotWallTimesToUtcRange(slotDate, selectedSlot, studioTz)
+      const range = slotWallTimesToUtcRange(slotDate, selectedSlot, slotTz)
       if (!range) {
         setError('Could not resolve the selected slot time.')
         return
@@ -590,7 +623,10 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
                         onSlotChange={setSelectedSlot}
                         durationMins={durationMins}
                         slotStepMins={durationMins}
-                        studioTz={studioTz}
+                        slotAlignMins={dayHours.openMin ?? undefined}
+                        dayEndMin={dayHours.closeMin ?? undefined}
+                        dayClosed={dayHours.closed}
+                        studioTz={slotTz}
                       />
                     )}
                   </>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import api from '@/lib/api'
 import { toStudioLocalDate } from '@/lib/studioLocalDate'
 import { studioWallTimeToUtcISO } from '@/lib/studio-time'
+import { enumerateGridSlotStarts } from '@/lib/studioSlotHours'
 import SearchableSelect from '@/components/ui/searchable-select'
 
 /**
@@ -71,32 +72,13 @@ function enumerateAvailabilitySlotStarts(
   busyIntervals = [],
   bookingDurMins,
 ) {
-  const step = Math.max(15, Number(slotStepMins) || 30)
-  const bookingDur = Math.max(
-    15,
-    Number(bookingDurMins) > 0 ? Number(bookingDurMins) : step,
+  return enumerateGridSlotStarts(
+    slotAlignMins,
+    slotStepMins,
+    dayEndMin,
+    busyIntervals,
+    bookingDurMins,
   )
-  const windowStart = Math.max(0, Number(slotAlignMins) || 0)
-  const windowEnd = Math.min(24 * 60, Number(dayEndMin) || 21 * 60)
-  const busy = [...busyIntervals].sort((a, b) => a.start - b.start)
-
-  let t = windowStart
-  const starts = []
-
-  while (t + bookingDur <= windowEnd) {
-    const slotEnd = t + bookingDur
-    const conflict = busy.find((b) => t < b.end && slotEnd > b.start)
-    if (conflict) {
-      if (conflict.end > t) {
-        t = conflict.end
-        continue
-      }
-    }
-    starts.push(t)
-    t += step
-  }
-
-  return starts
 }
 
 function AvailabilityGrid({
@@ -174,7 +156,7 @@ function AvailabilityGrid({
   }, [teacherID, date, studioTz])
 
   const availableSlots = useMemo(() => {
-    const bookingDur = Math.max(15, Number(durationMins) || 50)
+    const bookingDur = Math.max(15, Number(durationMins) || 60)
     const stepMins = Math.max(
       15,
       Number(slotStepMins) > 0 ? Number(slotStepMins) : bookingDur,
@@ -203,7 +185,7 @@ function AvailabilityGrid({
     <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-          Availability · every {slotStepMins || durationMins || 50} min
+          Availability · every {slotStepMins || durationMins || 60} min
         </span>
         {!loading && (
           <span className="text-[10px] text-muted-foreground">
@@ -253,10 +235,11 @@ function AvailabilityGrid({
  * @param {(date:string)=>void} props.onDateChange
  * @param {{start:string,end:string}|null} props.selectedSlot wall-clock HH:mm
  * @param {(slot:{start:string,end:string}|null)=>void} props.onSlotChange
- * @param {number} [props.durationMins=50]
+ * @param {number} [props.durationMins=60]
  * @param {number} [props.slotStepMins]
  * @param {number} [props.slotAlignMins=360] minutes from midnight (default 6am)
  * @param {number} [props.dayEndMin=1260] minutes from midnight (default 9pm)
+ * @param {boolean} [props.dayClosed=false] when true, show closed message instead of slots
  * @param {string|null} [props.studioTz]
  */
 export default function LessonSlotPicker({
@@ -267,10 +250,11 @@ export default function LessonSlotPicker({
   onDateChange,
   selectedSlot,
   onSlotChange,
-  durationMins = 50,
+  durationMins = 60,
   slotStepMins,
   slotAlignMins = 6 * 60,
   dayEndMin = 21 * 60,
+  dayClosed = false,
   studioTz = null,
 }) {
   return (
@@ -301,17 +285,25 @@ export default function LessonSlotPicker({
         />
       </div>
 
-      <AvailabilityGrid
-        teacherID={teacherID}
-        date={date}
-        durationMins={durationMins}
-        slotStepMins={slotStepMins || durationMins}
-        slotAlignMins={slotAlignMins}
-        dayEndMin={dayEndMin}
-        selectedStart={selectedSlot?.start || null}
-        onSelect={(slot) => onSlotChange?.(slot)}
-        studioTz={studioTz}
-      />
+      {dayClosed && date ? (
+        <div className="rounded-xl border border-border bg-muted/20 p-3">
+          <p className="text-[11px] text-muted-foreground font-medium">
+            Studio is closed that day.
+          </p>
+        </div>
+      ) : (
+        <AvailabilityGrid
+          teacherID={teacherID}
+          date={date}
+          durationMins={durationMins}
+          slotStepMins={slotStepMins || durationMins}
+          slotAlignMins={slotAlignMins}
+          dayEndMin={dayEndMin}
+          selectedStart={selectedSlot?.start || null}
+          onSelect={(slot) => onSlotChange?.(slot)}
+          studioTz={studioTz}
+        />
+      )}
     </div>
   )
 }
