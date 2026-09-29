@@ -161,7 +161,9 @@ function AvailabilityGrid({
       15,
       Number(slotStepMins) > 0 ? Number(slotStepMins) : bookingDur,
     )
-    const windowEnd = Number(dayEndMin) > 0 ? Number(dayEndMin) : 21 * 60
+    // Missing close must not invent a 9pm window — callers pass studio hours.
+    const windowEnd = Number(dayEndMin) > 0 ? Number(dayEndMin) : 0
+    if (!(windowEnd > 0)) return []
     const gridStarts = enumerateAvailabilitySlotStarts(
       slotAlignMins,
       stepMins,
@@ -237,9 +239,10 @@ function AvailabilityGrid({
  * @param {(slot:{start:string,end:string}|null)=>void} props.onSlotChange
  * @param {number} [props.durationMins=60]
  * @param {number} [props.slotStepMins]
- * @param {number} [props.slotAlignMins=360] minutes from midnight (default 6am)
- * @param {number} [props.dayEndMin=1260] minutes from midnight (default 9pm)
+ * @param {number} [props.slotAlignMins] minutes from midnight (studio open); no invent default
+ * @param {number} [props.dayEndMin] minutes from midnight (studio close); missing → no chips
  * @param {boolean} [props.dayClosed=false] when true, show closed message instead of slots
+ * @param {boolean} [props.hoursLoading=false] when true, wait for location hours before chips
  * @param {string|null} [props.studioTz]
  */
 export default function LessonSlotPicker({
@@ -252,9 +255,10 @@ export default function LessonSlotPicker({
   onSlotChange,
   durationMins = 60,
   slotStepMins,
-  slotAlignMins = 6 * 60,
-  dayEndMin = 21 * 60,
+  slotAlignMins,
+  dayEndMin,
   dayClosed = false,
+  hoursLoading = false,
   studioTz = null,
 }) {
   return (
@@ -285,7 +289,13 @@ export default function LessonSlotPicker({
         />
       </div>
 
-      {dayClosed && date ? (
+      {hoursLoading ? (
+        <div className="rounded-xl border border-border bg-muted/20 p-3">
+          <p className="text-[11px] text-muted-foreground font-medium">
+            Loading studio hours…
+          </p>
+        </div>
+      ) : dayClosed && date ? (
         <div className="rounded-xl border border-border bg-muted/20 p-3">
           <p className="text-[11px] text-muted-foreground font-medium">
             Studio is closed that day.
