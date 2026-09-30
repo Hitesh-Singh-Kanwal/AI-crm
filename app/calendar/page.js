@@ -18,6 +18,42 @@ import { toStudioLocalDate } from "@/lib/studioLocalDate";
 import { getCurrentUserId, getEffectiveBranch } from "@/lib/auth";
 import { isOwnScope } from "@/lib/permissions";
 
+/** localStorage key for the calendar grid, scoped to the navbar branch (or all). */
+function calendarGridCacheKey(kind) {
+  const branch = getEffectiveBranch() || "all";
+  return `cal_${kind}:${branch}`;
+}
+
+function readCachedSlotMins() {
+  try {
+    const scoped = Number(localStorage.getItem(calendarGridCacheKey("slotMins")));
+    if (Number.isFinite(scoped) && scoped > 0) return scoped;
+    // Legacy unscoped key from before per-location grids.
+    const legacy = Number(localStorage.getItem("cal_slotMins"));
+    return Number.isFinite(legacy) && legacy > 0 ? legacy : null;
+  } catch {
+    return null;
+  }
+}
+
+function readCachedStartMins() {
+  try {
+    const scoped = Number(localStorage.getItem(calendarGridCacheKey("startMins")));
+    if (Number.isFinite(scoped) && scoped >= 0) return scoped;
+    const legacy = Number(localStorage.getItem("cal_startMins"));
+    return Number.isFinite(legacy) && legacy >= 0 ? legacy : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedGrid(slotMins, startMins) {
+  try {
+    localStorage.setItem(calendarGridCacheKey("slotMins"), String(slotMins));
+    localStorage.setItem(calendarGridCacheKey("startMins"), String(startMins));
+  } catch {}
+}
+
 const COLORS = {
   border: "hsl(var(--border))",
   shadow: "0px 2px 5px 0px hsl(var(--foreground) / 0.06)",
@@ -3592,10 +3628,10 @@ function CalendarPageInner() {
   const [slotSelection, setSlotSelection] = useState(null);
   const [hideEmptySlots, setHideEmptySlots] = useState(false);
   const [customSlotMins, setCustomSlotMins] = useState(() => {
-    try { const n = Number(localStorage.getItem("cal_slotMins")); return Number.isFinite(n) && n > 0 ? n : DEFAULT_SLOT_MINS; } catch { return DEFAULT_SLOT_MINS; }
+    return readCachedSlotMins() ?? DEFAULT_SLOT_MINS;
   });
   const [slotAlignMins, setSlotAlignMins] = useState(() => {
-    try { const n = Number(localStorage.getItem("cal_startMins")); return Number.isFinite(n) && n >= 0 ? n : FULL_START_HOUR * 60; } catch { return FULL_START_HOUR * 60; }
+    return readCachedStartMins() ?? FULL_START_HOUR * 60;
   });
 
   useEffect(() => {
@@ -3607,11 +3643,18 @@ function CalendarPageInner() {
           const { slotMins, startMins } = res.data;
           if (Number.isFinite(slotMins) && slotMins > 0) {
             setCustomSlotMins(slotMins);
-            try { localStorage.setItem("cal_slotMins", String(slotMins)); } catch {}
           }
           if (Number.isFinite(startMins) && startMins >= 0) {
             setSlotAlignMins(startMins);
-            try { localStorage.setItem("cal_startMins", String(startMins)); } catch {}
+          }
+          if (
+            (Number.isFinite(slotMins) && slotMins > 0) ||
+            (Number.isFinite(startMins) && startMins >= 0)
+          ) {
+            writeCachedGrid(
+              Number.isFinite(slotMins) && slotMins > 0 ? slotMins : DEFAULT_SLOT_MINS,
+              Number.isFinite(startMins) && startMins >= 0 ? startMins : FULL_START_HOUR * 60,
+            );
           }
           return;
         }
@@ -3624,11 +3667,15 @@ function CalendarPageInner() {
         // by a fixed offset for anyone whose browser hasn't refreshed that cache.
         // Retry once so a transient failure doesn't leave the stale value in place.
         console.error("Failed to load calendar settings:", res.error);
-        setTimeout(() => { if (!cancelled) loadCalendarSettings(); }, 3000);
+        setTimeout(() => {
+          if (!cancelled) loadCalendarSettings();
+        }, 3000);
       });
     };
     loadCalendarSettings();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // slotDuration string for FullCalendar (HH:MM:SS)
@@ -4062,7 +4109,7 @@ function CalendarPageInner() {
                   onApply={(mins, startOff) => {
                     setCustomSlotMins(mins);
                     setSlotAlignMins(startOff);
-                    try { localStorage.setItem("cal_slotMins", String(mins)); localStorage.setItem("cal_startMins", String(startOff)); } catch {}
+                    writeCachedGrid(mins, startOff);
                     api.patch("/api/organisation/calendar-settings", { slotMins: mins, startMins: startOff });
                   }}
                 />
@@ -4149,7 +4196,7 @@ function CalendarPageInner() {
                   onApply={(mins, startOff) => {
                     setCustomSlotMins(mins);
                     setSlotAlignMins(startOff);
-                    try { localStorage.setItem("cal_slotMins", String(mins)); localStorage.setItem("cal_startMins", String(startOff)); } catch {}
+                    writeCachedGrid(mins, startOff);
                     api.patch("/api/organisation/calendar-settings", { slotMins: mins, startMins: startOff });
                   }}
                 />
