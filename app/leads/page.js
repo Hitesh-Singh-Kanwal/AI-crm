@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { Plus, Phone, Mail, MessageSquare, MoreHorizontal, UserCheck } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
@@ -69,6 +70,9 @@ const LEAD_CSV_FIELDS = [
 
 const DEFAULT_ROWS_PER_PAGE = 10
 
+// Remembers filters/page/pageSize across back/forward navigation.
+const LEADS_LIST_STATE_KEY = 'leads-list-state'
+
 function toRecipientLead(lead) {
   if (!lead?._id) return null
   return {
@@ -93,8 +97,9 @@ function LeadsPageInner() {
   const [selectingAll, setSelectingAll] = useState(false)
   const [sendDialogOpen, setSendDialogOpen] = useState(false)
   const [sendChannel, setSendChannel] = useState('SMS')
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(DEFAULT_ROWS_PER_PAGE)
+  const [persisted] = useState(() => readPersistedListState(LEADS_LIST_STATE_KEY) || {})
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
+  const [pageSize, setPageSize] = useState(persisted.pageSize || DEFAULT_ROWS_PER_PAGE)
   const [leads, setLeads] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -103,7 +108,7 @@ function LeadsPageInner() {
   const [dialogInitialLeadId, setDialogInitialLeadId] = useState(null)
   const [dialogViewOnly, setDialogViewOnly] = useState(false)
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
-  const [filters, setFilters] = useState(EMPTY_LEAD_FILTERS)
+  const [filters, setFilters] = useState(persisted.filters || EMPTY_LEAD_FILTERS)
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
   const [listDialogOpen, setListDialogOpen] = useState(false)
   const [prefillList, setPrefillList] = useState(null)
@@ -223,6 +228,8 @@ function LeadsPageInner() {
   useEffect(() => {
     loadLeads(currentPage, filters, pageSize)
   }, [currentPage, filters, pageSize, loadLeads])
+
+  usePersistListState(LEADS_LIST_STATE_KEY, { currentPage, pageSize, filters })
 
   const refreshLeads = useCallback(() => {
     loadLeads(currentPage, filters, pageSize)

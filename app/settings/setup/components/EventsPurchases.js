@@ -25,7 +25,7 @@ import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import SavedCardField from '@/components/payments/SavedCardField'
 import CheckNumberField from '@/components/payments/CheckNumberField'
-import TerminalDeviceField from '@/components/payments/TerminalDeviceField'
+import TerminalDeviceField, { terminalTipPayload } from '@/components/payments/TerminalDeviceField'
 import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
 import { PAYMENT_METHODS_WITH_SAVED_CARD } from '@/lib/paymentMethods'
 import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
@@ -781,7 +781,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
             walletAmount: walletApplied > 0 ? walletApplied : undefined, notes: name.trim(),
             ...(payMethod === 'saved_card' ? { cardToken: savedCardID } : {}),
             ...(payMethod === 'cheque' ? { checkNumber } : {}),
-            ...(payMethod === 'terminal' ? { deviceID } : {}),
+            ...(payMethod === 'terminal' ? { deviceID, ...terminalTipPayload() } : {}),
             tip,
           })
           if (!payRes.success) toast.error('Purchase saved, but payment failed', { description: payRes.error })
@@ -796,7 +796,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         // payment_plan or flexible → build a payment plan
         let billing
         if (isPlan) {
-          billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}), ...(payMethod === 'terminal' ? { deviceID } : {}) }
+          billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}), ...(payMethod === 'terminal' ? { deviceID, ...terminalTipPayload() } : {}) }
         } else {
           const scheduleRows = [
             ...(flexInitialAmountN > 0 ? [{ dueDate: flexInitialDate, amount: flexInitialAmountN }] : []),
@@ -804,7 +804,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
               .filter((r) => r.dueDate && Number(r.amount) > 0)
               .map((r) => ({ dueDate: r.dueDate, amount: Number(r.amount) })),
           ]
-          billing = { customInstallments: scheduleRows, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}), ...(payMethod === 'terminal' ? { deviceID } : {}) }
+          billing = { customInstallments: scheduleRows, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}), ...(payMethod === 'terminal' ? { deviceID, ...terminalTipPayload() } : {}) }
         }
         const effectiveCollectNow = isPlan ? collectNow : flexInitialAmountN > 0 && collectNow
         const planRes = await api.post('/api/payment-plan/purchase', {

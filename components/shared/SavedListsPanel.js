@@ -9,6 +9,7 @@ import SearchInput from '@/components/ui/search-input'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import { summarizeConditions } from '@/lib/dynamic-list-normalize'
 import { extractLeadReasonsList } from '@/lib/workflow-normalize'
+import { buildCustomerQueryParams } from '@/lib/customer-filter-fields'
 
 const ENTITY_COPY = {
   customer: {
@@ -39,6 +40,11 @@ export default function SavedListsPanel({ entityType = 'lead', refreshKey = 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+  // Customer lists: the stored memberCount is a cache that goes stale (e.g. "last 60 days"
+  // never fires an event when someone ages out). The list page evaluates the conditions live
+  // via /api/customer, so count the same way or the card and the page disagree.
+  const [liveCounts, setLiveCounts] = useState({})
+  const [countsSettled, setCountsSettled] = useState(false)
 
   const loadLists = useCallback(async () => {
     setLoading(true)
@@ -70,10 +76,56 @@ export default function SavedListsPanel({ entityType = 'lead', refreshKey = 0 })
   }, [loadLists, refreshKey])
 
   useEffect(() => {
+    if (resolvedType !== 'customer' || lists.length === 0) return
+    let cancelled = false
+    setCountsSettled(false)
+    Promise.all(
+      lists.map(async (list) => {
+        const params = buildCustomerQueryParams({
+          page: 1,
+          limit: 1,
+          filters: {
+            conditionLogic: list.conditionLogic,
+            conditions: list.conditions || [],
+            groupLogics: list.groupLogics || {},
+          },
+        })
+        const res = await api.get(`/api/customer?${params}`)
+        return [list._id || list.id, res?.success ? (res.pagination?.total ?? res.total) : undefined]
+      }),
+    ).then((pairs) => {
+      if (cancelled) return
+      setLiveCounts(Object.fromEntries(pairs.filter(([, n]) => n != null)))
+      setCountsSettled(true) // a failed request falls back to the stored count
+    })
+    return () => { cancelled = true }
+  }, [lists, resolvedType])
+
+  // Lookups so condition summaries show names ("Starter Package") instead of raw ids.
+  const [lookups, setLookups] = useState({})
+
+  useEffect(() => {
     api.get('/api/lead-reasons').then((res) => {
       if (res?.success) setLeadReasons(extractLeadReasonsList(res))
     })
-  }, [])
+    if (resolvedType !== 'customer') return
+    const arr = (res) => (res?.success && Array.isArray(res.data) ? res.data : [])
+    Promise.all([
+      api.get('/api/location?limit=200'),
+      api.get('/api/teacher?limit=200&status=active'),
+      api.get('/api/customer/tags'),
+      api.get('/api/membership?limit=200'),
+      api.get('/api/package?limit=200'),
+    ]).then(([locations, teachers, tags, memberships, packages]) =>
+      setLookups({
+        locations: arr(locations),
+        teachers: arr(teachers),
+        tags: arr(tags),
+        memberships: arr(memberships),
+        packages: arr(packages),
+      }),
+    )
+  }, [resolvedType])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -81,10 +133,10 @@ export default function SavedListsPanel({ entityType = 'lead', refreshKey = 0 })
     return lists.filter((list) => {
       const name = String(list?.name || '').toLowerCase()
       const description = String(list?.description || '').toLowerCase()
-      const summary = summarizeConditions(list, { leadReasons }, resolvedType).toLowerCase()
+      const summary = summarizeConditions(list, { leadReasons, ...lookups }, resolvedType).toLowerCase()
       return name.includes(q) || description.includes(q) || summary.includes(q)
     })
-  }, [lists, search, leadReasons, resolvedType])
+  }, [lists, search, leadReasons, lookups, resolvedType])
 
   const openList = (list) => {
     const id = list?._id || list?.id
@@ -129,8 +181,12 @@ export default function SavedListsPanel({ entityType = 'lead', refreshKey = 0 })
             const id = list?._id || list?.id
             const summary =
               list?.description?.trim() ||
-              summarizeConditions(list, { leadReasons }, resolvedType)
-            const count = Number(list?.memberCount ?? 0)
+              summarizeConditions(list, { leadReasons, ...lookups }, resolvedType)
+            // Customer lists wait for the live count instead of flashing the stale stored one.
+            const count =
+              resolvedType === 'customer' && liveCounts[id] == null && !countsSettled
+                ? null
+                : Number(liveCounts[id] ?? list?.memberCount ?? 0)
             return (
               <button
                 key={id}
@@ -148,7 +204,7 @@ export default function SavedListsPanel({ entityType = 'lead', refreshKey = 0 })
                   <div className="mt-0.5 truncate text-[12px] text-muted-foreground">{summary}</div>
                 </div>
                 <div className="shrink-0 text-[13px] font-medium text-[var(--studio-primary)]">
-                  {copy.countLabel(count)}
+                  {count == null ? '…' : copy.countLabel(count)}
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
               </button>

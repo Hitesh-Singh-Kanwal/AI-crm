@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import {
   CalendarClock,
   CalendarCheck2,
@@ -24,6 +25,9 @@ import { useUpcomingTasks } from '@/lib/hooks/useUpcomingTasks'
 import CreateTaskDialog from '@/components/dashboard/CreateTaskDialog'
 
 const ROWS_PER_PAGE = 15
+
+// Remembers search/filters/sort/page across back/forward navigation.
+const UPCOMING_TASKS_LIST_STATE_KEY = 'upcoming-tasks-list-state'
 
 const KIND_ICON = {
   todo: CheckSquare,
@@ -161,14 +165,15 @@ export default function UpcomingTasksPage() {
   // card's fixed 3-item preview, so it deliberately casts a bigger net.
   const { tasks, loading, refresh } = useUpcomingTasks({ days: 30, limit: 200, pollMs: 90000 })
 
-  const [search, setSearch] = useState('')
-  const [kind, setKind] = useState('')
-  const [assignee, setAssignee] = useState('')
-  const [fromDate, setFromDate] = useState('')
-  const [toDate, setToDate] = useState('')
-  const [overdueOnly, setOverdueOnly] = useState(false)
-  const [sortBy, setSortBy] = useState('due')
-  const [currentPage, setCurrentPage] = useState(1)
+  const [persisted] = useState(() => readPersistedListState(UPCOMING_TASKS_LIST_STATE_KEY) || {})
+  const [search, setSearch] = useState(persisted.search || '')
+  const [kind, setKind] = useState(persisted.kind || '')
+  const [assignee, setAssignee] = useState(persisted.assignee || '')
+  const [fromDate, setFromDate] = useState(persisted.fromDate || '')
+  const [toDate, setToDate] = useState(persisted.toDate || '')
+  const [overdueOnly, setOverdueOnly] = useState(persisted.overdueOnly || false)
+  const [sortBy, setSortBy] = useState(persisted.sortBy || 'due')
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
   const [showMoreFilters, setShowMoreFilters] = useState(false)
 
   const assigneeOptions = useMemo(
@@ -203,6 +208,17 @@ export default function UpcomingTasksPage() {
     () => (sortBy === 'due' ? groupByDueDate(pageItems) : [{ key: 'all', label: null, items: pageItems }]),
     [pageItems, sortBy]
   )
+
+  usePersistListState(UPCOMING_TASKS_LIST_STATE_KEY, {
+    search,
+    kind,
+    assignee,
+    fromDate,
+    toDate,
+    overdueOnly,
+    sortBy,
+    currentPage,
+  })
 
   const hasMoreFiltersActive = Boolean(kind || assignee || fromDate || toDate || overdueOnly || sortBy !== 'due')
   const hasActiveFilters = Boolean(search || hasMoreFiltersActive)

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { Building2, MapPin, Phone, Mail } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
@@ -19,21 +20,25 @@ import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatTimezoneLabel } from '@/lib/timezones'
 
+// Remembers search/filter/page/limit across back/forward navigation.
+const STUDIO_LIST_STATE_KEY = 'studio-list-state'
+
 export default function LocationsPage() {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All')
+  const [persisted] = useState(() => readPersistedListState(STUDIO_LIST_STATE_KEY) || {})
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(persisted.searchQuery || '')
+  const [statusFilter, setStatusFilter] = useState(persisted.statusFilter || 'All')
   const [selectedLocationId, setSelectedLocationId] = useState(null)
   const [selectedLocation, setSelectedLocation] = useState(null)
   const [loadingLocationDetails, setLoadingLocationDetails] = useState(false)
   const [locationsList, setLocationsList] = useState([])
   const [locationsDialogOpen, setLocationsDialogOpen] = useState(false)
   const [locationsDialogInitialId, setLocationsDialogInitialId] = useState(null)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [limit, setLimit] = useState(10) // Items per page (default: 10)
+  const [limit, setLimit] = useState(persisted.limit || 10) // Items per page (default: 10)
   const [customLimit, setCustomLimit] = useState('')
   const [showCustomLimit, setShowCustomLimit] = useState(false)
   const toast = useToast()
@@ -42,9 +47,14 @@ export default function LocationsPage() {
   const canDeleteLocations = hasPermission('settings', 'locations', 'delete')
 
   // Debounce search query
+  const skipPageResetRef = useRef(true)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery)
+      if (skipPageResetRef.current) {
+        skipPageResetRef.current = false
+        return
+      }
       setCurrentPage(1) // Reset to first page when searching
     }, 500)
 
@@ -55,6 +65,8 @@ export default function LocationsPage() {
   useEffect(() => {
     loadLocations()
   }, [debouncedSearch, currentPage, statusFilter, limit])
+
+  usePersistListState(STUDIO_LIST_STATE_KEY, { searchQuery: debouncedSearch, statusFilter, currentPage, limit })
 
   async function loadLocations() {
     try {

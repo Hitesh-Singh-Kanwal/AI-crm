@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { Search, PhoneCall, Trash2, Info, RefreshCw, Clock, User, Bot, X, SlidersHorizontal } from 'lucide-react'
 import SuccessEvaluationDisplay from '@/components/ai-calling/SuccessEvaluationDisplay'
 import AiCallRecordingPlayer from '@/components/ai-calling/AiCallRecordingPlayer'
@@ -46,6 +47,9 @@ const DEFAULT_FILTERS = {
   setupType: '',
   hasEvaluation: '',
 }
+
+// Remembers filters/page across back/forward navigation.
+const AI_CALLING_DATA_LIST_STATE_KEY = 'ai-calling-data-list-state'
 
 function getVisiblePageNumbers(current, total) {
   if (total <= 7) {
@@ -199,9 +203,10 @@ function isCallPendingSync(call) {
 }
 
 export default function AiCallDetailPage() {
-  const [filters, setFilters] = useState(DEFAULT_FILTERS)
+  const [persisted] = useState(() => readPersistedListState(AI_CALLING_DATA_LIST_STATE_KEY) || {})
+  const [filters, setFilters] = useState(persisted.filters || DEFAULT_FILTERS)
   const [assistants, setAssistants] = useState([])
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
   const [totalCount, setTotalCount] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [calls, setCalls] = useState([])
@@ -311,6 +316,8 @@ export default function AiCallDetailPage() {
   useEffect(() => {
     loadCalls(currentPage, filters)
   }, [currentPage, filters, loadCalls])
+
+  usePersistListState(AI_CALLING_DATA_LIST_STATE_KEY, { filters, currentPage })
 
   // Auto-refresh while any visible call is still syncing from Vapi.
   useEffect(() => {

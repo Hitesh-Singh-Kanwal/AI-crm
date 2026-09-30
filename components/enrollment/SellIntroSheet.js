@@ -6,7 +6,7 @@ import { ExternalLink, Link2, Loader2 } from 'lucide-react'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import SearchableSelect from '@/components/ui/searchable-select'
 import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
-import TerminalDeviceField from '@/components/payments/TerminalDeviceField'
+import TerminalDeviceField, { terminalTipPayload } from '@/components/payments/TerminalDeviceField'
 import LessonSlotPicker, { slotWallTimesToUtcRange } from '@/components/calendar/LessonSlotPicker'
 import { Button } from '@/components/ui/button'
 import { nameWithMembers } from '@/lib/utils'
@@ -355,7 +355,7 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
       ...(selectedContact.leadID ? { leadID: selectedContact.leadID } : {}),
       ...(selectedContact.customerID ? { customerID: selectedContact.customerID } : {}),
       ...(method === 'link' ? { channel } : {}),
-      ...(method === 'terminal' ? { billing: { deviceID } } : {}),
+      ...(method === 'terminal' ? { billing: { deviceID, ...terminalTipPayload() } } : {}),
       ...(slotPayload ? { slot: slotPayload } : {}),
     }
 

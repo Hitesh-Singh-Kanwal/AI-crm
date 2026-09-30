@@ -194,6 +194,7 @@ export default function CreateEnrollmentSheet({
               ...(payload.billing?.method === 'terminal'
                 ? {
                     deviceID: payload.billing?.deviceID,
+                    promptTip: payload.billing?.promptTip,
                   }
                 : {}),
               // A saved card is charged inside the add endpoint itself for a one-time
@@ -273,6 +274,7 @@ export default function CreateEnrollmentSheet({
           ...(method === 'terminal'
             ? {
                 deviceID: payload.billing?.deviceID,
+                promptTip: payload.billing?.promptTip,
               }
             : {}),
           ...(method === 'saved_card' ? { cardToken: payload.billing?.savedCardID } : {}),
@@ -295,6 +297,7 @@ export default function CreateEnrollmentSheet({
         ...(method === 'terminal'
           ? {
               deviceID: payload.billing?.deviceID,
+              promptTip: payload.billing?.promptTip,
             }
           : {}),
         ...(method === 'saved_card' ? { cardToken: payload.billing?.savedCardID } : {}),

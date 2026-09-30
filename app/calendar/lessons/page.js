@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { Plus, MoreHorizontal } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import SearchInput from '@/components/ui/search-input'
@@ -27,11 +28,15 @@ import LessonDialog from './components/LessonDialog'
 
 const ROWS_PER_PAGE = 10
 
+// Remembers search/page across back/forward navigation.
+const LESSONS_LIST_STATE_KEY = 'lessons-list-state'
+
 export default function LessonsPage() {
+  const [persisted] = useState(() => readPersistedListState(LESSONS_LIST_STATE_KEY) || {})
   const [lessons, setLessons] = useState([])
   const [totalCount, setTotalCount] = useState(0)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
   const [loading, setLoading] = useState(true)
   const [initialLoad, setInitialLoad] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
@@ -71,6 +76,8 @@ export default function LessonsPage() {
   useEffect(() => {
     loadLessons(currentPage, searchQuery)
   }, [currentPage, searchQuery, loadLessons])
+
+  usePersistListState(LESSONS_LIST_STATE_KEY, { searchQuery, currentPage })
 
   const toggleOne = (id) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))

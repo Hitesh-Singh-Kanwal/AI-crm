@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { Plus, MoreHorizontal } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
@@ -27,12 +28,16 @@ import GlobalLoader from '@/components/shared/GlobalLoader'
 
 const ROWS_PER_PAGE = 10
 
+// Remembers search/page across back/forward navigation.
+const PACKAGES_LIST_STATE_KEY = 'packages-list-state'
+
 export default function PackagesPage() {
   const router = useRouter()
+  const [persisted] = useState(() => readPersistedListState(PACKAGES_LIST_STATE_KEY) || {})
   const [packages, setPackages] = useState([])
   const [totalCount, setTotalCount] = useState(0)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
   const [loading, setLoading] = useState(true)
   const [initialLoad, setInitialLoad] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
@@ -63,6 +68,8 @@ export default function PackagesPage() {
   useEffect(() => {
     loadPackages(currentPage, searchQuery)
   }, [currentPage, searchQuery, loadPackages])
+
+  usePersistListState(PACKAGES_LIST_STATE_KEY, { searchQuery, currentPage })
 
   const toggleOne = (id) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))

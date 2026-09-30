@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, MoreHorizontal, Trash2, Pencil, ChevronDown, ExternalLink, SlidersHorizontal, X, Users, MapPin, Wallet, ListPlus } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
@@ -450,6 +451,10 @@ function CustomerFormDialog({ open, onClose, onSaved, initial }) {
   )
 }
 
+// Remembers search/filters/page/pageSize across back/forward navigation (and
+// reload within the same tab) — see lib/hooks/useListStatePersistence.js.
+const CUSTOMERS_LIST_STATE_KEY = 'customers-list-state'
+
 function CustomersPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -464,14 +469,15 @@ function CustomersPageInner() {
   const [packages, setPackages] = useState([])
   const [tagOptions, setTagOptions] = useState([])
   const [leadReasons, setLeadReasons] = useState([])
-  const [teacherFilter, setTeacherFilter] = useState('')
+  const [persisted] = useState(() => readPersistedListState(CUSTOMERS_LIST_STATE_KEY) || {})
+  const [teacherFilter, setTeacherFilter] = useState(persisted.teacherFilter || '')
   const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
+  const [search, setSearch] = useState(persisted.search || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(persisted.search || '')
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(persisted.pageSize || 10)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState(null)
@@ -480,7 +486,7 @@ function CustomersPageInner() {
   const [bulkDeleting, setBulkDeleting] = useState(false)
 
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
-  const [filters, setFilters] = useState(EMPTY_CUSTOMER_FILTERS)
+  const [filters, setFilters] = useState(persisted.filters || EMPTY_CUSTOMER_FILTERS)
   const [listDialogOpen, setListDialogOpen] = useState(false)
   const [prefillList, setPrefillList] = useState(null)
   const [savedListsRefreshKey, setSavedListsRefreshKey] = useState(0)
@@ -613,10 +619,25 @@ function CustomersPageInner() {
     return () => clearTimeout(timer)
   }, [search])
 
+  // Skip the very first run: it would reset a restored page back to 1 before
+  // the list ever gets a chance to load at that page.
+  const skipPageResetRef = useRef(true)
   useEffect(() => {
+    if (skipPageResetRef.current) {
+      skipPageResetRef.current = false
+      return
+    }
     clearSelection()
     setCurrentPage(1)
   }, [debouncedSearch, teacherFilter, filters, pageSize])
+
+  usePersistListState(CUSTOMERS_LIST_STATE_KEY, {
+    search: debouncedSearch,
+    teacherFilter,
+    currentPage,
+    pageSize,
+    filters,
+  })
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true)

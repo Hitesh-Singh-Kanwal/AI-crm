@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, RefreshCw, RotateCcw } from 'lucide-react'
 import api from '@/lib/api'
-import { cn, getInitials, formatDate } from '@/lib/utils'
+import { cn, getInitials, formatDate, nameWithMembers } from '@/lib/utils'
 import { summarizeConditions, formatReasonLabel } from '@/lib/dynamic-list-normalize'
 import { buildCustomerQueryParams } from '@/lib/customer-filter-fields'
 import { extractLeadReasonsList } from '@/lib/workflow-normalize'
@@ -48,6 +48,7 @@ export default function DynamicListCustomerMembersClient({ listId }) {
   const [customers, setCustomers] = useState([])
   const [locations, setLocations] = useState([])
   const [leadReasons, setLeadReasons] = useState([])
+  const [lookups, setLookups] = useState({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [reEvaluateOpen, setReEvaluateOpen] = useState(false)
@@ -97,6 +98,16 @@ export default function DynamicListCustomerMembersClient({ listId }) {
     api.get('/api/lead-reasons').then((res) => {
       if (res?.success) setLeadReasons(extractLeadReasonsList(res))
     })
+    // Names for the condition summary (otherwise package/teacher ids print raw).
+    const arr = (res) => (res?.success && Array.isArray(res.data) ? res.data : [])
+    Promise.all([
+      api.get('/api/teacher?limit=200&status=active'),
+      api.get('/api/customer/tags'),
+      api.get('/api/membership?limit=200'),
+      api.get('/api/package?limit=200'),
+    ]).then(([teachers, tags, memberships, packages]) =>
+      setLookups({ teachers: arr(teachers), tags: arr(tags), memberships: arr(memberships), packages: arr(packages) }),
+    )
   }, [])
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
@@ -139,7 +150,7 @@ export default function DynamicListCustomerMembersClient({ listId }) {
             </h1>
             <p className="text-[13px] text-muted-foreground">
               {list
-                ? summarizeConditions(list, { leadReasons, locations }, 'customer')
+                ? summarizeConditions(list, { leadReasons, locations, ...lookups }, 'customer')
                 : 'Loading conditions…'}
             </p>
           </div>
@@ -214,7 +225,7 @@ export default function DynamicListCustomerMembersClient({ listId }) {
                         </AvatarFallback>
                       </Avatar>
                       <p className="text-[13px] font-medium text-foreground">
-                        {customer.name || '—'}
+                        {nameWithMembers(customer) || '—'}
                       </p>
                     </div>
                   </TableCell>

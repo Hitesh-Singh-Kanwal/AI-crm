@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { Plus, MoreHorizontal, FileText, GripVertical } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import {
   DndContext,
   closestCenter,
@@ -38,6 +39,14 @@ import {
 } from './components/EventsPurchases'
 
 const ROWS_PER_PAGE = 10
+
+// Each sub-tab's list state (search/page/pageSize) is remembered separately,
+// since only the active tab's component is mounted at a time.
+const SERVICES_LIST_STATE_KEY = 'setup-services-list-state'
+const LESSONS_LIST_STATE_KEY = 'setup-lessons-list-state'
+const PACKAGES_LIST_STATE_KEY = 'setup-packages-list-state'
+const MEMBERSHIPS_LIST_STATE_KEY = 'setup-memberships-list-state'
+const TODOS_LIST_STATE_KEY = 'setup-todos-list-state'
 
 // Fetch a package/membership and POST a copy of it, then open the copy's editor.
 async function duplicateCatalogEntity(kind, id, router) {
@@ -248,17 +257,18 @@ function SortablePackageRow({ pkg, selectedIds, toggleOne, onDelete, onDuplicate
 }
 
 function ServicesTab() {
-  const [serviceType, setServiceType] = useState('private')
+  const [persisted] = useState(() => readPersistedListState(SERVICES_LIST_STATE_KEY) || {})
+  const [serviceType, setServiceType] = useState(persisted.serviceType || 'private')
   const [services, setServices] = useState([])
   const [totalCount, setTotalCount] = useState(0)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingService, setEditingService] = useState(null)
 
-  const [pageSize, setPageSize] = useState(ROWS_PER_PAGE)
+  const [pageSize, setPageSize] = useState(persisted.pageSize || ROWS_PER_PAGE)
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -283,12 +293,19 @@ function ServicesTab() {
     }
   }, [pageSize])
 
+  const skipPageResetRef = useRef(true)
   useEffect(() => {
+    if (skipPageResetRef.current) {
+      skipPageResetRef.current = false
+      return
+    }
     setCurrentPage(1)
     setSelectedIds([])
   }, [serviceType])
 
   useEffect(() => { loadServices(currentPage, searchQuery, serviceType) }, [currentPage, searchQuery, serviceType, loadServices])
+
+  usePersistListState(SERVICES_LIST_STATE_KEY, { serviceType, searchQuery, currentPage, pageSize })
 
   function handleDragEnd(event) {
     const { active, over } = event
@@ -452,16 +469,17 @@ function ServicesTab() {
 }
 
 function LessonsTab() {
+  const [persisted] = useState(() => readPersistedListState(LESSONS_LIST_STATE_KEY) || {})
   const [lessons, setLessons] = useState([])
   const [totalCount, setTotalCount] = useState(0)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingLesson, setEditingLesson] = useState(null)
 
-  const [pageSize, setPageSize] = useState(ROWS_PER_PAGE)
+  const [pageSize, setPageSize] = useState(persisted.pageSize || ROWS_PER_PAGE)
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
   const loadLessons = useCallback(async (page, search) => {
@@ -482,6 +500,8 @@ function LessonsTab() {
   }, [pageSize])
 
   useEffect(() => { loadLessons(currentPage, searchQuery) }, [currentPage, searchQuery, loadLessons])
+
+  usePersistListState(LESSONS_LIST_STATE_KEY, { searchQuery, currentPage, pageSize })
 
   const toggleOne = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
   const toggleAll = () => { if (selectedIds.length === lessons.length) setSelectedIds([]); else setSelectedIds(lessons.map((l) => l._id)) }
@@ -603,14 +623,15 @@ function LessonsTab() {
 
 function PackagesTab() {
   const router = useRouter()
+  const [persisted] = useState(() => readPersistedListState(PACKAGES_LIST_STATE_KEY) || {})
   const [packages, setPackages] = useState([])
   const [totalCount, setTotalCount] = useState(0)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
 
-  const [pageSize, setPageSize] = useState(ROWS_PER_PAGE)
+  const [pageSize, setPageSize] = useState(persisted.pageSize || ROWS_PER_PAGE)
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -631,6 +652,8 @@ function PackagesTab() {
   }, [pageSize])
 
   useEffect(() => { loadPackages(currentPage, searchQuery) }, [currentPage, searchQuery, loadPackages])
+
+  usePersistListState(PACKAGES_LIST_STATE_KEY, { searchQuery, currentPage, pageSize })
 
   function handleDragEnd(event) {
     const { active, over } = event
@@ -815,14 +838,15 @@ function SortableMembershipRow({ membership, selectedIds, toggleOne, onDelete, o
 
 function MembershipsTab() {
   const router = useRouter()
+  const [persisted] = useState(() => readPersistedListState(MEMBERSHIPS_LIST_STATE_KEY) || {})
   const [memberships, setMemberships] = useState([])
   const [totalCount, setTotalCount] = useState(0)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
 
-  const [pageSize, setPageSize] = useState(ROWS_PER_PAGE)
+  const [pageSize, setPageSize] = useState(persisted.pageSize || ROWS_PER_PAGE)
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -843,6 +867,8 @@ function MembershipsTab() {
   }, [pageSize])
 
   useEffect(() => { loadMemberships(currentPage, searchQuery) }, [currentPage, searchQuery, loadMemberships])
+
+  usePersistListState(MEMBERSHIPS_LIST_STATE_KEY, { searchQuery, currentPage, pageSize })
 
   function handleDragEnd(event) {
     const { active, over } = event
@@ -958,16 +984,17 @@ function MembershipsTab() {
 }
 
 function ToDosTab() {
+  const [persisted] = useState(() => readPersistedListState(TODOS_LIST_STATE_KEY) || {})
   const [todos, setTodos] = useState([])
   const [totalCount, setTotalCount] = useState(0)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTodo, setEditingTodo] = useState(null)
 
-  const [pageSize, setPageSize] = useState(ROWS_PER_PAGE)
+  const [pageSize, setPageSize] = useState(persisted.pageSize || ROWS_PER_PAGE)
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
   const loadTodos = useCallback(async (page, search) => {
@@ -988,6 +1015,8 @@ function ToDosTab() {
   }, [pageSize])
 
   useEffect(() => { loadTodos(currentPage, searchQuery) }, [currentPage, searchQuery, loadTodos])
+
+  usePersistListState(TODOS_LIST_STATE_KEY, { searchQuery, currentPage, pageSize })
 
   const toggleOne = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
   const toggleAll = () => { if (selectedIds.length === todos.length) setSelectedIds([]); else setSelectedIds(todos.map((t) => t._id)) }

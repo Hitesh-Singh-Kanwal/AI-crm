@@ -25,7 +25,7 @@ import { useCardProcessor } from "@/app/settings/payments/useCardProcessor";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
 import { PAYMENT_METHODS_WITH_SAVED_CARD } from "@/lib/paymentMethods";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
-import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import TerminalDeviceField, { terminalTipPayload } from "@/components/payments/TerminalDeviceField";
 import SavedCardField from "@/components/payments/SavedCardField";
 import CheckNumberField from "@/components/payments/CheckNumberField";
 import { resolveLocationID } from "@/app/settings/payments/clover/useCloverConnection";
@@ -116,7 +116,7 @@ function AdjustWalletDialog({ open, mode, customerID, locationID, onClose, onSuc
         amount: num,
         method,
         notes: description.trim() || undefined,
-        ...(payWithTerminal ? { deviceID } : {}),
+        ...(payWithTerminal ? { deviceID, ...terminalTipPayload() } : {}),
         ...(payWithSavedCard ? { cardToken: savedCardID } : {}),
         ...(method === "cheque" ? { checkNumber } : {}),
       });
