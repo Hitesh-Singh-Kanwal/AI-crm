@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { Plus, MoreHorizontal, Trash2, Pencil, X, ChevronDown, CalendarDays, User } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import SearchInput from '@/components/ui/search-input'
@@ -300,6 +301,9 @@ function TeacherFormDialog({ open, onClose, onSaved, initial }) {
   )
 }
 
+// Remembers search/filter/page across back/forward navigation.
+const TEACHERS_LIST_STATE_KEY = 'teachers-list-state'
+
 export default function TeachersPage() {
   const router = useRouter()
   // Teachers are Users with role "teacher" — create/edit/delete go through
@@ -309,10 +313,11 @@ export default function TeachersPage() {
   const canDeleteTeachers = hasPermission('settings', 'users', 'delete')
   const [teachers, setTeachers] = useState([])
   const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [currentPage, setCurrentPage] = useState(1)
+  const [persisted] = useState(() => readPersistedListState(TEACHERS_LIST_STATE_KEY) || {})
+  const [search, setSearch] = useState(persisted.search || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(persisted.search || '')
+  const [statusFilter, setStatusFilter] = useState(persisted.statusFilter || 'all')
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const limit = 10
@@ -331,7 +336,12 @@ export default function TeachersPage() {
     return () => clearTimeout(timer)
   }, [search])
 
+  const skipPageResetRef = useRef(true)
   useEffect(() => {
+    if (skipPageResetRef.current) {
+      skipPageResetRef.current = false
+      return
+    }
     setCurrentPage(1)
   }, [debouncedSearch, statusFilter])
 
@@ -351,6 +361,8 @@ export default function TeachersPage() {
   }, [currentPage, debouncedSearch, statusFilter])
 
   useEffect(() => { fetchTeachers() }, [fetchTeachers])
+
+  usePersistListState(TEACHERS_LIST_STATE_KEY, { search: debouncedSearch, statusFilter, currentPage })
 
   const handleDelete = async () => {
     if (!deleteTarget) return

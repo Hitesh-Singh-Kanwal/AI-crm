@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { Activity, User, Clock, RefreshCw } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import SearchInput from '@/components/ui/search-input'
@@ -39,22 +40,31 @@ function getActionVariant(action) {
   return ACTION_BADGE_VARIANT.default
 }
 
+// Remembers search/filters/page/limit across back/forward navigation.
+const ACTIVITY_LOG_LIST_STATE_KEY = 'activity-log-list-state'
+
 export default function ActivityLogPage() {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [actionFilter, setActionFilter] = useState('All')
-  const [moduleFilter, setModuleFilter] = useState('All')
+  const [persisted] = useState(() => readPersistedListState(ACTIVITY_LOG_LIST_STATE_KEY) || {})
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(persisted.searchQuery || '')
+  const [actionFilter, setActionFilter] = useState(persisted.actionFilter || 'All')
+  const [moduleFilter, setModuleFilter] = useState(persisted.moduleFilter || 'All')
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
-  const [limit, setLimit] = useState(10)
+  const [limit, setLimit] = useState(persisted.limit || 10)
   const toast = useToast()
 
+  const skipPageResetRef = useRef(true)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery)
+      if (skipPageResetRef.current) {
+        skipPageResetRef.current = false
+        return
+      }
       setCurrentPage(1)
     }, 500)
     return () => clearTimeout(timer)
@@ -63,6 +73,14 @@ export default function ActivityLogPage() {
   useEffect(() => {
     loadLogs()
   }, [debouncedSearch, currentPage, actionFilter, moduleFilter, limit])
+
+  usePersistListState(ACTIVITY_LOG_LIST_STATE_KEY, {
+    searchQuery: debouncedSearch,
+    actionFilter,
+    moduleFilter,
+    currentPage,
+    limit,
+  })
 
   async function loadLogs() {
     try {

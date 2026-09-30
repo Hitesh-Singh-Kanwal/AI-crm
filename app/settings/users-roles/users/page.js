@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { Mail, UserCog, MoreHorizontal } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
@@ -43,10 +44,14 @@ const roleColors = {
   Teacher: 'badge-warning',
 }
 
+// Remembers search/filter/page/limit across back/forward navigation.
+const USERS_LIST_STATE_KEY = 'users-list-state'
+
 export default function UsersPage() {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [roleFilter, setRoleFilter] = useState('All')
+  const [persisted] = useState(() => readPersistedListState(USERS_LIST_STATE_KEY) || {})
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(persisted.searchQuery || '')
+  const [roleFilter, setRoleFilter] = useState(persisted.roleFilter || 'All')
   const [availableRoles, setAvailableRoles] = useState([])
   const [rolesList, setRolesList] = useState([])
   const [selectedUserId, setSelectedUserId] = useState(null)
@@ -55,11 +60,11 @@ export default function UsersPage() {
   const [usersList, setUsersList] = useState([])
   const [usersDialogOpen, setUsersDialogOpen] = useState(false)
   const [usersDialogInitialId, setUsersDialogInitialId] = useState(null)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [limit, setLimit] = useState(10) // Items per page (default: 10)
+  const [limit, setLimit] = useState(persisted.limit || 10) // Items per page (default: 10)
   const [customLimit, setCustomLimit] = useState('')
   const [showCustomLimit, setShowCustomLimit] = useState(false)
   const [resendingInviteId, setResendingInviteId] = useState(null)
@@ -106,9 +111,14 @@ export default function UsersPage() {
   }
 
   // Debounce search query
+  const skipPageResetRef = useRef(true)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery)
+      if (skipPageResetRef.current) {
+        skipPageResetRef.current = false
+        return
+      }
       setCurrentPage(1) // Reset to first page when searching
     }, 500)
 
@@ -119,6 +129,8 @@ export default function UsersPage() {
   useEffect(() => {
     loadUsers()
   }, [debouncedSearch, currentPage, roleFilter, limit])
+
+  usePersistListState(USERS_LIST_STATE_KEY, { searchQuery: debouncedSearch, roleFilter, currentPage, limit })
 
   async function loadUsers() {
     try {

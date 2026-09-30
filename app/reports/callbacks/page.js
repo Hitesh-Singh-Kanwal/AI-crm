@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { PhoneCall, Users, UserPlus, AlarmClock, CalendarClock, CalendarCheck2 } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import { Input } from '@/components/ui/input'
@@ -22,6 +23,9 @@ import { useLeadStages, formatLeadStageLabel, getLeadStageColor } from '@/lib/le
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
 
 const ROWS_PER_PAGE = 10
+
+// Remembers tab/search/filters/page across back/forward navigation.
+const CALLBACKS_LIST_STATE_KEY = 'callbacks-list-state'
 
 function todayDateStr() {
   const d = new Date()
@@ -77,19 +81,20 @@ function SummaryCard({ label, value, icon: Icon, accent }) {
 export default function CallbackReportPage() {
   const router = useRouter()
   const { stages: stageOptions } = useLeadStages()
-  const [tab, setTab] = useState('leads')
+  const [persisted] = useState(() => readPersistedListState(CALLBACKS_LIST_STATE_KEY) || {})
+  const [tab, setTab] = useState(persisted.tab || 'leads')
 
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [fromDate, setFromDate] = useState('')
-  const [toDate, setToDate] = useState('')
-  const [stage, setStage] = useState('')
-  const [studentStatus, setStudentStatus] = useState('')
+  const [search, setSearch] = useState(persisted.search || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(persisted.search || '')
+  const [fromDate, setFromDate] = useState(persisted.fromDate || '')
+  const [toDate, setToDate] = useState(persisted.toDate || '')
+  const [stage, setStage] = useState(persisted.stage || '')
+  const [studentStatus, setStudentStatus] = useState(persisted.studentStatus || '')
 
   const [locations, setLocations] = useState([])
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
   const [loading, setLoading] = useState(true)
 
   const [summary, setSummary] = useState({ total: 0, overdue: 0, today: 0, upcoming: 0 })
@@ -108,9 +113,24 @@ export default function CallbackReportPage() {
     })
   }, [])
 
+  const skipPageResetRef = useRef(true)
   useEffect(() => {
+    if (skipPageResetRef.current) {
+      skipPageResetRef.current = false
+      return
+    }
     setCurrentPage(1)
   }, [tab, debouncedSearch, fromDate, toDate, stage, studentStatus])
+
+  usePersistListState(CALLBACKS_LIST_STATE_KEY, {
+    tab,
+    search: debouncedSearch,
+    fromDate,
+    toDate,
+    stage,
+    studentStatus,
+    currentPage,
+  })
 
   const buildParams = useCallback(
     (conditions, { page = 1, limit = ROWS_PER_PAGE } = {}) => {

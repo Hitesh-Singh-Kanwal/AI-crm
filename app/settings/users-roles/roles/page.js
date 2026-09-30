@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { Shield, Edit, Trash, MoreHorizontal, ChevronDown, ChevronRight, CalendarDays, Headphones } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
+import { readPersistedListState, usePersistListState } from '@/lib/hooks/useListStatePersistence'
 import { Input } from '@/components/ui/input'
 import SearchInput from '@/components/ui/search-input'
 import { Button } from '@/components/ui/button'
@@ -164,21 +165,25 @@ function PermissionsTable({ permissions }) {
   )
 }
 
+// Remembers search/page/limit across back/forward navigation.
+const ROLES_LIST_STATE_KEY = 'roles-list-state'
+
 export default function RolesPage() {
   const [roles, setRoles] = useState([])
   const [permissionsSchema, setPermissionsSchema] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [persisted] = useState(() => readPersistedListState(ROLES_LIST_STATE_KEY) || {})
+  const [searchQuery, setSearchQuery] = useState(persisted.searchQuery || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(persisted.searchQuery || '')
   const [selectedRoleId, setSelectedRoleId] = useState(null)
   const [selectedRole, setSelectedRole] = useState(null)
   const [loadingRoleDetails, setLoadingRoleDetails] = useState(false)
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
   const [rolesDialogInitialId, setRolesDialogInitialId] = useState(null)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(persisted.currentPage || 1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
-  const [limit, setLimit] = useState(10)
+  const [limit, setLimit] = useState(persisted.limit || 10)
   const [customLimit, setCustomLimit] = useState('')
   const [showCustomLimit, setShowCustomLimit] = useState(false)
   const toast = useToast()
@@ -195,9 +200,14 @@ export default function RolesPage() {
   }, [])
 
   // Debounce search
+  const skipPageResetRef = useRef(true)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery)
+      if (skipPageResetRef.current) {
+        skipPageResetRef.current = false
+        return
+      }
       setCurrentPage(1)
     }, 500)
     return () => clearTimeout(timer)
@@ -207,6 +217,8 @@ export default function RolesPage() {
   useEffect(() => {
     loadRoles()
   }, [debouncedSearch, currentPage, limit])
+
+  usePersistListState(ROLES_LIST_STATE_KEY, { searchQuery: debouncedSearch, currentPage, limit })
 
   async function loadRoles() {
     setLoading(true)
