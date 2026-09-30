@@ -15,6 +15,7 @@ import PhoneNumberInput from '@/components/shared/PhoneNumberInput'
 import { useLeadStages } from '@/lib/lead-stages'
 import { getLeadReasonOptions } from '@/lib/lead-filter-fields'
 import { formatReasonLabel } from '@/lib/dynamic-list-normalize'
+import LeadEngagementHistory from '@/components/leads/LeadEngagementHistory'
 
 const bookingStatusOptions = [
   { value: 'Not Booked', label: 'Not Booked' },
@@ -220,6 +221,10 @@ export default function LeadsDialog({
                     gender: res.data.gender || prev.gender,
                     address: res.data.address ? addressFromRecord(res.data.address) : prev.address,
                     members: Array.isArray(res.data.members) ? res.data.members : prev.members || [],
+                    engagementHistory: Array.isArray(res.data.engagementHistory)
+                      ? res.data.engagementHistory
+                      : prev.engagementHistory || [],
+                    createdAt: res.data.createdAt || prev.createdAt,
                   }
                 : prev
             )
@@ -693,6 +698,14 @@ export default function LeadsDialog({
                 </div>
               )}
             </div>
+          )}
+
+          {editingLead._id && (
+            <LeadEngagementHistory
+              lead={editingLead}
+              stages={stageOptions}
+              leadReasons={leadReasons}
+            />
           )}
 
           <div className="border-t pt-4">

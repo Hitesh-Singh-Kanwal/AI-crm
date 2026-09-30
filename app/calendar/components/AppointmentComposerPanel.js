@@ -17,6 +17,12 @@ import { getEffectiveBranch } from "@/lib/auth";
 import { studioWallTimeToUtcISO } from "@/lib/studio-time";
 import { validateRecurrence } from "@/lib/recurrence";
 import { toStudioLocalDate, dateInputToISO } from "@/lib/studioLocalDate";
+import {
+  enumerateGridSlotStarts,
+  locationSlotSettings,
+  resolveLessonMinutes,
+  resolveStudioDayHours,
+} from "@/lib/studioSlotHours";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MultiSelectCheckboxDropdown from "@/components/shared/MultiSelectCheckboxDropdown";
 import NewEnrollmentPackageInline from "@/app/calendar/components/NewEnrollmentPackageInline";
@@ -28,6 +34,18 @@ import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
 import CheckNumberField from "@/components/payments/CheckNumberField";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Prefer the active branch when an entity lists several locations. */
+function firstLoc(raw, activeBranchId = getEffectiveBranch()) {
+  if (!raw) return undefined;
+  const ids = Array.isArray(raw)
+    ? raw.map((r) => r?._id || r).filter(Boolean)
+    : [raw._id || raw];
+  if (!ids.length) return undefined;
+  const activeMatch =
+    activeBranchId && ids.find((id) => String(id) === String(activeBranchId));
+  return activeMatch || ids[0];
+}
 
 function bumpHour(timeStr) {
   if (!timeStr) return "";
@@ -1426,8 +1444,8 @@ function formatTime12h(time24) {
 }
 
 /**
- * Same rhythm as the day grid: slotAlign + n × step, skipping overlaps by
- * resuming at the end of the blocking booking.
+ * Bookable starts stay on the studio open-time grid (open, open+step, …).
+ * Busy blocks skip that start; they do not shift later starts.
  */
 function enumerateAvailabilitySlotStarts(
   slotAlignMins,
@@ -1436,32 +1454,13 @@ function enumerateAvailabilitySlotStarts(
   busyIntervals = [],
   bookingDurMins,
 ) {
-  const step = Math.max(15, Number(slotStepMins) || 30);
-  const bookingDur = Math.max(
-    15,
-    Number(bookingDurMins) > 0 ? Number(bookingDurMins) : step,
+  return enumerateGridSlotStarts(
+    slotAlignMins,
+    slotStepMins,
+    dayEndMin,
+    busyIntervals,
+    bookingDurMins,
   );
-  const windowStart = Math.max(0, Number(slotAlignMins) || 0);
-  const windowEnd = Math.min(24 * 60, Number(dayEndMin) || 21 * 60);
-  const busy = [...busyIntervals].sort((a, b) => a.start - b.start);
-
-  let t = windowStart;
-  const starts = [];
-
-  while (t + bookingDur <= windowEnd) {
-    const slotEnd = t + bookingDur;
-    const conflict = busy.find((b) => t < b.end && slotEnd > b.start);
-    if (conflict) {
-      if (conflict.end > t) {
-        t = conflict.end;
-        continue;
-      }
-    }
-    starts.push(t);
-    t += step;
-  }
-
-  return starts;
 }
 
 function AvailabilityPicker({
@@ -1471,6 +1470,8 @@ function AvailabilityPicker({
   slotStepMins,
   slotAlignMins,
   dayEndMin,
+  dayClosed = false,
+  hoursLoading = false,
   selectedSlots,
   onToggleSlot,
   studioTz,
@@ -1482,7 +1483,7 @@ function AvailabilityPicker({
 
   useEffect(() => {
     const range = localCalendarDayQueryRange(date, studioTz);
-    if (!instructorId || !range) {
+    if (!instructorId || !range || dayClosed || hoursLoading) {
       setBusyIntervalsMin([]);
       setBlockingEventCount(0);
       return;
@@ -1532,15 +1533,16 @@ function AvailabilityPicker({
         setBlockingEventCount(0);
       })
       .finally(() => setLoading(false));
-  }, [instructorId, date, studioTz]);
+  }, [instructorId, date, studioTz, dayClosed, hoursLoading]);
 
   const availableSlots = useMemo(() => {
-    const bookingDur = Math.max(15, Number(duration) || 50);
+    if (dayClosed || hoursLoading) return [];
+    const bookingDur = Math.max(15, Number(duration) || 60);
     const stepMins = Math.max(
       15,
       Number(slotStepMins) > 0 ? Number(slotStepMins) : bookingDur,
     );
-    const windowEnd = Number(dayEndMin) > 0 ? Number(dayEndMin) : 21 * 60;
+    const windowEnd = Number(dayEndMin) > 0 ? Number(dayEndMin) : 0;
     const gridStarts = enumerateAvailabilitySlotStarts(
       slotAlignMins,
       stepMins,
@@ -1559,15 +1561,35 @@ function AvailabilityPicker({
       slots.push({ start: `${hh}:${mm}`, end: `${eh}:${em}` });
     }
     return slots;
-  }, [busyIntervalsMin, duration, slotStepMins, slotAlignMins, dayEndMin]);
+  }, [busyIntervalsMin, duration, slotStepMins, slotAlignMins, dayEndMin, dayClosed, hoursLoading]);
 
   if (!instructorId || !date) return null;
+
+  if (hoursLoading) {
+    return (
+      <div className="rounded-xl border border-border bg-muted/20 p-3">
+        <p className="text-[11px] text-muted-foreground font-medium">
+          Loading studio hours…
+        </p>
+      </div>
+    );
+  }
+
+  if (dayClosed) {
+    return (
+      <div className="rounded-xl border border-border bg-muted/20 p-3">
+        <p className="text-[11px] text-muted-foreground font-medium">
+          Studio is closed that day.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-          Availability · every {slotStepMins || duration || 50} min
+          Availability · every {slotStepMins || duration || 60} min
           {duration && slotStepMins && Number(duration) !== Number(slotStepMins)
             ? ` · ${duration} min booking`
             : ""}
@@ -1888,6 +1910,8 @@ function WhenSection({
   slotStepMins,
   slotAlignMins,
   dayEndMin,
+  dayClosed = false,
+  hoursLoading = false,
   studioTz,
 }) {
   function handleToggleSlot(slot) {
@@ -1920,6 +1944,8 @@ function WhenSection({
         slotStepMins={slotStepMins}
         slotAlignMins={slotAlignMins}
         dayEndMin={dayEndMin}
+        dayClosed={dayClosed}
+        hoursLoading={hoursLoading}
         selectedSlots={form.selected_time_slots}
         onToggleSlot={handleToggleSlot}
         studioTz={studioTz}
@@ -1982,6 +2008,8 @@ function AppointmentFields({
   slotStepMins,
   slotAlignMins,
   dayEndMin,
+  dayClosed,
+  hoursLoading,
   studioTz,
   suggestedAmount,
   onNewCustomer,
@@ -2036,6 +2064,8 @@ function AppointmentFields({
         slotStepMins={slotStepMins}
         slotAlignMins={slotAlignMins}
         dayEndMin={dayEndMin}
+        dayClosed={dayClosed}
+        hoursLoading={hoursLoading}
         studioTz={studioTz}
       />
       <div className="space-y-3">
@@ -2099,6 +2129,8 @@ function GroupClassFields({
   slotStepMins,
   slotAlignMins,
   dayEndMin,
+  dayClosed,
+  hoursLoading,
   studioTz,
 }) {
   return (
@@ -2150,6 +2182,8 @@ function GroupClassFields({
         slotStepMins={slotStepMins}
         slotAlignMins={slotAlignMins}
         dayEndMin={dayEndMin}
+        dayClosed={dayClosed}
+        hoursLoading={hoursLoading}
         studioTz={studioTz}
       />
       <div className="space-y-3">
@@ -2175,6 +2209,8 @@ function ToDoFields({
   slotStepMins,
   slotAlignMins,
   dayEndMin,
+  dayClosed,
+  hoursLoading,
   studioTz,
 }) {
   function handleTodoChange(id) {
@@ -2231,6 +2267,8 @@ function ToDoFields({
         slotStepMins={slotStepMins}
         slotAlignMins={slotAlignMins}
         dayEndMin={dayEndMin}
+        dayClosed={dayClosed}
+        hoursLoading={hoursLoading}
         studioTz={studioTz}
       />
       <div className="space-y-3">
@@ -2251,8 +2289,9 @@ export default function AppointmentComposerPanel({
   initialTime,
   initialInstructorId,
   initialDuration,
-  initialSlotAlignMins,
-  initialDayEndHour,
+  // Kept for calendar page API compat; bookable chips use studio hours instead.
+  initialSlotAlignMins: _initialSlotAlignMins,
+  initialDayEndHour: _initialDayEndHour,
   studioTz,
 }) {
   const [activeTab, setActiveTab] = useState("Appointment");
@@ -2271,6 +2310,9 @@ export default function AppointmentComposerPanel({
   const [allEnrollmentsForGroupFilter, setAllEnrollmentsForGroupFilter] = useState([]);
   const [enrollments, setEnrollments] = useState({});
   const [introSummaries, setIntroSummaries] = useState({});
+  const [locationsById, setLocationsById] = useState({});
+  /** Location ids whose by-id fetch failed — unlock generic fallback hours. */
+  const [locationFetchFailed, setLocationFetchFailed] = useState({});
   const [showEnrollmentWizard, setShowEnrollmentWizard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -2283,6 +2325,7 @@ export default function AppointmentComposerPanel({
     setActiveTab("Appointment");
     setShowEnrollmentWizard(false);
     setError(null);
+    setLocationFetchFailed({});
     const seededEndTime = initialTime
       ? initialDuration
         ? addMinutes(initialTime, initialDuration)
@@ -2331,7 +2374,7 @@ export default function AppointmentComposerPanel({
   useEffect(() => {
     async function load() {
       try {
-        const [usersRes, customersRes, lessonsRes, packagesRes, servicesRes, customerPkgRes, todosRes] =
+        const [usersRes, customersRes, lessonsRes, packagesRes, servicesRes, customerPkgRes, todosRes, locationsRes] =
           await Promise.all([
             api.get("/api/teacher?limit=200&status=active"),
             api.get("/api/customer?limit=200"),
@@ -2340,6 +2383,7 @@ export default function AppointmentComposerPanel({
             api.get("/api/calendar-service?limit=200"),
             api.get("/api/customer-package?limit=500"),
             api.get("/api/todo?limit=200&isActive=true"),
+            api.get("/api/location?limit=50"),
           ]);
 
         if (usersRes.success && Array.isArray(usersRes.data))
@@ -2403,6 +2447,17 @@ export default function AppointmentComposerPanel({
               label: p.packageName || String(p._id),
             })),
           );
+        }
+
+        if (locationsRes.success && Array.isArray(locationsRes.data)) {
+          const byId = {};
+          for (const loc of locationsRes.data) {
+            const settings = locationSlotSettings(loc);
+            if (settings) byId[String(loc._id ?? loc.id)] = settings;
+          }
+          setLocationsById(byId);
+        } else {
+          setLocationsById({});
         }
       } catch {
         setError("Failed to load form options. Please close and reopen.");
@@ -2475,6 +2530,79 @@ export default function AppointmentComposerPanel({
     return svc?.price > 0 ? svc.price : null;
   }, [form.service_id, allServices]);
 
+  // Same location resolution used when creating the event: customer → lesson →
+  // to-do → explicit Group Class location → active branch.
+  const bookingLocationID = useMemo(() => {
+    const selectedCustomer = form.customer_id
+      ? rawCustomers.find((c) => String(c._id) === String(form.customer_id))
+      : null;
+    const selectedLesson = form.lesson_id ? lessonMap[String(form.lesson_id)] : null;
+    const selectedTodo = form.todo_id ? todoMap[String(form.todo_id)] : null;
+    return (
+      firstLoc(selectedCustomer?.locationID) ||
+      firstLoc(selectedLesson?.locationID) ||
+      firstLoc(selectedTodo?.locationID) ||
+      form.location_id ||
+      getEffectiveBranch() ||
+      null
+    );
+  }, [
+    form.customer_id,
+    form.lesson_id,
+    form.todo_id,
+    form.location_id,
+    rawCustomers,
+    lessonMap,
+    todoMap,
+  ]);
+
+  const bookingLocation = bookingLocationID
+    ? locationsById[String(bookingLocationID)] || null
+    : null;
+  const hoursReady =
+    !bookingLocationID ||
+    Boolean(bookingLocation) ||
+    Boolean(locationFetchFailed[String(bookingLocationID)]);
+  const hoursLoading = Boolean(bookingLocationID && !hoursReady);
+  const slotTz = bookingLocation?.timezone || studioTz || null;
+  const studioLessonMins = resolveLessonMinutes(bookingLocation?.defaultLessonMinutes);
+  const dayHours = useMemo(() => {
+    // Wait for the location document — do not invent fallback chips while loading.
+    if (!hoursReady) return { closed: false, openMin: null, closeMin: null };
+    return resolveStudioDayHours(bookingLocation?.operatingHours, form.date, slotTz);
+  }, [hoursReady, bookingLocation, form.date, slotTz]);
+
+  // Locations list is capped at 50 — pull the booking studio by id when missing.
+  useEffect(() => {
+    if (!bookingLocationID) return;
+    const id = String(bookingLocationID);
+    if (locationsById[id] || locationFetchFailed[id]) return;
+    let cancelled = false;
+    api
+      .get(`/api/location/${id}`)
+      .then((res) => {
+        if (cancelled) return;
+        if (!res?.success || !res.data) {
+          setLocationFetchFailed((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
+          return;
+        }
+        const settings = locationSlotSettings(res.data);
+        if (!settings) {
+          setLocationFetchFailed((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
+          return;
+        }
+        setLocationsById((prev) => (prev[id] ? prev : { ...prev, [id]: settings }));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLocationFetchFailed((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookingLocationID, locationsById, locationFetchFailed]);
+
   const lessonDuration = useMemo(() => {
     // To-Do tab: the selected to-do's own catalog duration drives both the
     // availability grid's slot width and the auto-computed end time — without
@@ -2496,7 +2624,8 @@ export default function AppointmentComposerPanel({
         : null;
       if (lesson?.duration) return Number(lesson.duration);
     }
-    return initialDuration || 60;
+    // Fall back to the booking location's Default Lesson Length (not the calendar grid size).
+    return studioLessonMins;
   }, [
     form.todo_id,
     form.lesson_id,
@@ -2505,7 +2634,7 @@ export default function AppointmentComposerPanel({
     lessonByName,
     lessonMap,
     todoMap,
-    initialDuration,
+    studioLessonMins,
   ]);
 
   const handleNewCustomer = async ({ name, email, phoneNumber, locationID }) => {
@@ -2710,21 +2839,11 @@ export default function AppointmentComposerPanel({
       const selectedCustomer = rawCustomers.find(
         (c) => String(c._id) === String(form.customer_id),
       );
-      const activeBranchId = getEffectiveBranch();
-      const firstLoc = (raw) => {
-        if (!raw) return undefined;
-        const ids = Array.isArray(raw)
-          ? raw.map((r) => r?._id || r).filter(Boolean)
-          : [raw._id || raw];
-        if (!ids.length) return undefined;
-        const activeMatch =
-          activeBranchId && ids.find((id) => String(id) === String(activeBranchId));
-        return activeMatch || ids[0];
-      };
-      const createLocationID = firstLoc(selectedCustomer?.locationID) || undefined;
+      const createLocationID =
+        firstLoc(selectedCustomer?.locationID) || undefined;
 
-      const startISO = studioWallTimeToUtcISO(form.date, form.start_time, studioTz);
-      const endISO = studioWallTimeToUtcISO(form.date, form.end_time, studioTz);
+      const startISO = studioWallTimeToUtcISO(form.date, form.start_time, slotTz);
+      const endISO = studioWallTimeToUtcISO(form.date, form.end_time, slotTz);
       if (!startISO || !endISO) {
         setError("Could not resolve the selected time.");
         setIsSaving(false);
@@ -2763,6 +2882,13 @@ export default function AppointmentComposerPanel({
             locationID: createLocationID,
             teacherID: form.instructor_id || undefined,
             paymentRequestID: String(selectedPurchase._id),
+            // Same couple attendance as a private lesson so the calendar label
+            // shows main / both / partner-only.
+            memberIDs: form.member_ids?.length > 0 ? form.member_ids : undefined,
+            absentCustomerIDs:
+              form.member_absent && form.member_ids?.length > 0 && form.customer_id
+                ? [form.customer_id]
+                : undefined,
           },
         );
         if (!res?.success) {
@@ -2770,7 +2896,19 @@ export default function AppointmentComposerPanel({
           setIsSaving(false);
           return;
         }
-        onCreated?.();
+        const selMemberNames = (selectedCustomer?.members || [])
+          .filter((m) => form.member_ids?.map(String).includes(String(m._id)))
+          .map((m) => m.name)
+          .filter(Boolean);
+        const eventId =
+          res.data?.calendarEvent?._id ?? res.data?._id ?? res.data?.id;
+        if (form.customer_id && selMemberNames.length > 0 && eventId) {
+          onCreated?.({
+            [String(eventId)]: { [String(form.customer_id)]: selMemberNames },
+          });
+        } else {
+          onCreated?.();
+        }
         onClose();
       } catch (err) {
         setError(err?.message || "Could not book the intro lesson.");
@@ -2815,17 +2953,10 @@ export default function AppointmentComposerPanel({
     // the currently active studio when it's one of the entity's valid
     // locations, and only fall back to the first one otherwise.
     const activeBranchId = getEffectiveBranch();
-    const firstLoc = (raw) => {
-      if (!raw) return undefined;
-      const ids = Array.isArray(raw) ? raw.map((r) => r?._id || r).filter(Boolean) : [raw._id || raw];
-      if (!ids.length) return undefined;
-      const activeMatch = activeBranchId && ids.find((id) => String(id) === String(activeBranchId));
-      return activeMatch || ids[0];
-    };
     const createLocationID =
-      firstLoc(selectedCustomer?.locationID) ||
-      firstLoc(selectedLesson?.locationID) ||
-      firstLoc(selectedTodo?.locationID) ||
+      firstLoc(selectedCustomer?.locationID, activeBranchId) ||
+      firstLoc(selectedLesson?.locationID, activeBranchId) ||
+      firstLoc(selectedTodo?.locationID, activeBranchId) ||
       form.location_id ||
       undefined;
 
@@ -2942,8 +3073,8 @@ export default function AppointmentComposerPanel({
     // must create the event at 10am India time, not 10am US time converted.
     const payloads = slots.map((slot) => ({
       ...basePayload,
-      startDateTime: studioWallTimeToUtcISO(form.date, slot.start, studioTz),
-      endDateTime: studioWallTimeToUtcISO(form.date, slot.end, studioTz),
+      startDateTime: studioWallTimeToUtcISO(form.date, slot.start, slotTz),
+      endDateTime: studioWallTimeToUtcISO(form.date, slot.end, slotTz),
     }));
 
     const results = await Promise.all(
@@ -3071,10 +3202,12 @@ export default function AppointmentComposerPanel({
     [tabCatalogServices],
   );
 
-  const slotStepMins = initialDuration || 30;
-  const slotAlignMins =
-    initialSlotAlignMins != null ? initialSlotAlignMins : 6 * 60;
-  const dayEndMin = (initialDayEndHour ?? 21) * 60;
+  // Bookable chips follow the studio's operating hours + Default Lesson Length.
+  // The day/week calendar grid still uses initialDuration / initialSlotAlignMins.
+  const slotStepMins = studioLessonMins;
+  const slotAlignMins = dayHours.openMin != null ? dayHours.openMin : undefined;
+  const dayEndMin = dayHours.closeMin != null ? dayHours.closeMin : undefined;
+  const dayClosed = Boolean(dayHours.closed);
 
   const sharedProps = {
     form,
@@ -3089,7 +3222,9 @@ export default function AppointmentComposerPanel({
     slotStepMins,
     slotAlignMins,
     dayEndMin,
-    studioTz,
+    dayClosed,
+    hoursLoading,
+    studioTz: slotTz,
     suggestedAmount,
     packageOptions,
     packageTemplates,
@@ -3159,7 +3294,9 @@ export default function AppointmentComposerPanel({
           slotStepMins={slotStepMins}
           slotAlignMins={slotAlignMins}
           dayEndMin={dayEndMin}
-          studioTz={studioTz}
+          dayClosed={dayClosed}
+          hoursLoading={hoursLoading}
+          studioTz={slotTz}
         />
       );
     if (activeTab === "To Do")
@@ -3174,7 +3311,9 @@ export default function AppointmentComposerPanel({
           slotStepMins={slotStepMins}
           slotAlignMins={slotAlignMins}
           dayEndMin={dayEndMin}
-          studioTz={studioTz}
+          dayClosed={dayClosed}
+          hoursLoading={hoursLoading}
+          studioTz={slotTz}
         />
       );
     return null;
@@ -3191,12 +3330,17 @@ export default function AppointmentComposerPanel({
     schedulingCodeOptions,
     lessonMap,
     lessonDuration,
+    slotStepMins,
+    slotAlignMins,
+    dayEndMin,
+    dayClosed,
+    hoursLoading,
+    slotTz,
     packageOptions,
     packageTemplates,
     allServices,
     enrollments,
     rawCustomers,
-    studioTz,
   ]);
 
   const slotCount = form.selected_time_slots?.length ?? 0;
