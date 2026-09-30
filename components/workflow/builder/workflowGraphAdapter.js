@@ -147,7 +147,8 @@ function stepFromNode(node, offsetMinutes) {
 
   const base = {
     type,
-    description: config.description || node.data?.label || '',
+    name: String(node.data?.label || '').trim(),
+    description: config.description || getDefaultLabel(paletteType) || '',
     day: schedule.day,
     hour: schedule.hour,
     minute: schedule.minute,
@@ -409,7 +410,7 @@ function normalizeWorkflowListId(wf) {
   return String(raw)
 }
 
-function makeNodeBase(id, paletteType, y, config) {
+function makeNodeBase(id, paletteType, y, config, label) {
   const item = getPaletteItem(paletteType)
   return {
     id,
@@ -418,7 +419,7 @@ function makeNodeBase(id, paletteType, y, config) {
     data: {
       paletteType,
       category: item?.category || 'action',
-      label: item?.label || 'Step',
+      label: String(label || '').trim() || item?.label || 'Step',
       config,
     },
   }
@@ -456,7 +457,7 @@ function actionNodeFromStep(step, index, y) {
     config = { ...base, prompt: step.description || '' }
   }
 
-  return makeNodeBase(id, paletteType, y, config)
+  return makeNodeBase(id, paletteType, y, config, step.name)
 }
 
 function stepTotalMinutes(step) {
