@@ -46,7 +46,7 @@ export function getNodeSummary(paletteType, config = {}, statuses) {
     case 'send_sms':
       return config.message ? config.message : 'Send an SMS'
     case 'ai_agent':
-      return config.prompt ? config.prompt : 'AI call to the lead'
+      return config.dbAssistantName ? `Assistant: ${config.dbAssistantName}` : 'AI call to the lead'
     case 'wait':
       return waitSummary(config)
     case 'exit_logic':
