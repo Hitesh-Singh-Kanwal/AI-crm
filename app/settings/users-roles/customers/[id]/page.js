@@ -4141,11 +4141,14 @@ function EnrollmentsTab({
                         >
                           {paymentStatusLabel(cp.paymentStatus)}
                         </span>
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(cp.status)}`}
-                        >
-                          {cp.status}
-                        </span>
+                        {/* Enrollment header already shows its status; only surface the package's when it differs (e.g. expired). */}
+                        {cp.status !== enr.status && (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(cp.status)}`}
+                          >
+                            {cp.status}
+                          </span>
+                        )}
                         {canEditValidity && cp.status !== "cancelled" && (
                             <Button
                               variant="outline"
@@ -4165,7 +4168,7 @@ function EnrollmentsTab({
                                 });
                               }}
                             >
-                              Change validity
+                              Expiry
                             </Button>
                           )}
                         <BounceableCheque

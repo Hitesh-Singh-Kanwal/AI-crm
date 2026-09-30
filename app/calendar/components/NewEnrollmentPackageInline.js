@@ -9,7 +9,7 @@ import { toast } from "@/components/ui/toast";
 import SearchableSelect from "@/components/ui/searchable-select";
 
 import { PAYMENT_METHODS_WITH_SAVED_CARD, TIP_METHODS } from "@/lib/paymentMethods";
-import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import TerminalDeviceField, { terminalTipPayload } from "@/components/payments/TerminalDeviceField";
 import SavedCardField from "@/components/payments/SavedCardField";
 import CheckNumberField from "@/components/payments/CheckNumberField";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
@@ -635,7 +635,7 @@ export default function NewEnrollmentPackageInline({
         collectNow: collect,
         collectAmount: collect ? Number(form.billing.collectAmount) : 0,
         collectDate: effectiveCollectDate || undefined,
-        ...(collect && form.billing.method === "terminal" ? { deviceID } : {}),
+        ...(collect && form.billing.method === "terminal" ? { deviceID, ...terminalTipPayload() } : {}),
         ...(collect && form.billing.method === "saved_card" ? { savedCardID } : {}),
         ...(collect && form.billing.method === "cheque" ? { checkNumber } : {}),
       },

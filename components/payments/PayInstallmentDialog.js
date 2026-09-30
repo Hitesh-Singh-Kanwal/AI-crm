@@ -28,7 +28,7 @@ import { dateInputToISO, todayDateInput } from "@/lib/studioLocalDate";
 import WalletShortfallField, {
   walletPaymentFields,
 } from "@/components/payments/WalletShortfallField";
-import TerminalDeviceField from "@/components/payments/TerminalDeviceField";
+import TerminalDeviceField, { terminalTipPayload } from "@/components/payments/TerminalDeviceField";
 import SavedCardField from "@/components/payments/SavedCardField";
 import CheckNumberField from "@/components/payments/CheckNumberField";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
@@ -180,7 +180,7 @@ export default function PayInstallmentDialog({
         installmentIndex,
         amount: num,
         paymentDate: dateInputToISO(paymentDate),
-        ...(payWithTerminal ? { deviceID } : {}),
+        ...(payWithTerminal ? { deviceID, ...terminalTipPayload() } : {}),
         ...(payWithSavedCard ? { cardToken: savedCardID } : {}),
         ...(payWithCheque ? { checkNumber } : {}),
         ...walletPaymentFields({

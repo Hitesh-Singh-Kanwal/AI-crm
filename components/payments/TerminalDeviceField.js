@@ -5,16 +5,24 @@ import api from '@/lib/api'
 import { useCloverDevices } from '@/app/settings/payments/clover/useCloverDevices'
 import { resolveLocationID } from '@/app/settings/payments/clover/useCloverConnection'
 
+// Staff's "ask for a tip" choice, shared by every payment form so each submit handler can
+// spread `terminalTipPayload()` without threading state through. Resets to on on reload.
+const tipPref = { ask: true }
+
+/** Spread into a terminal payment payload: only an explicit `promptTip: false` skips the tip screen. */
+export function terminalTipPayload() {
+  return tipPref.ask ? {} : { promptTip: false }
+}
+
 /**
  * Device picker shown when `method === "terminal"`. Lists Clover devices; if the
  * location has none it falls back to registered Stripe Terminal readers. The
  * parent reads `deviceID` back out via `onDeviceChange` (a document id in both
  * cases — the backend resolves it and dispatches to the right processor).
  *
- * No tip control here: the reader runs its own tip screen (the percentage prompt
- * configured on the device), so asking again in the app was redundant. Whatever
- * the customer taps arrives on the PaymentIntent and is booked as its own Tip
- * record at settlement.
+ * The reader runs its own tip screen (configured on the device); whatever the customer
+ * taps arrives on the PaymentIntent and is booked as its own Tip record at settlement.
+ * The checkbox only lets staff turn that screen off for a payment (Stripe readers).
  */
 export default function TerminalDeviceField({
   method,
@@ -26,6 +34,7 @@ export default function TerminalDeviceField({
   const { devices, loading } = useCloverDevices(locationID)
   const resolved = resolveLocationID(locationID)
   const [stripeReaders, setStripeReaders] = useState(null)
+  const [askTip, setAskTip] = useState(tipPref.ask)
 
   useEffect(() => {
     if (method !== 'terminal' || !resolved || (devices && devices.length > 0)) { setStripeReaders(null); return }
@@ -62,15 +71,25 @@ export default function TerminalDeviceField({
   }
 
   return (
-    <select
-      value={deviceID || ''}
-      onChange={(e) => onDeviceChange(e.target.value)}
-      className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary"
-    >
-      <option value="" disabled>Select terminal…</option>
-      {options.map((o) => (
-        <option key={o.id} value={o.id}>{o.label}</option>
-      ))}
-    </select>
+    <div className="space-y-1.5">
+      <select
+        value={deviceID || ''}
+        onChange={(e) => onDeviceChange(e.target.value)}
+        className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[12px] outline-none focus:border-primary"
+      >
+        <option value="" disabled>Select terminal…</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>{o.label}</option>
+        ))}
+      </select>
+      <label className="flex items-center gap-2 text-[12px]">
+        <input
+          type="checkbox"
+          checked={askTip}
+          onChange={(e) => { tipPref.ask = e.target.checked; setAskTip(e.target.checked) }}
+        />
+        Ask customer for a tip on the reader
+      </label>
+    </div>
   )
 }
