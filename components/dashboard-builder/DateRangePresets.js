@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { CalendarRange, RotateCcw } from 'lucide-react'
 
 const PRESETS = [
+  { label: 'Today', days: 0 },
   { label: '7D', days: 7 },
   { label: '30D', days: 30 },
   { label: '90D', days: 90 },

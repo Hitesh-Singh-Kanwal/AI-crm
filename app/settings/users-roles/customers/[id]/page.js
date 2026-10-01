@@ -66,7 +66,7 @@ import {
   CHECKOUT_TOAST,
 } from "@/lib/clover";
 import { PAYMENT_METHODS, NO_DEVICE_PAYMENT_METHODS } from "@/lib/paymentMethods";
-import { todayDateInput } from "@/lib/studioLocalDate";
+import { dateInputToISO, todayDateInput } from "@/lib/studioLocalDate";
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
 import { getInitials, formatDate } from "@/lib/utils";
@@ -5690,6 +5690,12 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
     else toast.error(res.error || "Failed");
   }
 
+  async function changePurchaseDate(row, ymd) {
+    const res = await api.put(`/api/purchase/${row._id}`, { purchaseDate: dateInputToISO(ymd) });
+    if (res.success) { toast.success("Purchase date updated"); load(); }
+    else toast.error(res.error || "Failed to update purchase date");
+  }
+
   const checkSummary = (row) => {
     const items = row.lineItems || [];
     const done = items.filter((li) => li.checkStatus === "checked").length;
@@ -5723,7 +5729,7 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
               {rows.map((r) => (
                 <option key={r._id} value={String(r._id)}>
                   {r.name}
-                  {r.createdAt ? ` — ${formatDate(r.createdAt)}` : ""}
+                  {r.purchaseDate ?? r.createdAt ? ` — ${formatDate(r.purchaseDate ?? r.createdAt)}` : ""}
                 </option>
               ))}
             </select>
@@ -5776,9 +5782,19 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
                     >
                       {paymentStatusLabel(r.billingStatus)}
                     </span>
-                    <span className="text-[12px] text-muted-foreground">
-                      {r.createdAt ? formatDate(r.createdAt) : "—"}
-                    </span>
+                    <input
+                      type="date"
+                      title="Purchase date"
+                      aria-label="Purchase date"
+                      defaultValue={
+                        r.purchaseDate ?? r.createdAt
+                          ? new Date(r.purchaseDate ?? r.createdAt).toLocaleDateString("en-CA")
+                          : ""
+                      }
+                      key={`${r._id}-${r.purchaseDate ?? r.createdAt}`}
+                      onChange={(e) => e.target.value && changePurchaseDate(r, e.target.value)}
+                      className="h-7 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground outline-none focus:border-primary"
+                    />
                   </div>
                 </div>
 

@@ -373,7 +373,7 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
     const end = studioTz
       ? toStudioLocalDate(new Date(appt.endDateTime), studioTz)
       : new Date(appt.endDateTime);
-    const isAllDay = Boolean(appt.allDay);
+    const isAllDay = isAllDayAppt(appt, studioTz);
     const effectiveStatus = deriveEffectiveStatus(appt);
     const isCancelled = effectiveStatus === "cancelled";
     const isCompleted = effectiveStatus === "completed";
@@ -1412,6 +1412,16 @@ function showGroupEventTooltip(e, props, raw) {
   positionTooltip(e);
 }
 
+// The composer saves an all-day to-do as 00:00–23:59 plus allDay:true; the
+// span check covers an API that doesn't echo the flag back.
+function isAllDayAppt(appt, studioTz) {
+  if (appt.allDay) return true;
+  if (!(appt.todoID || appt.type === "event") || !appt.startDateTime) return false;
+  const s = studioTz ? toStudioLocalDate(new Date(appt.startDateTime), studioTz) : new Date(appt.startDateTime);
+  const en = studioTz ? toStudioLocalDate(new Date(appt.endDateTime), studioTz) : new Date(appt.endDateTime);
+  return s.getHours() === 0 && s.getMinutes() === 0 && en.getHours() === 23 && en.getMinutes() === 59;
+}
+
 function showTodoTooltip(e, props, raw) {
   const tip = getTooltipEl();
 
@@ -1431,9 +1441,11 @@ function showTodoTooltip(e, props, raw) {
           hour12: true,
         })
       : "";
-  const timeRange = raw.startDateTime
-    ? `${fmt(raw.startDateTime)} – ${fmt(raw.endDateTime)}`
-    : "";
+  const timeRange = isAllDayAppt(raw, props._studioTz)
+    ? "All day"
+    : raw.startDateTime
+      ? `${fmt(raw.startDateTime)} – ${fmt(raw.endDateTime)}`
+      : "";
 
   const status = props.effectiveStatus || raw.status || "scheduled";
   const statusColors = {
@@ -1707,11 +1719,12 @@ function AppointmentTimedEventRows({ event, compact = false }) {
 
   const startLabel = fmt(utcStart || event.start);
   const endLabel = fmt(utcEnd || event.end);
-  const timeRange =
-    startLabel && endLabel ? `${startLabel} – ${endLabel}` : startLabel;
+  const timeRange = event.allDay
+    ? "All day"
+    : startLabel && endLabel ? `${startLabel} – ${endLabel}` : startLabel;
 
   const durationLabel = (() => {
-    if (!durationMins) return "";
+    if (!durationMins || event.allDay) return "";
     if (durationMins < 60) return `${Math.round(durationMins)}m`;
     const h = Math.floor(durationMins / 60);
     const m = Math.round(durationMins % 60);
@@ -2526,7 +2539,7 @@ function TutorDayCalendar({
           </div>
         </div>
 
-        {/* All-day row (per-tutor all-day events) — hidden for now; uncomment to restore
+        {/* All-day row (per-tutor all-day events) */}
         <div className="flex h-10 border-b border-border bg-muted/40">
           <div className="w-[86px] shrink-0 border-r border-border px-2 py-2 text-[10px] font-medium text-muted-foreground">
             All day
@@ -2560,7 +2573,6 @@ function TutorDayCalendar({
             </div>
           ))}
         </div>
-        */}
       </div>
 
       <div className="relative flex">
@@ -4279,7 +4291,6 @@ function CalendarPageInner() {
                       "--cal-event-min-height": `${TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX}px`,
                     }}
                   >
-                    {/* FullCalendar all-day row: was `allDaySlot` (default on); using false hides it */}
                     <FullCalendar
                       key={`fc-${viewMode}-${customSlotMins}-${snappedGridStartMins}-${visibleWindow.effectiveSlotMinStr}-${visibleWindow.effectiveSlotMaxStr}`}
                       ref={calendarRef}
@@ -4293,7 +4304,7 @@ function CalendarPageInner() {
                       headerToolbar={false}
                       height="auto"
                       nowIndicator
-                      allDaySlot={false}
+                      allDaySlot
                       slotMinTime={visibleWindow.effectiveSlotMinStr}
                       slotMaxTime={visibleWindow.effectiveSlotMaxStr}
                       slotDuration={slotDurationStr}

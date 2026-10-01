@@ -186,6 +186,7 @@ const EMPTY_FORM = {
   date: "",
   start_time: "",
   end_time: "",
+  all_day: false,
   selected_time_slots: [],
   public_note: "",
   internal_note: "",
@@ -1674,8 +1675,9 @@ function AvailabilityPicker({
 
 // ─── DateTime row ─────────────────────────────────────────────────────────────
 
-function DateTimeRow({ form, setField, lessonDuration }) {
+function DateTimeRow({ form, setField, lessonDuration, withAllDay = false }) {
   return (
+    <>
     <div className="grid grid-cols-[1fr_1fr] gap-2">
       <div>
         <FieldLabel>Date</FieldLabel>
@@ -1686,6 +1688,7 @@ function DateTimeRow({ form, setField, lessonDuration }) {
           className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary transition-colors"
         />
       </div>
+      {!(withAllDay && form.all_day) && (
       <div>
         <FieldLabel>Time</FieldLabel>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1">
@@ -1719,7 +1722,22 @@ function DateTimeRow({ form, setField, lessonDuration }) {
           />
         </div>
       </div>
+      )}
     </div>
+    {withAllDay && (
+      <label className="flex items-center gap-2 text-[12px] text-foreground">
+        <input
+          type="checkbox"
+          checked={!!form.all_day}
+          onChange={(e) => {
+            setField("all_day", e.target.checked);
+            setField("selected_time_slots", []);
+          }}
+        />
+        All day
+      </label>
+    )}
+    </>
   );
 }
 
@@ -1906,6 +1924,7 @@ function WhenSection({
   form,
   setField,
   withRecurrence = false,
+  withAllDay = false,
   lessonDuration,
   slotStepMins,
   slotAlignMins,
@@ -1935,10 +1954,11 @@ function WhenSection({
         form={form}
         setField={setField}
         lessonDuration={lessonDuration}
+        withAllDay={withAllDay}
       />
       {withRecurrence && <RecurrenceBlock form={form} setField={setField} />}
-      <AvailabilityPicker
-        instructorId={form.instructor_id}
+      {!(withAllDay && form.all_day) && <AvailabilityPicker
+        instructorId={form.instructor_id || form.instructor_ids?.[0]}
         date={form.date}
         duration={lessonDuration}
         slotStepMins={slotStepMins}
@@ -1949,7 +1969,7 @@ function WhenSection({
         selectedSlots={form.selected_time_slots}
         onToggleSlot={handleToggleSlot}
         studioTz={studioTz}
-      />
+      />}
     </div>
   );
 }
@@ -2263,6 +2283,7 @@ function ToDoFields({
         form={form}
         setField={setField}
         withRecurrence
+        withAllDay
         lessonDuration={lessonDuration}
         slotStepMins={slotStepMins}
         slotAlignMins={slotAlignMins}
@@ -3055,8 +3076,12 @@ export default function AppointmentComposerPanel({
         : undefined,
     };
 
-    const slots =
-      form.selected_time_slots?.length > 0
+    const isAllDay = activeTab === "To Do" && form.all_day;
+    if (isAllDay) basePayload.allDay = true;
+
+    const slots = isAllDay
+      ? [{ start: "00:00", end: "23:59" }]
+      : form.selected_time_slots?.length > 0
         ? form.selected_time_slots
         : form.start_time
           ? [{ start: form.start_time, end: form.end_time }]

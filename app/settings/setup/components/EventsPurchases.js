@@ -605,9 +605,10 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const [items, setItems] = useState([])
   const [saveAsTemplate, setSaveAsTemplate] = useState(false)
   const [saving, setSaving] = useState(false)
+  const todayISO = todayDateInput
+  const [purchaseDate, setPurchaseDate] = useState(todayISO())
 
   // Billing
-  const todayISO = todayDateInput
   const [billingType, setBillingType] = useState('one_time') // one_time | payment_plan | flexible
   const [collectNow, setCollectNow] = useState(true)
   const [payMethod, setPayMethod] = useState('cash') // cash | card | ach | terminal | cheque | other | saved_card
@@ -636,7 +637,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     setStep(1)
     setCustomer(initialCustomerID ? { _id: initialCustomerID, name: initialCustomerName || '' } : null)
     setCustomerQuery(''); setEventTypeID(''); setTemplateID('')
-    setName(''); setItems([]); setSaveAsTemplate(false)
+    setName(''); setItems([]); setSaveAsTemplate(false); setPurchaseDate(todayISO())
     setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setSavedCardID(''); setDeviceID(''); setCheckNumber(''); setCollectDate(todayISO())
     setUseWallet(false); setWalletAmount(''); setWalletBalance(null)
     setTipEnabled(false); setTipTeacherID(''); setTipAmount('')
@@ -760,6 +761,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         eventTypeID: eventTypeID || undefined,
         sourceTemplateID: templateID || undefined,
         name: name.trim(),
+        purchaseDate: purchaseDate ? dateInputToISO(purchaseDate) : undefined,
         lineItems,
         saveAsTemplate,
         templateName: name.trim(),
@@ -905,6 +907,11 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="cep-name">Purchase name</Label>
                 <Input id="cep-name" placeholder="e.g. AODC New Jersey 2026" value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cep-purchase-date">Purchase date</Label>
+                <Input id="cep-purchase-date" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
               </div>
 
               <p className="text-xs text-muted-foreground -mb-2">
