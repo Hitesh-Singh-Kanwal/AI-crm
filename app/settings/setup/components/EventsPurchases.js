@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import SearchInput from '@/components/ui/search-input'
 import api from '@/lib/api'
+import { nameWithMembers } from '@/lib/utils'
 import { dateInputToISO, todayDateInput } from '@/lib/studioLocalDate'
 import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
@@ -669,7 +670,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const customerMatches = (() => {
     const q = customerQuery.trim().toLowerCase()
     const list = q
-      ? customers.filter((c) => `${c.name || ''} ${c.email || ''}`.toLowerCase().includes(q))
+      ? customers.filter((c) => `${nameWithMembers(c)} ${c.email || ''}`.toLowerCase().includes(q))
       : customers
     return list.slice(0, 50)
   })()
@@ -860,7 +861,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                 <Label>Student or customer</Label>
                 {customer ? (
                   <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 h-10">
-                    <span className="text-sm font-medium">{customer.name}{customer.email ? <span className="text-muted-foreground font-normal"> · {customer.email}</span> : null}</span>
+                    <span className="text-sm font-medium">{nameWithMembers(customer)}{customer.email ? <span className="text-muted-foreground font-normal"> · {customer.email}</span> : null}</span>
                     <button type="button" aria-label="Clear customer" onClick={() => { setCustomer(null); setCustomerQuery(''); setShowResults(false) }} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
                   </div>
                 ) : (
@@ -878,7 +879,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                         ) : customerMatches.map((c) => (
                           <button key={c._id} type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-muted/60"
                             onClick={() => { setCustomer(c); setShowResults(false); setCustomerQuery('') }}>
-                            {c.name}{c.email ? <span className="text-muted-foreground"> · {c.email}</span> : null}
+                            {nameWithMembers(c)}{c.email ? <span className="text-muted-foreground"> · {c.email}</span> : null}
                           </button>
                         ))}
                       </div>

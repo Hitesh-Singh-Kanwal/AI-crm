@@ -2081,7 +2081,9 @@ export default function EventDetailPanel({
                         <p className="text-[11px] text-muted-foreground">
                           {isUnallocated(event)
                             ? "Unallocated — no active package covers this lesson yet."
-                            : "No package or membership can be selected for this lesson."}
+                            : !event?.calendarServiceID && !event?.allocation?.serviceCode
+                              ? "This lesson was booked without a service, and the student has no active program with a Private lesson left."
+                              : "No package or membership can be selected for this lesson."}
                         </p>
                       ) : (
                         <>

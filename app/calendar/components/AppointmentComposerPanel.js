@@ -2950,6 +2950,14 @@ export default function AppointmentComposerPanel({
       }
     }
 
+    // Validate: a student's appointment needs a service. Without one nothing is charged or
+    // flagged unallocated, so the lesson never counts against — or shows under — any program.
+    if (activeTab === "Appointment" && form.customer_id && !form.service_id && tabCatalogServices?.length > 0) {
+      setError("Select a service for this appointment so it counts against the right program.");
+      setIsSaving(false);
+      return;
+    }
+
     // Validate: pay_per_session requires a payment method when booking a chargeable service
     const isChargeableSelected = tabCatalogServices?.find?.((s) => String(s._id) === form.service_id)?.isChargeable === true;
     if (selectedBillingType === "pay_per_session" && isChargeableSelected && !form.session_payment_method) {

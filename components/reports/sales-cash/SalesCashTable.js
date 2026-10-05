@@ -6,21 +6,23 @@ import { formatReportCellValue } from '@/lib/reports/formatReportCell'
 import { useReportTimezone } from '@/lib/reports/ReportTimezoneContext'
 import { computeColumnTotals, formatColumnTotal } from '@/lib/reports/reportTotals'
 
+// Column order is what staff scan first: what was sold, to whom, by whom, then the money.
+// Studio is last (every row is the user's own studio). Discount Amount is not shown — it is
+// still available as a filter. This one list drives both the table and the exports.
 export const SALES_CASH_COLUMNS = [
-  { key: 'transactionType', label: 'Transaction Type' },
+  { key: 'programName', label: 'Program' },
   { key: 'studentName', label: 'Student Name' },
   { key: 'teacherName', label: 'Teacher' },
-  { key: 'studioName', label: 'Studio' },
   { key: 'transactionDate', label: 'Transaction Date' },
   { key: 'saleAmount', label: 'Sale Amount', total: true },
   { key: 'cashCollected', label: 'Cash Collected', total: true },
+  { key: 'remainingBalance', label: 'Remaining Balance' },
   { key: 'tipAmount', label: 'Tip Amount', total: true },
-  { key: 'discountAmount', label: 'Discount Amount', total: true },
   { key: 'refundAmount', label: 'Refund Amount', total: true },
-  { key: 'programName', label: 'Program' },
+  { key: 'transactionType', label: 'Transaction Type' },
   { key: 'paymentMethod', label: 'Payment Method' },
   { key: 'paymentStatus', label: 'Payment Status' },
-  { key: 'remainingBalance', label: 'Remaining Balance' },
+  { key: 'studioName', label: 'Studio' },
 ]
 
 export function SalesCashTable({ rows, onRowClick }) {

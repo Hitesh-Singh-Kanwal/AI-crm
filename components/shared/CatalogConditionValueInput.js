@@ -13,6 +13,7 @@ import { getFieldValueOptions as getCustomerFieldValueOptions } from '@/lib/cust
 import { getFieldValueOptions as getLeadFieldValueOptions } from '@/lib/lead-filter-fields'
 import { formatFieldDisplayValue } from '@/lib/dynamic-list-normalize'
 import { useLeadStages } from '@/lib/lead-stages'
+import { usePurchaseFilterOptions } from '@/lib/hooks/usePurchaseFilterOptions'
 import { REPORT_FILTER_CATALOGS, DASHBOARD_DETAILS_FILTER_CATALOGS } from '@/lib/report-filter-catalogs'
 
 const inputClass =
@@ -45,6 +46,11 @@ export default function CatalogConditionValueInput({
   loadingOptions = false,
 }) {
   const { stages } = useLeadStages()
+  // Event types / products / purchase names are only fetched once such a field is actually shown.
+  const { eventTypes, products, purchaseNames, purchaseItemNames } = usePurchaseFilterOptions(
+    entityType === 'customer' &&
+      ['purchase.eventTypeID', 'purchase.productID', 'purchase.name', 'purchase.itemName'].includes(field),
+  )
   const reportCatalog =
     entityType === 'report'
       ? catalogOverride ||
@@ -123,7 +129,20 @@ export default function CatalogConditionValueInput({
     )
   }
 
-  const context = { leadReasons, locations, forms, teachers, tags, memberships, stages, packages }
+  const context = {
+    leadReasons,
+    locations,
+    forms,
+    teachers,
+    tags,
+    memberships,
+    stages,
+    packages,
+    eventTypes,
+    products,
+    purchaseNames,
+    purchaseItemNames,
+  }
   let labeledOptions = null
   if (def.optionsKey) {
     labeledOptions = getFieldValueOptions(def.optionsKey === 'source' ? 'source' : def.value, context)
@@ -221,7 +240,9 @@ export default function CatalogConditionValueInput({
     )
   }
 
-  if (labeledOptions) {
+  // "Contains" / "starts with" on a pick-list field is a partial match, so it stays free text.
+  const isPartialMatch = operator === 'contains' || operator === 'starts_with'
+  if (labeledOptions && !(def.allowTextSearch && isPartialMatch)) {
     return (
       <select
         value={String(value || '')}

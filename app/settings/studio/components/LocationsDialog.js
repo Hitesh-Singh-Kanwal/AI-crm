@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/toast'
 import StatusSelector from '@/components/shared/StatusSelector'
 import { Select } from '@/components/ui/select'
 import Switch from '@/components/ui/switch'
+import { formatClock, parseClockInput, decimalToMinutes, snapToMinute } from '@/lib/operatingHoursTime'
 import {
   DEFAULT_LOCATION_TIMEZONE,
   getTimezoneSelectOptions,
@@ -22,92 +23,76 @@ const TIMEZONE_OPTIONS = getTimezoneSelectOptions()
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
 
-function snapHalfHour(n, fallback) {
-  const v = Number(n)
-  if (!Number.isFinite(v)) return fallback
-  return Math.round(v * 2) / 2
-}
+const clockInputClass =
+  'h-8 w-[5.25rem] min-w-0 rounded border-0 bg-transparent px-1 py-0 text-center text-[13px] font-medium leading-none tabular-nums text-foreground outline-none hover:bg-muted/70 focus:bg-muted/70 focus:ring-0'
 
-/** Decimal hours (8.5) → 12-hour parts. Close at 24 → 12:00 AM. */
-function decimalToClock(hourValue, role) {
-  let v = Number(hourValue)
-  if (!Number.isFinite(v)) v = role === 'close' ? 20 : 9
-  v = Math.round(v * 2) / 2
-  if (role === 'close' && (v === 24 || v === 0)) {
-    return { hour: 12, minute: 0, period: 'AM' }
+/**
+ * Typed time entry ("10:30 AM", "1030", "9p", "21:15"). Commits on blur/Enter; anything
+ * unparseable, or outside the range set by `after`/`before` (decimal hours), reverts.
+ */
+function ClockField({ value, role, dayLabel, which, after, before, onChange }) {
+  const display = formatClock(value)
+  const [draft, setDraft] = useState(null) // null = not editing
+  const [invalid, setInvalid] = useState(false)
+
+  useEffect(() => {
+    if (!invalid) return undefined
+    const t = setTimeout(() => setInvalid(false), 1500)
+    return () => clearTimeout(t)
+  }, [invalid])
+
+  const commit = () => {
+    if (draft === null) return
+    const next = parseClockInput(draft, role, display.endsWith('PM') ? 'PM' : 'AM')
+    const mins = next === null ? null : decimalToMinutes(next)
+    const inRange =
+      mins !== null &&
+      (after === undefined || mins > decimalToMinutes(after)) &&
+      (before === undefined || mins < decimalToMinutes(before))
+    setDraft(null)
+    if (!inRange) {
+      setInvalid(true)
+      return
+    }
+    if (mins !== decimalToMinutes(value)) onChange(next)
   }
-  v = role === 'open' ? Math.max(0, Math.min(23.5, v)) : Math.max(0.5, Math.min(24, v))
-  const h24 = Math.floor(v)
-  const minute = v % 1 >= 0.5 ? 30 : 0
-  if (h24 === 0) return { hour: 12, minute, period: 'AM' }
-  if (h24 === 12) return { hour: 12, minute, period: 'PM' }
-  if (h24 > 12) return { hour: h24 - 12, minute, period: 'PM' }
-  return { hour: h24, minute, period: 'AM' }
-}
-
-/** 12-hour parts → decimal hours. Close 12:00 AM → 24. */
-function clockToDecimal({ hour, minute, period }, role) {
-  const h12 = Number(hour)
-  const m = Number(minute) >= 30 ? 30 : 0
-  const h24 = period === 'PM' ? (h12 === 12 ? 12 : h12 + 12) : h12 === 12 ? 0 : h12
-  const value = h24 + (m === 30 ? 0.5 : 0)
-  if (role === 'close' && value === 0) return 24
-  if (role === 'open') return Math.min(23.5, value)
-  return Math.min(24, Math.max(0.5, value))
-}
-
-const clockSelectClass =
-  'h-8 min-w-0 cursor-pointer appearance-none rounded border-0 bg-transparent px-0 py-0 text-center text-[13px] font-medium leading-none tabular-nums text-foreground outline-none hover:bg-muted/70 focus:bg-muted/70 focus:ring-0 [text-align-last:center]'
-
-function ClockField({ value, role, dayLabel, which, onChange }) {
-  const parts = decimalToClock(value, role)
-  const commit = (patch) => onChange(clockToDecimal({ ...parts, ...patch }, role))
 
   return (
-    <div className="inline-flex items-center">
-      <select
-        value={parts.hour}
-        onChange={(e) => commit({ hour: Number(e.target.value) })}
-        aria-label={`${dayLabel} ${which} hour`}
-        className={`${clockSelectClass} w-6`}
-      >
-        {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
-          <option key={h} value={h}>
-            {h}
-          </option>
-        ))}
-      </select>
-      <span className="w-2 shrink-0 text-center text-[13px] font-medium text-muted-foreground" aria-hidden>
-        :
-      </span>
-      <select
-        value={parts.minute}
-        onChange={(e) => commit({ minute: Number(e.target.value) })}
-        aria-label={`${dayLabel} ${which} minutes`}
-        className={`${clockSelectClass} w-7`}
-      >
-        <option value={0}>00</option>
-        <option value={30}>30</option>
-      </select>
-      <select
-        value={parts.period}
-        onChange={(e) => commit({ period: e.target.value })}
-        aria-label={`${dayLabel} ${which} AM or PM`}
-        className={`${clockSelectClass} w-8`}
-      >
-        <option value="AM">AM</option>
-        <option value="PM">PM</option>
-      </select>
-    </div>
+    <input
+      type="text"
+      inputMode="text"
+      autoComplete="off"
+      spellCheck={false}
+      value={draft ?? display}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={(e) => {
+        setDraft(display)
+        e.target.select()
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          e.currentTarget.blur()
+        } else if (e.key === 'Escape') {
+          setDraft(null)
+          e.currentTarget.blur()
+        }
+      }}
+      aria-label={`${dayLabel} ${which}`}
+      aria-invalid={invalid || undefined}
+      title={invalid ? 'Enter a valid time, e.g. 10:30 AM. Closing must be after opening.' : undefined}
+      className={`${clockInputClass} ${invalid ? 'text-destructive' : ''}`}
+    />
   )
 }
 
 function HoursRange({ open, close, dayLabel, onOpenChange, onCloseChange }) {
   return (
     <div className="inline-flex h-9 shrink-0 items-center rounded-lg border border-input bg-background px-1.5 focus-within:border-[var(--studio-primary)] focus-within:ring-2 focus-within:ring-[var(--studio-primary)]/15">
-      <ClockField value={open} role="open" dayLabel={dayLabel} which="opens" onChange={onOpenChange} />
+      <ClockField value={open} role="open" before={close} dayLabel={dayLabel} which="opens" onChange={onOpenChange} />
       <span className="px-1.5 text-[11px] text-muted-foreground select-none">to</span>
-      <ClockField value={close} role="close" dayLabel={dayLabel} which="closes" onChange={onCloseChange} />
+      <ClockField value={close} role="close" after={open} dayLabel={dayLabel} which="closes" onChange={onCloseChange} />
     </div>
   )
 }
@@ -137,8 +122,8 @@ function normalizeOperatingHours(hours) {
     return {
       day: def.day,
       closed: Boolean(h.closed),
-      open: snapHalfHour(h.open, def.open),
-      close: snapHalfHour(h.close, def.close),
+      open: snapToMinute(h.open, def.open),
+      close: snapToMinute(h.close, def.close),
     }
   })
 }
@@ -560,24 +545,13 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                               onOpenChange={(open) =>
                                 setEditingLocation((p) => ({
                                   ...p,
-                                  operatingHours: patchDayHours(p.operatingHours, day, (d) => ({
-                                    ...d,
-                                    open,
-                                    close: Number(d.close) <= open
-                                      ? Math.min(24, open + 0.5)
-                                      : d.close,
-                                  })),
+                                  operatingHours: patchDayHours(p.operatingHours, day, (d) => ({ ...d, open })),
                                 }))
                               }
                               onCloseChange={(close) =>
                                 setEditingLocation((p) => ({
                                   ...p,
-                                  operatingHours: patchDayHours(p.operatingHours, day, (d) => ({
-                                    ...d,
-                                    close: Number(close) <= Number(d.open ?? 9)
-                                      ? Math.min(24, Number(d.open ?? 9) + 0.5)
-                                      : close,
-                                  })),
+                                  operatingHours: patchDayHours(p.operatingHours, day, (d) => ({ ...d, close })),
                                 }))
                               }
                             />

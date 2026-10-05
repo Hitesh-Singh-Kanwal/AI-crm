@@ -7740,6 +7740,7 @@ function useAccountSummary(customerID) {
     events: [],
     payments: [],
     purchases: [],
+    billing: {},
     wallet: 0,
     sessions: { total: 0, used: 0, remaining: 0 },
   });
@@ -7779,6 +7780,13 @@ function useAccountSummary(customerID) {
       ),
       api.get("/api/calendar-service?type=private&limit=200"),
     ]);
+    // The billing figure the enrollment card itself shows (payment rows net of refunds).
+    // The stored amountCollected/dueAmount snapshot can lag it — e.g. after a refund.
+    const billing = {};
+    live.forEach((e, i) => {
+      const b = details[i]?.success ? details[i].data?.billing : null;
+      if (b) billing[String(e._id)] = b;
+    });
     const privateCodes = new Set(
       (privRes.success ? privRes.data || [] : []).map((s) => s.serviceCode),
     );
@@ -7806,6 +7814,7 @@ function useAccountSummary(customerID) {
         calRes.success && Array.isArray(calRes.data) ? calRes.data : [],
       payments: payRes.success ? payRes.data || [] : [],
       purchases: purchRes.success ? purchRes.data || [] : [],
+      billing,
       wallet: Number(wallet) || 0,
       sessions,
     });
@@ -8149,14 +8158,19 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
         const pkg = enr.package;
         if (!pkg || pkg.status === "cancelled" || enr.status === "cancelled")
           return null;
+        // Same figure as the enrollment card where we have it; the stored snapshot only for
+        // enrollments whose details weren't fetched (expired/completed ones).
+        const live = summary.billing?.[String(enr._id)];
         const due =
-          pkg.dueAmount != null
-            ? Number(pkg.dueAmount)
-            : Math.max(
-                0,
-                Number(pkg.totalPaid ?? pkg.contractedValue ?? 0) -
-                  Number(pkg.amountCollected || 0),
-              );
+          live?.outstanding != null
+            ? Number(live.outstanding)
+            : pkg.dueAmount != null
+              ? Number(pkg.dueAmount)
+              : Math.max(
+                  0,
+                  Number(pkg.totalPaid ?? pkg.contractedValue ?? 0) -
+                    Number(pkg.amountCollected || 0),
+                );
         return due >= 0.01
           ? {
               key: `enr-${enr._id}`,
@@ -8196,10 +8210,27 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
       })
       .filter(Boolean);
 
-    return [...fromPackages, ...fromMemberships].sort(
+    // Events & Products — same amountDue the Events & Products tab shows for each purchase.
+    const fromPurchases = summary.purchases
+      .map((p) => {
+        const due = Number(p.amountDue ?? p.total ?? 0);
+        return due >= 0.01
+          ? {
+              key: `pur-${p._id}`,
+              label: p.name || "Event / product",
+              sub: `Event / product · purchased ${formatDate(p.purchaseDate ?? p.createdAt)}`,
+              amount: due,
+              cta: "Open purchase →",
+              open: () => onOpen("purchases", { purchaseID: String(p._id) }),
+            }
+          : null;
+      })
+      .filter(Boolean);
+
+    return [...fromPackages, ...fromMemberships, ...fromPurchases].sort(
       (a, b) => b.amount - a.amount,
     );
-  }, [summary.enrollments, summary.memberships, onOpen]);
+  }, [summary.enrollments, summary.memberships, summary.purchases, summary.billing, onOpen]);
 
   const totalOwed = owed.reduce((sum, r) => sum + r.amount, 0);
 

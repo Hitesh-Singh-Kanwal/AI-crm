@@ -30,6 +30,7 @@ import {
   syncCustomerSpendRanking,
 } from '@/lib/customer-active-filter-chips'
 import CustomerActiveFiltersBar from '@/components/customers/CustomerActiveFiltersBar'
+import { usePurchaseFilterOptions } from '@/lib/hooks/usePurchaseFilterOptions'
 import { formatReasonLabel, normalizeConditionsForForm } from '@/lib/dynamic-list-normalize'
 import { extractLeadReasonsList } from '@/lib/workflow-normalize'
 import {
@@ -530,6 +531,10 @@ function CustomersPageInner() {
     }
   }, [savedListsRefreshKey])
 
+  // Names for the Events & Products filter chips — only fetched while such a filter is applied.
+  const purchaseOptions = usePurchaseFilterOptions(
+    JSON.stringify(filters?.conditions ?? []).includes('purchase.'),
+  )
   const isFiltered = hasActiveCustomerFilters({
     ...filters,
     search: debouncedSearch,
@@ -547,6 +552,8 @@ function CustomersPageInner() {
           memberships,
           packages,
           leadReasons,
+          eventTypes: purchaseOptions.eventTypes,
+          products: purchaseOptions.products,
           search: debouncedSearch,
         },
       ),
@@ -559,6 +566,7 @@ function CustomersPageInner() {
       memberships,
       packages,
       leadReasons,
+      purchaseOptions,
       debouncedSearch,
     ],
   )
