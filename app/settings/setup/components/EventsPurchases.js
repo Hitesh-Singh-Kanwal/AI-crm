@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import SearchInput from '@/components/ui/search-input'
 import api from '@/lib/api'
+import { nameWithMembers } from '@/lib/utils'
 import { dateInputToISO, todayDateInput } from '@/lib/studioLocalDate'
 import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
@@ -605,9 +606,10 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const [items, setItems] = useState([])
   const [saveAsTemplate, setSaveAsTemplate] = useState(false)
   const [saving, setSaving] = useState(false)
+  const todayISO = todayDateInput
+  const [purchaseDate, setPurchaseDate] = useState(todayISO())
 
   // Billing
-  const todayISO = todayDateInput
   const [billingType, setBillingType] = useState('one_time') // one_time | payment_plan | flexible
   const [collectNow, setCollectNow] = useState(true)
   const [payMethod, setPayMethod] = useState('cash') // cash | card | ach | terminal | cheque | other | saved_card
@@ -636,7 +638,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     setStep(1)
     setCustomer(initialCustomerID ? { _id: initialCustomerID, name: initialCustomerName || '' } : null)
     setCustomerQuery(''); setEventTypeID(''); setTemplateID('')
-    setName(''); setItems([]); setSaveAsTemplate(false)
+    setName(''); setItems([]); setSaveAsTemplate(false); setPurchaseDate(todayISO())
     setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setSavedCardID(''); setDeviceID(''); setCheckNumber(''); setCollectDate(todayISO())
     setUseWallet(false); setWalletAmount(''); setWalletBalance(null)
     setTipEnabled(false); setTipTeacherID(''); setTipAmount('')
@@ -668,7 +670,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const customerMatches = (() => {
     const q = customerQuery.trim().toLowerCase()
     const list = q
-      ? customers.filter((c) => `${c.name || ''} ${c.email || ''}`.toLowerCase().includes(q))
+      ? customers.filter((c) => `${nameWithMembers(c)} ${c.email || ''}`.toLowerCase().includes(q))
       : customers
     return list.slice(0, 50)
   })()
@@ -760,6 +762,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         eventTypeID: eventTypeID || undefined,
         sourceTemplateID: templateID || undefined,
         name: name.trim(),
+        purchaseDate: purchaseDate ? dateInputToISO(purchaseDate) : undefined,
         lineItems,
         saveAsTemplate,
         templateName: name.trim(),
@@ -858,7 +861,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                 <Label>Student or customer</Label>
                 {customer ? (
                   <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 h-10">
-                    <span className="text-sm font-medium">{customer.name}{customer.email ? <span className="text-muted-foreground font-normal"> · {customer.email}</span> : null}</span>
+                    <span className="text-sm font-medium">{nameWithMembers(customer)}{customer.email ? <span className="text-muted-foreground font-normal"> · {customer.email}</span> : null}</span>
                     <button type="button" aria-label="Clear customer" onClick={() => { setCustomer(null); setCustomerQuery(''); setShowResults(false) }} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
                   </div>
                 ) : (
@@ -876,7 +879,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                         ) : customerMatches.map((c) => (
                           <button key={c._id} type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-muted/60"
                             onClick={() => { setCustomer(c); setShowResults(false); setCustomerQuery('') }}>
-                            {c.name}{c.email ? <span className="text-muted-foreground"> · {c.email}</span> : null}
+                            {nameWithMembers(c)}{c.email ? <span className="text-muted-foreground"> · {c.email}</span> : null}
                           </button>
                         ))}
                       </div>
@@ -905,6 +908,11 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="cep-name">Purchase name</Label>
                 <Input id="cep-name" placeholder="e.g. AODC New Jersey 2026" value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cep-purchase-date">Purchase date</Label>
+                <Input id="cep-purchase-date" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
               </div>
 
               <p className="text-xs text-muted-foreground -mb-2">

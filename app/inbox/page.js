@@ -30,6 +30,10 @@ import {
 } from '@/lib/emailSend'
 import { isPaidConvertedInboxContact } from '@/lib/inbox-contact-search'
 import {
+  collapseConvertedInboxDuplicates,
+  linkedCustomerIdForConversation,
+} from '@/lib/inbox-merge-converted'
+import {
   mapAiCallToMessage,
   mapHumanCallToMessage,
   mergeSmsPages,
@@ -98,6 +102,8 @@ function buildInboxData(smsRecords, emailRecords) {
           phoneNumber: resolvedPhone,
           email: lead?.email || '',
           locationID: lead?.locationID || [],
+          convertedCustomerID: lead?.convertedCustomerID || null,
+          leadSourceID: lead?.leadSourceID || null,
         },
         messages: [],
       }
@@ -135,12 +141,20 @@ function buildInboxData(smsRecords, emailRecords) {
           phoneNumber: lead?.phoneNumber || '',
           email,
           locationID: lead?.locationID || [],
+          convertedCustomerID: lead?.convertedCustomerID || null,
+          leadSourceID: lead?.leadSourceID || null,
         },
         messages: [],
       }
     } else {
       if (email && !contactGroups[key].contact.email) {
         contactGroups[key].contact.email = email
+      }
+      if (!contactGroups[key].contact.convertedCustomerID && lead?.convertedCustomerID) {
+        contactGroups[key].contact.convertedCustomerID = lead.convertedCustomerID
+      }
+      if (!contactGroups[key].contact.leadSourceID && lead?.leadSourceID) {
+        contactGroups[key].contact.leadSourceID = lead.leadSourceID
       }
     }
     contactGroups[key].messages.push(mapEmailHistoryRecord(rec))
@@ -335,6 +349,8 @@ function InboxPageContent() {
             phoneNumber: conv.phoneNumber || '',
             email: conv.email || '',
             locationID: conv.locationID || [],
+            convertedCustomerID: conv.convertedCustomerID || null,
+            leadSourceID: conv.leadSourceID || null,
           },
           lastMessage: conv.lastMessage,
           timestamp: conv.lastMessageAt,
@@ -379,8 +395,26 @@ function InboxPageContent() {
         if (addr && smsEmails.has(addr) && c.id.startsWith('email-')) return false
         return true
       })
-      const allConversations = [...smsConversations, ...uniqueEmailConvs]
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      // Converted lead + customer are two ids for one person — keep the lead row.
+      const allConversations = collapseConvertedInboxDuplicates(
+        [...smsConversations, ...uniqueEmailConvs].sort(
+          (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
+        ),
+      )
+
+      // Move email messages that lived on the dropped customer id onto the kept lead thread.
+      for (const conv of allConversations) {
+        const linkedCustomerId = linkedCustomerIdForConversation(conv)
+        if (!linkedCustomerId) continue
+        const customerKey = `lead-${linkedCustomerId}`
+        const customerMsgs = threads[customerKey]
+        if (!customerMsgs?.length) continue
+        const existing = threads[conv.id] || []
+        threads[conv.id] = dedupeThreadMessages([...existing, ...customerMsgs]).sort(
+          (a, b) => new Date(a.timestamp) - new Date(b.timestamp),
+        )
+        delete threads[customerKey]
+      }
 
       setConversations(allConversations)
       setThreadMessages(threads)
@@ -498,7 +532,11 @@ function InboxPageContent() {
                   // Pending Payment / Engaged stay Leads until payment converts them.
                   // Preserve Teacher if this thread was already classified that way.
                   type: resolveLeadProfileInboxType(lead, c.contact.type),
-                  convertedCustomerID: lead.convertedCustomerID || null,
+                  convertedCustomerID:
+                    lead.convertedCustomerID || c.contact.convertedCustomerID || null,
+                  // Keep merge helper link so customer-id emails still load after profile refresh.
+                  linkedCustomerID: c.contact.linkedCustomerID || null,
+                  leadSourceID: c.contact.leadSourceID || null,
                   locationID: lead.locationID || c.contact.locationID || [],
                 },
               }
@@ -875,6 +913,7 @@ function InboxPageContent() {
 
     const conv = conversations.find((c) => c.id === conversationId)
     const contactEmail = conv?.contact?.email || ''
+    const linkedCustomerId = linkedCustomerIdForConversation(conv)
 
     try {
       let records = []
@@ -883,11 +922,16 @@ function InboxPageContent() {
 
       if (conversationId.startsWith('lead-')) {
         const leadID = conversationId.replace('lead-', '')
-        const byLeadRes = await api.get(`/api/emailHistory?leadID=${leadID}&limit=200`)
-        const leadRecords = Array.isArray(byLeadRes.data) ? byLeadRes.data : []
+        const historyIds = [leadID, linkedCustomerId].filter(Boolean)
+        const byIdResults = await Promise.all(
+          historyIds.map((id) => api.get(`/api/emailHistory?leadID=${id}&limit=200`)),
+        )
+        const byIdRecords = byIdResults.flatMap((res) =>
+          Array.isArray(res.data) ? res.data : [],
+        )
         const byEmail = filterRecordsByRecipient(allRecords, contactEmail)
         const seen = new Set()
-        records = [...leadRecords, ...byEmail].filter((r) => {
+        records = [...byIdRecords, ...byEmail].filter((r) => {
           if (seen.has(r._id)) return false
           seen.add(r._id)
           return true
@@ -1362,7 +1406,9 @@ function InboxPageContent() {
 
   const fetchLeadMessages = useCallback(async (conversationId, page = 1) => {
     const leadID = conversationId.replace('lead-', '')
-    const convName = conversations.find((c) => c.id === conversationId)?.contact?.name || 'Lead'
+    const conv = conversations.find((c) => c.id === conversationId)
+    const convName = conv?.contact?.name || 'Lead'
+    const linkedCustomerId = linkedCustomerIdForConversation(conv)
     const pageKey = `${conversationId}:${page}`
     if (smsPageInFlightRef.current.has(pageKey)) return
     smsPageInFlightRef.current.add(pageKey)
@@ -1371,14 +1417,23 @@ function InboxPageContent() {
     try {
       const res = await api.get(`/api/smsHistory/conversations/${leadID}?page=${page}`)
       const msgs = Array.isArray(res.data?.messages) ? res.data.messages : []
-      const mapped = msgs.map((m) => ({
+      // Page 1 also pulls rare SMS stored on the linked customer id into this thread.
+      let linkedMsgs = []
+      if (page === 1 && linkedCustomerId && linkedCustomerId !== leadID) {
+        const linkedRes = await api
+          .get(`/api/smsHistory/conversations/${linkedCustomerId}?page=1`)
+          .catch(() => null)
+        linkedMsgs = Array.isArray(linkedRes?.data?.messages) ? linkedRes.data.messages : []
+      }
+      const mapSms = (m) => ({
         id: String(m._id),
         sender: m.status === 'received' ? convName : 'You',
         direction: m.status === 'received' ? 'inbound' : 'outbound',
         content: m.message,
         timestamp: m.createdAt,
         channel: 'SMS',
-      }))
+      })
+      const mapped = [...msgs, ...linkedMsgs].map(mapSms)
       setThreadMessages((prev) => {
         const existing = prev[conversationId] || []
         const existingEmail = existing.filter((m) => m.channel === 'Email')

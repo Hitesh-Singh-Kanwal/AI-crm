@@ -18,6 +18,42 @@ import { toStudioLocalDate } from "@/lib/studioLocalDate";
 import { getCurrentUserId, getEffectiveBranch } from "@/lib/auth";
 import { isOwnScope } from "@/lib/permissions";
 
+/** localStorage key for the calendar grid, scoped to the navbar branch (or all). */
+function calendarGridCacheKey(kind) {
+  const branch = getEffectiveBranch() || "all";
+  return `cal_${kind}:${branch}`;
+}
+
+function readCachedSlotMins() {
+  try {
+    const scoped = Number(localStorage.getItem(calendarGridCacheKey("slotMins")));
+    if (Number.isFinite(scoped) && scoped > 0) return scoped;
+    // Legacy unscoped key from before per-location grids.
+    const legacy = Number(localStorage.getItem("cal_slotMins"));
+    return Number.isFinite(legacy) && legacy > 0 ? legacy : null;
+  } catch {
+    return null;
+  }
+}
+
+function readCachedStartMins() {
+  try {
+    const scoped = Number(localStorage.getItem(calendarGridCacheKey("startMins")));
+    if (Number.isFinite(scoped) && scoped >= 0) return scoped;
+    const legacy = Number(localStorage.getItem("cal_startMins"));
+    return Number.isFinite(legacy) && legacy >= 0 ? legacy : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedGrid(slotMins, startMins) {
+  try {
+    localStorage.setItem(calendarGridCacheKey("slotMins"), String(slotMins));
+    localStorage.setItem(calendarGridCacheKey("startMins"), String(startMins));
+  } catch {}
+}
+
 const COLORS = {
   border: "hsl(var(--border))",
   shadow: "0px 2px 5px 0px hsl(var(--foreground) / 0.06)",
@@ -337,7 +373,7 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
     const end = studioTz
       ? toStudioLocalDate(new Date(appt.endDateTime), studioTz)
       : new Date(appt.endDateTime);
-    const isAllDay = Boolean(appt.allDay);
+    const isAllDay = isAllDayAppt(appt, studioTz);
     const effectiveStatus = deriveEffectiveStatus(appt);
     const isCancelled = effectiveStatus === "cancelled";
     const isCompleted = effectiveStatus === "completed";
@@ -1376,6 +1412,16 @@ function showGroupEventTooltip(e, props, raw) {
   positionTooltip(e);
 }
 
+// The composer saves an all-day to-do as 00:00–23:59 plus allDay:true; the
+// span check covers an API that doesn't echo the flag back.
+function isAllDayAppt(appt, studioTz) {
+  if (appt.allDay) return true;
+  if (!(appt.todoID || appt.type === "event") || !appt.startDateTime) return false;
+  const s = studioTz ? toStudioLocalDate(new Date(appt.startDateTime), studioTz) : new Date(appt.startDateTime);
+  const en = studioTz ? toStudioLocalDate(new Date(appt.endDateTime), studioTz) : new Date(appt.endDateTime);
+  return s.getHours() === 0 && s.getMinutes() === 0 && en.getHours() === 23 && en.getMinutes() === 59;
+}
+
 function showTodoTooltip(e, props, raw) {
   const tip = getTooltipEl();
 
@@ -1395,9 +1441,11 @@ function showTodoTooltip(e, props, raw) {
           hour12: true,
         })
       : "";
-  const timeRange = raw.startDateTime
-    ? `${fmt(raw.startDateTime)} – ${fmt(raw.endDateTime)}`
-    : "";
+  const timeRange = isAllDayAppt(raw, props._studioTz)
+    ? "All day"
+    : raw.startDateTime
+      ? `${fmt(raw.startDateTime)} – ${fmt(raw.endDateTime)}`
+      : "";
 
   const status = props.effectiveStatus || raw.status || "scheduled";
   const statusColors = {
@@ -1671,11 +1719,12 @@ function AppointmentTimedEventRows({ event, compact = false }) {
 
   const startLabel = fmt(utcStart || event.start);
   const endLabel = fmt(utcEnd || event.end);
-  const timeRange =
-    startLabel && endLabel ? `${startLabel} – ${endLabel}` : startLabel;
+  const timeRange = event.allDay
+    ? "All day"
+    : startLabel && endLabel ? `${startLabel} – ${endLabel}` : startLabel;
 
   const durationLabel = (() => {
-    if (!durationMins) return "";
+    if (!durationMins || event.allDay) return "";
     if (durationMins < 60) return `${Math.round(durationMins)}m`;
     const h = Math.floor(durationMins / 60);
     const m = Math.round(durationMins % 60);
@@ -2490,7 +2539,7 @@ function TutorDayCalendar({
           </div>
         </div>
 
-        {/* All-day row (per-tutor all-day events) — hidden for now; uncomment to restore
+        {/* All-day row (per-tutor all-day events) */}
         <div className="flex h-10 border-b border-border bg-muted/40">
           <div className="w-[86px] shrink-0 border-r border-border px-2 py-2 text-[10px] font-medium text-muted-foreground">
             All day
@@ -2524,7 +2573,6 @@ function TutorDayCalendar({
             </div>
           ))}
         </div>
-        */}
       </div>
 
       <div className="relative flex">
@@ -3592,10 +3640,10 @@ function CalendarPageInner() {
   const [slotSelection, setSlotSelection] = useState(null);
   const [hideEmptySlots, setHideEmptySlots] = useState(false);
   const [customSlotMins, setCustomSlotMins] = useState(() => {
-    try { const n = Number(localStorage.getItem("cal_slotMins")); return Number.isFinite(n) && n > 0 ? n : DEFAULT_SLOT_MINS; } catch { return DEFAULT_SLOT_MINS; }
+    return readCachedSlotMins() ?? DEFAULT_SLOT_MINS;
   });
   const [slotAlignMins, setSlotAlignMins] = useState(() => {
-    try { const n = Number(localStorage.getItem("cal_startMins")); return Number.isFinite(n) && n >= 0 ? n : FULL_START_HOUR * 60; } catch { return FULL_START_HOUR * 60; }
+    return readCachedStartMins() ?? FULL_START_HOUR * 60;
   });
 
   useEffect(() => {
@@ -3607,11 +3655,18 @@ function CalendarPageInner() {
           const { slotMins, startMins } = res.data;
           if (Number.isFinite(slotMins) && slotMins > 0) {
             setCustomSlotMins(slotMins);
-            try { localStorage.setItem("cal_slotMins", String(slotMins)); } catch {}
           }
           if (Number.isFinite(startMins) && startMins >= 0) {
             setSlotAlignMins(startMins);
-            try { localStorage.setItem("cal_startMins", String(startMins)); } catch {}
+          }
+          if (
+            (Number.isFinite(slotMins) && slotMins > 0) ||
+            (Number.isFinite(startMins) && startMins >= 0)
+          ) {
+            writeCachedGrid(
+              Number.isFinite(slotMins) && slotMins > 0 ? slotMins : DEFAULT_SLOT_MINS,
+              Number.isFinite(startMins) && startMins >= 0 ? startMins : FULL_START_HOUR * 60,
+            );
           }
           return;
         }
@@ -3624,11 +3679,15 @@ function CalendarPageInner() {
         // by a fixed offset for anyone whose browser hasn't refreshed that cache.
         // Retry once so a transient failure doesn't leave the stale value in place.
         console.error("Failed to load calendar settings:", res.error);
-        setTimeout(() => { if (!cancelled) loadCalendarSettings(); }, 3000);
+        setTimeout(() => {
+          if (!cancelled) loadCalendarSettings();
+        }, 3000);
       });
     };
     loadCalendarSettings();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // slotDuration string for FullCalendar (HH:MM:SS)
@@ -4062,7 +4121,7 @@ function CalendarPageInner() {
                   onApply={(mins, startOff) => {
                     setCustomSlotMins(mins);
                     setSlotAlignMins(startOff);
-                    try { localStorage.setItem("cal_slotMins", String(mins)); localStorage.setItem("cal_startMins", String(startOff)); } catch {}
+                    writeCachedGrid(mins, startOff);
                     api.patch("/api/organisation/calendar-settings", { slotMins: mins, startMins: startOff });
                   }}
                 />
@@ -4149,7 +4208,7 @@ function CalendarPageInner() {
                   onApply={(mins, startOff) => {
                     setCustomSlotMins(mins);
                     setSlotAlignMins(startOff);
-                    try { localStorage.setItem("cal_slotMins", String(mins)); localStorage.setItem("cal_startMins", String(startOff)); } catch {}
+                    writeCachedGrid(mins, startOff);
                     api.patch("/api/organisation/calendar-settings", { slotMins: mins, startMins: startOff });
                   }}
                 />
@@ -4232,7 +4291,6 @@ function CalendarPageInner() {
                       "--cal-event-min-height": `${TIMED_EVENT_CARD_DISPLAY_HEIGHT_PX}px`,
                     }}
                   >
-                    {/* FullCalendar all-day row: was `allDaySlot` (default on); using false hides it */}
                     <FullCalendar
                       key={`fc-${viewMode}-${customSlotMins}-${snappedGridStartMins}-${visibleWindow.effectiveSlotMinStr}-${visibleWindow.effectiveSlotMaxStr}`}
                       ref={calendarRef}
@@ -4246,7 +4304,7 @@ function CalendarPageInner() {
                       headerToolbar={false}
                       height="auto"
                       nowIndicator
-                      allDaySlot={false}
+                      allDaySlot
                       slotMinTime={visibleWindow.effectiveSlotMinStr}
                       slotMaxTime={visibleWindow.effectiveSlotMaxStr}
                       slotDuration={slotDurationStr}

@@ -6,6 +6,7 @@ import SearchableSelect from '@/components/ui/searchable-select'
 import NewEnrollmentPackageInline from '@/app/calendar/components/NewEnrollmentPackageInline'
 import AssignMembershipForm from '@/components/membership/AssignMembershipForm'
 import api from '@/lib/api'
+import { nameWithMembers } from '@/lib/utils'
 import { dateInputToISO } from '@/lib/studioLocalDate'
 
 const SHEET_WIDTH = '640px'
@@ -101,7 +102,8 @@ export default function CreateEnrollmentSheet({
               : (loc?._id || loc || null)
             return {
               value: String(c._id ?? c.id),
-              label: c.name || c.email || String(c._id),
+              // "Ashley & Tom" — members show next to the account holder and are searchable.
+              label: nameWithMembers(c) || c.email || String(c._id),
               locationID: locationID ? String(locationID) : null,
             }
           }),

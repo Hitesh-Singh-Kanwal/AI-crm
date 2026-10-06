@@ -232,7 +232,7 @@ export default function MiniStudentPanel({
     async function load() {
       setLoadingEnrollments(true);
       const [enrResult, catalogResult] = await Promise.all([
-        api.get(`/api/enrollment?customerID=${customerId}&limit=50`),
+        api.get(`/api/enrollment?customerID=${customerId}&limit=500`),
         api.get("/api/package?limit=200&isActive=true"),
       ]);
       if (enrResult.success && Array.isArray(enrResult.data))
@@ -246,7 +246,7 @@ export default function MiniStudentPanel({
 
   async function reloadEnrollments() {
     const enrResult = await api.get(
-      `/api/enrollment?customerID=${customerId}&limit=50`,
+      `/api/enrollment?customerID=${customerId}&limit=500`,
     );
     if (enrResult.success && Array.isArray(enrResult.data))
       setEnrollments(enrResult.data);
@@ -955,14 +955,22 @@ export default function MiniStudentPanel({
     (a) => a.type === "private" || a.type === "trial",
   );
   const groupAppts = appointments.filter((a) => a.type === "lesson");
-  const visiblePrivate =
-    apptView === "past"
-      ? privateAppts.filter((a) => new Date(a.startDateTime) < todayStart)
-      : privateAppts.filter((a) => new Date(a.startDateTime) >= todayStart);
-  const visibleGroups =
-    apptView === "past"
-      ? groupAppts.filter((a) => new Date(a.startDateTime) < todayStart)
-      : groupAppts.filter((a) => new Date(a.startDateTime) >= todayStart);
+  // Past = already dated before today, or finished/cancelled/no-show whatever its date —
+  // a lesson completed earlier today belongs under Past, not Upcoming.
+  const isPastAppt = (a) =>
+    new Date(a.startDateTime) < todayStart ||
+    !["scheduled", "held"].includes(a.status);
+  const inView = (list) =>
+    list
+      .filter((a) => (apptView === "past" ? isPastAppt(a) : !isPastAppt(a)))
+      // Upcoming reads soonest-first; Past reads most-recent-first.
+      .sort((a, b) =>
+        apptView === "past"
+          ? new Date(b.startDateTime) - new Date(a.startDateTime)
+          : new Date(a.startDateTime) - new Date(b.startDateTime),
+      );
+  const visiblePrivate = inView(privateAppts);
+  const visibleGroups = inView(groupAppts);
   const visibleAppts = showGroups ? visibleGroups : visiblePrivate;
 
   const sortedNotes = [...(customer?.notes || [])].sort((a, b) => {
@@ -1083,10 +1091,6 @@ export default function MiniStudentPanel({
                 </p>
               ) : (
                 visibleAppts
-                  .sort(
-                    (a, b) =>
-                      new Date(b.startDateTime) - new Date(a.startDateTime),
-                  )
                   .map((appt) => (
                     <div
                       key={appt._id}
