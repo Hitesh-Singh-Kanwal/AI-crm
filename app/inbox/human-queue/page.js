@@ -22,6 +22,8 @@ import { Button } from '@/components/ui/button'
 import { cn, formatDateTime, getInitials } from '@/lib/utils'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import api from '@/lib/api'
+import { isNotificationEnabled } from '@/lib/notificationPreferences'
+import { playIncomingRing } from '@/lib/notificationSounds'
 import { useToast } from '@/components/ui/toast'
 import { getCurrentUser } from '@/lib/auth'
 import { canManageCallCenter, hasPermission } from '@/lib/permissions'
@@ -161,25 +163,6 @@ function Toggle({ checked, onChange, disabled }) {
       />
     </button>
   )
-}
-
-function playIncomingRing() {
-  if (typeof window === 'undefined') return
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    const oscillator = ctx.createOscillator()
-    const gain = ctx.createGain()
-    oscillator.connect(gain)
-    gain.connect(ctx.destination)
-    oscillator.frequency.value = 880
-    oscillator.type = 'sine'
-    gain.gain.setValueAtTime(0.08, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
-    oscillator.start(ctx.currentTime)
-    oscillator.stop(ctx.currentTime + 0.35)
-  } catch {
-    // audio not available
-  }
 }
 
 // ── Settings Panel ────────────────────────────────────────────────────────────
@@ -579,7 +562,7 @@ function HumanQueuePageContent() {
   useEffect(() => {
     if (activeTab === 'callbacks' || activeTab === 'resolved' || !soundEnabled) return
     const count = tabCounts.waiting ?? waitingCalls.length
-    if (count > prevWaitingCountRef.current) playIncomingRing()
+    if (count > prevWaitingCountRef.current && isNotificationEnabled('humanQueue.sound')) playIncomingRing()
     prevWaitingCountRef.current = count
   }, [tabCounts.waiting, waitingCalls.length, soundEnabled, activeTab])
 

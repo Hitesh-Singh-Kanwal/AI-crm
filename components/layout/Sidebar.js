@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { canAccessRoute } from '@/lib/permissions'
 import { BrandLockup } from '@/components/shared/BrandLogo'
 import { useUpcomingTasks } from '@/lib/hooks/useUpcomingTasks'
+import { useNotificationEnabled } from '@/lib/hooks/useNotificationEnabled'
 
 const SEEN_TASKS_STORAGE_KEY = 'crm_seen_upcoming_task_ids'
 
@@ -91,6 +92,7 @@ const navItems = [
     labelStyle: 'regular',
     children: [
       { name: 'Studio', href: '/settings/studio' },
+      { name: 'Notifications', href: '/settings/notifications' },
       { name: 'Users & Roles', href: '/settings/users-roles' },
       { name: 'Curriculum', href: '/settings/curriculum' },
       { name: 'Goals', href: '/settings/goals' },
@@ -117,6 +119,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
   const menuHoverRef = useRef(false)
   const [navBox, setNavBox] = useState({ scale: 1, height: null })
   const { tasks: upcomingTasks, loading: upcomingTasksLoading } = useUpcomingTasks({ days: 7, limit: 20 })
+  const showTaskBadge = useNotificationEnabled('tasks.badge')
   // Red dot clears once the popover has been opened for the current task set;
   // reappears if the list changes (e.g. a new task shows up) after that.
   // Persisted to localStorage (client-only, no backend/AWS cost) so it
@@ -468,7 +471,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
               className="w-full h-full object-cover"
               unoptimized
             />
-            {!upcomingTasksLoading && unseenTaskCount > 0 && (
+            {showTaskBadge && !upcomingTasksLoading && unseenTaskCount > 0 && (
               <span
                 className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-black/40"
                 aria-label={`${unseenTaskCount} new upcoming task${unseenTaskCount === 1 ? '' : 's'}`}

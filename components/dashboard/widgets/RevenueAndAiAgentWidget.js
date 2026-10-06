@@ -42,6 +42,7 @@ export default function RevenueAndAiAgentWidget({
         <DetailsButton
           title="Revenue Collected from Intros — full details"
           metric="payments"
+          params={{ introOnly: 'true' }}
           rangeDays={defaultRange}
           columns={DETAIL_COLUMNS}
         />
@@ -54,7 +55,7 @@ export default function RevenueAndAiAgentWidget({
           </h3>
           <Trend
             type={revenue.trendType}
-            text={`${(revenue.trendPct ?? 0).toFixed(1)}% from last period`}
+            text={revenue.noBaseline ? 'New — no prior-period revenue' : `${(revenue.trendPct ?? 0).toFixed(1)}% from last period`}
           />
           <p className="mt-3 text-sm text-muted-foreground">
             Human intervention open:{' '}
@@ -68,7 +69,7 @@ export default function RevenueAndAiAgentWidget({
           <h3 className="mt-1 text-[28px] font-bold leading-[1.21] tracking-tight tabular-nums text-foreground sm:text-[32px]">
             ${yearTotal.toLocaleString()}
           </h3>
-          <p className="mt-1 text-sm text-muted-foreground">Year-over-year comparison</p>
+          <p className="mt-1 text-sm text-muted-foreground">Sold by the AI agent · this year vs last year</p>
         </div>
       </div>
 

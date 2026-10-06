@@ -73,9 +73,9 @@ function buildCards({ current, previous, lastYear }) {
       href: 'od-health',
       note:
         cur.activeStudents !== null
-          ? `${num(Math.round(((cur.bookedPct || 0) / 100) * cur.activeStudents))} booked of ${num(cur.activeStudents)} active`
+          ? `${num(cur.bookedStudents)} booked of ${num(cur.activeStudents)} active`
           : null,
-      ...points('bookedPct'),
+      // Snapshot as of now, like Lessons Scheduled: no MoM/YoY badges.
     },
     {
       // forecastByStudio counts all scheduled lessons; it is not split by
@@ -90,7 +90,8 @@ function buildCards({ current, previous, lastYear }) {
       value: value(cur.scheduled, num),
       href: 'od-forecast',
       note: 'Confirmed future lessons',
-      ...ratio('scheduled'),
+      // Snapshot of the live schedule — a prior-period/year comparison would
+      // just re-read the same "now", so no MoM/YoY badges.
     },
     {
       label: 'Teacher Utilization',

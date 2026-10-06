@@ -6,6 +6,7 @@ import BookingTrendWidget from './BookingTrendWidget'
 import FollowUpEffectivenessWidget from './FollowUpEffectivenessWidget'
 import RevenueAndAiAgentWidget from './RevenueAndAiAgentWidget'
 import ApiExpenseWidget from './ApiExpenseWidget'
+import AiTokenUsageWidget from './AiTokenUsageWidget'
 import HumanInterventionWidget from './HumanInterventionWidget'
 import LeadsBySourceWidget from './LeadsBySourceWidget'
 import StudioBreakdownWidget from './StudioBreakdownWidget'
@@ -119,6 +120,16 @@ export const dashboardWidgetRegistry = [
     category: 'Costs',
     permission: PERMISSION.aiAnalytics,
     component: ApiExpenseWidget,
+    defaultSize: 'half',
+    allowedSizes: ['half', 'full'],
+  },
+  {
+    id: 'ai-token-usage',
+    title: 'AI Token Usage',
+    description: 'Tokens the AI used and their approximate dollar value',
+    category: 'Costs',
+    permission: PERMISSION.aiAnalytics,
+    component: AiTokenUsageWidget,
     defaultSize: 'half',
     allowedSizes: ['half', 'full'],
   },

@@ -37,6 +37,7 @@ export default function GrossNetRevenueWidget({ grossRevenue = 0, netRevenue = 0
           <DetailsButton
             title="Gross & Net Revenue — full details"
             metric="payments"
+            params={{ introOnly: 'true' }}
             rangeDays={defaultRange}
             columns={DETAIL_COLUMNS}
           />
@@ -48,7 +49,7 @@ export default function GrossNetRevenueWidget({ grossRevenue = 0, netRevenue = 0
           <p className="mt-1 text-[22px] font-bold leading-tight tracking-tight tabular-nums text-foreground sm:text-[26px]">
             {formatMoney(grossRevenue)}
           </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Intro bookings</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">From intro customers</p>
         </div>
         <div>
           <p className="text-[12px] font-medium text-muted-foreground">Net</p>

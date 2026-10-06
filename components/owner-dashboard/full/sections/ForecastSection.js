@@ -80,27 +80,29 @@ export default function ForecastSection({ data, classic, rangeDays }) {
             <DataTable
               head={['Instructor', 'Studio', 'Scheduled', 'Capacity', 'Remaining/wk', 'Projected']}
               minWidth={620}
-              emptyMessage={forecastByTeacher.length ? undefined : 'No instructors with a weekly capacity configured.'}
+              emptyMessage={forecastByTeacher.length ? undefined : 'No upcoming lessons scheduled.'}
             >
-              {forecastByTeacher.map((t) => (
-                <Row key={t.teacher}>
+              {forecastByTeacher.map((t, i) => (
+                <Row key={`${t.teacher}-${i}`}>
                   <Cell first>{t.teacher}</Cell>
                   <Cell>{t.studio || <Dash />}</Cell>
                   <Cell tone="text-[var(--studio-primary)] font-bold">{num(t.scheduled)}</Cell>
-                  <Cell>{num(t.weeklyCapacity)}</Cell>
+                  <Cell>{t.weeklyCapacity === null ? <Dash /> : num(t.weeklyCapacity)}</Cell>
                   <Cell tone={t.remainingPerWeek > 0 ? 'text-success' : 'text-muted-foreground'}>
-                    {t.remainingPerWeek}
+                    {t.remainingPerWeek === null ? <Dash /> : t.remainingPerWeek}
                   </Cell>
                   <Cell
                     tone={
-                      t.projectedUtilizationPct >= 90
+                      t.projectedUtilizationPct === null
+                        ? 'text-muted-foreground'
+                        : t.projectedUtilizationPct >= 90
                         ? 'text-destructive font-bold'
                         : t.projectedUtilizationPct >= 75
                           ? 'text-warning'
                           : 'text-success'
                     }
                   >
-                    {t.projectedUtilizationPct}%
+                    {t.projectedUtilizationPct === null ? <Dash /> : `${t.projectedUtilizationPct}%`}
                   </Cell>
                 </Row>
               ))}
@@ -108,7 +110,9 @@ export default function ForecastSection({ data, classic, rangeDays }) {
             <Caveat>
               Scheduled is every future lesson already on this instructor&apos;s calendar, not bounded to the next 7
               days. Remaining/wk and Projected extrapolate from their recent weekly pace, not from the schedule itself —
-              there is no lessons-per-future-week series to derive a true forecast from.
+              there is no lessons-per-future-week series to derive a true forecast from. Capacity columns are blank
+              for instructors with no weekly capacity set; lessons with no instructor assigned are listed as
+              Unassigned.
             </Caveat>
           </Panel>
         </Reveal>
