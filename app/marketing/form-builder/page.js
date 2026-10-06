@@ -2,7 +2,8 @@
 
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck, Image, Volume2, Calculator, EyeOff, Link2, Code2, ExternalLink } from 'lucide-react'
+import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck, Image, Volume2, Calculator, EyeOff, Link2, Code2, ExternalLink, Users, UserCheck } from 'lucide-react'
+import { FORM_ANALYTICS_RANGES } from '@/lib/form-analytics'
 import SearchInput from '@/components/ui/search-input'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
@@ -1345,8 +1346,10 @@ function FormsPageInner() {
   const [gaViewsLoading, setGaViewsLoading] = useState(false)
   const [gaViewsError, setGaViewsError] = useState(null)
 
-  // Templates/forms table (NOT from Google Analytics; from existing backend forms API)
+  // Platform submissions + conversions per form (from leads, not Google Analytics)
   const [analyticsForms, setAnalyticsForms] = useState([])
+  const [analyticsTotals, setAnalyticsTotals] = useState(null)
+  const [analyticsRange, setAnalyticsRange] = useState('30d')
   const [analyticsFormsLoading, setAnalyticsFormsLoading] = useState(false)
   const [analyticsFormsError, setAnalyticsFormsError] = useState(null)
 
@@ -1456,29 +1459,27 @@ function FormsPageInner() {
     setAnalyticsFormsLoading(true)
     setAnalyticsFormsError(null)
     try {
-      // Use backend forms API for templates table:
-      // http://localhost:8080/api/formBuilder?page=1&limit=9
-      const params = new URLSearchParams({ page: '1', limit: '9' })
-      const result = await api.get(`/api/formBuilder?${params.toString()}`)
-      const list = Array.isArray(result.data) ? result.data : null
-      if (result.success && list) {
-        setAnalyticsForms(list)
+      const result = await api.get(`/api/formBuilder/analytics?range=${encodeURIComponent(analyticsRange)}`)
+      if (result.success && Array.isArray(result.data?.forms)) {
+        setAnalyticsForms(result.data.forms)
+        setAnalyticsTotals(result.data.totals || null)
       } else {
-        setAnalyticsFormsError(result.error || 'Failed to load forms for analytics')
+        setAnalyticsFormsError(result.error || 'Failed to load form analytics')
       }
     } catch {
-      setAnalyticsFormsError('Failed to load forms for analytics')
+      setAnalyticsFormsError('Failed to load form analytics')
     } finally {
       setAnalyticsFormsLoading(false)
     }
-  }, [])
+  }, [analyticsRange])
 
   useEffect(() => {
-    if (activeTab === 'analytics') {
-      fetchGaViews()
-      fetchAnalyticsForms()
-    }
-  }, [activeTab, fetchGaViews, fetchAnalyticsForms])
+    if (activeTab === 'analytics') fetchGaViews()
+  }, [activeTab, fetchGaViews])
+
+  useEffect(() => {
+    if (activeTab === 'analytics') fetchAnalyticsForms()
+  }, [activeTab, fetchAnalyticsForms])
 
   const extractViewTimestamps = (form) => {
     const candidates = [
@@ -4444,51 +4445,85 @@ ${getFormPhoneExportRuntimeScript()}
           ) : null}
           {!gaViewsLoading && analyticsFormsLoading ? (
             <div className="absolute inset-0 z-10 rounded-lg bg-background/70 backdrop-blur-[1px] flex items-center justify-center">
-              <GlobalLoader text="Loading templates…" />
+              <GlobalLoader text="Loading form analytics…" />
             </div>
           ) : null}
-          {(() => {
-            // Dummy submissions + conversion rate (until real submission tracking exists)
-            const baseViews = Number(gaViews?.last30Days) || 0
-            const submissionRate = 0.12 // 12% dummy baseline
-            const totalSubmissions = Math.max(0, Math.round(baseViews * submissionRate))
-            const conversionRate = baseViews > 0 ? (totalSubmissions / baseViews) * 100 : 0
-            return (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Total form submissions</p>
-                        <h3 className="text-3xl font-bold text-foreground tabular-nums">
-                          {gaViewsLoading ? '—' : totalSubmissions}
-                        </h3>
-                      </div>
-                      <div className="h-12 w-12 rounded-lg bg-brand-light flex items-center justify-center">
-                        <FileText className="h-6 w-6 text-brand" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Conversion rate</p>
-                        <h3 className="text-3xl font-bold text-foreground tabular-nums">
-                          {gaViewsLoading ? '—' : `${conversionRate.toFixed(1)}%`}
-                        </h3>
-                      </div>
-                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
-                        <BarChart3 className="h-6 w-6 text-muted-foreground" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">Form performance</h2>
+                <p className="text-xs text-muted-foreground">
+                  Submissions and conversions recorded on the platform from your forms
+                </p>
               </div>
-            )
-          })()}
+              <div className="flex items-center gap-2">
+                {FORM_ANALYTICS_RANGES.map((r) => (
+                  <Button
+                    key={r.value}
+                    size="sm"
+                    variant={analyticsRange === r.value ? 'default' : 'outline'}
+                    onClick={() => setAnalyticsRange(r.value)}
+                    disabled={analyticsFormsLoading}
+                  >
+                    {r.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[
+                {
+                  label: 'Total form submissions',
+                  value: analyticsTotals?.submissions,
+                  hint: 'Includes repeat submissions',
+                  icon: FileText,
+                  iconWrap: 'bg-brand-light',
+                  iconClass: 'text-brand',
+                },
+                {
+                  label: 'People who filled a form',
+                  value: analyticsTotals?.leads,
+                  hint: 'Unique leads',
+                  icon: Users,
+                  iconWrap: 'bg-blue-100',
+                  iconClass: 'text-blue-600',
+                },
+                {
+                  label: 'Converted to customer',
+                  value: analyticsTotals?.converted,
+                  hint: 'Leads now customers',
+                  icon: UserCheck,
+                  iconWrap: 'bg-green-100',
+                  iconClass: 'text-green-600',
+                },
+                {
+                  label: 'Conversion rate',
+                  value: analyticsTotals ? `${Number(analyticsTotals.conversionRate || 0).toFixed(1)}%` : undefined,
+                  hint: 'Converted ÷ people who filled',
+                  icon: BarChart3,
+                  iconWrap: 'bg-purple-100',
+                  iconClass: 'text-purple-600',
+                },
+              ].map((c) => (
+                <Card key={c.label}>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">{c.label}</p>
+                        <h3 className="text-3xl font-bold text-foreground tabular-nums">
+                          {analyticsFormsLoading || c.value === undefined ? '—' : c.value}
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-2">{c.hint}</p>
+                      </div>
+                      <div className={cn('h-12 w-12 rounded-lg flex items-center justify-center', c.iconWrap)}>
+                        <c.icon className={cn('h-6 w-6', c.iconClass)} />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
               <CardContent className="p-6">
@@ -4856,6 +4891,9 @@ ${getFormPhoneExportRuntimeScript()}
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <CardTitle className="text-base">Templates</CardTitle>
+                  <CardDescription>
+                    Every form with its submissions and conversions ({FORM_ANALYTICS_RANGES.find((r) => r.value === analyticsRange)?.label.toLowerCase()}). Click a form to see its full analysis.
+                  </CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -4864,44 +4902,71 @@ ${getFormPhoneExportRuntimeScript()}
                 <div className="text-sm text-destructive">{analyticsFormsError}</div>
               ) : (
                 (() => {
-                  const list = Array.isArray(analyticsForms) ? analyticsForms : []
-                  // Some backends mark templates explicitly; fall back to showing whatever the API returns.
-                  const hasTemplateFlag = list.some((f) => typeof f?.isTemplate === 'boolean' || typeof f?.template === 'boolean')
-                  const rows = hasTemplateFlag ? list.filter((f) => f?.isTemplate || f?.template) : list
-                  if (!rows.length) return <div className="text-sm text-muted-foreground py-4">No forms found.</div>
+                  const rows = Array.isArray(analyticsForms) ? analyticsForms : []
+                  if (!rows.length) {
+                    return (
+                      <div className="text-sm text-muted-foreground py-4">
+                        {analyticsFormsLoading ? 'Loading…' : 'No forms found.'}
+                      </div>
+                    )
+                  }
+                  const openForm = (f) =>
+                    router.push(`/marketing/form-builder/template-analytics/${f._id}?range=${analyticsRange}`)
                   return (
                     <div className="overflow-auto rounded-md border border-border">
-                      <table className="min-w-[720px] w-full text-sm">
+                      <table className="min-w-[860px] w-full text-sm">
                         <thead className="bg-muted/40">
                           <tr className="text-left text-muted-foreground">
-                            <th className="px-4 py-3 font-medium">View</th>
                             <th className="px-4 py-3 font-medium">Form</th>
-                            <th className="px-4 py-3 font-medium">Template</th>
+                            <th className="px-4 py-3 font-medium text-right">Submissions</th>
+                            <th className="px-4 py-3 font-medium text-right">People</th>
+                            <th className="px-4 py-3 font-medium text-right">Converted</th>
+                            <th className="px-4 py-3 font-medium text-right">Conversion rate</th>
+                            <th className="px-4 py-3 font-medium">Last submission</th>
                             <th className="px-4 py-3 font-medium">Status</th>
-                            <th className="px-4 py-3 font-medium">Updated</th>
+                            <th className="px-4 py-3 font-medium text-right">View</th>
                           </tr>
                         </thead>
                         <tbody className="bg-card">
                           {rows.map((f) => (
-                            <tr key={f._id} className="border-t border-border">
+                            <tr
+                              key={f._id}
+                              className="border-t border-border cursor-pointer hover:bg-muted/30"
+                              onClick={() => openForm(f)}
+                            >
                               <td className="px-4 py-3">
+                                <div className="font-medium text-foreground">{f?.name || 'Untitled'}</div>
+                                {f?.isDeleted ? (
+                                  <div className="text-xs text-muted-foreground">No longer available</div>
+                                ) : f?.templateScope === 'global' ? (
+                                  <div className="text-xs text-muted-foreground">Global template</div>
+                                ) : f?.templateScope === 'organization_default' ? (
+                                  <div className="text-xs text-muted-foreground">Organisation default</div>
+                                ) : null}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.submissions) || 0}</td>
+                              <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.leads) || 0}</td>
+                              <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.converted) || 0}</td>
+                              <td className="px-4 py-3 text-right tabular-nums text-foreground">
+                                {Number(f?.conversionRate || 0).toFixed(1)}%
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground">
+                                {f?.lastSubmissionAt ? formatDate(f.lastSubmissionAt) : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground capitalize">{f?.status || '—'}</td>
+                              <td className="px-4 py-3 text-right">
                                 <Button
                                   variant="outline"
                                   size="icon"
                                   className="h-8 w-8"
-                                  title="View template analytics"
-                                  onClick={() => router.push(`/forms/template-analytics/${f._id}`)}
+                                  title="View form analytics"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openForm(f)
+                                  }}
                                 >
                                   <Eye className="h-4 w-4" />
                                 </Button>
-                              </td>
-                              <td className="px-4 py-3 text-foreground font-medium">{f?.name || 'Untitled'}</td>
-                              <td className="px-4 py-3 text-muted-foreground">
-                                {typeof f?.isTemplate === 'boolean' ? (f.isTemplate ? 'Yes' : 'No') : (f?.fromTemplate ? 'From template' : '—')}
-                              </td>
-                              <td className="px-4 py-3 text-muted-foreground">{f?.status || '—'}</td>
-                              <td className="px-4 py-3 text-muted-foreground">
-                                {f?.updatedAt ? formatDate(f.updatedAt) : '—'}
                               </td>
                             </tr>
                           ))}
