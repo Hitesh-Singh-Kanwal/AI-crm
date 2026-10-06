@@ -3,6 +3,9 @@
 import { ChevronDown } from 'lucide-react'
 
 const OPTIONS = [
+  // 0 is the studio's current day so far. Without this option the select could not
+  // represent a "Today" page range and fell back to showing "Last 7 days".
+  { label: 'Today', days: 0 },
   { label: 'Last 7 days', days: 7 },
   { label: 'Last 30 days', days: 30 },
   { label: 'Last 90 days', days: 90 },

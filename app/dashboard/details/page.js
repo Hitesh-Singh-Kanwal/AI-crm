@@ -69,7 +69,8 @@ function absoluteRangeBounds(range, timeZone) {
   if (isCustomRange(range)) {
     return { from: range.from, to: range.to }
   }
-  const days = typeof range === 'number' && range > 0 ? range : 30
+  // 0 is "Today": from and to are both today's date in the studio's timezone.
+  const days = typeof range === 'number' && range >= 0 ? range : 30
   const bounds = dateBoundsFromPresetDays(days, timeZone)
   return { from: bounds.dateFrom, to: bounds.dateTo }
 }
@@ -83,7 +84,7 @@ function resolveDetailsRange(filters, requestRange) {
   if (filters.dateFrom && filters.dateTo) {
     return { from: filters.dateFrom, to: filters.dateTo }
   }
-  if (typeof requestRange === 'number' && requestRange > 0) return requestRange
+  if (typeof requestRange === 'number' && requestRange >= 0) return requestRange
   if (isCustomRange(requestRange)) return requestRange
   return 30
 }

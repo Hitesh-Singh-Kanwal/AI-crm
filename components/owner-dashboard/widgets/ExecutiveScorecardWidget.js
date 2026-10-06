@@ -15,7 +15,12 @@ const num = (n) => Math.round(Number(n) || 0).toLocaleString()
  * look. A metric the backend can't produce still renders as an em dash with a
  * short note, so the grid keeps its shape.
  */
-function buildCards({ current, previous, lastYear }) {
+function todayNote(cur, rangeDays) {
+  if (rangeDays !== 0 || cur.scheduledToday === null || cur.scheduledToday === undefined) return null
+  return `taught so far · ${num(cur.scheduledToday)} more scheduled later today`
+}
+
+function buildCards({ current, previous, lastYear }, rangeDays) {
   const cur = current || {}
   const prev = previous || {}
   const ly = lastYear || {}
@@ -26,7 +31,14 @@ function buildCards({ current, previous, lastYear }) {
 
   return [
     { label: 'Revenue', value: value(cur.revenue, money), ...ratio('revenue') },
-    { label: 'Lessons', value: value(cur.lessons, num), ...ratio('lessons') },
+    {
+      label: 'Lessons',
+      value: value(cur.lessons, num),
+      // On "Today" a bare count of lessons already taught reads wrong beside a
+      // calendar full of today's bookings, so say how many are still to come.
+      note: todayNote(cur, rangeDays),
+      ...ratio('lessons'),
+    },
     { label: 'Leads', value: value(cur.leads, num), ...ratio('leads') },
     {
       label: 'Intros Taught',
@@ -93,7 +105,7 @@ export default function ExecutiveScorecardWidget({ rangeDays, onRangeChange }) {
     return <div className="h-64 animate-pulse rounded-xl bg-muted/40" />
   }
 
-  const cards = buildCards(summaries)
+  const cards = buildCards(summaries, rangeDays)
 
   return (
     <section className="flex h-full flex-col gap-3">
