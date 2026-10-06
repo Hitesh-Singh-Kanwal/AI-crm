@@ -175,10 +175,11 @@ function stepFromNode(node, offsetMinutes) {
     return { ...base, script: config.message || config.script || '' }
   }
 
-  // aiCall — backend only stores the base fields (description carries the prompt).
+  // aiCall — description carries the prompt; dbAssistantId picks a saved assistant.
   return {
     ...base,
     description: config.prompt || base.description,
+    dbAssistantId: config.dbAssistantId || null,
   }
 }
 
@@ -454,7 +455,12 @@ function actionNodeFromStep(step, index, y) {
       smsTemplateName: step.smsTemplateName || '',
     }
   } else if (paletteType === 'ai_agent') {
-    config = { ...base, prompt: step.description || '' }
+    config = {
+      ...base,
+      prompt: step.description || '',
+      dbAssistantId: step.dbAssistantId || '',
+      dbAssistantName: step.dbAssistantName || '',
+    }
   }
 
   return makeNodeBase(id, paletteType, y, config, step.name)

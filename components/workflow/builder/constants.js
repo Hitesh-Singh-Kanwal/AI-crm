@@ -236,7 +236,7 @@ export const DEFAULT_NODE_CONFIG = {
     emailTemplateSubject: '',
   },
   send_sms: { ...SCHEDULE_DEFAULTS, message: '', smsTemplateId: '', smsTemplateName: '' },
-  ai_agent: { ...SCHEDULE_DEFAULTS, prompt: '' },
+  ai_agent: { ...SCHEDULE_DEFAULTS, prompt: '', dbAssistantId: '', dbAssistantName: '' },
   wait: { days: 1, hours: 0, minutes: 0 },
   add_tag: { tagName: '' },
   create_task: { title: '', assignee: 'Unassigned' },

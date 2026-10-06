@@ -14,6 +14,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
+import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import WorkflowEmailTemplatePickerDialog from '@/components/workflow/WorkflowEmailTemplatePickerDialog'
 import WorkflowSmsTemplatePickerDialog from '@/components/workflow/WorkflowSmsTemplatePickerDialog'
@@ -323,18 +324,82 @@ function SmsFields({ config, onChange }) {
   )
 }
 
+function AssistantSelect({ config, onChange }) {
+  const [assistants, setAssistants] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    api
+      .get('/api/ai-assistant/')
+      .then((result) => {
+        if (cancelled) return
+        if (!result?.success) {
+          setError(result?.message || 'Could not load assistants.')
+          return
+        }
+        setAssistants(Array.isArray(result.data) ? result.data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load assistants.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const selectedId = String(config.dbAssistantId || '')
+  const isMissing =
+    !loading && selectedId && !assistants.some((a) => String(a._id) === selectedId)
+
+  return (
+    <Field label="Assistant" hint={loading ? 'Loading…' : undefined}>
+      <select
+        value={selectedId}
+        disabled={loading}
+        onChange={(e) => {
+          const id = e.target.value
+          const picked = assistants.find((a) => String(a._id) === id)
+          onChange({ dbAssistantId: id, dbAssistantName: picked?.name || '' })
+        }}
+        className={selectClass}
+      >
+        <option value="">Default assistant</option>
+        {isMissing && (
+          <option value={selectedId}>{config.dbAssistantName || 'Unavailable assistant'}</option>
+        )}
+        {assistants.map((a) => (
+          <option key={a._id} value={String(a._id)}>
+            {a.name || 'Unnamed assistant'}
+          </option>
+        ))}
+      </select>
+      {error ? (
+        <p className="text-[11px] text-destructive">{error}</p>
+      ) : isMissing ? (
+        <p className="text-[11px] text-amber-600">
+          This assistant no longer exists. Pick another one so the call can run.
+        </p>
+      ) : (
+        !loading &&
+        assistants.length === 0 && (
+          <p className="text-[11px] text-muted-foreground">
+            No saved assistants yet. Create one under AI Automation.
+          </p>
+        )
+      )}
+    </Field>
+  )
+}
+
 function AiFields({ config, onChange }) {
   return (
     <div className="space-y-4">
-      <Field label="AI call prompt">
-        <Textarea
-          value={config.prompt || ''}
-          onChange={(e) => onChange({ prompt: e.target.value })}
-          placeholder="What should the AI do on this call?"
-          rows={4}
-          className="resize-y rounded-lg border-border bg-background text-[13px]"
-        />
-      </Field>
+      <AssistantSelect config={config} onChange={onChange} />
       <ScheduleFields config={config} onChange={onChange} />
     </div>
   )
