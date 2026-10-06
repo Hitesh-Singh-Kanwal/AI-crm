@@ -24,8 +24,11 @@ export default function OverviewStatsWidget({ overviewStats, defaultRange }) {
 
   // Badge shows the bare percentage; the full sentence stays as its tooltip /
   // accessible name so the number keeps its meaning out of context.
-  const pct = (stat) => `${(stat.trendPct ?? 0).toFixed(1)}%`
-  const pctLabel = (stat) => `${(stat.trendPct ?? 0).toFixed(1)}% from last period`
+  // Growth from a zero baseline is undefined — the backend flags it so we say
+  // "New" instead of a made-up percentage.
+  const pct = (stat) => (stat.noBaseline ? 'New' : `${(stat.trendPct ?? 0).toFixed(1)}%`)
+  const pctLabel = (stat) =>
+    stat.noBaseline ? 'No prior-period data to compare against' : `${(stat.trendPct ?? 0).toFixed(1)}% from last period`
 
   const cards = [
     {

@@ -15,8 +15,11 @@ const DETAIL_COLUMNS = [
 
 export default function InstructorUtilizationWidget({ lessons, rangeDays, onRangeChange }) {
   const all = lessons?.instructorUtilization || []
-  const configured = all.filter((t) => t.weeklyCapacity !== null)
-  const unconfigured = all.filter((t) => t.weeklyCapacity === null)
+  // A capacity of 0 is as unusable as none: utilization is undefined (the
+  // backend sends null), so those teachers belong with the "not set" group
+  // rather than in the bar list as "null%".
+  const configured = all.filter((t) => t.weeklyCapacity > 0)
+  const unconfigured = all.filter((t) => !(t.weeklyCapacity > 0))
 
   return (
     <Card>

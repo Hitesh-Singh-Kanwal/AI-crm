@@ -46,15 +46,16 @@ function buildCards({ current, previous, lastYear }) {
       value: value(cur.bookedPct, (v) => `${v}%`),
       note:
         cur.activeStudents !== null && cur.activeStudents !== undefined
-          ? `${num(Math.round(((cur.bookedPct || 0) / 100) * cur.activeStudents))} booked of ${num(cur.activeStudents)} active`
+          ? `${num(cur.bookedStudents)} booked of ${num(cur.activeStudents)} active`
           : null,
-      ...points('bookedPct'),
+      // Snapshot as of now, like Lessons Scheduled: no MoM/YoY badges.
     },
     {
       label: 'Lessons Scheduled',
       value: value(cur.scheduled, num),
       note: 'Confirmed future lessons',
-      ...ratio('scheduled'),
+      // Snapshot of the live schedule — a prior-period/year comparison would
+      // just re-read the same "now", so no MoM/YoY badges.
     },
     {
       label: 'Teacher Utilization',
@@ -63,7 +64,7 @@ function buildCards({ current, previous, lastYear }) {
         cur.actualPerWeek !== null && cur.actualPerWeek !== undefined && cur.capacityPerWeek
           ? `${cur.actualPerWeek} of ${num(cur.capacityPerWeek)} lessons/wk`
           : null,
-      ...ratio('utilizationPct'),
+      ...points('utilizationPct'),
     },
   ]
 }

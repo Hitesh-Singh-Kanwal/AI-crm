@@ -1,6 +1,11 @@
 'use client'
 
 import { toast as sonnerToast } from 'sonner'
+import { isNotificationEnabled } from '@/lib/notificationPreferences'
+
+// Per-user preference: success/info pop-ups and error pop-ups are separate
+// switches (plus the master one), checked at the moment the toast is raised.
+const allowed = (kind) => isNotificationEnabled(kind === 'error' ? 'toast.error' : 'toast.success')
 
 /**
  * Toast utility using Sonner.
@@ -28,14 +33,17 @@ function normalize(input, fallbackTitle) {
 export function useToast() {
   return {
     success: (input) => {
+      if (!allowed('success')) return
       const [title, description] = normalize(input, 'Success')
       sonnerToast.success(title, description ? { description } : undefined)
     },
     error: (input) => {
+      if (!allowed('error')) return
       const [title, description] = normalize(input, 'Error')
       sonnerToast.error(title, description ? { description } : undefined)
     },
     info: (input) => {
+      if (!allowed('info')) return
       const [title, description] = normalize(input, 'Info')
       sonnerToast.info(title, description ? { description } : undefined)
     },
@@ -44,7 +52,7 @@ export function useToast() {
 
 // Direct export for use outside components. Sonner's own (title, options) signature.
 export const toast = {
-  success: (title, options) => sonnerToast.success(title, options),
-  error: (title, options) => sonnerToast.error(title, options),
-  info: (title, options) => sonnerToast.info(title, options),
+  success: (title, options) => allowed('success') && sonnerToast.success(title, options),
+  error: (title, options) => allowed('error') && sonnerToast.error(title, options),
+  info: (title, options) => allowed('info') && sonnerToast.info(title, options),
 }

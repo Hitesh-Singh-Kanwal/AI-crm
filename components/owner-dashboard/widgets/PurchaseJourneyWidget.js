@@ -36,8 +36,9 @@ export default function PurchaseJourneyWidget({ funnel, rangeDays, onRangeChange
     <Card>
       <WidgetHeader
         title="Purchase Journey"
-        rangeDays={rangeDays}
-        onRangeChange={onRangeChange}
+        // Lifetime view — every purchase a customer has ever made — so there is
+        // deliberately no date-range dropdown to imply otherwise.
+        right={<span className="text-[11px] text-muted-foreground">All time</span>}
         detailsButton={
           <DetailsButton
             title="Purchase Journey — full details"

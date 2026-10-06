@@ -21,8 +21,8 @@ export default function CurriculumProgressionWidget({ funnel, rangeDays, onRange
     <Card>
       <WidgetHeader
         title="Curriculum Progression"
-        rangeDays={rangeDays}
-        onRangeChange={onRangeChange}
+        // Highest tier ever reached — lifetime, not window-scoped — so no range dropdown.
+        right={<span className="text-[11px] text-muted-foreground">All time</span>}
         detailsButton={
           <DetailsButton
             title="Curriculum Progression — full details"
