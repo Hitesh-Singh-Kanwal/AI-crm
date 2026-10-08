@@ -12,9 +12,11 @@ const InboxHeaderContext = createContext({
 
 export function InboxHeaderProvider({ children }) {
   const [inboxCounts, setInboxCounts] = useState({
+    everyone: 0,
     customers: 0,
     leads: 0,
     teachers: 0,
+    unread: { everyone: 0, customers: 0, leads: 0, teachers: 0 },
   })
 
   const setInboxTeachersCount = (n) => {

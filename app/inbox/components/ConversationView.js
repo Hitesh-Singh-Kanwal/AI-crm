@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Mail, ArrowLeft, RefreshCw } from 'lucide-react'
+import { Mail, MailWarning, ArrowLeft, RefreshCw, Hash } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getInitials, formatDateTime, getContactDisplayName } from '@/lib/utils'
@@ -44,8 +44,13 @@ export default function ConversationView({
   callPlacing = false,
   callLogsLoading = false,
   embedded = false,
+  onMarkUnread,
+  onRenameContact,
 }) {
   const [activeTab, setActiveTab] = useState(() => defaultChannelTab(conversation))
+  const [nameDraft, setNameDraft] = useState(null) // null = not editing
+  const [savingName, setSavingName] = useState(false)
+  const isOther = String(conversation?.contact?.type || '').toLowerCase() === 'other'
   const scrollRef = useRef(null)
   const prevScrollHeightRef = useRef(0)
   const isLoadingMoreRef = useRef(false)
@@ -57,6 +62,7 @@ export default function ConversationView({
 
   useEffect(() => {
     setActiveTab(defaultChannelTab(conversation))
+    setNameDraft(null)
     prevScrollHeightRef.current = 0
     isLoadingMoreRef.current = false
     const el = scrollRef.current
@@ -155,17 +161,30 @@ export default function ConversationView({
             )}
             <div className="relative shrink-0">
               <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-[color:var(--studio-primary)] text-white font-semibold text-sm">
-                  {getInitials(getContactDisplayName(conversation.contact))}
+                <AvatarFallback
+                  className={cn(
+                    'font-semibold text-sm',
+                    isOther
+                      ? 'bg-muted text-muted-foreground ring-1 ring-inset ring-border'
+                      : 'bg-[color:var(--studio-primary)] text-white',
+                  )}
+                >
+                  {isOther && !conversation.contact?.name ? (
+                    <Hash className="h-4 w-4" aria-hidden />
+                  ) : (
+                    getInitials(getContactDisplayName(conversation.contact))
+                  )}
                 </AvatarFallback>
               </Avatar>
-              <span className="absolute right-0 bottom-0 w-2.5 h-2.5 rounded-full ring-2 ring-card bg-emerald-500 dark:bg-emerald-400" />
+              {!isOther && (
+                <span className="absolute right-0 bottom-0 w-2.5 h-2.5 rounded-full ring-2 ring-card bg-emerald-500 dark:bg-emerald-400" />
+              )}
             </div>
             <div className="min-w-0">
               <h4 className="text-sm font-semibold text-foreground truncate">{getContactDisplayName(conversation.contact)}</h4>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">{conversation.contact?.type}</span>
-                {contactPhone && (
+                <span className="text-xs text-muted-foreground">{isOther ? 'Not in the CRM' : conversation.contact?.type}</span>
+                {contactPhone && (!isOther || conversation.contact?.name) && (
                   <>
                     <span className="text-xs text-muted-foreground">•</span>
                     <span className="text-xs text-muted-foreground truncate">{contactPhone}</span>
@@ -175,7 +194,29 @@ export default function ConversationView({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {isOther && onRenameContact && nameDraft === null && (
+              <button
+                type="button"
+                onClick={() => setNameDraft(conversation.contact?.name || '')}
+                className="hidden sm:inline-flex rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {conversation.contact?.name ? 'Edit name' : 'Add name'}
+              </button>
+            )}
+            {onMarkUnread && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onMarkUnread}
+                title="Mark unread"
+                className="h-9 w-9"
+              >
+                <MailWarning className="h-4 w-4 text-muted-foreground" />
+                <span className="sr-only">Mark unread</span>
+              </Button>
+            )}
             {activeTab !== 'Call' && (
               <Button
                 type="button"
@@ -201,7 +242,7 @@ export default function ConversationView({
                 <span className="sr-only">Load older messages</span>
               </Button>
             )}
-            {onToggleDetails && (
+            {onToggleDetails && !isOther && (
               <button
                 onClick={onToggleDetails}
                 className="px-2.5 sm:px-3 py-1 rounded-md text-xs sm:text-sm whitespace-nowrap bg-[color:var(--studio-primary)] text-white"
@@ -209,8 +250,49 @@ export default function ConversationView({
                 View profile
               </button>
             )}
+            {isOther && onRenameContact && nameDraft === null && (
+              <button
+                type="button"
+                onClick={() => setNameDraft(conversation.contact?.name || '')}
+                className="sm:hidden rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted"
+              >
+                {conversation.contact?.name ? 'Rename' : 'Name'}
+              </button>
+            )}
           </div>
         </div>
+
+        {nameDraft !== null && (
+          <form
+            className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              setSavingName(true)
+              const ok = await onRenameContact?.(nameDraft.trim())
+              setSavingName(false)
+              if (ok) setNameDraft(null)
+            }}
+          >
+            <label htmlFor="inbox-contact-name" className="sr-only">Inbox name</label>
+            <input
+              id="inbox-contact-name"
+              autoFocus
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              placeholder="e.g. Dance With Me Stanford"
+              maxLength={120}
+              className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-[color:var(--studio-primary)] focus:ring-2 focus:ring-[color:var(--studio-primary)]/15"
+            />
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setNameDraft(null)} disabled={savingName}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="gradient" size="sm" disabled={savingName}>
+                {savingName ? 'Saving…' : 'Save name'}
+              </Button>
+            </div>
+          </form>
+        )}
 
         <ConversationChannelTabs activeTab={activeTab} onTabChange={handleTabChange} />
       </div>
@@ -383,16 +465,23 @@ export default function ConversationView({
                             )}
                           </div>
                         ) : (
-                          <div
-                            className={cn(
-                              'rounded-2xl px-3.5 py-2.5 text-sm shadow-sm',
-                              isInbound
-                                ? 'bg-card border border-border text-foreground rounded-tl-md'
-                                : 'bg-[color:var(--studio-primary)] text-white rounded-tr-md',
-                            )}
-                          >
-                            <p className="whitespace-pre-wrap break-words">{message.content}</p>
-                          </div>
+                          <>
+                            {message.mediaUrl?.map((url) => (
+                              <a key={url} href={url} target="_blank" rel="noreferrer noopener" className="mb-1.5 block">
+                                <img src={url} alt="Photo in message" className="max-h-60 max-w-full rounded-2xl border border-border object-cover" />
+                              </a>
+                            ))}
+                            <div
+                              className={cn(
+                                'rounded-2xl px-3.5 py-2.5 text-sm shadow-sm',
+                                isInbound
+                                  ? 'bg-card border border-border text-foreground rounded-tl-md'
+                                  : 'bg-[color:var(--studio-primary)] text-white rounded-tr-md',
+                              )}
+                            >
+                              <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                            </div>
+                          </>
                         )}
                         <div className="mt-2 text-xs text-muted-foreground">{formatDateTime(message.timestamp)}</div>
                       </div>
