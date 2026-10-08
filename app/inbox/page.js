@@ -7,9 +7,18 @@ import MainLayout from '@/components/layout/MainLayout'
 import ContactList from '@/app/inbox/components/ContactList'
 import ConversationView from '@/app/inbox/components/ConversationView'
 import ContactDetails from '@/app/inbox/components/ContactDetails'
-import NewConversationDialog from '@/app/inbox/components/NewConversationDialog'
-import BatchSendDialog from '@/app/inbox/components/BatchSendDialog'
+import NewMessagePanel from '@/app/inbox/components/NewMessagePanel'
+import BulkMessagePanel from '@/app/inbox/components/BulkMessagePanel'
+import ScheduledMessageView from '@/app/inbox/components/ScheduledMessageView'
 import ActiveCallPanel from '@/components/human-queue/ActiveCallPanel'
+import { getCurrentUserId } from '@/lib/auth'
+import {
+  emptyReadState,
+  isConversationUnread,
+  markReadState,
+  markUnreadState,
+  numberConversationId,
+} from '@/lib/inbox-messaging'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useInboxHeader } from '@/contexts/InboxHeaderContext'
 import { cn, getContactDisplayName } from '@/lib/utils'
@@ -42,6 +51,7 @@ import {
 
 function resolveContactType(leadOrConv = {}) {
   const explicit = String(leadOrConv.type || '').toLowerCase()
+  if (explicit === 'other') return 'Other'
   if (
     explicit === 'teacher' ||
     explicit === 'teachers' ||
@@ -70,9 +80,36 @@ function resolveLeadProfileInboxType(lead = {}, previousType = null) {
 }
 
 function inboxFilterParamForType(contactTypeLabel) {
+  if (contactTypeLabel === 'Other' || contactTypeLabel === 'Everyone') return 'everyone'
   if (contactTypeLabel === 'Teachers') return 'teachers'
   if (contactTypeLabel === 'Customers') return 'all'
   return 'leads'
+}
+
+/**
+ * An optimistic bubble (client id) that history hasn't confirmed yet — no server copy
+ * with the same text / subject sent around the same time.
+ */
+function isOptimisticUnconfirmed(message, serverMessages) {
+  if (/^[a-f\d]{24}$/i.test(String(message.id))) return false
+  const sentAt = new Date(message.timestamp).getTime()
+  return !serverMessages.some(
+    (s) =>
+      s.id === message.id ||
+      (s.direction === message.direction &&
+        (s.content === message.content || (message.subject && s.subject === message.subject)) &&
+        Math.abs(new Date(s.timestamp).getTime() - sentAt) < 5 * 60_000),
+  )
+}
+
+function latestInboundAt(messages = [], fallback = null) {
+  let latest = fallback ? new Date(fallback).getTime() : 0
+  for (const m of messages) {
+    if (m.direction !== 'inbound') continue
+    const t = new Date(m.timestamp).getTime()
+    if (t > latest) latest = t
+  }
+  return latest ? new Date(latest).toISOString() : null
 }
 
 function buildInboxData(smsRecords, emailRecords) {
@@ -133,9 +170,10 @@ function buildInboxData(smsRecords, emailRecords) {
     if (!contactGroups[key]) {
       contactGroups[key] = {
         contact: {
-          id: lead?._id || email,
+          id: lead?._id || null,
           name: nameWithMembers(lead) || email,
-          type: resolveContactType(lead || {}),
+          // An address emailed with no CRM record belongs with Inbox-only contacts.
+          type: lead?._id ? resolveContactType(lead) : 'Other',
           stage: lead?.stage || '',
           nextVisit: '',
           phoneNumber: lead?.phoneNumber || '',
@@ -174,6 +212,7 @@ function buildInboxData(smsRecords, emailRecords) {
       contact: { ...group.contact, name: getContactDisplayName(group.contact) },
       lastMessage: lastPreview,
       timestamp: latest.timestamp,
+      lastInboundAt: latestInboundAt(sortedMessages),
       unread: 0,
       channel: latest.channel,
     })
@@ -188,6 +227,7 @@ function buildInboxData(smsRecords, emailRecords) {
 function normalizeContactType(type) {
   if (!type) return ''
   const t = String(type).toLowerCase()
+  if (t === 'other') return 'Other'
   if (t === 'customer' || t === 'customers') return 'Customers'
   if (t === 'lead' || t === 'leads') return 'Leads'
   if (t === 'teacher' || t === 'teachers') return 'Teachers'
@@ -197,6 +237,7 @@ function normalizeContactType(type) {
 // Header tabs: All Customers | Leads | Teachers — each shows only that type.
 // URL value "all" = Customers (tab label "All Customers").
 const INBOX_FILTER_MAP = {
+  everyone: 'Everyone',
   all: 'Customers',
   customers: 'Customers',
   leads: 'Leads',
@@ -221,8 +262,15 @@ function InboxPageContent() {
   const [threadMeta, setThreadMeta] = useState({}) // { [convId]: { page, hasMore, loading } }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [newConvOpen, setNewConvOpen] = useState(false)
-  const [batchOpen, setBatchOpen] = useState(false)
+  const [rightView, setRightView] = useState('thread') // thread | new
+  const [mainView, setMainView] = useState('inbox') // inbox | bulk
+  const [statusTab, setStatusTab] = useState('All') // All | Unread | Scheduled
+  // Conversation opened from the Unread tab — stays listed while you read it.
+  const [openedFromUnread, setOpenedFromUnread] = useState(null)
+  const [readState, setReadState] = useState(null)
+  const [scheduled, setScheduled] = useState([])
+  const [scheduledLoading, setScheduledLoading] = useState(true)
+  const [selectedScheduledId, setSelectedScheduledId] = useState(null)
   const [selectedLeadData, setSelectedLeadData] = useState(null)
   const [emailSending, setEmailSending] = useState(false)
   const [smsSending, setSmsSending] = useState(false)
@@ -336,13 +384,16 @@ function InboxPageContent() {
 
       // Build SMS conversations from new API shape
       const smsConversations = smsConvs.map((conv) => {
-        const convId = `lead-${conv.leadID}`
+        // Inbox-only numbers have no leadID — key them by number.
+        const convId = conv.leadID ? `lead-${conv.leadID}` : numberConversationId(conv.phoneNumber)
         // messages not loaded yet for non-top leads — undefined signals "not fetched"
         return {
           id: convId,
           contact: {
-            id: conv.leadID,
-            name: getContactDisplayName({ name: conv.name, phoneNumber: conv.phoneNumber, email: conv.email }),
+            id: conv.leadID || null,
+            name: conv.leadID
+              ? getContactDisplayName({ name: conv.name, phoneNumber: conv.phoneNumber, email: conv.email })
+              : conv.name || '',
             type: resolveContactType(conv),
             stage: conv.stage || '',
             nextVisit: '',
@@ -354,6 +405,7 @@ function InboxPageContent() {
           },
           lastMessage: conv.lastMessage,
           timestamp: conv.lastMessageAt,
+          lastInboundAt: conv.lastInboundAt || null,
           unread: 0,
           channel: 'SMS',
         }
@@ -374,6 +426,7 @@ function InboxPageContent() {
         )
         if (emailMsgs.length > 0) {
           threads[smsConv.id] = emailMsgs
+          smsConv.lastInboundAt = latestInboundAt(emailMsgs, smsConv.lastInboundAt)
           if (!smsConv.contact.email) {
             smsConv.contact.email = emailMsgs[emailMsgs.length - 1].recipientEmail || ''
           }
@@ -457,17 +510,143 @@ function InboxPageContent() {
   // Location is enforced by the API via x-location-id (branch switcher reloads the page).
   const filteredConversations = useMemo(() => conversations, [conversations])
 
-  const displayedConversations = useMemo(() => {
-    const list = filteredConversations.filter((conv) => {
-      const matchesSearch = getContactDisplayName(conv.contact)
+  // Per-user read state (see lib/inbox-messaging). Loaded after mount — localStorage is client-only.
+  const readStateKey = `inbox-read:${getCurrentUserId() || 'me'}`
+  useEffect(() => {
+    let stored = null
+    try {
+      stored = JSON.parse(localStorage.getItem(readStateKey) || 'null')
+    } catch {
+      stored = null
+    }
+    setReadState(stored?.baseline ? stored : emptyReadState())
+  }, [readStateKey])
+  useEffect(() => {
+    if (!readState) return
+    try {
+      localStorage.setItem(readStateKey, JSON.stringify(readState))
+    } catch {
+      // Private mode / storage full — unread still works for this session.
+    }
+  }, [readState, readStateKey])
+
+  const isUnread = useCallback((conv) => isConversationUnread(conv, readState), [readState])
+
+  const matchesGroup = useCallback(
+    (conv) => contactFilter === 'Everyone' || normalizeContactType(conv.contact.type) === contactFilter,
+    [contactFilter],
+  )
+
+  const groupConversations = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    return filteredConversations.filter((conv) => {
+      if (!matchesGroup(conv)) return false
+      if (!q) return true
+      const haystack = [getContactDisplayName(conv.contact), conv.contact.phoneNumber, conv.contact.email]
+        .filter(Boolean)
+        .join(' ')
         .toLowerCase()
-        .includes(searchQuery.toLowerCase())
-      const contactType = normalizeContactType(conv.contact.type)
-      const matchesType = contactType === contactFilter
-      return matchesSearch && matchesType
+      const qDigits = q.replace(/\D/g, '')
+      return haystack.includes(q) || (qDigits.length >= 3 && haystack.replace(/\D/g, '').includes(qDigits))
     })
-    return list
-  }, [filteredConversations, searchQuery, contactFilter])
+  }, [filteredConversations, searchQuery, matchesGroup])
+
+  // Unread shows only unread, plus the one you opened from here so it doesn't vanish mid-read.
+  const displayedConversations = useMemo(() => {
+    if (statusTab !== 'Unread') return groupConversations
+    return groupConversations.filter((conv) => isUnread(conv) || conv.id === openedFromUnread)
+  }, [groupConversations, statusTab, isUnread, openedFromUnread])
+
+  const unreadInGroup = useMemo(
+    () => groupConversations.filter((conv) => isUnread(conv)).length,
+    [groupConversations, isUnread],
+  )
+
+  // ── Scheduled sends ─────────────────────────────────────────────────────
+  const fetchScheduled = useCallback(async () => {
+    setScheduledLoading(true)
+    const res = await api.get('/api/inbox/scheduled')
+    setScheduled(res.success && Array.isArray(res.data) ? res.data : [])
+    setScheduledLoading(false)
+  }, [])
+
+  useEffect(() => {
+    fetchScheduled()
+  }, [fetchScheduled])
+
+  const scheduledItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    return scheduled
+      .map((item) => {
+        const first = item.recipients[0] || {}
+        const bulk = item.recipientCount > 1
+        const ch = item.channel === 'Email' ? 'email' : item.mediaUrl?.length ? 'MMS' : 'SMS'
+        const knownConv = first._id
+          ? conversations.find((c) => c.contact?.id && String(c.contact.id) === String(first._id))
+          : null
+        const types = new Set(
+          item.recipients.map((r) =>
+            normalizeContactType(r.type) ||
+            (r._id ? '' : 'Other'),
+          ),
+        )
+        if (knownConv) types.add(normalizeContactType(knownConv.contact.type))
+        return {
+          ...item,
+          types,
+          title: bulk
+            ? item.label || `${item.recipientCount} people`
+            : first.name || knownConv?.contact?.name || first.phoneNumber || first.email || 'Recipient',
+          meta: bulk ? `Bulk ${ch} to ${item.recipientCount} people` : `Individual ${ch}`,
+          preview: item.isHtml
+            ? item.subject || 'Designed email'
+            : item.channel === 'Email' && item.subject
+              ? `${item.subject}: ${item.message}`
+              : item.message,
+        }
+      })
+      .filter((item) => contactFilter === 'Everyone' || item.types.has(contactFilter))
+      .filter((item) => {
+        if (!q) return true
+        return [item.title, item.preview, ...item.recipients.map((r) => r.name)]
+          .join(' ')
+          .toLowerCase()
+          .includes(q)
+      })
+  }, [scheduled, conversations, contactFilter, searchQuery])
+
+  const selectedScheduled = scheduledItems.find((s) => s.id === selectedScheduledId) || null
+
+  // Desktop: keep a scheduled item open while on the Scheduled tab.
+  useEffect(() => {
+    if (!isLgUp || statusTab !== 'Scheduled') return
+    if (!selectedScheduled && scheduledItems.length) setSelectedScheduledId(scheduledItems[0].id)
+  }, [isLgUp, statusTab, selectedScheduled, scheduledItems])
+
+  const handleSaveScheduled = async (id, patch) => {
+    const res = await api.patch(`/api/inbox/scheduled/${encodeURIComponent(id)}`, patch)
+    if (!res.success) {
+      toast.error({ title: 'Not saved', message: res.error || 'Could not update this message.' })
+      if (res.status === 404) fetchScheduled()
+      return false
+    }
+    toast.success({ title: 'Scheduled message updated' })
+    fetchScheduled()
+    return true
+  }
+
+  const handleCancelScheduled = async (id) => {
+    const res = await api.delete(`/api/inbox/scheduled/${encodeURIComponent(id)}`)
+    if (!res.success) {
+      toast.error({ title: 'Not canceled', message: res.error || 'Could not cancel this send.' })
+      if (res.status === 404) fetchScheduled()
+      return
+    }
+    toast.success({ title: 'Send canceled', message: 'It won’t go out.' })
+    setSelectedScheduledId(null)
+    if (!isLgUp) setShowContactList(true)
+    fetchScheduled()
+  }
 
   // When the active filter/search hides the current conversation, clear selection.
   // Do NOT force the tab back to the selected contact's type — that blocked
@@ -483,15 +662,24 @@ function InboxPageContent() {
 
   // Counts for header tabs (from current branch-filtered list)
   const inboxTypeCounts = useMemo(() => {
-    const counts = { customers: 0, leads: 0, teachers: 0 }
+    const counts = {
+      everyone: filteredConversations.length,
+      customers: 0,
+      leads: 0,
+      teachers: 0,
+      unread: { everyone: 0, customers: 0, leads: 0, teachers: 0 },
+    }
     for (const c of filteredConversations) {
       const t = normalizeContactType(c.contact.type)
-      if (t === 'Customers') counts.customers += 1
-      else if (t === 'Leads') counts.leads += 1
-      else if (t === 'Teachers') counts.teachers += 1
+      const key = t === 'Customers' ? 'customers' : t === 'Leads' ? 'leads' : t === 'Teachers' ? 'teachers' : null
+      if (key) counts[key] += 1
+      if (isUnread(c)) {
+        counts.unread.everyone += 1
+        if (key) counts.unread[key] += 1
+      }
     }
     return counts
-  }, [filteredConversations])
+  }, [filteredConversations, isUnread])
   useEffect(() => {
     setInboxCounts(inboxTypeCounts)
   }, [inboxTypeCounts, setInboxCounts])
@@ -570,14 +758,18 @@ function InboxPageContent() {
     scheduleNow = true,
     scheduleDate = null,
     contentHtml = null,
+    // New message pane: send to a conversation that may not be in state yet.
+    target = null,
   }) => {
-    const convId = selectedConversationRef.current || selectedConversation
+    const convId = target?.convId || selectedConversationRef.current || selectedConversation
     if (!convId || !(String(contentHtml || content || '').trim())) return false
 
-    const convFromUI =
-      convId
-        ? (displayedConversations.find((c) => c.id === convId) || conversations.find((c) => c.id === convId))
-        : null
+    const convFromUI = target
+      ? { contact: target.contact, channel }
+      : displayedConversations.find((c) => c.id === convId) || conversations.find((c) => c.id === convId)
+    // Profile data only counts when it belongs to this thread — it can lag a conversation switch.
+    const leadData =
+      !target && selectedLeadData && convId === `lead-${selectedLeadData._id}` ? selectedLeadData : null
 
     // If the user just created a new conversation and sends immediately, the state update
     // from `handleNewConversation` may not have landed yet. In that case we still want
@@ -586,7 +778,7 @@ function InboxPageContent() {
     const effectiveChannel = channel || convFromUI?.channel || 'SMS'
 
     if (effectiveChannel === 'Email') {
-      const leadRecipient = buildLeadRecipient(fallbackContact, selectedLeadData)
+      const leadRecipient = buildLeadRecipient(fallbackContact, leadData)
       const validationError = validateEmailSendInput({
         lead: leadRecipient,
         subject,
@@ -618,7 +810,7 @@ function InboxPageContent() {
     }
 
     const messageId = `${Date.now()}`
-    const leadRecipient = buildLeadRecipient(fallbackContact, selectedLeadData)
+    const leadRecipient = buildLeadRecipient(fallbackContact, leadData)
     const personalizedContent =
       effectiveChannel === 'SMS'
         ? applyEmailTemplate(String(content || '').trim(), leadRecipient)
@@ -646,30 +838,34 @@ function InboxPageContent() {
       channel: effectiveChannel,
     }
 
-    setThreadMessages((prev) => ({
-      ...prev,
-      [convId]: [...(prev[convId] || []), newMessage],
-    }))
-    setConversations((prev) => {
-      const exists = prev.some((c) => c.id === convId)
-      const nextRow = {
-        id: convId,
-        contact: fallbackContact,
-        lastMessage:
-          effectiveChannel === 'Email'
-            ? subject || displayContent
-            : displayContent,
-        timestamp: newMessage.timestamp,
-        unread: 0,
-        channel: effectiveChannel,
-      }
+    // Replying means it's been read. Scheduled sends wait in the Scheduled tab, not the thread.
+    setReadState((prev) => (prev ? markReadState(prev, convId) : prev))
+    if (scheduleNow !== false) {
+      setThreadMessages((prev) => ({
+        ...prev,
+        [convId]: [...(prev[convId] || []), newMessage],
+      }))
+      setConversations((prev) => {
+        const exists = prev.some((c) => c.id === convId)
+        const nextRow = {
+          id: convId,
+          contact: fallbackContact,
+          lastMessage:
+            effectiveChannel === 'Email'
+              ? subject || displayContent
+              : displayContent,
+          timestamp: newMessage.timestamp,
+          unread: 0,
+          channel: effectiveChannel,
+        }
 
-      const updated = exists
-        ? prev.map((c) => (c.id === convId ? { ...c, ...nextRow } : c))
-        : [nextRow, ...prev]
+        const updated = exists
+          ? prev.map((c) => (c.id === convId ? { ...c, ...nextRow } : c))
+          : [nextRow, ...prev]
 
-      return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    })
+        return [...updated].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      })
+    }
 
     if (effectiveChannel === 'Email') setEmailSending(true)
     else setSmsSending(true)
@@ -677,10 +873,10 @@ function InboxPageContent() {
     try {
       if (isTalkToAssistant) {
         const fromNumber =
-          selectedLeadData?.phoneNumber ||
+          leadData?.phoneNumber ||
           fallbackContact?.phoneNumber ||
           null
-        const locationRaw = selectedLeadData?.locationID
+        const locationRaw = leadData?.locationID
         const locationID = Array.isArray(locationRaw)
           ? String(locationRaw[0]?._id ?? locationRaw[0] ?? '')
           : String(locationRaw?._id ?? locationRaw ?? '')
@@ -756,7 +952,7 @@ function InboxPageContent() {
         }
         return true
       } else if (effectiveChannel === 'SMS') {
-        const phoneNumber = selectedLeadData?.phoneNumber || fallbackContact.phoneNumber
+        const phoneNumber = leadData?.phoneNumber || fallbackContact.phoneNumber
         if (!phoneNumber) {
           revertOptimisticMessage(convId, messageId)
           toast.error({
@@ -766,7 +962,7 @@ function InboxPageContent() {
           return false
         }
 
-        const locationRaw = selectedLeadData?.locationID ?? fallbackContact.locationID
+        const locationRaw = leadData?.locationID ?? fallbackContact.locationID
         const locationIDs = Array.isArray(locationRaw)
           ? locationRaw.map((l) => String(l?._id ?? l)).filter(Boolean)
           : locationRaw
@@ -775,13 +971,14 @@ function InboxPageContent() {
 
         const result = await api.post('/api/sms/send-one', {
           lead: {
-            _id: fallbackContact.id || selectedLeadData?._id,
+            _id: fallbackContact.id || leadData?._id,
             phoneNumber,
-            name: getContactDisplayName(selectedLeadData || fallbackContact),
-            stage: selectedLeadData?.stage || fallbackContact.stage || '',
+            name: getContactDisplayName(leadData || fallbackContact),
+            stage: leadData?.stage || fallbackContact.stage || '',
             locationID: locationIDs,
-            email: selectedLeadData?.email || fallbackContact.email || '',
-            location: selectedLeadData?.location || fallbackContact.location || '',
+            email: leadData?.email || fallbackContact.email || '',
+            location: leadData?.location || fallbackContact.location || '',
+            type: fallbackContact.type || '',
           },
           message: personalizedContent,
           scheduleNow,
@@ -797,10 +994,11 @@ function InboxPageContent() {
         }
         toast.success({
           title: scheduleNow ? 'SMS sent' : 'SMS scheduled',
-          message:
-            result.message ||
-            (scheduleNow ? 'SMS sent successfully' : 'SMS scheduled successfully'),
+          message: scheduleNow
+            ? result.message || 'SMS sent successfully'
+            : 'Find it under Scheduled until it sends.',
         })
+        if (!scheduleNow) fetchScheduled()
         return true
       } else if (effectiveChannel === 'Email') {
         const payload = buildSendOneEmailPayload({
@@ -830,10 +1028,11 @@ function InboxPageContent() {
         }
         toast.success({
           title: scheduleNow ? 'Email sent' : 'Email scheduled',
-          message:
-            result.message ||
-            (scheduleNow ? 'Email sent successfully' : 'Email scheduled successfully'),
+          message: scheduleNow
+            ? result.message || 'Email sent successfully'
+            : 'Find it under Scheduled until it sends.',
         })
+        if (!scheduleNow) fetchScheduled()
         return true
       }
       return false
@@ -851,48 +1050,88 @@ function InboxPageContent() {
     }
   }
 
-  const handleNewConversation = ({ lead, channel }) => {
-    const convId = lead._id
-      ? `lead-${lead._id}`
-      : channel === 'SMS'
-        ? `sms-${String(lead.phoneNumber).replace(/\W/g, '_')}`
-        : `email-${String(lead.email).replace(/\W/g, '_')}`
+  const handleNewMessageSend = async ({ recipient, channel, message, subject, inboxName }) => {
+    let convId
+    let contact
+    if (recipient.kind === 'contact') {
+      const c = recipient.contact
+      convId = `lead-${c._id}`
+      contact = {
+        id: c._id,
+        name: getContactDisplayName(c),
+        type: resolveContactType(c),
+        stage: c.stage || '',
+        nextVisit: '',
+        phoneNumber: c.phoneNumber || '',
+        email: c.email || '',
+        locationID: c.locationID || [],
+        convertedCustomerID: c.convertedCustomerID || null,
+      }
+    } else if (recipient.kind === 'number') {
+      convId = numberConversationId(recipient.phoneNumber)
+      const existing = conversations.find((c) => c.id === convId)
+      contact = {
+        id: null,
+        name: inboxName || existing?.contact?.name || '',
+        type: 'Other',
+        phoneNumber: recipient.phoneNumber,
+        email: '',
+        locationID: existing?.contact?.locationID || [],
+      }
+    } else {
+      convId = `email-${recipient.email.replace(/\W/g, '_')}`
+      contact = { id: null, name: recipient.email, type: 'Other', phoneNumber: '', email: recipient.email, locationID: [] }
+    }
 
-    // Make this conversation id available immediately for a fast send.
+    const existed = conversations.some((c) => c.id === convId)
+    const ok = await handleSendMessage({ content: message, subject, channel, target: { convId, contact } })
+    if (!ok) {
+      if (!existed) setConversations((prev) => prev.filter((c) => c.id !== convId))
+      return false
+    }
+
     selectedConversationRef.current = convId
-
-    const contactTypeLabel = normalizeContactType(resolveContactType(lead)) || 'Leads'
-    const filterParam = inboxFilterParamForType(contactTypeLabel)
-
-    setConversations((prev) => {
-      if (prev.find((c) => c.id === convId)) return prev
-      return [{
-        id: convId,
-        contact: {
-          id: lead._id,
-          name: getContactDisplayName(lead),
-          type: resolveContactType(lead),
-          stage: lead.stage || '',
-          nextVisit: '',
-          phoneNumber: lead.phoneNumber,
-          email: lead.email,
-          locationID: lead.locationID || [],
-        },
-        lastMessage: '',
-        timestamp: new Date().toISOString(),
-        unread: 0,
-        channel,
-      }, ...prev]
-    })
-    setThreadMessages((prev) => ({ ...prev, [convId]: prev[convId] || [] }))
     setSelectedConversation(convId)
-    // Ensure the newly created thread is visible under the matching type tab.
+    setRightView('thread')
+    setStatusTab('All')
     setSearchQuery('')
-    setContactFilter(contactTypeLabel)
-    const params = new URLSearchParams(searchParams?.toString() || '')
-    params.set('filter', filterParam)
-    router.replace(`${pathname}?${params.toString()}`)
     setShowContactList(false)
+    // Make sure the new thread is visible under the current header tab.
+    const typeLabel = normalizeContactType(contact.type) || 'Leads'
+    if (contactFilter !== 'Everyone' && typeLabel !== contactFilter) {
+      setContactFilter(typeLabel === 'Other' ? 'Everyone' : typeLabel)
+      const params = new URLSearchParams(searchParams?.toString() || '')
+      params.set('filter', inboxFilterParamForType(typeLabel))
+      router.replace(`${pathname}?${params.toString()}`)
+    }
+    if (convId.startsWith('lead-') || convId.startsWith('sms-')) {
+      fetchLeadMessages(convId, 1, { contact })
+    } else if (existed) {
+      fetchConversationEmailHistory(convId)
+    }
+    return true
+  }
+
+  const handleMarkUnread = () => {
+    if (!selectedConversation) return
+    setReadState((prev) => (prev ? markUnreadState(prev, selectedConversation) : prev))
+    toast.success({ title: 'Marked unread', message: 'It stays in Unread until you open it again.' })
+  }
+
+  const handleRenameContact = async (name) => {
+    const conv = conversations.find((c) => c.id === selectedConversation)
+    const phoneNumber = conv?.contact?.phoneNumber
+    if (!phoneNumber) return false
+    const res = await api.put('/api/inbox/contacts', { phoneNumber, name })
+    if (!res.success) {
+      toast.error({ title: 'Name not saved', message: res.error || 'Try again.' })
+      return false
+    }
+    setConversations((prev) =>
+      prev.map((c) => (c.id === conv.id ? { ...c, contact: { ...c.contact, name } } : c)),
+    )
+    toast.success({ title: name ? 'Name saved' : 'Name removed' })
+    return true
   }
 
   const filterRecordsByRecipient = (records, contactEmail) => {
@@ -947,9 +1186,13 @@ function InboxPageContent() {
         const existing = prev[conversationId] || []
         const smsOnly = existing.filter((m) => m.channel === 'SMS')
         const callOnly = existing.filter((m) => m.channel === 'Call')
+        // A just-sent email is queued — keep its bubble until history has it.
+        const pendingEmail = existing.filter(
+          (m) => m.channel === 'Email' && isOptimisticUnconfirmed(m, emailMsgs),
+        )
         return {
           ...prev,
-          [conversationId]: mergeThreadByTimestamp(smsOnly, emailMsgs, callOnly),
+          [conversationId]: mergeThreadByTimestamp(smsOnly, [...emailMsgs, ...pendingEmail], callOnly),
         }
       })
     } catch (e) {
@@ -1404,18 +1647,25 @@ function InboxPageContent() {
     }
   }, [activeOutboundCall?.id, activeOutboundCall?._id])
 
-  const fetchLeadMessages = useCallback(async (conversationId, page = 1) => {
+  const fetchLeadMessages = useCallback(async (conversationId, page = 1, { contact = null } = {}) => {
+    const isNumberThread = conversationId.startsWith('sms-')
     const leadID = conversationId.replace('lead-', '')
-    const conv = conversations.find((c) => c.id === conversationId)
-    const convName = conv?.contact?.name || 'Lead'
-    const linkedCustomerId = linkedCustomerIdForConversation(conv)
+    const conv = conversations.find((c) => c.id === conversationId) || (contact ? { contact } : null)
+    const convName = getContactDisplayName(conv?.contact) || 'Lead'
+    const linkedCustomerId = isNumberThread ? null : linkedCustomerIdForConversation(conv)
+    const phoneNumber = conv?.contact?.phoneNumber
+    if (isNumberThread && !phoneNumber) return
     const pageKey = `${conversationId}:${page}`
     if (smsPageInFlightRef.current.has(pageKey)) return
     smsPageInFlightRef.current.add(pageKey)
 
     setThreadMeta((prev) => ({ ...prev, [conversationId]: { ...prev[conversationId], loading: true } }))
     try {
-      const res = await api.get(`/api/smsHistory/conversations/${leadID}?page=${page}`)
+      const res = await api.get(
+        isNumberThread
+          ? `/api/smsHistory/conversations/number/${encodeURIComponent(phoneNumber)}?page=${page}`
+          : `/api/smsHistory/conversations/${leadID}?page=${page}`,
+      )
       const msgs = Array.isArray(res.data?.messages) ? res.data.messages : []
       // Page 1 also pulls rare SMS stored on the linked customer id into this thread.
       let linkedMsgs = []
@@ -1430,6 +1680,7 @@ function InboxPageContent() {
         sender: m.status === 'received' ? convName : 'You',
         direction: m.status === 'received' ? 'inbound' : 'outbound',
         content: m.message,
+        mediaUrl: Array.isArray(m.mediaUrl) && m.mediaUrl.length ? m.mediaUrl : undefined,
         timestamp: m.createdAt,
         channel: 'SMS',
       })
@@ -1442,7 +1693,7 @@ function InboxPageContent() {
         const existingSms = existing.filter((m) => m.channel === 'SMS')
         const optimisticSms =
           page === 1
-            ? existingSms.filter((m) => !mapped.some((s) => s.id === m.id) && !/^[a-f\d]{24}$/i.test(String(m.id)))
+            ? existingSms.filter((m) => isOptimisticUnconfirmed(m, mapped))
             : []
         const smsSlice =
           page === 1
@@ -1457,12 +1708,12 @@ function InboxPageContent() {
         ...prev,
         [conversationId]: { page, hasMore: res.data?.hasMore ?? false, loading: false },
       }))
-      if (page === 1) {
+      if (page === 1 && !isNumberThread) {
         fetchConversationEmailHistory(conversationId)
       }
     } catch {
       setThreadMeta((prev) => ({ ...prev, [conversationId]: { ...prev[conversationId], loading: false } }))
-      if (page === 1) {
+      if (page === 1 && !isNumberThread) {
         fetchConversationEmailHistory(conversationId)
       }
     } finally {
@@ -1470,12 +1721,18 @@ function InboxPageContent() {
     }
   }, [conversations, fetchConversationEmailHistory])
 
+  // Threads loaded per-conversation from history: lead threads and Inbox-only numbers.
+  const isPagedThread = (id) => id?.startsWith('lead-') || id?.startsWith('sms-')
+
   const handleSelectConversation = (conversationId) => {
     setSelectedConversation(conversationId)
+    setOpenedFromUnread(statusTab === 'Unread' ? conversationId : null)
+    setRightView('thread')
+    setReadState((prev) => (prev ? markReadState(prev, conversationId) : prev))
     setConversations((prev) => prev.map((conv) => (conv.id === conversationId ? { ...conv, unread: 0 } : conv)))
     setShowContactList(false)
     if (!isLgUp) setShowDetails(false)
-    if (conversationId.startsWith('lead-')) {
+    if (isPagedThread(conversationId)) {
       fetchLeadMessages(conversationId, 1)
     } else if (conversationId.startsWith('email-')) {
       fetchConversationEmailHistory(conversationId)
@@ -1483,7 +1740,7 @@ function InboxPageContent() {
   }
 
   const loadMoreMessages = useCallback(() => {
-    if (!selectedConversation?.startsWith('lead-')) return
+    if (!isPagedThread(selectedConversation)) return
     const meta = threadMeta[selectedConversation]
     if (!meta?.hasMore || meta?.loading) return
     fetchLeadMessages(selectedConversation, meta.page + 1)
@@ -1491,14 +1748,15 @@ function InboxPageContent() {
 
   useEffect(() => {
     // Desktop: keep a conversation selected. Mobile: stay on the list until the user picks one.
-    if (!isLgUp) return
+    // Not on Unread — opening something there should be your choice, since it marks it read.
+    if (!isLgUp || statusTab !== 'All') return
     if (!selectedConversation && displayedConversations.length > 0) {
       const firstId = displayedConversations[0].id
       setSelectedConversation(firstId)
-      if (firstId.startsWith('lead-')) fetchLeadMessages(firstId, 1)
+      if (isPagedThread(firstId)) fetchLeadMessages(firstId, 1)
       else if (firstId.startsWith('email-')) fetchConversationEmailHistory(firstId)
     }
-  }, [displayedConversations, selectedConversation, fetchLeadMessages, fetchConversationEmailHistory, isLgUp])
+  }, [displayedConversations, selectedConversation, fetchLeadMessages, fetchConversationEmailHistory, isLgUp, statusTab])
 
   if (loading) {
     return (
@@ -1534,18 +1792,19 @@ function InboxPageContent() {
           onClose={() => handleEndOutboundCall()}
         />
       )}
-      <NewConversationDialog
-        open={newConvOpen}
-        onClose={() => setNewConvOpen(false)}
-        onStart={handleNewConversation}
-        contactType={contactFilter}
-      />
-      <BatchSendDialog
-        open={batchOpen}
-        onClose={() => setBatchOpen(false)}
-        onSent={handleBatchSent}
-        contactType={contactFilter}
-      />
+      {mainView === 'bulk' ? (
+        <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+          <BulkMessagePanel
+            contactType={contactFilter}
+            onClose={() => setMainView('inbox')}
+            onSent={(result) => {
+              if (result.scheduleNow) handleBatchSent(result)
+              else fetchScheduled()
+              setMainView('inbox')
+            }}
+          />
+        </div>
+      ) : (
       <div className="flex flex-col lg:flex-row gap-0 h-full min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* Left: Contact list — full screen on mobile until a thread is opened */}
         <div
@@ -1557,47 +1816,83 @@ function InboxPageContent() {
         >
           <ContactList
             conversations={displayedConversations}
-            selectedConversation={selectedConversation}
+            selectedConversation={rightView === 'thread' ? selectedConversation : null}
             onSelectConversation={handleSelectConversation}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             contactFilter={contactFilter}
-            onContactFilterChange={setContactFilter}
-            onNewConversation={() => setNewConvOpen(true)}
-            onBatchSend={() => setBatchOpen(true)}
+            statusTab={statusTab}
+            onStatusTabChange={(tab) => {
+              setStatusTab(tab)
+              setOpenedFromUnread(null)
+              setRightView('thread')
+            }}
+            unreadCount={unreadInGroup}
+            isUnread={isUnread}
+            scheduledItems={scheduledItems}
+            scheduledLoading={scheduledLoading}
+            selectedScheduledId={selectedScheduled?.id || null}
+            onSelectScheduled={(id) => {
+              setSelectedScheduledId(id)
+              setShowContactList(false)
+            }}
+            onNewConversation={() => {
+              setRightView('new')
+              setShowContactList(false)
+            }}
+            onBatchSend={() => setMainView('bulk')}
           />
         </div>
 
-        {/* Middle: Conversation — hidden on mobile while the list is visible */}
+        {/* Middle: Conversation / new message / scheduled detail — hidden on mobile while the list is visible */}
         <div
           className={cn(
             'flex-col min-h-0 h-full w-full lg:flex-1 lg:min-w-0',
             showContactList ? 'hidden lg:flex' : 'flex',
           )}
         >
-          <ConversationView
-            conversation={selectedConvData}
-            messages={conversationMessages}
-            onToggleDetails={() => setShowDetails(!showDetails)}
-            showDetails={showDetails}
-            onSendMessage={handleSendMessage}
-            onBackClick={() => setShowContactList(true)}
-            onLoadMore={loadMoreMessages}
-            hasMore={threadMeta[selectedConversation]?.hasMore ?? false}
-            loadingMore={threadMeta[selectedConversation]?.loading ?? false}
-            leadData={selectedLeadData}
-            emailSending={emailSending}
-            smsSending={smsSending}
-            callPlacing={callPlacing}
-            callLogsLoading={callLogsLoading}
-            onPlaceCall={handlePlaceCall}
-            onEmailTabActive={handleEmailTabActive}
-            onCallTabActive={handleCallTabActive}
-          />
+          {rightView === 'new' ? (
+            <NewMessagePanel
+              onCancel={() => {
+                setRightView('thread')
+                setShowContactList(true)
+              }}
+              onSend={handleNewMessageSend}
+            />
+          ) : statusTab === 'Scheduled' ? (
+            <ScheduledMessageView
+              item={selectedScheduled}
+              onSave={handleSaveScheduled}
+              onCancelSend={handleCancelScheduled}
+              onBackClick={() => setShowContactList(true)}
+            />
+          ) : (
+            <ConversationView
+              conversation={selectedConvData}
+              messages={conversationMessages}
+              onToggleDetails={() => setShowDetails(!showDetails)}
+              showDetails={showDetails}
+              onSendMessage={handleSendMessage}
+              onBackClick={() => setShowContactList(true)}
+              onLoadMore={loadMoreMessages}
+              hasMore={threadMeta[selectedConversation]?.hasMore ?? false}
+              loadingMore={threadMeta[selectedConversation]?.loading ?? false}
+              leadData={selectedLeadData}
+              emailSending={emailSending}
+              smsSending={smsSending}
+              callPlacing={callPlacing}
+              callLogsLoading={callLogsLoading}
+              onPlaceCall={handlePlaceCall}
+              onEmailTabActive={handleEmailTabActive}
+              onCallTabActive={handleCallTabActive}
+              onMarkUnread={handleMarkUnread}
+              onRenameContact={handleRenameContact}
+            />
+          )}
         </div>
 
         {/* Right: Details — desktop side panel */}
-        {showDetails && selectedConvData && (
+        {showDetails && selectedConvData && rightView === 'thread' && statusTab !== 'Scheduled' && (
           <div className="hidden lg:flex flex-col w-80 shrink-0 min-w-[20rem] min-h-0 h-full overflow-hidden">
             <ContactDetails contact={selectedConvData.contact} leadData={selectedLeadData} onClose={() => setShowDetails(false)} />
           </div>
@@ -1616,6 +1911,7 @@ function InboxPageContent() {
           </SheetContent>
         </Sheet>
       </div>
+      )}
     </MainLayout>
   )
 }

@@ -196,6 +196,7 @@ import { isSuperAdmin, hasPermission } from "@/lib/permissions";
 import { useInboxHeader } from "@/contexts/InboxHeaderContext";
 
 const INBOX_FILTERS = [
+  { value: "everyone", label: "Everyone", countKey: "everyone" },
   { value: "all", label: "Customers", countKey: "customers" },
   { value: "leads", label: "Leads", countKey: "leads" },
   { value: "teachers", label: "Teachers", countKey: "teachers" },
@@ -297,6 +298,7 @@ export default function Header({
                 {INBOX_FILTERS.map(({ value, label, countKey }) => {
                   const isActive = inboxFilter === value;
                   const count = inboxCounts?.[countKey] ?? 0;
+                  const unread = inboxCounts?.unread?.[countKey] ?? 0;
 
                   return (
                     <button
@@ -320,6 +322,15 @@ export default function Header({
                       >
                         {count}
                       </span>
+                      {unread > 0 && (
+                        <span
+                          className="ml-1 h-5 min-w-[22px] px-1.5 rounded-full bg-[var(--studio-primary)] text-white text-[11px] font-semibold flex items-center justify-center tabular-nums"
+                          title={`${unread} unread`}
+                        >
+                          {unread}
+                          <span className="sr-only"> unread</span>
+                        </span>
+                      )}
                     </button>
                   );
                 })}

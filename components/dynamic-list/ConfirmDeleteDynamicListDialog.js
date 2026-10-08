@@ -8,6 +8,7 @@ export default function ConfirmDeleteDynamicListDialog({
   onConfirm,
   listName,
   memberCount = 0,
+  memberNoun = 'lead',
   busy = false,
 }) {
   return (
@@ -25,7 +26,7 @@ export default function ConfirmDeleteDynamicListDialog({
             )}
             <span className="mt-2 block">
               {memberCount > 0
-                ? `${memberCount} lead${memberCount === 1 ? '' : 's'} are currently in this list. This will exit them and cancel their scheduled campaign steps.`
+                ? `${memberCount} ${memberNoun}${memberCount === 1 ? '' : 's'} are currently in this list. This will exit them and cancel their scheduled campaign steps.`
                 : 'This will exit all members and cancel their scheduled campaign steps.'}
             </span>
           </DialogDescription>
