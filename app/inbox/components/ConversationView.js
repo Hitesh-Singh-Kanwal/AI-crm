@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { Mail, MailWarning, ArrowLeft, RefreshCw, Hash } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getInitials, formatDateTime, getContactDisplayName } from '@/lib/utils'
 import MessageInput from './MessageInput'
@@ -65,6 +66,9 @@ export default function ConversationView({
   embedded = false,
   onMarkUnread,
   onRenameContact,
+  aiRepliesOn = true,
+  aiToggleSaving = false,
+  onToggleAiReplies = null,
 }) {
   const [activeTab, setActiveTab] = useState(() => defaultChannelTab(conversation))
   const [nameDraft, setNameDraft] = useState(null) // null = not editing
@@ -215,6 +219,20 @@ export default function ConversationView({
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {onToggleAiReplies && leadData?._id && (
+              <div className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1">
+                <span className="text-xs font-medium text-foreground whitespace-nowrap">
+                  <span className="sm:hidden">AI</span>
+                  <span className="hidden sm:inline">AI replies</span>
+                </span>
+                <Switch
+                  checked={aiRepliesOn}
+                  disabled={aiToggleSaving}
+                  onCheckedChange={onToggleAiReplies}
+                  aria-label="AI replies"
+                />
+              </div>
+            )}
             {isOther && onRenameContact && nameDraft === null && (
               <button
                 type="button"

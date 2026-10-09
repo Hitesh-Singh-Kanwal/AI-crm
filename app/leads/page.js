@@ -27,6 +27,7 @@ import ImportExportCsv from '@/components/shared/ImportExportCsv'
 import LeadsQuickBar from '@/components/leads/LeadsQuickBar'
 import LeadsFilterPanel from '@/components/leads/LeadsFilterPanel'
 import { getLeadAttemptCount } from '@/components/leads/LeadEngagementHistory'
+import LeadCommunicationDialog from '@/components/leads/LeadCommunicationDialog'
 import SavedListsPanel from '@/components/shared/SavedListsPanel'
 import DynamicListFormDialog from '@/components/dynamic-list/DynamicListFormDialog'
 import DynamicListMemberSendDialog from '@/components/dynamic-list/DynamicListMemberSendDialog'
@@ -110,6 +111,7 @@ function LeadsPageInner() {
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
   const [filters, setFilters] = useState(persisted.filters || EMPTY_LEAD_FILTERS)
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const [communication, setCommunication] = useState(null) // { lead, channel }
   const [listDialogOpen, setListDialogOpen] = useState(false)
   const [prefillList, setPrefillList] = useState(null)
   const [savedListsRefreshKey, setSavedListsRefreshKey] = useState(0)
@@ -720,20 +722,24 @@ function LeadsPageInner() {
                       {lead.reason ? formatReasonLabel(lead.reason, leadReasons) : '—'}
                     </span>
                   </TableCell>
-                  <TableCell className="py-3 px-4">
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Phone className="h-3.5 w-3.5" />
-                        {lead.calls ?? 0}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Mail className="h-3.5 w-3.5" />
-                        {lead.emails ?? 0}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <MessageSquare className="h-3.5 w-3.5" />
-                        {lead.chats ?? 0}
-                      </span>
+                  <TableCell className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                      {[
+                        { channel: 'Call', icon: Phone, count: lead.calls, label: 'calls' },
+                        { channel: 'Email', icon: Mail, count: lead.emails, label: 'emails' },
+                        { channel: 'SMS', icon: MessageSquare, count: lead.chats, label: 'messages' },
+                      ].map(({ channel, icon: Icon, count, label }) => (
+                        <button
+                          key={channel}
+                          type="button"
+                          onClick={() => setCommunication({ lead, channel })}
+                          title={`Open ${label}`}
+                          className="flex items-center gap-1 rounded-md px-1.5 py-1 transition-colors hover:bg-[var(--studio-primary)]/10 hover:text-[var(--studio-primary)]"
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          {count ?? 0}
+                        </button>
+                      ))}
                     </div>
                   </TableCell>
                   <TableCell className="py-3 px-4">
@@ -816,6 +822,14 @@ function LeadsPageInner() {
           </div>
         </div>
 
+        <LeadCommunicationDialog
+          lead={communication?.lead}
+          channel={communication?.channel}
+          onClose={() => {
+            setCommunication(null)
+            refreshLeads()
+          }}
+        />
         <LeadsFilterPanel
           open={filterPanelOpen}
           appliedFilters={filters}

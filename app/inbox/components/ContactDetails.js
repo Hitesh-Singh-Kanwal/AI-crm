@@ -1,8 +1,16 @@
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { getInitials, nameWithMembers } from '@/lib/utils'
 
-export default function ContactDetails({ contact, leadData, onClose }) {
+export default function ContactDetails({
+  contact,
+  leadData,
+  onClose,
+  aiRepliesOn = true,
+  aiToggleSaving = false,
+  onToggleAiReplies = null,
+}) {
   if (!contact) return null
 
   // Use leadData (full API response) when available, fall back to contact
@@ -55,6 +63,25 @@ export default function ContactDetails({ contact, leadData, onClose }) {
         {phoneNumber && <p className="text-sm text-muted-foreground mt-0.5">{phoneNumber}</p>}
         {email && <p className="text-xs text-muted-foreground mt-0.5">{email}</p>}
       </div>
+
+      {onToggleAiReplies && lead?._id && (
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-foreground">AI replies</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {aiRepliesOn
+                ? 'The agent can reply to this customer.'
+                : 'Off until you turn it back on. Staff messages and “talk to a person” turn it off.'}
+            </p>
+          </div>
+          <Switch
+            checked={aiRepliesOn}
+            disabled={aiToggleSaving}
+            onCheckedChange={onToggleAiReplies}
+            aria-label="AI replies"
+          />
+        </div>
+      )}
 
       {/* Lead Info */}
       <div className="px-5 py-4 space-y-4 border-b border-border">

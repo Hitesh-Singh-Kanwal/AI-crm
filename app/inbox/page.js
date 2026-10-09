@@ -42,6 +42,17 @@ import {
   collapseConvertedInboxDuplicates,
   linkedCustomerIdForConversation,
 } from '@/lib/inbox-merge-converted'
+import LeadsFilterPanel from '@/components/leads/LeadsFilterPanel'
+import CustomersFilterPanel from '@/components/customers/CustomersFilterPanel'
+import { EMPTY_LEAD_FILTERS, sanitizeLeadFilters } from '@/lib/lead-page-filters'
+import { EMPTY_CUSTOMER_FILTERS, sanitizeCustomerFilters } from '@/lib/customer-page-filters'
+import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
+import {
+  conversationEntityIds,
+  countInboxContactFilters,
+  fetchMatchingEntityIds,
+  inboxFilterEntity,
+} from '@/lib/inbox-contact-filters'
 import {
   mapAiCallToMessage,
   mapHumanCallToMessage,
@@ -272,6 +283,7 @@ function InboxPageContent() {
   const [scheduledLoading, setScheduledLoading] = useState(true)
   const [selectedScheduledId, setSelectedScheduledId] = useState(null)
   const [selectedLeadData, setSelectedLeadData] = useState(null)
+  const [aiToggleSaving, setAiToggleSaving] = useState(false)
   const [emailSending, setEmailSending] = useState(false)
   const [smsSending, setSmsSending] = useState(false)
   const [callPlacing, setCallPlacing] = useState(false)
@@ -537,10 +549,120 @@ function InboxPageContent() {
     [contactFilter],
   )
 
+  // ── Lead / customer filters (Leads and Customers tabs) ────────────────
+  const filterEntity = inboxFilterEntity(contactFilter)
+  const [entityFilters, setEntityFilters] = useState({
+    lead: EMPTY_LEAD_FILTERS,
+    customer: EMPTY_CUSTOMER_FILTERS,
+  })
+  const [filterPanelEntity, setFilterPanelEntity] = useState(null)
+  const [filterOptions, setFilterOptions] = useState(null)
+  const [filterOptionsLoading, setFilterOptionsLoading] = useState(false)
+  const [filterMatch, setFilterMatch] = useState({ key: null, entity: null, ids: null, error: null })
+  const activeEntityFilters = filterEntity ? entityFilters[filterEntity] : null
+  const activeFilterCount = countInboxContactFilters(filterEntity, activeEntityFilters)
+
+  const loadFilterOptions = useCallback(async () => {
+    if (filterOptions || filterOptionsLoading) return
+    setFilterOptionsLoading(true)
+    const [locations, forms, reasons, teachers, memberships, packages, tags] = await Promise.all([
+      api.get('/api/location?limit=200'),
+      api.get('/api/formBuilder?page=1&limit=200'),
+      api.get('/api/lead-reasons'),
+      api.get('/api/teacher?limit=200&status=active'),
+      api.get('/api/membership?limit=200'),
+      api.get('/api/package?limit=200'),
+      api.get('/api/customer/tags'),
+    ])
+    const list = (res) => (res?.success && Array.isArray(res.data) ? res.data : [])
+    setFilterOptions({
+      locations: list(locations),
+      forms: forms?.success ? extractFormTemplatesList(forms) : [],
+      leadReasons: reasons?.success ? extractLeadReasonsList(reasons) : [],
+      teachers: list(teachers),
+      memberships: list(memberships),
+      packages: list(packages),
+      tags: list(tags),
+    })
+    setFilterOptionsLoading(false)
+  }, [filterOptions, filterOptionsLoading])
+
+  const openFilterPanel = () => {
+    if (!filterEntity) return
+    loadFilterOptions()
+    setFilterPanelEntity(filterEntity)
+  }
+
+  const applyEntityFilters = (entity, next) => {
+    setEntityFilters((prev) => ({
+      ...prev,
+      [entity]: entity === 'lead' ? sanitizeLeadFilters(next) : sanitizeCustomerFilters(next),
+    }))
+    setFilterPanelEntity(null)
+  }
+
+  const clearEntityFilters = () => {
+    if (!filterEntity) return
+    applyEntityFilters(filterEntity, filterEntity === 'lead' ? EMPTY_LEAD_FILTERS : EMPTY_CUSTOMER_FILTERS)
+  }
+
+  const filterCandidateIds = useMemo(() => {
+    if (!filterEntity || activeFilterCount === 0) return []
+    return [
+      ...new Set(
+        filteredConversations
+          .filter(matchesGroup)
+          .flatMap((conv) => conversationEntityIds(conv, filterEntity)),
+      ),
+    ].sort()
+  }, [filterEntity, activeFilterCount, filteredConversations, matchesGroup])
+
+  const filterRequestKey =
+    filterEntity && activeFilterCount > 0
+      ? JSON.stringify([filterEntity, activeEntityFilters, filterCandidateIds])
+      : null
+
+  useEffect(() => {
+    if (!filterRequestKey) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      fetchMatchingEntityIds(filterEntity, activeEntityFilters, filterCandidateIds)
+        .then((ids) => {
+          if (!cancelled) setFilterMatch({ key: filterRequestKey, entity: filterEntity, ids, error: null })
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setFilterMatch({ key: filterRequestKey, entity: filterEntity, ids: null, error: e.message })
+          }
+        })
+    }, 250)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // filterRequestKey captures every input below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterRequestKey])
+
+  const filterApplying = Boolean(filterRequestKey) && filterMatch.key !== filterRequestKey
+  const filterError = filterRequestKey && filterMatch.key === filterRequestKey ? filterMatch.error : null
+  // Keep showing the previous match while a refreshed one loads (new message, new thread).
+  const filterMatchIds = filterRequestKey && filterMatch.entity === filterEntity ? filterMatch.ids : null
+
+  const matchesEntityFilters = useCallback(
+    (conv) => {
+      if (!filterRequestKey) return true
+      if (!filterMatchIds) return false
+      return conversationEntityIds(conv, filterEntity).some((id) => filterMatchIds.has(id))
+    },
+    [filterRequestKey, filterMatchIds, filterEntity],
+  )
+
   const groupConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     return filteredConversations.filter((conv) => {
       if (!matchesGroup(conv)) return false
+      if (!matchesEntityFilters(conv)) return false
       if (!q) return true
       const haystack = [getContactDisplayName(conv.contact), conv.contact.phoneNumber, conv.contact.email]
         .filter(Boolean)
@@ -549,7 +671,7 @@ function InboxPageContent() {
       const qDigits = q.replace(/\D/g, '')
       return haystack.includes(q) || (qDigits.length >= 3 && haystack.replace(/\D/g, '').includes(qDigits))
     })
-  }, [filteredConversations, searchQuery, matchesGroup])
+  }, [filteredConversations, searchQuery, matchesGroup, matchesEntityFilters])
 
   // Unread shows only unread, plus the one you opened from here so it doesn't vanish mid-read.
   const displayedConversations = useMemo(() => {
@@ -698,6 +820,9 @@ function InboxPageContent() {
       return
     }
     const leadId = selectedConversation.replace('lead-', '')
+    // Drop the previous customer's profile immediately so the AI switch
+    // cannot be toggled against the wrong lead while this fetch is in flight.
+    setSelectedLeadData(null)
     let cancelled = false
     api.get(`/api/lead/${leadId}`).then((res) => {
       if (cancelled) return
@@ -749,6 +874,63 @@ function InboxPageContent() {
       ...prev,
       [convId]: (prev[convId] || []).filter((m) => m.id !== messageId),
     }))
+  }
+
+  // Missing flag is on, except a human-intervention lead that was never explicitly re-enabled.
+  const leadAiRepliesOn = (lead) => {
+    if (!lead) return true
+    if (lead.aiRepliesEnabled === false) return false
+    if (lead.stage === 'human intervention' && lead.aiRepliesEnabled !== true) return false
+    return true
+  }
+
+  const markAiPausedAfterStaffSend = (convId, leadData) => {
+    if (!String(convId || '').startsWith('lead-') || !leadData?._id) return
+    setSelectedLeadData((prev) =>
+      prev && String(prev._id) === String(leadData._id)
+        ? { ...prev, aiRepliesEnabled: false }
+        : prev,
+    )
+  }
+
+  const handleToggleAiReplies = async (next) => {
+    const leadId = selectedLeadData?._id
+    if (!leadId || aiToggleSaving) return
+    const previous = selectedLeadData
+    const stillThisLead = (prev) => prev && String(prev._id) === String(leadId)
+    setSelectedLeadData((prev) =>
+      stillThisLead(prev) ? { ...prev, aiRepliesEnabled: next } : prev,
+    )
+    setAiToggleSaving(true)
+    try {
+      const result = await api.put(`/api/lead/${leadId}`, { aiRepliesEnabled: next })
+      if (!result.success) {
+        setSelectedLeadData((prev) => (stillThisLead(prev) ? previous : prev))
+        toast.error({
+          title: 'Could not update AI replies',
+          message: result.error || 'Try again.',
+        })
+        return
+      }
+      const saved = result.data
+      if (saved && String(saved._id) === String(leadId)) {
+        setSelectedLeadData((prev) => (stillThisLead(prev) ? saved : prev))
+      }
+      toast.success({
+        title: next ? 'AI replies on' : 'AI replies off',
+        message: next
+          ? 'The agent will reply to this customer again.'
+          : 'The agent will stay quiet until you turn this back on.',
+      })
+    } catch (err) {
+      setSelectedLeadData((prev) => (stillThisLead(prev) ? previous : prev))
+      toast.error({
+        title: 'Could not update AI replies',
+        message: err?.message || 'Try again.',
+      })
+    } finally {
+      setAiToggleSaving(false)
+    }
   }
 
   const handleSendMessage = async ({
@@ -999,6 +1181,7 @@ function InboxPageContent() {
             : 'Find it under Scheduled until it sends.',
         })
         if (!scheduleNow) fetchScheduled()
+        markAiPausedAfterStaffSend(convId, leadData)
         return true
       } else if (effectiveChannel === 'Email') {
         const payload = buildSendOneEmailPayload({
@@ -1033,6 +1216,7 @@ function InboxPageContent() {
             : 'Find it under Scheduled until it sends.',
         })
         if (!scheduleNow) fetchScheduled()
+        markAiPausedAfterStaffSend(convId, leadData)
         return true
       }
       return false
@@ -1841,6 +2025,35 @@ function InboxPageContent() {
               setShowContactList(false)
             }}
             onBatchSend={() => setMainView('bulk')}
+            canFilter={Boolean(filterEntity)}
+            activeFilterCount={activeFilterCount}
+            filterApplying={filterApplying}
+            filterError={filterError}
+            onOpenFilters={openFilterPanel}
+            onClearFilters={clearEntityFilters}
+          />
+          <LeadsFilterPanel
+            open={filterPanelEntity === 'lead'}
+            appliedFilters={entityFilters.lead}
+            onClose={() => setFilterPanelEntity(null)}
+            onApply={(next) => applyEntityFilters('lead', next)}
+            locations={filterOptions?.locations || []}
+            forms={filterOptions?.forms || []}
+            leadReasons={filterOptions?.leadReasons || []}
+            loadingOptions={filterOptionsLoading}
+          />
+          <CustomersFilterPanel
+            open={filterPanelEntity === 'customer'}
+            appliedFilters={entityFilters.customer}
+            onClose={() => setFilterPanelEntity(null)}
+            onApply={(next) => applyEntityFilters('customer', next)}
+            locations={filterOptions?.locations || []}
+            teachers={filterOptions?.teachers || []}
+            tags={filterOptions?.tags || []}
+            memberships={filterOptions?.memberships || []}
+            packages={filterOptions?.packages || []}
+            leadReasons={filterOptions?.leadReasons || []}
+            loadingOptions={filterOptionsLoading}
           />
         </div>
 
@@ -1887,6 +2100,9 @@ function InboxPageContent() {
               onCallTabActive={handleCallTabActive}
               onMarkUnread={handleMarkUnread}
               onRenameContact={handleRenameContact}
+              aiRepliesOn={leadAiRepliesOn(selectedLeadData)}
+              aiToggleSaving={aiToggleSaving}
+              onToggleAiReplies={selectedLeadData?._id ? handleToggleAiReplies : null}
             />
           )}
         </div>
@@ -1894,7 +2110,14 @@ function InboxPageContent() {
         {/* Right: Details — desktop side panel */}
         {showDetails && selectedConvData && rightView === 'thread' && statusTab !== 'Scheduled' && (
           <div className="hidden lg:flex flex-col w-80 shrink-0 min-w-[20rem] min-h-0 h-full overflow-hidden">
-            <ContactDetails contact={selectedConvData.contact} leadData={selectedLeadData} onClose={() => setShowDetails(false)} />
+            <ContactDetails
+              contact={selectedConvData.contact}
+              leadData={selectedLeadData}
+              onClose={() => setShowDetails(false)}
+              aiRepliesOn={leadAiRepliesOn(selectedLeadData)}
+              aiToggleSaving={aiToggleSaving}
+              onToggleAiReplies={selectedLeadData?._id ? handleToggleAiReplies : null}
+            />
           </div>
         )}
 
@@ -1906,6 +2129,9 @@ function InboxPageContent() {
                 contact={selectedConvData.contact}
                 leadData={selectedLeadData}
                 onClose={() => setShowDetails(false)}
+                aiRepliesOn={leadAiRepliesOn(selectedLeadData)}
+                aiToggleSaving={aiToggleSaving}
+                onToggleAiReplies={selectedLeadData?._id ? handleToggleAiReplies : null}
               />
             )}
           </SheetContent>
