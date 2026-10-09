@@ -1,4 +1,4 @@
-import { CalendarClock, Hash, Mail, Plus, Search, Users } from 'lucide-react'
+import { CalendarClock, Hash, Mail, Plus, Search, SlidersHorizontal, Users } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn, getInitials, getContactDisplayName } from '@/lib/utils'
 
@@ -89,7 +89,14 @@ export default function ContactList({
   onSelectScheduled,
   onNewConversation,
   onBatchSend,
+  canFilter = false,
+  activeFilterCount = 0,
+  filterApplying = false,
+  filterError = null,
+  onOpenFilters,
+  onClearFilters,
 }) {
+  const filtered = canFilter && activeFilterCount > 0
   const showingScheduled = statusTab === 'Scheduled'
   const showType = contactFilter === 'Everyone'
   const query = searchQuery.trim()
@@ -126,17 +133,59 @@ export default function ContactList({
           </div>
         </div>
 
-        <label className="relative mt-3 block">
-          <span className="sr-only">Search conversations</span>
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={showingScheduled ? 'Search scheduled…' : 'Search name, number or email…'}
-            className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-[color:var(--studio-primary)] focus:ring-2 focus:ring-[color:var(--studio-primary)]/15"
-          />
-        </label>
+        <div className="mt-3 flex items-center gap-2">
+          <label className="relative block min-w-0 flex-1">
+            <span className="sr-only">Search conversations</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder={showingScheduled ? 'Search scheduled…' : 'Search name, number or email…'}
+              className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-[color:var(--studio-primary)] focus:ring-2 focus:ring-[color:var(--studio-primary)]/15"
+            />
+          </label>
+          {canFilter && !showingScheduled && (
+            <button
+              type="button"
+              onClick={() => onOpenFilters?.()}
+              title={`Filter ${GROUP_SUBTITLE[contactFilter]?.toLowerCase() || 'contacts'}`}
+              className={cn(
+                'inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors active:scale-[0.98]',
+                filtered
+                  ? 'border-[color:var(--studio-primary)] bg-[color:var(--studio-primary-light)] text-[color:var(--studio-primary)]'
+                  : 'border-border bg-background text-foreground hover:bg-muted',
+              )}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
+              Filter
+              {filtered && (
+                <span className="min-w-[1.25rem] rounded-full bg-[color:var(--studio-primary)] px-1.5 text-[11px] font-semibold leading-5 text-white tabular-nums">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
+
+        {filtered && !showingScheduled && (
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+            <span className={cn('truncate', filterError ? 'text-destructive' : 'text-muted-foreground')}>
+              {filterError
+                ? filterError
+                : filterApplying
+                  ? 'Applying filters…'
+                  : `${activeFilterCount} ${activeFilterCount === 1 ? 'filter' : 'filters'} applied · ${conversations.length} ${conversations.length === 1 ? 'conversation' : 'conversations'}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => onClearFilters?.()}
+              className="shrink-0 font-medium text-[color:var(--studio-primary)] hover:underline"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       <div role="tablist" aria-label="Conversation status" className="flex items-center gap-5 border-b border-border px-4">
@@ -228,7 +277,14 @@ export default function ContactList({
             </ul>
           )
         ) : conversations.length === 0 ? (
-          query ? (
+          filtered && filterApplying ? (
+            <EmptyState title="Applying filters…" body="Finding conversations that match." />
+          ) : filtered ? (
+            <EmptyState
+              title="No matches"
+              body={`No ${GROUP_SUBTITLE[contactFilter]?.toLowerCase() || 'conversations'} match these filters${query ? ` and “${query}”` : ''}.`}
+            />
+          ) : query ? (
             <EmptyState title="No matches" body={`No conversations match “${query}”.`} />
           ) : statusTab === 'Unread' ? (
             <EmptyState title="You're all caught up" body="New replies show up here until you open them." />

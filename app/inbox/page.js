@@ -42,6 +42,17 @@ import {
   collapseConvertedInboxDuplicates,
   linkedCustomerIdForConversation,
 } from '@/lib/inbox-merge-converted'
+import LeadsFilterPanel from '@/components/leads/LeadsFilterPanel'
+import CustomersFilterPanel from '@/components/customers/CustomersFilterPanel'
+import { EMPTY_LEAD_FILTERS, sanitizeLeadFilters } from '@/lib/lead-page-filters'
+import { EMPTY_CUSTOMER_FILTERS, sanitizeCustomerFilters } from '@/lib/customer-page-filters'
+import { extractFormTemplatesList, extractLeadReasonsList } from '@/lib/workflow-normalize'
+import {
+  conversationEntityIds,
+  countInboxContactFilters,
+  fetchMatchingEntityIds,
+  inboxFilterEntity,
+} from '@/lib/inbox-contact-filters'
 import {
   mapAiCallToMessage,
   mapHumanCallToMessage,
@@ -538,10 +549,120 @@ function InboxPageContent() {
     [contactFilter],
   )
 
+  // ── Lead / customer filters (Leads and Customers tabs) ────────────────
+  const filterEntity = inboxFilterEntity(contactFilter)
+  const [entityFilters, setEntityFilters] = useState({
+    lead: EMPTY_LEAD_FILTERS,
+    customer: EMPTY_CUSTOMER_FILTERS,
+  })
+  const [filterPanelEntity, setFilterPanelEntity] = useState(null)
+  const [filterOptions, setFilterOptions] = useState(null)
+  const [filterOptionsLoading, setFilterOptionsLoading] = useState(false)
+  const [filterMatch, setFilterMatch] = useState({ key: null, entity: null, ids: null, error: null })
+  const activeEntityFilters = filterEntity ? entityFilters[filterEntity] : null
+  const activeFilterCount = countInboxContactFilters(filterEntity, activeEntityFilters)
+
+  const loadFilterOptions = useCallback(async () => {
+    if (filterOptions || filterOptionsLoading) return
+    setFilterOptionsLoading(true)
+    const [locations, forms, reasons, teachers, memberships, packages, tags] = await Promise.all([
+      api.get('/api/location?limit=200'),
+      api.get('/api/formBuilder?page=1&limit=200'),
+      api.get('/api/lead-reasons'),
+      api.get('/api/teacher?limit=200&status=active'),
+      api.get('/api/membership?limit=200'),
+      api.get('/api/package?limit=200'),
+      api.get('/api/customer/tags'),
+    ])
+    const list = (res) => (res?.success && Array.isArray(res.data) ? res.data : [])
+    setFilterOptions({
+      locations: list(locations),
+      forms: forms?.success ? extractFormTemplatesList(forms) : [],
+      leadReasons: reasons?.success ? extractLeadReasonsList(reasons) : [],
+      teachers: list(teachers),
+      memberships: list(memberships),
+      packages: list(packages),
+      tags: list(tags),
+    })
+    setFilterOptionsLoading(false)
+  }, [filterOptions, filterOptionsLoading])
+
+  const openFilterPanel = () => {
+    if (!filterEntity) return
+    loadFilterOptions()
+    setFilterPanelEntity(filterEntity)
+  }
+
+  const applyEntityFilters = (entity, next) => {
+    setEntityFilters((prev) => ({
+      ...prev,
+      [entity]: entity === 'lead' ? sanitizeLeadFilters(next) : sanitizeCustomerFilters(next),
+    }))
+    setFilterPanelEntity(null)
+  }
+
+  const clearEntityFilters = () => {
+    if (!filterEntity) return
+    applyEntityFilters(filterEntity, filterEntity === 'lead' ? EMPTY_LEAD_FILTERS : EMPTY_CUSTOMER_FILTERS)
+  }
+
+  const filterCandidateIds = useMemo(() => {
+    if (!filterEntity || activeFilterCount === 0) return []
+    return [
+      ...new Set(
+        filteredConversations
+          .filter(matchesGroup)
+          .flatMap((conv) => conversationEntityIds(conv, filterEntity)),
+      ),
+    ].sort()
+  }, [filterEntity, activeFilterCount, filteredConversations, matchesGroup])
+
+  const filterRequestKey =
+    filterEntity && activeFilterCount > 0
+      ? JSON.stringify([filterEntity, activeEntityFilters, filterCandidateIds])
+      : null
+
+  useEffect(() => {
+    if (!filterRequestKey) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      fetchMatchingEntityIds(filterEntity, activeEntityFilters, filterCandidateIds)
+        .then((ids) => {
+          if (!cancelled) setFilterMatch({ key: filterRequestKey, entity: filterEntity, ids, error: null })
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setFilterMatch({ key: filterRequestKey, entity: filterEntity, ids: null, error: e.message })
+          }
+        })
+    }, 250)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // filterRequestKey captures every input below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterRequestKey])
+
+  const filterApplying = Boolean(filterRequestKey) && filterMatch.key !== filterRequestKey
+  const filterError = filterRequestKey && filterMatch.key === filterRequestKey ? filterMatch.error : null
+  // Keep showing the previous match while a refreshed one loads (new message, new thread).
+  const filterMatchIds = filterRequestKey && filterMatch.entity === filterEntity ? filterMatch.ids : null
+
+  const matchesEntityFilters = useCallback(
+    (conv) => {
+      if (!filterRequestKey) return true
+      if (!filterMatchIds) return false
+      return conversationEntityIds(conv, filterEntity).some((id) => filterMatchIds.has(id))
+    },
+    [filterRequestKey, filterMatchIds, filterEntity],
+  )
+
   const groupConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     return filteredConversations.filter((conv) => {
       if (!matchesGroup(conv)) return false
+      if (!matchesEntityFilters(conv)) return false
       if (!q) return true
       const haystack = [getContactDisplayName(conv.contact), conv.contact.phoneNumber, conv.contact.email]
         .filter(Boolean)
@@ -550,7 +671,7 @@ function InboxPageContent() {
       const qDigits = q.replace(/\D/g, '')
       return haystack.includes(q) || (qDigits.length >= 3 && haystack.replace(/\D/g, '').includes(qDigits))
     })
-  }, [filteredConversations, searchQuery, matchesGroup])
+  }, [filteredConversations, searchQuery, matchesGroup, matchesEntityFilters])
 
   // Unread shows only unread, plus the one you opened from here so it doesn't vanish mid-read.
   const displayedConversations = useMemo(() => {
@@ -1904,6 +2025,35 @@ function InboxPageContent() {
               setShowContactList(false)
             }}
             onBatchSend={() => setMainView('bulk')}
+            canFilter={Boolean(filterEntity)}
+            activeFilterCount={activeFilterCount}
+            filterApplying={filterApplying}
+            filterError={filterError}
+            onOpenFilters={openFilterPanel}
+            onClearFilters={clearEntityFilters}
+          />
+          <LeadsFilterPanel
+            open={filterPanelEntity === 'lead'}
+            appliedFilters={entityFilters.lead}
+            onClose={() => setFilterPanelEntity(null)}
+            onApply={(next) => applyEntityFilters('lead', next)}
+            locations={filterOptions?.locations || []}
+            forms={filterOptions?.forms || []}
+            leadReasons={filterOptions?.leadReasons || []}
+            loadingOptions={filterOptionsLoading}
+          />
+          <CustomersFilterPanel
+            open={filterPanelEntity === 'customer'}
+            appliedFilters={entityFilters.customer}
+            onClose={() => setFilterPanelEntity(null)}
+            onApply={(next) => applyEntityFilters('customer', next)}
+            locations={filterOptions?.locations || []}
+            teachers={filterOptions?.teachers || []}
+            tags={filterOptions?.tags || []}
+            memberships={filterOptions?.memberships || []}
+            packages={filterOptions?.packages || []}
+            leadReasons={filterOptions?.leadReasons || []}
+            loadingOptions={filterOptionsLoading}
           />
         </div>
 
