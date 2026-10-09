@@ -5,9 +5,10 @@ import DonutChart from '@/components/dashboard/widgets/DonutChart'
 import DetailsButton from '@/components/owner-dashboard/widgets/DetailsButton'
 import { Caveat, Dash, Empty, NotAvailable, Panel, PanelHead, Reveal, SectionHead, num } from '../chrome'
 import { Cell, DataTable, DrillAccordion, GoalBar, RankedBars, Row, TrendArea } from '../viz'
+import { formatDate } from '@/lib/utils'
 
 const LESSON_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'studio', label: 'Studio' },
   { key: 'teacher', label: 'Teacher' },
   { key: 'title', label: 'Lesson' },
@@ -15,7 +16,7 @@ const LESSON_COLUMNS = [
 ]
 
 const TEACHER_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'teacher', label: 'Teacher' },
   { key: 'studio', label: 'Studio' },
   { key: 'title', label: 'Lesson' },
@@ -23,7 +24,7 @@ const TEACHER_COLUMNS = [
 ]
 
 const CURRICULUM_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'studio', label: 'Studio' },
   { key: 'teacher', label: 'Teacher' },
   { key: 'tier', label: 'Curriculum Tier' },
@@ -32,7 +33,7 @@ const CURRICULUM_COLUMNS = [
 
 const GOAL_COLUMNS = [
   { key: 'category', label: 'Category' },
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'label', label: 'Detail' },
   { key: 'name', label: 'Name' },
   { key: 'studio', label: 'Studio' },

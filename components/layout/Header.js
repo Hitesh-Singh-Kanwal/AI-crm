@@ -196,7 +196,6 @@ import { isSuperAdmin, hasPermission } from "@/lib/permissions";
 import { useInboxHeader } from "@/contexts/InboxHeaderContext";
 
 const INBOX_FILTERS = [
-  { value: "everyone", label: "Everyone", countKey: "everyone" },
   { value: "all", label: "Customers", countKey: "customers" },
   { value: "leads", label: "Leads", countKey: "leads" },
   { value: "teachers", label: "Teachers", countKey: "teachers" },
@@ -294,10 +293,9 @@ export default function Header({
           {/* LEFT SECTION — ROUTE-SPECIFIC NAV */}
           <div className="order-2 lg:order-1 w-full min-w-0 overflow-x-auto scrollbar-hide lg:flex-1 lg:pr-2">
             {isInbox ? (
-              <div className="flex w-max items-center h-[44px] rounded-full bg-muted p-1">
+              <div className="flex w-max items-center gap-0.5 h-9 rounded-full bg-muted p-1">
                 {INBOX_FILTERS.map(({ value, label, countKey }) => {
                   const isActive = inboxFilter === value;
-                  const count = inboxCounts?.[countKey] ?? 0;
                   const unread = inboxCounts?.unread?.[countKey] ?? 0;
 
                   return (
@@ -305,29 +303,19 @@ export default function Header({
                       key={value}
                       onClick={() => setInboxFilter(value)}
                       className={cn(
-                        "flex items-center px-4 sm:px-5 h-[36px] rounded-full text-sm font-medium transition-all duration-200",
+                        "flex items-center gap-1.5 px-3 h-7 rounded-full text-[13px] font-medium transition-colors duration-200",
                         isActive
-                          ? "text-[var(--studio-primary)] font-semibold"
+                          ? "bg-background text-[var(--studio-primary)] shadow-sm"
                           : "text-muted-foreground hover:text-[var(--studio-primary)]",
                       )}
                     >
                       <span>{label}</span>
-                      <span
-                        className={cn(
-                          "ml-2 min-w-[22px] h-5 px-2 rounded-full text-xs flex items-center justify-center",
-                          isActive
-                            ? "bg-[var(--studio-primary-light)] text-[var(--studio-primary)]"
-                            : "bg-background text-muted-foreground",
-                        )}
-                      >
-                        {count}
-                      </span>
                       {unread > 0 && (
                         <span
-                          className="ml-1 h-5 min-w-[22px] px-1.5 rounded-full bg-[var(--studio-primary)] text-white text-[11px] font-semibold flex items-center justify-center tabular-nums"
+                          className="h-[18px] min-w-[18px] px-1 rounded-full bg-[var(--studio-primary)] text-white text-[11px] font-semibold flex items-center justify-center tabular-nums"
                           title={`${unread} unread`}
                         >
-                          {unread}
+                          {unread > 99 ? "99+" : unread}
                           <span className="sr-only"> unread</span>
                         </span>
                       )}

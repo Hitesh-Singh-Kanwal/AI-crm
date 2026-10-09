@@ -4,9 +4,10 @@ import { useMemo } from 'react'
 import DetailsButton from '@/components/owner-dashboard/widgets/DetailsButton'
 import { Caveat, Dash, Empty, NotAvailable, Panel, PanelHead, Reveal, SectionHead, num } from '../chrome'
 import { CapacityMeter, Cell, DataTable, RankedBars, Row } from '../viz'
+import { formatDate } from '@/lib/utils'
 
 const UTILIZATION_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'teacher', label: 'Teacher' },
   { key: 'studio', label: 'Studio' },
   { key: 'title', label: 'Lesson' },

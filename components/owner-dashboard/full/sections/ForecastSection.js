@@ -4,9 +4,10 @@ import { useMemo } from 'react'
 import DetailsButton from '@/components/owner-dashboard/widgets/DetailsButton'
 import { Caveat, Dash, Empty, NotAvailable, Panel, PanelHead, Reveal, SectionHead, moneyShort, num } from '../chrome'
 import { Cell, DataTable, RankedBars, RevenueLessonsCombo, Row } from '../viz'
+import { formatDate } from '@/lib/utils'
 
 const FORECAST_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'studio', label: 'Studio' },
   { key: 'teacher', label: 'Teacher' },
   { key: 'title', label: 'Lesson' },

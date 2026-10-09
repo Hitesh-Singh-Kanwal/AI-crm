@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import { formatDate } from "@/lib/utils";
 import { useCardProcessor } from "@/app/settings/payments/useCardProcessor";
 import {
   openCheckoutTab,
@@ -268,12 +269,7 @@ export default function PayInstallmentDialog({
                 </span>
                 <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
                   <CalendarDays className="h-3 w-3" />
-                  Due{" "}
-                  {new Date(installment.dueDate).toLocaleDateString("en-AU", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })}
+                  Due {formatDate(installment.dueDate)}
                 </p>
               </div>
               <p className="text-[26px] font-bold leading-none text-foreground">

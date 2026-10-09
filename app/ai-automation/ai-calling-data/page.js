@@ -16,6 +16,9 @@ import api from '@/lib/api'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { toast } from '@/components/ui/toast'
+import { formatDateTime } from '@/lib/utils'
+import { formatStudioTime } from '@/lib/studioLocalDate'
+import { getStudioTimezone } from '@/lib/studioTimezone'
 
 const ROWS_PER_PAGE = 10
 
@@ -178,7 +181,13 @@ function getAssistantLabel(call) {
 function formatShortDate(iso) {
   if (!iso) return null
   const d = new Date(iso)
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleString(undefined, {
+    timeZone: getStudioTimezone() || undefined,
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 /** Calls still syncing from Vapi (in progress or ended without transcript/analysis yet). */
@@ -915,7 +924,7 @@ export default function AiCallDetailPage() {
                         </p>
                       )}
                       <p className="text-[11px] text-muted-foreground">
-                        {selectedCall.startedAt ? new Date(selectedCall.startedAt).toLocaleString() : '—'}
+                        {selectedCall.startedAt ? formatDateTime(selectedCall.startedAt) : '—'}
                       </p>
                     </div>
                   </div>
@@ -928,8 +937,8 @@ export default function AiCallDetailPage() {
                       { label: 'Assistant', value: detailAssistant || 'Manual setup' },
                       { label: 'Duration', value: detailDuration || '—' },
                       { label: 'Ended reason', value: detailReason || '—' },
-                      { label: 'Started', value: selectedCall.startedAt ? new Date(selectedCall.startedAt).toLocaleTimeString() : '—' },
-                      { label: 'Ended', value: selectedCall.endedAt ? new Date(selectedCall.endedAt).toLocaleTimeString() : '—' },
+                      { label: 'Started', value: selectedCall.startedAt ? formatStudioTime(selectedCall.startedAt) : '—' },
+                      { label: 'Ended', value: selectedCall.endedAt ? formatStudioTime(selectedCall.endedAt) : '—' },
                     ].map(({ label, value }) => (
                       <div key={label} className="rounded-lg bg-muted/40 border border-border/50 px-3 py-2.5">
                         <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{label}</p>

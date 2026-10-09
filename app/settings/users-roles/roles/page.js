@@ -31,11 +31,13 @@ import { useToast } from '@/components/ui/toast'
 import RolesDialog from './components/RolesDialog'
 import SettingsBackHeader from '../components/SettingsBackHeader'
 import { cn } from '@/lib/utils'
+import { getStudioTimezone } from '@/lib/studioTimezone'
 
 function formatDate(value) {
   if (!value) return 'N/A'
   const d = new Date(value)
-  return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString(undefined, { dateStyle: 'medium' })
+  const timeZone = getStudioTimezone() || undefined
+  return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString(undefined, { dateStyle: 'medium', timeZone })
 }
 
 function getEnabledPermissionSections(permissions) {

@@ -1,6 +1,8 @@
 import { CalendarClock, Hash, Mail, Plus, Search, Users } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn, getInitials, getContactDisplayName } from '@/lib/utils'
+import { toStudioLocalDate } from '@/lib/studioLocalDate'
+import { getStudioTimezone } from '@/lib/studioTimezone'
 
 const GROUP_SUBTITLE = {
   Everyone: 'Everyone',
@@ -14,9 +16,10 @@ const STATUS_TABS = ['All', 'Unread', 'Scheduled']
 /** Compact list time: today → 5:04 PM, this week → Tue, older → Oct 8. */
 function formatListTime(value) {
   if (!value) return ''
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return ''
-  const now = new Date()
+  if (Number.isNaN(new Date(value).getTime())) return ''
+  // Shifted onto the studio's wall clock, so "today" and the labels are the studio's.
+  const d = toStudioLocalDate(new Date(value), getStudioTimezone())
+  const now = toStudioLocalDate(new Date(), getStudioTimezone())
   if (d.toDateString() === now.toDateString()) {
     return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   }

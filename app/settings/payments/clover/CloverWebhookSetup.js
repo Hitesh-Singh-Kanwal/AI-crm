@@ -5,6 +5,7 @@ import { Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
+import { formatDateTime } from '@/lib/utils'
 
 // Clover issues a hosted-checkout signing secret per merchant, generated in their own
 // dashboard, and offers no API to register the webhook or fetch the secret. So each
@@ -102,7 +103,7 @@ export default function CloverWebhookSetup({
           </span>
         ) : webhookLastReceivedAt ? (
           <span className="text-emerald-600">
-            Working — last confirmation received {new Date(webhookLastReceivedAt).toLocaleString()}.
+            Working — last confirmation received {formatDateTime(webhookLastReceivedAt)}.
           </span>
         ) : (
           <span className="text-amber-600">

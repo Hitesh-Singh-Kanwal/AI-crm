@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Link from 'next/link'
 import { Mail, MailWarning, ArrowLeft, RefreshCw, Hash } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -13,11 +14,29 @@ import ConversationChannelTabs from './ConversationChannelTabs'
 import { ScaledInboxHtmlEmail, shouldRenderEmailAsRichHtml } from './InboxHtmlEmailFrame'
 import { htmlToPlainText, emailBodyToPlainText } from '@/lib/emailSend'
 import { cn } from '@/lib/utils'
+import { toStudioLocalDate, formatStudioDate } from '@/lib/studioLocalDate'
+import { getStudioTimezone } from '@/lib/studioTimezone'
+
+// Messages are grouped under the studio's calendar day, not the viewer's.
+const studioDay = (v) => toStudioLocalDate(new Date(v), getStudioTimezone()).toDateString()
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 
 const TAB_CHANNEL_MAP = { 'E-mail': 'Email', SMS: 'SMS', Call: 'Call' }
+
+/** Customers and teachers have a profile page; leads only have the side panel. */
+function profileHref(contact) {
+  const type = String(contact?.type || '').toLowerCase()
+  if (type.startsWith('teacher') && contact.id) return `/settings/users-roles/teachers/${contact.id}`
+  if (type.startsWith('customer')) {
+    // Customer rows carry their own id here; converted leads carry the customer's.
+    const linked = contact.linkedCustomerID || contact.convertedCustomerID
+    const customerId = linked?._id || linked
+    if (customerId) return `/settings/users-roles/customers/${customerId}`
+  }
+  return null
+}
 
 function defaultChannelTab(conversation) {
   if (!conversation) return 'SMS'
@@ -51,6 +70,7 @@ export default function ConversationView({
   const [nameDraft, setNameDraft] = useState(null) // null = not editing
   const [savingName, setSavingName] = useState(false)
   const isOther = String(conversation?.contact?.type || '').toLowerCase() === 'other'
+  const profileUrl = profileHref(conversation?.contact)
   const scrollRef = useRef(null)
   const prevScrollHeightRef = useRef(0)
   const isLoadingMoreRef = useRef(false)
@@ -242,7 +262,15 @@ export default function ConversationView({
                 <span className="sr-only">Load older messages</span>
               </Button>
             )}
-            {onToggleDetails && !isOther && (
+            {profileUrl && (
+              <Link
+                href={profileUrl}
+                className="px-2.5 sm:px-3 py-1 rounded-md text-xs sm:text-sm whitespace-nowrap bg-[color:var(--studio-primary)] text-white"
+              >
+                View profile
+              </Link>
+            )}
+            {!profileUrl && onToggleDetails && !isOther && (
               <button
                 onClick={onToggleDetails}
                 className="px-2.5 sm:px-3 py-1 rounded-md text-xs sm:text-sm whitespace-nowrap bg-[color:var(--studio-primary)] text-white"
@@ -347,18 +375,14 @@ export default function ConversationView({
               return filtered.map((message, idx) => {
                 const isInbound = message.direction === 'inbound'
                 const prev = filtered[idx - 1]
-                const showDateDivider = !prev || new Date(prev.timestamp).toDateString() !== new Date(message.timestamp).toDateString()
+                const showDateDivider = !prev || studioDay(prev.timestamp) !== studioDay(message.timestamp)
                 return (
                   <div key={`${message.channel || 'msg'}-${message.id}-${idx}`}>
                     {showDateDivider && (
                       <div className="flex items-center my-2">
                         <div className="flex-1 h-px bg-border" />
                         <span className="mx-3 text-[10px] uppercase tracking-wide text-muted-foreground">
-                          {new Date(message.timestamp).toLocaleDateString(undefined, {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                          })}
+                          {formatStudioDate(message.timestamp)}
                         </span>
                         <div className="flex-1 h-px bg-border" />
                       </div>

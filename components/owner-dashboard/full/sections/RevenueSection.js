@@ -5,9 +5,10 @@ import DonutChart from '@/components/dashboard/widgets/DonutChart'
 import DetailsButton from '@/components/owner-dashboard/widgets/DetailsButton'
 import { Caveat, Dash, Empty, NotAvailable, Panel, PanelHead, Reveal, SectionHead, Segmented, money, moneyShort, num } from '../chrome'
 import { Cell, DataTable, DrillAccordion, GoalBar, MixBars, RankedBars, Row, TrendArea } from '../viz'
+import { formatDate } from '@/lib/utils'
 
 const MONEY_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'customer', label: 'Customer' },
   { key: 'studio', label: 'Studio' },
   { key: 'type', label: 'Type' },
@@ -24,7 +25,7 @@ const BALANCE_COLUMNS = [
 ]
 
 const CURRICULUM_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'customer', label: 'Customer' },
   { key: 'studio', label: 'Studio' },
   { key: 'tier', label: 'Curriculum Tier' },
@@ -33,7 +34,7 @@ const CURRICULUM_COLUMNS = [
 
 const GOAL_COLUMNS = [
   { key: 'category', label: 'Category' },
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'label', label: 'Detail' },
   { key: 'name', label: 'Name' },
   { key: 'studio', label: 'Studio' },

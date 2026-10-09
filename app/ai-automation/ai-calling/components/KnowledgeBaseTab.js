@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import SearchInput from '@/components/ui/search-input'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
@@ -31,7 +31,7 @@ function formatUploadedAt(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString()
+  return formatDateTime(d)
 }
 
 function parseSizeToBytes(value) {
@@ -182,7 +182,7 @@ export default function KnowledgeBaseTab({
       if (!d || Number.isNaN(d.getTime())) continue
       if (!latest || d.getTime() > latest.getTime()) latest = d
     }
-    return latest ? latest.toLocaleString() : '—'
+    return latest ? formatDateTime(latest) : '—'
   }, [files])
 
   async function handleDelete(file) {

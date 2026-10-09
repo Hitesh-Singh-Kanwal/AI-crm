@@ -18,6 +18,7 @@ import { useToast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import AgreementTemplateBuilder from '@/components/documents/AgreementTemplateBuilder'
 import AgreementSettingsPanel from '@/components/documents/AgreementSettingsPanel'
+import { formatDate } from '@/lib/utils'
 
 const DOCUMENT_TYPES = [
   { value: 'waiver', label: 'Participation Waiver' },
@@ -266,7 +267,7 @@ export default function DocumentLibraryPage() {
                   </div>
                   <p className="text-[12px] text-muted-foreground">
                     {DOCUMENT_TYPES.find((t) => t.value === doc.type)?.label || doc.type} · v{doc.version} ·
-                    {' '}Effective {new Date(doc.effectiveDate).toLocaleDateString()}
+                    {' '}Effective {formatDate(doc.effectiveDate)}
                   </p>
                 </div>
                 <DropdownMenu>

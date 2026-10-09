@@ -4,9 +4,10 @@ import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import { RankedBarList } from './shared'
 import WidgetHeader from './WidgetHeader'
 import DetailsButton from './DetailsButton'
+import { formatDate } from '@/lib/utils'
 
 const DETAIL_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'teacher', label: 'Teacher' },
   { key: 'studio', label: 'Studio' },
   { key: 'title', label: 'Lesson' },

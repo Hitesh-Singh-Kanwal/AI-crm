@@ -13,7 +13,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, ChevronDown, Settings2 } from 
 import AppointmentComposerPanel from "./components/AppointmentComposerPanel";
 import EventDetailPanel from "./components/EventDetailPanel";
 import api from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { toStudioLocalDate } from "@/lib/studioLocalDate";
 import { getCurrentUserId, getEffectiveBranch } from "@/lib/auth";
 import { isOwnScope } from "@/lib/permissions";
@@ -1560,7 +1560,7 @@ function showEventTooltip(e, props) {
         totalSessions = (svcEntry.sessionsUsed ?? 0) + (svcEntry.sessionsRemaining ?? 0) || totalSessions;
       }
       packageName = cpkg.packageName || "Package";
-      if (cpkg.expiryDate) packageExpiry = new Date(cpkg.expiryDate).toLocaleDateString("en-AU");
+      if (cpkg.expiryDate) packageExpiry = formatDate(cpkg.expiryDate);
     }
     // Fall back to enrollmentID if customerPackageID didn't resolve sessions
     if (sessionsRemaining === null && pkgCharge?.enrollmentID?.package?.services) {

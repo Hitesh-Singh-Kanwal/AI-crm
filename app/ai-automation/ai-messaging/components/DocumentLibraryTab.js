@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import SearchInput from '@/components/ui/search-input'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { getToken } from '@/lib/auth'
 import { useToast, toast as pushToast } from '@/components/ui/toast'
@@ -496,7 +496,7 @@ export default function DocumentLibraryTab({
                         <span aria-hidden>·</span>
                         <span>{formatFileSize(d.fileSize)}</span>
                         <span aria-hidden>·</span>
-                        <span>{new Date(d.createdAt).toLocaleDateString()}</span>
+                        <span>{formatDate(d.createdAt)}</span>
                         {d.uploadedBy?.name && (
                           <>
                             <span aria-hidden>·</span>

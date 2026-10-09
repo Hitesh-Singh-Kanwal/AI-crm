@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
 import { resolveLocationID } from '@/app/settings/payments/clover/useCloverConnection'
+import { getStudioTimezone } from '@/lib/studioTimezone'
 
 /**
  * Card picker shown when `method === "saved_card"`. Lists the cards this customer
@@ -25,7 +26,7 @@ function describeCard(card) {
   if (!card.savedAt) return base
   const saved = new Date(card.savedAt)
   if (Number.isNaN(saved.getTime())) return base
-  return `${base} · saved ${saved.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
+  return `${base} · saved ${saved.toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: getStudioTimezone() || undefined })}`
 }
 
 export default function SavedCardField({

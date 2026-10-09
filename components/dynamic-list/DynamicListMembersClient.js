@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import api from '@/lib/api'
-import { cn, getInitials, nameWithMembers } from '@/lib/utils'
+import { cn, getInitials, nameWithMembers, formatDate } from '@/lib/utils'
 import { MEMBERS_PAGE_SIZE } from '@/lib/dynamic-list-constants'
 import {
   buildMemberFilterParams,
@@ -56,9 +56,7 @@ function leadAvatarClass(name = '') {
 
 function formatJoinedDate(value) {
   if (!value) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return formatDate(value) || '—'
 }
 
 function resolveLeadLocation(lead, locations = []) {

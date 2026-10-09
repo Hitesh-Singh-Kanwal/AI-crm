@@ -11,12 +11,12 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useReportTimezone } from '@/lib/reports/ReportTimezoneContext'
 import { computeColumnTotals, hasColumnTotals, formatColumnTotal } from '@/lib/reports/reportTotals'
+import { formatStudioDate } from '@/lib/studioLocalDate'
 
 function formatAttendedDate(value) {
   if (!value) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  // A lesson instant, read on the studio's calendar.
+  return formatStudioDate(value, null, { weekday: undefined, year: 'numeric' })
 }
 
 function attendanceBadge(group) {

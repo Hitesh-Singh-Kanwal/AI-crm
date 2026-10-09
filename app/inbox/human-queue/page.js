@@ -20,6 +20,8 @@ import MainLayout from '@/components/layout/MainLayout'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { cn, formatDateTime, getInitials } from '@/lib/utils'
+import { toStudioLocalDate } from '@/lib/studioLocalDate'
+import { getStudioTimezone } from '@/lib/studioTimezone'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import api from '@/lib/api'
 import { isNotificationEnabled } from '@/lib/notificationPreferences'
@@ -118,9 +120,10 @@ function getEndedAt(item) {
 
 function formatShortTime(date) {
   if (!date) return '—'
-  const d = new Date(date)
-  if (Number.isNaN(d.getTime())) return '—'
-  const now = new Date()
+  if (Number.isNaN(new Date(date).getTime())) return '—'
+  // Shifted onto the studio's wall clock, so "today" and the labels are the studio's.
+  const d = toStudioLocalDate(new Date(date), getStudioTimezone())
+  const now = toStudioLocalDate(new Date(), getStudioTimezone())
   const sameDay = d.toDateString() === now.toDateString()
   if (sameDay) {
     return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })

@@ -6,6 +6,7 @@ import { FunnelStage, FunnelConnector } from './shared'
 import WidgetHeader from './WidgetHeader'
 import DetailsButton from './DetailsButton'
 import FunnelDrilldownTable from './FunnelDrilldownTable'
+import { formatDate } from '@/lib/utils'
 
 const DETAIL_COLUMNS = [
   { key: 'name', label: 'Customer' },
@@ -14,7 +15,7 @@ const DETAIL_COLUMNS = [
   { key: 'studio', label: 'Studio' },
   { key: 'purchaseCount', label: 'Purchases' },
   { key: 'totalLtv', label: 'Total LTV', format: (v) => `$${Number(v || 0).toLocaleString()}` },
-  { key: 'lastPurchase', label: 'Last Purchase', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'lastPurchase', label: 'Last Purchase', format: (v) => formatDate(v) || '—' },
 ]
 
 function formatMoney(n) {

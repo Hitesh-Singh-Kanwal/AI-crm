@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "@/components/ui/toast";
 import { getEffectiveBranch } from "@/lib/auth";
 import { studioWallTimeToUtcISO } from "@/lib/studio-time";
 import { validateRecurrence } from "@/lib/recurrence";
@@ -2685,6 +2686,15 @@ export default function AppointmentComposerPanel({
     const { billingType, billing } = payload;
     if (!billing?.collectNow || !(Number(billing.collectAmount) > 0)) return null;
     const method = billing.method || "cash";
+    // Which reader to charge — without it the backend refuses a terminal payment.
+    const terminal =
+      method === "terminal" ? { deviceID: billing.deviceID, promptTip: billing.promptTip } : {};
+    // The enrollment already exists by now, so say the payment failed rather than
+    // letting staff assume the reader was charged.
+    const reportFailure = (payRes) => {
+      console.error("Initial payment failed", payRes);
+      toast.error(payRes?.error || "Enrollment created, but the payment didn't go through.");
+    };
 
     if (billingType === "payment_plan") {
       const planRes = await api.get(`/api/payment-plan/customer/${customerID}`);
@@ -2706,11 +2716,12 @@ export default function AppointmentComposerPanel({
         installmentIndex: firstPending,
         method,
         paymentDate: dateInputToISO(billing.collectDate),
+        ...terminal,
         ...(method === "saved_card" ? { cardToken: billing.savedCardID } : {}),
         ...(method === "cheque" ? { checkNumber: billing.checkNumber } : {}),
       });
       if (!payRes.success) {
-        console.error("pay-installment failed", payRes);
+        reportFailure(payRes);
         return null;
       }
       return payRes.data?.checkoutUrl || null;
@@ -2724,9 +2735,14 @@ export default function AppointmentComposerPanel({
         amount: Number(billing.collectAmount),
         method,
         paymentDate: dateInputToISO(billing.collectDate),
+        ...terminal,
         ...(method === "saved_card" ? { cardToken: billing.savedCardID } : {}),
         ...(method === "cheque" ? { checkNumber: billing.checkNumber } : {}),
       });
+      if (!payRes.success) {
+        reportFailure(payRes);
+        return null;
+      }
       return payRes.data?.checkoutUrl || null;
     }
     return null;
@@ -2770,6 +2786,9 @@ export default function AppointmentComposerPanel({
           ? {
               method: payload.billing?.method || "cash",
               collectDate: payload.billing?.collectDate || undefined,
+              ...(payload.billing?.method === "terminal"
+                ? { deviceID: payload.billing?.deviceID, promptTip: payload.billing?.promptTip }
+                : {}),
               ...(payload.billing?.method === "saved_card"
                 ? { savedCardID: payload.billing?.savedCardID }
                 : {}),

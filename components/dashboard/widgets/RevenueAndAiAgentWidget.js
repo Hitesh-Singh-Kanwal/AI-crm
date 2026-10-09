@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle, rechartsTooltipCursor, rechartsTooltipItemStyle } from '@/lib/chartStyles'
 import { Card, SectionLabel, Trend } from './shared'
 import DetailsButton from './DetailsButton'
+import { formatDate } from '@/lib/utils'
 
 function yearValue(row, which) {
   if (which === 'this') return row.thisYear ?? row.y2026 ?? 0
@@ -11,7 +12,7 @@ function yearValue(row, which) {
 }
 
 const DETAIL_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'customer', label: 'Customer' },
   { key: 'type', label: 'Type' },
   { key: 'method', label: 'Method' },

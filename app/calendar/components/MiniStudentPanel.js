@@ -11,6 +11,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import api from "@/lib/api";
+import { formatDate } from "@/lib/utils";
 import { formatStudioDate, formatStudioTime } from "@/lib/studioLocalDate";
 import { useStudioTimezone } from "@/lib/hooks/useStudioTimezone";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
@@ -1241,15 +1242,7 @@ export default function MiniStudentPanel({
                               </p>
                               {cp.purchaseDate && (
                                 <p className="text-[10px] text-muted-foreground">
-                                  Purchased{" "}
-                                  {new Date(cp.purchaseDate).toLocaleDateString(
-                                    "en-US",
-                                    {
-                                      month: "short",
-                                      day: "numeric",
-                                      year: "numeric",
-                                    },
-                                  )}
+                                  Purchased {formatDate(cp.purchaseDate)}
                                 </p>
                               )}
                             </div>
@@ -1268,14 +1261,7 @@ export default function MiniStudentPanel({
                                   Expires
                                 </p>
                                 <p className="text-[10px] font-semibold text-foreground">
-                                  {new Date(cp.expiryDate).toLocaleDateString(
-                                    "en-US",
-                                    {
-                                      month: "short",
-                                      day: "numeric",
-                                      year: "numeric",
-                                    },
-                                  )}
+                                  {formatDate(cp.expiryDate)}
                                 </p>
                               </div>
                             )}
@@ -1543,11 +1529,7 @@ export default function MiniStudentPanel({
                       ) : null}
 
                       <p className="text-[10px] text-muted-foreground">
-                        {new Date(enr.createdAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
+                        {formatDate(enr.createdAt)}
                       </p>
                         </>
                       )}
@@ -1799,10 +1781,7 @@ export default function MiniStudentPanel({
                                   "Customer"
                                 : "You"}{" "}
                               ·{" "}
-                              {new Date(msg.createdAt).toLocaleTimeString(
-                                "en-US",
-                                { hour: "numeric", minute: "2-digit" },
-                              )}
+                              {formatStudioTime(msg.createdAt)}
                             </span>
                           </div>
                         );
@@ -2036,14 +2015,7 @@ export default function MiniStudentPanel({
                                   <span
                                     className={`text-[10px] ${item.isOverdue ? "text-rose-500" : "text-muted-foreground"}`}
                                   >
-                                    {new Date(item.dueDate).toLocaleDateString(
-                                      "en-US",
-                                      {
-                                        month: "short",
-                                        day: "numeric",
-                                        year: "numeric",
-                                      },
-                                    )}
+                                    {formatDate(item.dueDate)}
                                   </span>
                                 </div>
                               </div>
@@ -2408,23 +2380,9 @@ export default function MiniStudentPanel({
                                 </div>
                               </div>
                               <p className="text-[10px] text-muted-foreground">
-                                {new Date(p.createdAt).toLocaleDateString(
-                                  "en-US",
-                                  {
-                                    weekday: "short",
-                                    month: "short",
-                                    day: "numeric",
-                                  },
-                                )}
+                                {formatStudioDate(p.createdAt)}
                                 {" · "}
-                                {new Date(p.createdAt).toLocaleTimeString(
-                                  "en-US",
-                                  {
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                    hour12: true,
-                                  },
-                                )}
+                                {formatStudioTime(p.createdAt)}
                               </p>
                             </div>
                           );
@@ -2494,11 +2452,7 @@ export default function MiniStudentPanel({
                     </p>
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] text-muted-foreground">
-                        {new Date(note.createdAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
+                        {formatDate(note.createdAt)}
                       </p>
                       <div className="flex items-center gap-1">
                         <button

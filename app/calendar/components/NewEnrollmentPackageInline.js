@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import api from "@/lib/api";
+import { formatDate } from "@/lib/utils";
 import { useCardProcessor } from "@/app/settings/payments/useCardProcessor";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from "@/lib/clover";
 import { toast } from "@/components/ui/toast";
@@ -47,9 +48,10 @@ function SendLinkChannelPicker({ value, onChange }) {
   );
 }
 
+// A date input's "2026-10-08" parses as UTC midnight; formatDate reads that as the
+// calendar day, where local formatting showed the day before west of UTC.
 function fmtDate(iso) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+  return formatDate(iso) || "—";
 }
 
 // Selling loose services is meant to be a two-field job, so the validity isn't
@@ -477,11 +479,12 @@ export default function NewEnrollmentPackageInline({
         index: i + 1,
         amount,
         isLast,
-        date: d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }),
+        date: fmtDate(d),
       });
+      // UTC month step keeps d on UTC midnight, so fmtDate keeps reading the right day.
       if (frequency === "weekly") d = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
       else if (frequency === "biweekly") d = new Date(d.getTime() + 14 * 24 * 60 * 60 * 1000);
-      else { d = new Date(d); d.setMonth(d.getMonth() + 1); }
+      else { d = new Date(d); d.setUTCMonth(d.getUTCMonth() + 1); }
     }
     return rows;
   }, [

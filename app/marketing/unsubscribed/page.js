@@ -15,12 +15,13 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
 import api from '@/lib/api'
+import { formatDateTime } from '@/lib/utils'
 
 function formatWhen(value) {
   if (!value) return '—'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString()
+  return formatDateTime(d)
 }
 
 export default function UnsubscribedEmailsPage() {

@@ -12,6 +12,7 @@ import { CalendarDays } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import { formatDate } from "@/lib/utils";
 import { useCardProcessor } from "@/app/settings/payments/useCardProcessor";
 import {
   openCheckoutTab,
@@ -202,11 +203,7 @@ export default function PaymentDueCard({
                 <span
                   className={`text-[12px] font-medium ${isOverdue ? "text-rose-600" : "text-foreground"}`}
                 >
-                  {new Date(dueDate).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
+                  {formatDate(dueDate)}
                 </span>
               </div>
             )}
@@ -261,12 +258,7 @@ export default function PaymentDueCard({
                 {dueDate && (
                   <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
                     <CalendarDays className="h-3 w-3" />
-                    Due{" "}
-                    {new Date(dueDate).toLocaleDateString("en-AU", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
+                    Due {formatDate(dueDate)}
                   </p>
                 )}
               </div>
