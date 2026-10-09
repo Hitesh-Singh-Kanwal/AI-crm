@@ -37,6 +37,13 @@ function isMongoId(value) {
   return /^[a-f\d]{24}$/i.test(String(value || ''))
 }
 
+function leadAiRepliesOn(lead) {
+  if (!lead) return true
+  if (lead.aiRepliesEnabled === false) return false
+  if (lead.stage === 'human intervention' && lead.aiRepliesEnabled !== true) return false
+  return true
+}
+
 function emailsMatchingAddress(records, contactEmail, contactName) {
   const normalized = normalizeEmailAddress(contactEmail)
   if (!normalized) return []
@@ -80,6 +87,9 @@ export default function CustomerInboxThread({ customer }) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [emailSending, setEmailSending] = useState(false)
   const [smsSending, setSmsSending] = useState(false)
+  const [aiRepliesOn, setAiRepliesOn] = useState(true)
+  const [aiToggleSaving, setAiToggleSaving] = useState(false)
+  const aiToggleGenRef = useRef(0)
   const [callPlacing, setCallPlacing] = useState(false)
   const [callLogsLoading, setCallLogsLoading] = useState(false)
   const [activeOutboundCall, setActiveOutboundCall] = useState(null)
@@ -271,6 +281,57 @@ export default function CustomerInboxThread({ customer }) {
     loadEmails,
     loadSmsPage,
   ])
+
+  useEffect(() => {
+    if (!leadId || !isMongoId(leadId)) {
+      setAiRepliesOn(true)
+      return
+    }
+    const genAtStart = aiToggleGenRef.current
+    let cancelled = false
+    api.get(`/api/lead/${leadId}`).then((res) => {
+      if (cancelled || !res.success) return
+      if (aiToggleGenRef.current !== genAtStart) return
+      setAiRepliesOn(leadAiRepliesOn(res.data))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [leadId])
+
+  const handleToggleAiReplies = useCallback(async (next) => {
+    if (!leadId || !isMongoId(leadId) || aiToggleSaving) return
+    const previous = aiRepliesOn
+    aiToggleGenRef.current += 1
+    setAiRepliesOn(next)
+    setAiToggleSaving(true)
+    try {
+      const result = await api.put(`/api/lead/${leadId}`, { aiRepliesEnabled: next })
+      if (!result.success) {
+        setAiRepliesOn(previous)
+        toast.error({
+          title: 'Could not update AI replies',
+          message: result.error || 'Try again.',
+        })
+        return
+      }
+      setAiRepliesOn(leadAiRepliesOn(result.data || { aiRepliesEnabled: next }))
+      toast.success({
+        title: next ? 'AI replies on' : 'AI replies off',
+        message: next
+          ? 'The agent will reply to this customer again.'
+          : 'The agent will stay quiet until you turn this back on.',
+      })
+    } catch (err) {
+      setAiRepliesOn(previous)
+      toast.error({
+        title: 'Could not update AI replies',
+        message: err?.message || 'Try again.',
+      })
+    } finally {
+      setAiToggleSaving(false)
+    }
+  }, [aiRepliesOn, aiToggleSaving, leadId, toast])
 
   const loadCalls = useCallback(
     async ({ force = false } = {}) => {
@@ -550,6 +611,7 @@ export default function CustomerInboxThread({ customer }) {
             result.message ||
             (scheduleNow ? 'SMS sent successfully' : 'SMS scheduled successfully'),
         })
+        if (leadId && isMongoId(leadId)) setAiRepliesOn(false)
         return true
       }
 
@@ -582,6 +644,7 @@ export default function CustomerInboxThread({ customer }) {
           result.message ||
           (scheduleNow ? 'Email sent successfully' : 'Email scheduled successfully'),
       })
+      if (leadId && isMongoId(leadId)) setAiRepliesOn(false)
       return true
     } catch (e) {
       console.error('Failed to send message:', e)
@@ -782,7 +845,10 @@ export default function CustomerInboxThread({ customer }) {
         onLoadMore={handleLoadMore}
         hasMore={hasMore}
         loadingMore={loadingMore}
-        leadData={contact}
+        leadData={leadId && isMongoId(leadId) ? { ...contact, _id: leadId } : contact}
+        aiRepliesOn={aiRepliesOn}
+        aiToggleSaving={aiToggleSaving}
+        onToggleAiReplies={leadId && isMongoId(leadId) ? handleToggleAiReplies : null}
         emailSending={emailSending}
         smsSending={smsSending}
         callPlacing={callPlacing}

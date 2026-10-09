@@ -272,6 +272,7 @@ function InboxPageContent() {
   const [scheduledLoading, setScheduledLoading] = useState(true)
   const [selectedScheduledId, setSelectedScheduledId] = useState(null)
   const [selectedLeadData, setSelectedLeadData] = useState(null)
+  const [aiToggleSaving, setAiToggleSaving] = useState(false)
   const [emailSending, setEmailSending] = useState(false)
   const [smsSending, setSmsSending] = useState(false)
   const [callPlacing, setCallPlacing] = useState(false)
@@ -698,6 +699,9 @@ function InboxPageContent() {
       return
     }
     const leadId = selectedConversation.replace('lead-', '')
+    // Drop the previous customer's profile immediately so the AI switch
+    // cannot be toggled against the wrong lead while this fetch is in flight.
+    setSelectedLeadData(null)
     let cancelled = false
     api.get(`/api/lead/${leadId}`).then((res) => {
       if (cancelled) return
@@ -749,6 +753,63 @@ function InboxPageContent() {
       ...prev,
       [convId]: (prev[convId] || []).filter((m) => m.id !== messageId),
     }))
+  }
+
+  // Missing flag is on, except a human-intervention lead that was never explicitly re-enabled.
+  const leadAiRepliesOn = (lead) => {
+    if (!lead) return true
+    if (lead.aiRepliesEnabled === false) return false
+    if (lead.stage === 'human intervention' && lead.aiRepliesEnabled !== true) return false
+    return true
+  }
+
+  const markAiPausedAfterStaffSend = (convId, leadData) => {
+    if (!String(convId || '').startsWith('lead-') || !leadData?._id) return
+    setSelectedLeadData((prev) =>
+      prev && String(prev._id) === String(leadData._id)
+        ? { ...prev, aiRepliesEnabled: false }
+        : prev,
+    )
+  }
+
+  const handleToggleAiReplies = async (next) => {
+    const leadId = selectedLeadData?._id
+    if (!leadId || aiToggleSaving) return
+    const previous = selectedLeadData
+    const stillThisLead = (prev) => prev && String(prev._id) === String(leadId)
+    setSelectedLeadData((prev) =>
+      stillThisLead(prev) ? { ...prev, aiRepliesEnabled: next } : prev,
+    )
+    setAiToggleSaving(true)
+    try {
+      const result = await api.put(`/api/lead/${leadId}`, { aiRepliesEnabled: next })
+      if (!result.success) {
+        setSelectedLeadData((prev) => (stillThisLead(prev) ? previous : prev))
+        toast.error({
+          title: 'Could not update AI replies',
+          message: result.error || 'Try again.',
+        })
+        return
+      }
+      const saved = result.data
+      if (saved && String(saved._id) === String(leadId)) {
+        setSelectedLeadData((prev) => (stillThisLead(prev) ? saved : prev))
+      }
+      toast.success({
+        title: next ? 'AI replies on' : 'AI replies off',
+        message: next
+          ? 'The agent will reply to this customer again.'
+          : 'The agent will stay quiet until you turn this back on.',
+      })
+    } catch (err) {
+      setSelectedLeadData((prev) => (stillThisLead(prev) ? previous : prev))
+      toast.error({
+        title: 'Could not update AI replies',
+        message: err?.message || 'Try again.',
+      })
+    } finally {
+      setAiToggleSaving(false)
+    }
   }
 
   const handleSendMessage = async ({
@@ -999,6 +1060,7 @@ function InboxPageContent() {
             : 'Find it under Scheduled until it sends.',
         })
         if (!scheduleNow) fetchScheduled()
+        markAiPausedAfterStaffSend(convId, leadData)
         return true
       } else if (effectiveChannel === 'Email') {
         const payload = buildSendOneEmailPayload({
@@ -1033,6 +1095,7 @@ function InboxPageContent() {
             : 'Find it under Scheduled until it sends.',
         })
         if (!scheduleNow) fetchScheduled()
+        markAiPausedAfterStaffSend(convId, leadData)
         return true
       }
       return false
@@ -1887,6 +1950,9 @@ function InboxPageContent() {
               onCallTabActive={handleCallTabActive}
               onMarkUnread={handleMarkUnread}
               onRenameContact={handleRenameContact}
+              aiRepliesOn={leadAiRepliesOn(selectedLeadData)}
+              aiToggleSaving={aiToggleSaving}
+              onToggleAiReplies={selectedLeadData?._id ? handleToggleAiReplies : null}
             />
           )}
         </div>
@@ -1894,7 +1960,14 @@ function InboxPageContent() {
         {/* Right: Details — desktop side panel */}
         {showDetails && selectedConvData && rightView === 'thread' && statusTab !== 'Scheduled' && (
           <div className="hidden lg:flex flex-col w-80 shrink-0 min-w-[20rem] min-h-0 h-full overflow-hidden">
-            <ContactDetails contact={selectedConvData.contact} leadData={selectedLeadData} onClose={() => setShowDetails(false)} />
+            <ContactDetails
+              contact={selectedConvData.contact}
+              leadData={selectedLeadData}
+              onClose={() => setShowDetails(false)}
+              aiRepliesOn={leadAiRepliesOn(selectedLeadData)}
+              aiToggleSaving={aiToggleSaving}
+              onToggleAiReplies={selectedLeadData?._id ? handleToggleAiReplies : null}
+            />
           </div>
         )}
 
@@ -1906,6 +1979,9 @@ function InboxPageContent() {
                 contact={selectedConvData.contact}
                 leadData={selectedLeadData}
                 onClose={() => setShowDetails(false)}
+                aiRepliesOn={leadAiRepliesOn(selectedLeadData)}
+                aiToggleSaving={aiToggleSaving}
+                onToggleAiReplies={selectedLeadData?._id ? handleToggleAiReplies : null}
               />
             )}
           </SheetContent>
