@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import api from "@/lib/api";
 import { getInitials } from "@/lib/utils";
+import { toStudioLocalDate, formatStudioDate } from "@/lib/studioLocalDate";
+import { getStudioTimezone } from "@/lib/studioTimezone";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -75,11 +77,7 @@ function StudentRow({ customer, sessions, lastDate }) {
         {lastDate && (
           <p className="text-[10px] text-muted-foreground">
             Last:{" "}
-            {new Date(lastDate).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}
+            {formatStudioDate(lastDate, null, { weekday: undefined, year: "numeric" })}
           </p>
         )}
       </div>
@@ -153,8 +151,9 @@ function SessionsTab({ events }) {
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       {sorted.map((ev, i) => {
         const status = deriveStatus(ev);
-        const date = new Date(ev.startDateTime);
-        const end = ev.endDateTime ? new Date(ev.endDateTime) : null;
+        // Shifted onto the studio's wall clock — the row reads its parts with local getters.
+        const date = toStudioLocalDate(new Date(ev.startDateTime), getStudioTimezone());
+        const end = ev.endDateTime ? toStudioLocalDate(new Date(ev.endDateTime), getStudioTimezone()) : null;
         const customers = Array.isArray(ev.customerIDs) ? ev.customerIDs : [];
         const names = customers
           .map((c) => (typeof c === "object" ? c.name : null))

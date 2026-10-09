@@ -2,10 +2,11 @@
 
 import { Card, SectionLabel, EmptyChart } from '@/components/dashboard/widgets/shared'
 import DetailsButton from './DetailsButton'
+import { formatDate } from '@/lib/utils'
 
 const DETAIL_COLUMNS = [
   { key: 'category', label: 'Category' },
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'label', label: 'Detail' },
   { key: 'name', label: 'Name' },
   { key: 'studio', label: 'Studio' },

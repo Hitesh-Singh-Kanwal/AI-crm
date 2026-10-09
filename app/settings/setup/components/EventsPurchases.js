@@ -20,8 +20,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import SearchInput from '@/components/ui/search-input'
 import api from '@/lib/api'
-import { nameWithMembers } from '@/lib/utils'
-import { dateInputToISO, todayDateInput } from '@/lib/studioLocalDate'
+import { nameWithMembers, formatDate } from '@/lib/utils'
+import { dateInputToISO, todayDateInput, studioDayStartISO } from '@/lib/studioLocalDate'
 import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import SavedCardField from '@/components/payments/SavedCardField'
@@ -564,7 +564,7 @@ export function SavedTemplatesTab() {
               <TableCell className="py-3 px-4 text-sm font-medium text-foreground">{row.name}</TableCell>
               <TableCell className="py-3 px-4 text-sm text-foreground">{row.eventTypeID?.name || '—'}</TableCell>
               <TableCell className="py-3 px-4 text-sm text-muted-foreground">{row.lineItems?.length ?? 0} product{(row.lineItems?.length ?? 0) !== 1 ? 's' : ''}</TableCell>
-              <TableCell className="py-3 px-4 text-sm text-muted-foreground">{row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : '—'}</TableCell>
+              <TableCell className="py-3 px-4 text-sm text-muted-foreground">{row.updatedAt ? formatDate(row.updatedAt) : '—'}</TableCell>
               <TableCell className="py-3 px-4"><StatusBadge active={row.isActive} /></TableCell>
               <TableCell className="py-3 pr-4 pl-0" onClick={(e) => e.stopPropagation()}>
                 <DropdownMenu>
@@ -608,6 +608,9 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const [saving, setSaving] = useState(false)
   const todayISO = todayDateInput
   const [purchaseDate, setPurchaseDate] = useState(todayISO())
+  const [cancelDate, setCancelDate] = useState('')
+  // The studio's tomorrow, as a date-input value (today's date + 1, in UTC so DST can't skip it).
+  const tomorrow = new Date(Date.parse(todayISO()) + 86400000).toISOString().slice(0, 10)
 
   // Billing
   const [billingType, setBillingType] = useState('one_time') // one_time | payment_plan | flexible
@@ -638,7 +641,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     setStep(1)
     setCustomer(initialCustomerID ? { _id: initialCustomerID, name: initialCustomerName || '' } : null)
     setCustomerQuery(''); setEventTypeID(''); setTemplateID('')
-    setName(''); setItems([]); setSaveAsTemplate(false); setPurchaseDate(todayISO())
+    setName(''); setItems([]); setSaveAsTemplate(false); setPurchaseDate(todayISO()); setCancelDate('')
     setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setSavedCardID(''); setDeviceID(''); setCheckNumber(''); setCollectDate(todayISO())
     setUseWallet(false); setWalletAmount(''); setWalletBalance(null)
     setTipEnabled(false); setTipTeacherID(''); setTipAmount('')
@@ -752,6 +755,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     if (!name.trim()) { toast.error('Enter a purchase name'); return }
     const lineItems = items.filter((li) => (li.name || '').trim())
     if (lineItems.length === 0) { toast.error('Add at least one line item'); return }
+    if (cancelDate && cancelDate < tomorrow) { toast.error('Cancel date must be after today'); return }
     if (payable > 0 && collectsBySavedCard && !savedCardID) { toast.error('Select a saved card'); return }
     if (payable > 0 && collectNow && achNotAvailable) { toast.error('ACH needs Stripe — connect it in Settings → Integrations.'); return }
     if (payable > 0 && collectNow && terminalDeviceMissing) { toast.error('Select a terminal device'); return }
@@ -763,6 +767,8 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         sourceTemplateID: templateID || undefined,
         name: name.trim(),
         purchaseDate: purchaseDate ? dateInputToISO(purchaseDate) : undefined,
+        // Midnight at the studio on that day, same as the customer profile's cancel date.
+        cancelDate: studioDayStartISO(cancelDate),
         lineItems,
         saveAsTemplate,
         templateName: name.trim(),
@@ -815,6 +821,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         })
         if (!planRes.success) toast.error('Purchase saved, but the payment plan failed', { description: planRes.error })
         else if (planRes.data?.checkoutUrl) { window.open(planRes.data.checkoutUrl, '_blank', 'noopener'); toast.success('Plan created — first installment checkout opened') }
+        else if (planRes.data?.pending && payMethod === 'terminal') toast.success('Plan created — charge sent to the reader, waiting for the card.')
         else toast.success(`${isPlan ? 'Payment plan' : 'Flexible schedule'} created`)
       }
 
@@ -910,10 +917,21 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                 <Input id="cep-name" placeholder="e.g. AODC New Jersey 2026" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="cep-purchase-date">Purchase date</Label>
-                <Input id="cep-purchase-date" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="cep-purchase-date">Purchase date</Label>
+                  <Input id="cep-purchase-date" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="cep-cancel-date">Cancel date <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                  <Input id="cep-cancel-date" type="date" min={tomorrow} value={cancelDate} onChange={(e) => setCancelDate(e.target.value)} />
+                </div>
               </div>
+              {cancelDate && (
+                <p className="text-xs text-muted-foreground -mt-3">
+                  Cancels automatically on this date: remaining payments stop and no refund is issued. You can change or undo it from the customer profile.
+                </p>
+              )}
 
               <p className="text-xs text-muted-foreground -mb-2">
                 Give a product an event date to auto-check it once that time passes; leave it blank to check it off manually from the customer profile.

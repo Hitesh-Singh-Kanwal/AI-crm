@@ -6,6 +6,7 @@ import LeadsDetailsButton from '@/components/owner-dashboard/widgets/LeadsDetail
 import { formatFieldDisplayValue } from '@/lib/dynamic-list-normalize'
 import { Caveat, Empty, Legend, NotAvailable, Panel, PanelHead, Reveal, SectionHead, moneyShort, num } from '../chrome'
 import { Cell, DataTable, RankedBars, Row, StackedCompare } from '../viz'
+import { formatDate } from '@/lib/utils'
 
 const LEAD_COLUMNS = [
   { key: 'name', label: 'Name' },
@@ -13,7 +14,7 @@ const LEAD_COLUMNS = [
   { key: 'phoneNumber', label: 'Phone' },
   { key: 'uploadType', label: 'Source', format: (v) => formatFieldDisplayValue(v) },
   { key: 'stage', label: 'Stage', format: (v) => formatFieldDisplayValue(v) },
-  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'createdAt', label: 'Created', format: (v) => formatDate(v) || '—' },
 ]
 
 export default function MarketingSection({ classic, rangeDays }) {

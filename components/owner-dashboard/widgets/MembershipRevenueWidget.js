@@ -4,6 +4,7 @@ import DonutChart from '@/components/dashboard/widgets/DonutChart'
 import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import WidgetHeader from './WidgetHeader'
 import DetailsButton from './DetailsButton'
+import { formatDate } from '@/lib/utils'
 
 function formatMoney(n) {
   const num = Number(n) || 0
@@ -13,7 +14,7 @@ function formatMoney(n) {
 }
 
 const DETAIL_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'customer', label: 'Customer' },
   { key: 'studio', label: 'Studio' },
   { key: 'membership', label: 'Membership' },

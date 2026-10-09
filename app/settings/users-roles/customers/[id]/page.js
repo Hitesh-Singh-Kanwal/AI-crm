@@ -66,10 +66,19 @@ import {
   CHECKOUT_TOAST,
 } from "@/lib/clover";
 import { PAYMENT_METHODS, NO_DEVICE_PAYMENT_METHODS } from "@/lib/paymentMethods";
-import { dateInputToISO, todayDateInput } from "@/lib/studioLocalDate";
+import {
+  dateInputToISO,
+  todayDateInput,
+  studioDayStartISO,
+  toDateInput,
+  toStudioLocalDate,
+  formatStudioDate,
+  formatStudioTime,
+} from "@/lib/studioLocalDate";
+import { getStudioTimezone } from "@/lib/studioTimezone";
 import { fetchWalletBalance } from "@/lib/wallet";
 import { useToast } from "@/components/ui/toast";
-import { getInitials, formatDate } from "@/lib/utils";
+import { getInitials, formatDate, formatDateTime } from "@/lib/utils";
 import {
   customerLifecycleColor,
   customerLifecycleLabel,
@@ -1046,7 +1055,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
                   </p>
                 );
               return upcoming.map((ev, i) => {
-                const date = new Date(ev.startDateTime);
+                const date = toStudioLocalDate(new Date(ev.startDateTime), getStudioTimezone());
                 const instructor = ev.teacherID?.name;
                 const label = ev.title || ev.calendarServiceID?.name || "Event";
                 return (
@@ -1103,7 +1112,7 @@ function ProfileTab({ customer, locations, onUpdated }) {
                   </p>
                 );
               return past.map((ev, i) => {
-                const date = new Date(ev.startDateTime);
+                const date = toStudioLocalDate(new Date(ev.startDateTime), getStudioTimezone());
                 const instructor = ev.teacherID?.name;
                 const label = ev.title || ev.calendarServiceID?.name || "Event";
                 return (
@@ -1314,12 +1323,7 @@ function PaymentSchedule({
                             )}
                           </p>
                           <p className={`text-[11px] ${isOverdue ? "text-rose-600" : "text-muted-foreground"}`}>
-                            Due{" "}
-                            {new Date(inst.dueDate).toLocaleDateString("en-AU", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })}
+                            Due {formatDate(inst.dueDate)}
                           </p>
                         </div>
                       </div>
@@ -1384,12 +1388,7 @@ function PaymentSchedule({
           })()}
           {plan.nextPaymentDate && plan.status === "active" && (
             <p className="text-[11px] text-muted-foreground mt-1.5">
-              Next payment due:{" "}
-              {new Date(plan.nextPaymentDate).toLocaleDateString("en-AU", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
+              Next payment due: {formatDate(plan.nextPaymentDate)}
             </p>
           )}
           {billingType === "flexible" &&
@@ -1611,7 +1610,7 @@ function PaymentTimeline({ customerID, enrollmentID, payments: preloadedPayments
 
               {payments.map((p, i) => {
                 const isRefund = p.type === "refund";
-                const date = new Date(p.createdAt);
+                const date = toStudioLocalDate(new Date(p.createdAt), getStudioTimezone());
                 return (
                   <div
                     key={p._id}
@@ -2430,20 +2429,15 @@ function PackagesTab({ customerID, locationID }) {
       const amount = isLast
         ? Math.max(0, parseFloat((totalAmount - baseAmt * (n - 1)).toFixed(2)))
         : baseAmt;
-      result.push({
-        date: d.toLocaleDateString("en-AU", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }),
-        amount,
-      });
+      // startDate is "YYYY-MM-DD" (UTC midnight): formatDate reads it as that day,
+      // and the UTC month step keeps it there.
+      result.push({ date: formatDate(d), amount });
       if (frequency === "weekly") d = new Date(d.getTime() + 7 * 86400000);
       else if (frequency === "biweekly")
         d = new Date(d.getTime() + 14 * 86400000);
       else {
         d = new Date(d);
-        d.setMonth(d.getMonth() + 1);
+        d.setUTCMonth(d.getUTCMonth() + 1);
       }
     }
     return result;
@@ -3296,16 +3290,7 @@ function PackagesTab({ customerID, locationID }) {
                       Billing Date
                     </p>
                     <p className="text-[12px] font-medium text-foreground">
-                      {addForm.purchaseDate
-                        ? new Date(addForm.purchaseDate).toLocaleDateString(
-                            "en-AU",
-                            { day: "numeric", month: "short", year: "numeric" },
-                          )
-                        : new Date().toLocaleDateString("en-AU", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          })}
+                      {formatDate(addForm.purchaseDate || new Date())}
                     </p>
                   </div>
                   <div className="flex items-center justify-between border-t border-border pt-3">
@@ -3758,20 +3743,15 @@ function EnrollmentsTab({
             parseFloat((enrTotalAmount - baseAmt * (n - 1)).toFixed(2)),
           )
         : baseAmt;
-      result.push({
-        date: d.toLocaleDateString("en-AU", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }),
-        amount,
-      });
+      // startDate is "YYYY-MM-DD" (UTC midnight): formatDate reads it as that day,
+      // and the UTC month step keeps it there.
+      result.push({ date: formatDate(d), amount });
       if (frequency === "weekly") d = new Date(d.getTime() + 7 * 86400000);
       else if (frequency === "biweekly")
         d = new Date(d.getTime() + 14 * 86400000);
       else {
         d = new Date(d);
-        d.setMonth(d.getMonth() + 1);
+        d.setUTCMonth(d.getUTCMonth() + 1);
       }
     }
     return result;
@@ -4710,28 +4690,9 @@ function EnrollmentsTab({
                                                     className={`grid grid-cols-[1fr_140px_150px] gap-2 items-center px-3 py-2 ${idx > 0 ? "border-t border-border/50" : ""}`}
                                                   >
                                                     <span className="text-[12px] text-foreground">
-                                                      {new Date(
-                                                        ev.startDateTime,
-                                                      ).toLocaleDateString(
-                                                        "en-US",
-                                                        {
-                                                          weekday: "short",
-                                                          month: "short",
-                                                          day: "numeric",
-                                                          year: "numeric",
-                                                        },
-                                                      )}{" "}
+                                                      {formatStudioDate(ev.startDateTime, null, { year: "numeric" })}{" "}
                                                       ·{" "}
-                                                      {new Date(
-                                                        ev.startDateTime,
-                                                      ).toLocaleTimeString(
-                                                        "en-US",
-                                                        {
-                                                          hour: "numeric",
-                                                          minute: "2-digit",
-                                                          hour12: true,
-                                                        },
-                                                      )}
+                                                      {formatStudioTime(ev.startDateTime)}
                                                     </span>
                                                     <span className="text-[12px] text-muted-foreground truncate">
                                                       {ev.teacherID?.name ||
@@ -5645,6 +5606,49 @@ function EnrollmentsTab({
   );
 }
 
+// Purchase-header date that reads as text ("Purchased Oct 9, 2026"). Pressing it
+// runs `onClick`, or opens the native date picker and reports the day to `onPick`.
+function DateChip({ label, value, placeholder = "Not set", valueClassName, onPick, onClick, children }) {
+  const inputRef = useRef(null);
+  function open() {
+    if (onClick) return onClick();
+    const el = inputRef.current;
+    try {
+      el.showPicker();
+    } catch {
+      el.focus();
+      el.click();
+    }
+  }
+  return (
+    <div className="relative inline-flex h-8 items-center rounded-lg border border-border bg-background text-[12px]">
+      <button
+        type="button"
+        onClick={open}
+        className="inline-flex h-full items-center gap-1.5 rounded-lg px-2.5 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      >
+        <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-muted-foreground">{label}</span>
+        <span className={value ? `font-medium ${valueClassName ?? "text-foreground"}` : "text-muted-foreground"}>
+          {value ? formatDate(value) : placeholder}
+        </span>
+      </button>
+      {children}
+      {onPick && (
+        <input
+          ref={inputRef}
+          type="date"
+          tabIndex={-1}
+          aria-hidden="true"
+          value={toDateInput(value)}
+          onChange={(e) => e.target.value && onPick(e.target.value)}
+          className="pointer-events-none absolute inset-0 opacity-0"
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Payment History Tab ─────────────────────────────────────────────────────
 
 function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID = null }) {
@@ -5660,6 +5664,8 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
   const [payInstallTarget, setPayInstallTarget] = useState(null); // { plan, index }
   const [changeInstallDateTarget, setChangeInstallDateTarget] = useState(null); // { plan, index }
   const [addInstallTarget, setAddInstallTarget] = useState(null); // { plan, outstanding }
+  const [cancelTarget, setCancelTarget] = useState(null); // purchase row
+  const [cancelling, setCancelling] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -5696,6 +5702,43 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
     else toast.error(res.error || "Failed to update purchase date");
   }
 
+  // Cancel dates are whole studio days: send midnight at the studio, so today cancels at
+  // once and a later day is run by the scheduler as that day starts there.
+  const toYmd = toDateInput;
+  const cancelDateISO = studioDayStartISO;
+
+  async function changeCancelDate(row, ymd) {
+    const res = await api.put(`/api/purchase/${row._id}`, { cancelDate: cancelDateISO(ymd) });
+    if (res.success) { toast.success("Cancel date updated"); load(); }
+    else toast.error(res.error || "Failed to update cancel date");
+  }
+
+  async function undoScheduledCancel(row) {
+    const res = await api.put(`/api/purchase/${row._id}`, { cancelDate: null });
+    if (res.success) { toast.success("Scheduled cancellation removed"); load(); }
+    else toast.error(res.error || "Failed to undo");
+  }
+
+  async function handleCancelPurchase(refundOption, refundAmount) {
+    if (!cancelTarget?.cancelDate) return;
+    setCancelling(true);
+    const res = await api.patch(`/api/purchase/${cancelTarget._id}/cancel`, {
+      refundOption,
+      refundAmount,
+      cancelDate: cancelDateISO(cancelTarget.cancelDate),
+    });
+    setCancelling(false);
+    if (res.success) {
+      toast.success(
+        cancelTarget.cancelDate > todayDateInput()
+          ? `Cancellation scheduled for ${formatDate(cancelDateISO(cancelTarget.cancelDate))}.`
+          : "Purchase cancelled.",
+      );
+      setCancelTarget(null);
+      load();
+    } else toast.error(res.error || "Failed to cancel.");
+  }
+
   const checkSummary = (row) => {
     const items = row.lineItems || [];
     const done = items.filter((li) => li.checkStatus === "checked").length;
@@ -5730,6 +5773,7 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
                 <option key={r._id} value={String(r._id)}>
                   {r.name}
                   {r.purchaseDate ?? r.createdAt ? ` — ${formatDate(r.purchaseDate ?? r.createdAt)}` : ""}
+                  {r.cancelStatus === "cancelled" ? " (cancelled)" : ""}
                 </option>
               ))}
             </select>
@@ -5776,25 +5820,54 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${paymentStatusColor(r.billingStatus)}`}
-                    >
-                      {paymentStatusLabel(r.billingStatus)}
-                    </span>
-                    <input
-                      type="date"
-                      title="Purchase date"
-                      aria-label="Purchase date"
-                      defaultValue={
-                        r.purchaseDate ?? r.createdAt
-                          ? new Date(r.purchaseDate ?? r.createdAt).toLocaleDateString("en-CA")
-                          : ""
-                      }
-                      key={`${r._id}-${r.purchaseDate ?? r.createdAt}`}
-                      onChange={(e) => e.target.value && changePurchaseDate(r, e.target.value)}
-                      className="h-7 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground outline-none focus:border-primary"
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {r.cancelStatus !== "cancelled" && (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${paymentStatusColor(r.billingStatus)}`}
+                      >
+                        {paymentStatusLabel(r.billingStatus)}
+                      </span>
+                    )}
+                    <DateChip
+                      label="Purchased"
+                      value={r.purchaseDate ?? r.createdAt}
+                      onPick={(ymd) => changePurchaseDate(r, ymd)}
                     />
+                    {r.cancelStatus === "cancelled" ? (
+                      // Already cancelled: re-dating only changes the record, no money moves.
+                      <DateChip
+                        label="Cancelled"
+                        value={r.cancelDate}
+                        valueClassName="text-destructive"
+                        onPick={(ymd) => changeCancelDate(r, ymd)}
+                      />
+                    ) : (
+                      // Opens the Cancel dialog; its date and this one are the same value.
+                      <DateChip
+                        label={r.cancelStatus === "scheduled" ? "Cancels" : "Cancel date"}
+                        value={
+                          String(cancelTarget?._id) === String(r._id) && cancelTarget.cancelDate
+                            ? `${cancelTarget.cancelDate}T00:00`
+                            : r.cancelDate
+                        }
+                        valueClassName="text-warning"
+                        onClick={() =>
+                          setCancelTarget({ ...r, cancelDate: toYmd(r.cancelDate) || todayDateInput() })
+                        }
+                      >
+                        {r.cancelStatus === "scheduled" && (
+                          <button
+                            type="button"
+                            aria-label="Remove scheduled cancellation"
+                            title="Remove scheduled cancellation"
+                            onClick={() => undoScheduledCancel(r)}
+                            className="mr-1 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </DateChip>
+                    )}
                   </div>
                 </div>
 
@@ -5825,6 +5898,7 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
                       component as Enrollments, so a paid-off plan drops away
                       instead of blocking the remainder below. */}
                   {plan &&
+                    r.cancelStatus !== "cancelled" &&
                     (plan.installments || []).some((i) => i.status === "pending") && (
                       <PaymentSchedule
                         plan={plan}
@@ -5930,10 +6004,7 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
                                   title="Auto-checks after this time"
                                 >
                                   auto ·{" "}
-                                  {new Date(li.eventDate).toLocaleString([], {
-                                    dateStyle: "short",
-                                    timeStyle: "short",
-                                  })}
+                                  {formatDateTime(li.eventDate)}
                                 </span>
                               ) : (
                                 <button
@@ -6007,6 +6078,18 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
         plan={addInstallTarget?.plan}
         outstanding={addInstallTarget?.outstanding}
         onSuccess={load}
+      />
+
+      <CancelRefundDialog
+        open={Boolean(cancelTarget)}
+        onClose={() => setCancelTarget(null)}
+        title="Cancel Purchase"
+        itemName={cancelTarget?.name}
+        maxRefundable={Math.max(0, Number(cancelTarget?.amountPaid) || 0)}
+        submitting={cancelling}
+        onConfirm={handleCancelPurchase}
+        date={cancelTarget?.cancelDate}
+        onDateChange={(d) => setCancelTarget((t) => ({ ...t, cancelDate: d }))}
       />
     </div>
   );
@@ -6271,8 +6354,9 @@ const INTRO_STATUS_PILL = {
 
 function formatIntroDateTime(value, timeZone) {
   if (!value) return "—";
+  const zone = timeZone || getStudioTimezone();
   return new Date(value).toLocaleString("en-US", {
-    ...(timeZone ? { timeZone } : {}),
+    ...(zone ? { timeZone: zone } : {}),
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -6285,8 +6369,9 @@ function formatIntroDateTime(value, timeZone) {
 
 function formatIntroDate(value, timeZone) {
   if (!value) return "—";
+  const zone = timeZone || getStudioTimezone();
   return new Date(value).toLocaleDateString("en-US", {
-    ...(timeZone ? { timeZone } : {}),
+    ...(zone ? { timeZone: zone } : {}),
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -6295,8 +6380,9 @@ function formatIntroDate(value, timeZone) {
 
 function formatIntroTime(value, timeZone) {
   if (!value) return "";
+  const zone = timeZone || getStudioTimezone();
   return new Date(value).toLocaleTimeString("en-US", {
-    ...(timeZone ? { timeZone } : {}),
+    ...(zone ? { timeZone: zone } : {}),
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -7299,8 +7385,10 @@ function LessonsTab({ customer }) {
             const isPersonalNoShow = (ev.noShowIDs || []).some(
               (id) => String(id?._id ?? id) === custId,
             );
-            const date = new Date(ev.startDateTime);
-            const end = ev.endDateTime ? new Date(ev.endDateTime) : null;
+            const date = toStudioLocalDate(new Date(ev.startDateTime), getStudioTimezone());
+            const end = ev.endDateTime
+              ? toStudioLocalDate(new Date(ev.endDateTime), getStudioTimezone())
+              : null;
             const instructor = ev.teacherID?.name;
             const label = ev.title || ev.calendarServiceID?.name || "Event";
             const serviceCode =
@@ -7982,7 +8070,7 @@ function SectionIndex({ section, summary, onOpen }) {
           (a, b) => new Date(a.startDateTime) - new Date(b.startDateTime),
         )[0];
         return {
-          value: next ? `Next ${formatDate(next.startDateTime)}` : "Nothing booked",
+          value: next ? `Next ${formatStudioDate(next.startDateTime, null, { weekday: undefined, year: "numeric" })}` : "Nothing booked",
           hint: `${summary.events.length} in the last year`,
         };
       }
@@ -8469,11 +8557,8 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
                     {nextLesson.title || "Lesson"}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {formatDate(nextLesson.startDateTime)} ·{" "}
-                    {new Date(nextLesson.startDateTime).toLocaleTimeString(
-                      "en-US",
-                      { hour: "numeric", minute: "2-digit" },
-                    )}
+                    {formatStudioDate(nextLesson.startDateTime, null, { weekday: undefined, year: "numeric" })} ·{" "}
+                    {formatStudioTime(nextLesson.startDateTime)}
                   </p>
                   {nextLesson.teacherID?.name && (
                     <p className="text-[11px] text-muted-foreground">
@@ -8528,7 +8613,7 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
                         {m.email && <p className="truncate">{m.email}</p>}
                         {m.phoneNumber && <p>{m.phoneNumber}</p>}
                         {m.dateOfBirth && (
-                          <p>DOB: {new Date(m.dateOfBirth).toLocaleDateString()}</p>
+                          <p>DOB: {formatDate(m.dateOfBirth)}</p>
                         )}
                         {m.gender && (
                           <p className="capitalize">{m.gender.replace(/_/g, " ")}</p>
@@ -9225,7 +9310,7 @@ function MembersTab({ customer, onUpdated }) {
                 {m.email && <p>{m.email}</p>}
                 {m.phoneNumber && <p>{m.phoneNumber}</p>}
                 {m.dateOfBirth && (
-                  <p>DOB: {new Date(m.dateOfBirth).toLocaleDateString()}</p>
+                  <p>DOB: {formatDate(m.dateOfBirth)}</p>
                 )}
                 {m.gender && (
                   <p className="capitalize">{m.gender.replace(/_/g, " ")}</p>
@@ -9624,7 +9709,7 @@ function ContractsTab({ customerID }) {
                   <p className="font-semibold">Signature Record</p>
                   <p>Signed by: {viewingContract.signedByName}</p>
                   <p>
-                    Date: {new Date(viewingContract.signedAt).toLocaleString()}
+                    Date: {formatDateTime(viewingContract.signedAt)}
                   </p>
                   {viewingContract.signedByIp && (
                     <p>IP: {viewingContract.signedByIp}</p>

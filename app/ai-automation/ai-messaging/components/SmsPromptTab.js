@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import SearchInput from '@/components/ui/search-input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { useToast, toast as pushToast } from '@/components/ui/toast'
 import {
@@ -592,7 +592,7 @@ export default function SmsPromptTab({
                       )}
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      Created {new Date(p.createdAt).toLocaleDateString()}
+                      Created {formatDate(p.createdAt)}
                     </p>
                   </div>
                 </div>

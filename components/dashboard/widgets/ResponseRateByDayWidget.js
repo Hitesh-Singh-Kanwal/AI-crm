@@ -5,9 +5,10 @@ import { BAR_GRADIENT_DEFS, BAR_FILL, BAR_FILL_SOFT } from '@/components/charts/
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle, rechartsTooltipCursor, rechartsTooltipItemStyle } from '@/lib/chartStyles'
 import { Card, WidgetTitleRow, EmptyChart } from './shared'
 import DetailsButton from './DetailsButton'
+import { formatDateTime } from '@/lib/utils'
 
 const DETAIL_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDateTime(v) || '—' },
   { key: 'lead', label: 'Lead' },
   { key: 'status', label: 'Status' },
 ]

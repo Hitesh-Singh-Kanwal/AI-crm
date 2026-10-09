@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, RotateCcw, X, Infinity as InfinityIcon, ChevronDown, Snowflake } from 'lucide-react'
 import api from '@/lib/api'
+import { formatDate } from '@/lib/utils'
 import { formatStudioDate, formatStudioTime, dateInputToISO, todayDateInput } from '@/lib/studioLocalDate'
 import { useStudioTimezone } from '@/lib/hooks/useStudioTimezone'
 import { toast } from '@/components/ui/toast'
@@ -35,9 +36,10 @@ const PAYMENT_STATUS_COLORS = {
   payment_pending: 'bg-warning/10 text-warning',
 }
 
+// Due/billing dates are stored as UTC midnight; formatDate reads them as that
+// calendar day instead of the day before west of UTC.
 function fmtDate(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return formatDate(iso) || '—'
 }
 
 function PayInstallmentDialog({ target, onClose, onPaid, locationID }) {

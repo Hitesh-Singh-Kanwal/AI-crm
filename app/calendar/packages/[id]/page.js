@@ -13,6 +13,7 @@ import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import LocationSelector from '@/components/shared/LocationSelector'
 import { cn } from '@/lib/utils'
+import { formatStudioTime, formatStudioDate } from '@/lib/studioLocalDate'
 
 const EVENT_STATUS_COLORS = {
   scheduled:           'bg-blue-500/10 text-blue-600',
@@ -23,13 +24,12 @@ const EVENT_STATUS_COLORS = {
   no_show_charged:     'bg-red-500/10 text-red-600',
 }
 
+// Lesson times read in the studio's timezone, not the viewer's.
 function formatEventDate(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return formatStudioDate(iso, null, { weekday: undefined, year: 'numeric' })
 }
 function formatEventTime(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return iso ? formatStudioTime(iso) : ''
 }
 
 function ServiceNamePicker({ value, onChange, onSelect, calendarServices }) {

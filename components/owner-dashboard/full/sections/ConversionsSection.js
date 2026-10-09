@@ -4,13 +4,14 @@ import { Fragment, useMemo, useState } from 'react'
 import DetailsButton from '@/components/owner-dashboard/widgets/DetailsButton'
 import { Caveat, Empty, Eyebrow, Foil, Legend, NotAvailable, Panel, PanelHead, Reveal, SectionHead, money, moneyShort, num } from '../chrome'
 import { Connector, Flow, MixBars, MultiLine, Stage } from '../viz'
+import { formatDate } from '@/lib/utils'
 
 const FUNNEL_COLUMNS = [
   { key: 'name', label: 'Lead' },
   { key: 'email', label: 'Email' },
   { key: 'phoneNumber', label: 'Phone' },
   { key: 'studio', label: 'Studio' },
-  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'createdAt', label: 'Created', format: (v) => formatDate(v) || '—' },
   { key: 'introBooked', label: 'Intro Booked' },
   { key: 'introAttended', label: 'Intro Attended' },
   { key: 'firstPurchase', label: 'First Purchase' },
@@ -23,7 +24,7 @@ const JOURNEY_COLUMNS = [
   { key: 'studio', label: 'Studio' },
   { key: 'purchaseCount', label: 'Purchases' },
   { key: 'totalLtv', label: 'Total LTV', format: money },
-  { key: 'lastPurchase', label: 'Last Purchase', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'lastPurchase', label: 'Last Purchase', format: (v) => formatDate(v) || '—' },
 ]
 
 const PROGRESSION_COLUMNS = [

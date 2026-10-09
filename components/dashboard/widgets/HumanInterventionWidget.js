@@ -4,9 +4,10 @@ import { CheckCircle2, Clock3, Headphones, UserX } from 'lucide-react'
 import { Card, SectionLabel, EmptyChart } from './shared'
 import DonutChart from './DonutChart'
 import DetailsButton from './DetailsButton'
+import { formatDateTime } from '@/lib/utils'
 
 const DETAIL_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDateTime(v) || '—' },
   { key: 'lead', label: 'Lead' },
   { key: 'reason', label: 'Reason' },
   { key: 'status', label: 'Status' },

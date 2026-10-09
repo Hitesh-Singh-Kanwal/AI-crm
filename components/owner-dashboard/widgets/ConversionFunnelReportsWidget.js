@@ -6,13 +6,14 @@ import { FunnelStage, FunnelConnector } from './shared'
 import WidgetHeader from './WidgetHeader'
 import DetailsButton from './DetailsButton'
 import FunnelDrilldownTable from './FunnelDrilldownTable'
+import { formatDate } from '@/lib/utils'
 
 const DETAIL_COLUMNS = [
   { key: 'name', label: 'Lead' },
   { key: 'email', label: 'Email' },
   { key: 'phoneNumber', label: 'Phone' },
   { key: 'studio', label: 'Studio' },
-  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'createdAt', label: 'Created', format: (v) => formatDate(v) || '—' },
   { key: 'introBooked', label: 'Intro Booked' },
   { key: 'introAttended', label: 'Intro Attended' },
   { key: 'firstPurchase', label: 'First Purchase' },

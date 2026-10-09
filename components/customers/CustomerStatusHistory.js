@@ -8,6 +8,7 @@ import {
 } from '@/lib/customer-lifecycle'
 import { useCustomerLifecycleStatuses } from '@/lib/use-customer-lifecycle'
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
+import { getStudioTimezone } from '@/lib/studioTimezone'
 
 /**
  * A customer's status timeline, plus any override currently holding it in place.
@@ -45,6 +46,7 @@ function formatWhen(value) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return ''
   return d.toLocaleString(undefined, {
+    timeZone: getStudioTimezone() || undefined,
     month: 'short',
     day: 'numeric',
     year: 'numeric',

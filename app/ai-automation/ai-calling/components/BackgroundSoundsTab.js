@@ -20,6 +20,7 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import BackgroundSoundUploadDialog from './BackgroundSoundUploadDialog'
 import { locationBadgeLabel, workingLocationQueryParam } from './locationScope'
 import WorkingStudioPicker from './WorkingStudioPicker'
+import { formatDateTime } from '@/lib/utils'
 
 const PAGE_SIZE = 12
 
@@ -44,7 +45,7 @@ function formatUploadedAt(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString()
+  return formatDateTime(d)
 }
 
 export default function BackgroundSoundsTab({

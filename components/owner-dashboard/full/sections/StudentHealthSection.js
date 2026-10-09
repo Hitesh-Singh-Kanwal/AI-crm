@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import DetailsButton from '@/components/owner-dashboard/widgets/DetailsButton'
 import { Empty, Legend, NotAvailable, Panel, PanelHead, Reveal, SectionHead, num } from '../chrome'
 import { Cell, DataTable, GoalBar, Row, StackedCompare } from '../viz'
+import { formatDate } from '@/lib/utils'
 
 const STUDENT_COLUMNS = [
   { key: 'name', label: 'Name' },
@@ -15,7 +16,7 @@ const STUDENT_COLUMNS = [
 
 const GOAL_COLUMNS = [
   { key: 'category', label: 'Category' },
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'label', label: 'Detail' },
   { key: 'name', label: 'Name' },
   { key: 'studio', label: 'Studio' },

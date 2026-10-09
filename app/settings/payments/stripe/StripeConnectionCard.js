@@ -8,6 +8,7 @@ import { hasPermission } from '@/lib/permissions'
 import LocationSelector from '@/components/shared/LocationSelector'
 import { useStripeConnection } from './useStripeConnection'
 import { useCloverConnection } from '@/app/settings/payments/clover/useCloverConnection'
+import { formatDate, formatDateTime } from '@/lib/utils'
 
 export default function StripeConnectionCard({ locationID: fixedLocationID = null }) {
   const [ownLocationID, setOwnLocationID] = useState(null)
@@ -86,8 +87,8 @@ export default function StripeConnectionCard({ locationID: fixedLocationID = nul
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div><dt className="text-muted-foreground">Account</dt><dd className="font-medium text-foreground">{accountName || '—'}</dd></div>
             <div><dt className="text-muted-foreground">Account ID</dt><dd className="font-mono text-xs text-foreground">{accountId || '—'}</dd></div>
-            <div><dt className="text-muted-foreground">Connected</dt><dd className="font-medium text-foreground">{connectedAt ? new Date(connectedAt).toLocaleDateString() : '—'}</dd></div>
-            <div><dt className="text-muted-foreground">Last webhook</dt><dd className="font-medium text-foreground">{webhookLastReceivedAt ? new Date(webhookLastReceivedAt).toLocaleString() : 'none yet'}</dd></div>
+            <div><dt className="text-muted-foreground">Connected</dt><dd className="font-medium text-foreground">{connectedAt ? formatDate(connectedAt) : '—'}</dd></div>
+            <div><dt className="text-muted-foreground">Last webhook</dt><dd className="font-medium text-foreground">{webhookLastReceivedAt ? formatDateTime(webhookLastReceivedAt) : 'none yet'}</dd></div>
           </dl>
           {!detailsSubmitted && (
             <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">

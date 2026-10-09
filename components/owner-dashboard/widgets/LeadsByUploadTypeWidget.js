@@ -9,6 +9,7 @@ import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
 import { RankedBarList } from './shared'
 import WidgetHeader from './WidgetHeader'
 import LeadsDetailsButton from './LeadsDetailsButton'
+import { formatDate } from '@/lib/utils'
 
 const DETAIL_COLUMNS = [
   { key: 'name', label: 'Name' },
@@ -16,7 +17,7 @@ const DETAIL_COLUMNS = [
   { key: 'phoneNumber', label: 'Phone' },
   { key: 'uploadType', label: 'Source', format: (v) => formatFieldDisplayValue(v) },
   { key: 'stage', label: 'Stage', format: (v) => formatFieldDisplayValue(v) },
-  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'createdAt', label: 'Created', format: (v) => formatDate(v) || '—' },
 ]
 
 /** YYYY-MM-DD, matching the value shape the Leads page date filters send. */

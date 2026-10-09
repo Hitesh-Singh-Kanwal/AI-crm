@@ -4,6 +4,7 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle } from '@/lib/chartStyles'
 import { chartCardClass } from './shared'
 import ReportsDetailsButton, { LEAD_DETAIL_COLUMNS } from './ReportsDetailsButton'
+import { formatDate } from '@/lib/utils'
 
 const PIPELINE_DETAIL_COLUMNS = [
   { key: 'name', label: 'Name' },
@@ -11,7 +12,7 @@ const PIPELINE_DETAIL_COLUMNS = [
   { key: 'phoneNumber', label: 'Phone' },
   { key: 'stage', label: 'Stage' },
   { key: 'studio', label: 'Studio' },
-  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'createdAt', label: 'Created', format: (v) => formatDate(v) || '—' },
 ]
 
 const FALLBACK_COLORS = ['#C81D77', '#E12279', '#F72585', '#FA6DAD', '#FB9BC7', '#0EA5E9', '#45B7DA', '#67E8F9']

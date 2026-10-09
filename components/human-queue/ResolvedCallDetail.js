@@ -10,6 +10,7 @@ import SuccessEvaluationDisplay from '@/components/ai-calling/SuccessEvaluationD
 import AiCallRecordingPlayer from '@/components/ai-calling/AiCallRecordingPlayer'
 import { cn, formatDateTime, getInitials } from '@/lib/utils'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { formatStudioTime } from '@/lib/studioLocalDate'
 
 function formatDuration(startedAt, endedAt) {
   if (!startedAt || !endedAt) return null
@@ -333,8 +334,8 @@ export default function ResolvedCallDetail({ queueItem, onBack }) {
                     { label: 'Assistant', value: assistantLabel },
                     { label: 'Duration', value: duration || '—' },
                     { label: 'Ended reason', value: endedReasonDisplay || '—' },
-                    { label: 'Started', value: startedAt ? new Date(startedAt).toLocaleTimeString() : '—' },
-                    { label: 'Ended', value: endedAt ? new Date(endedAt).toLocaleTimeString() : '—' },
+                    { label: 'Started', value: startedAt ? formatStudioTime(startedAt) : '—' },
+                    { label: 'Ended', value: endedAt ? formatStudioTime(endedAt) : '—' },
                   ].map(({ label, value }) => (
                     <div key={label} className="rounded-lg bg-muted/40 border border-border/50 px-3 py-2.5">
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{label}</p>

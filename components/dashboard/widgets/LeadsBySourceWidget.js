@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { chartGridStroke, chartAxisStroke, rechartsTooltipContentStyle, rechartsTooltipCursor, rechartsTooltipItemStyle } from '@/lib/chartStyles'
 import { Card, WidgetTitleRow, EmptyChart } from './shared'
 import DetailsButton from './DetailsButton'
+import { formatDate } from '@/lib/utils'
 
 const DETAIL_COLUMNS = [
   { key: 'name', label: 'Name' },
@@ -11,7 +12,7 @@ const DETAIL_COLUMNS = [
   { key: 'phoneNumber', label: 'Phone' },
   { key: 'uploadType', label: 'Source' },
   { key: 'stage', label: 'Stage' },
-  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'createdAt', label: 'Created', format: (v) => formatDate(v) || '—' },
 ]
 
 export default function LeadsBySourceWidget({ leadsBySourceConversion = [], defaultRange }) {

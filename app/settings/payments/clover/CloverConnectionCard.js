@@ -8,6 +8,7 @@ import { hasPermission } from '@/lib/permissions'
 import LocationSelector from '@/components/shared/LocationSelector'
 import { useCloverConnection } from './useCloverConnection'
 import CloverWebhookSetup from './CloverWebhookSetup'
+import { formatDate } from '@/lib/utils'
 
 export default function CloverConnectionCard({ locationID: fixedLocationID = null }) {
   const [ownLocationID, setOwnLocationID] = useState(null)
@@ -104,7 +105,7 @@ export default function CloverConnectionCard({ locationID: fixedLocationID = nul
           <div>
             <dt className="text-muted-foreground">Connected</dt>
             <dd className="font-medium text-foreground">
-              {connectedAt ? new Date(connectedAt).toLocaleDateString() : '—'}
+              {connectedAt ? formatDate(connectedAt) : '—'}
             </dd>
           </div>
         </dl>

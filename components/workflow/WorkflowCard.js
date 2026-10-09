@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Switch from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
+import { getStudioTimezone } from '@/lib/studioTimezone'
 import {
   flattenWorkflowSteps,
   normalizeWorkflowListIdFromApi,
@@ -17,6 +18,7 @@ function formatDate(value) {
   if (!value) return '—'
   try {
     return new Date(value).toLocaleDateString(undefined, {
+      timeZone: getStudioTimezone() || undefined,
       year: 'numeric',
       month: 'short',
       day: 'numeric',

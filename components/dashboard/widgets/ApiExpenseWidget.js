@@ -1,12 +1,12 @@
 'use client'
 
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import { Card, WidgetTitleRow, CHART_COLORS, EmptyChart } from './shared'
 import DonutChart from './DonutChart'
 import DetailsButton from './DetailsButton'
 
 const DETAIL_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDateTime(v) || '—' },
   { key: 'channel', label: 'Channel' },
   { key: 'lead', label: 'Lead' },
   { key: 'status', label: 'Status' },

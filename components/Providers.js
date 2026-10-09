@@ -1,10 +1,42 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { SWRConfig } from 'swr'
 import { Toaster } from 'sonner'
 import { InboxHeaderProvider } from '@/contexts/InboxHeaderContext'
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext'
 import { analyticsSwrConfig } from '@/lib/hooks/useAnalyticsOverview'
+import { isAuthenticated } from '@/lib/auth'
+import { loadCachedStudioTimezone, resolveStudioTimezone } from '@/lib/hooks/useStudioTimezone'
+import { getStudioTimezone } from '@/lib/studioTimezone'
+
+// Pages format dates while they render, so the studio timezone has to be known before
+// they mount — otherwise their first render uses the viewer's zone and never redoes it.
+// Only a first visit to a branch waits on the request; later loads read the cached zone.
+// Re-checked on navigation, because signing in moves to the app without a reload.
+function StudioTimezoneGate({ children }) {
+  const pathname = usePathname()
+  const [ready, setReady] = useState(false)
+  const triedRef = useRef(false)
+
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      setReady(true)
+      return
+    }
+    if (getStudioTimezone() || loadCachedStudioTimezone() || triedRef.current) {
+      setReady(true)
+      resolveStudioTimezone() // refresh the cache in the background; no-op once resolved
+      return
+    }
+    triedRef.current = true
+    setReady(false)
+    resolveStudioTimezone().finally(() => setReady(true))
+  }, [pathname])
+
+  return ready ? children : null
+}
 
 function ThemedToaster() {
   const { theme, mounted } = useTheme()
@@ -22,7 +54,7 @@ export default function Providers({ children }) {
     <ThemeProvider>
       <SWRConfig value={analyticsSwrConfig}>
         <InboxHeaderProvider>
-          {children}
+          <StudioTimezoneGate>{children}</StudioTimezoneGate>
           <ThemedToaster />
         </InboxHeaderProvider>
       </SWRConfig>

@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { todayDateInput } from "@/lib/studioLocalDate";
 
 const OPTIONS = [
   {
@@ -35,6 +36,10 @@ export default function CancelRefundDialog({
   maxRefundable = 0,
   submitting,
   onConfirm,
+  // Optional "Cancel date" (YYYY-MM-DD), owned by the caller so it stays in sync
+  // with the caller's own date field. A date after today schedules the cancel.
+  date,
+  onDateChange,
 }) {
   const [choice, setChoice] = useState("refund");
   const [amount, setAmount] = useState("");
@@ -46,13 +51,16 @@ export default function CancelRefundDialog({
     }
   }, [open, maxRefundable]);
 
+  const withDate = Boolean(onDateChange);
+  const scheduled = withDate && Boolean(date) && date > todayDateInput();
   const needsAmount = choice !== "none";
   const num = parseFloat(amount);
   const validAmount =
     !needsAmount || (!isNaN(num) && num > 0 && num <= maxRefundable);
+  const valid = validAmount && (!withDate || Boolean(date));
 
   function handleSubmit() {
-    if (!validAmount) return;
+    if (!valid) return;
     onConfirm(choice, needsAmount ? num : 0);
   }
 
@@ -65,6 +73,29 @@ export default function CancelRefundDialog({
         <p className="text-[13px] text-muted-foreground mt-1">
           Cancel <span className="font-semibold text-foreground">{itemName}</span>?
         </p>
+
+        {withDate && (
+          <div className="mt-3">
+            <label
+              htmlFor="cancel-refund-date"
+              className="block text-[12px] font-medium text-foreground mb-1.5"
+            >
+              Cancel date
+            </label>
+            <input
+              id="cancel-refund-date"
+              type="date"
+              value={date || ""}
+              onChange={(e) => onDateChange(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] outline-none focus:border-primary"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {scheduled
+                ? "Cancels automatically on this date. The refund below is applied then."
+                : "Cancels as soon as you confirm."}
+            </p>
+          </div>
+        )}
 
         <div className="mt-3 space-y-2">
           {OPTIONS.map((opt) => (
@@ -128,10 +159,12 @@ export default function CancelRefundDialog({
           <Button
             variant="destructive"
             size="sm"
-            disabled={submitting || !validAmount}
+            disabled={submitting || !valid}
             onClick={handleSubmit}
           >
-            {submitting ? "Cancelling…" : "Confirm Cancellation"}
+            {scheduled
+              ? submitting ? "Scheduling…" : "Schedule Cancellation"
+              : submitting ? "Cancelling…" : "Confirm Cancellation"}
           </Button>
         </div>
       </DialogContent>

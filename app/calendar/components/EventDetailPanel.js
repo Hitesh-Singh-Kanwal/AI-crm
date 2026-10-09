@@ -14,6 +14,7 @@ import {
 import api from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
 import { studioWallTimeToUtcISO, utcToStudioWallTime } from "@/lib/studio-time";
+import { formatStudioDate, formatStudioTime } from "@/lib/studioLocalDate";
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab } from "@/lib/clover";
 import { NO_DEVICE_PAYMENT_METHODS } from "@/lib/paymentMethods";
 import PaymentMethodPicker from "@/components/payments/PaymentMethodPicker";
@@ -190,24 +191,14 @@ function StatusBadge({ status }) {
   );
 }
 
-function formatDisplayDate(iso) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+// Both read in the studio's timezone (the passed one, else the active studio's), so a 9pm
+// New York lesson doesn't show as the next day to staff in India.
+function formatDisplayDate(iso, tz) {
+  return formatStudioDate(iso, tz, { year: "numeric" });
 }
 
 function formatDisplayTime(iso, tz) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString("en-US", {
-    ...(tz ? { timeZone: tz } : {}),
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  return formatStudioTime(iso, tz);
 }
 
 // ─── New customer form for group class ───────────────────────────────────────

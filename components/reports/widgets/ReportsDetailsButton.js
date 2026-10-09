@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { Table2 } from 'lucide-react'
 import { setDashboardDetailsRequest } from '@/lib/dashboardDetailsStore'
+import { formatDate } from '@/lib/utils'
 
 /**
  * Reports overview drill-down — same UX as dashboard/owner DetailsButton,
@@ -56,12 +57,12 @@ export const LEAD_DETAIL_COLUMNS = [
   { key: 'stage', label: 'Stage' },
   { key: 'studio', label: 'Studio' },
   { key: 'uploadType', label: 'Source' },
-  { key: 'createdAt', label: 'Created', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'createdAt', label: 'Created', format: (v) => formatDate(v) || '—' },
 ]
 
 export function paymentDetailColumns(formatMoney) {
   return [
-    { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+    { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
     { key: 'customer', label: 'Customer' },
     { key: 'type', label: 'Type' },
     { key: 'method', label: 'Method' },
@@ -70,7 +71,7 @@ export function paymentDetailColumns(formatMoney) {
 }
 
 export const ACTIVITY_DETAIL_COLUMNS = [
-  { key: 'date', label: 'Date', format: (v) => (v ? new Date(v).toLocaleDateString() : '—') },
+  { key: 'date', label: 'Date', format: (v) => formatDate(v) || '—' },
   { key: 'channel', label: 'Channel' },
   { key: 'lead', label: 'Lead' },
   { key: 'status', label: 'Status' },
