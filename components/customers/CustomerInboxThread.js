@@ -56,11 +56,11 @@ function emailsMatchingAddress(records, contactEmail, contactName) {
     .map((r) => mapEmailHistoryRecord(r, contactName))
 }
 
-function contactFromCustomer(customer, leadId = null) {
+function contactFromCustomer(customer, leadId = null, type = 'Customer') {
   return {
     id: leadId || customer.leadSourceID || customer._id,
     name: getContactDisplayName(customer),
-    type: 'Customer',
+    type,
     stage: '',
     nextVisit: '',
     phoneNumber: customer.phoneNumber || '',
@@ -69,17 +69,23 @@ function contactFromCustomer(customer, leadId = null) {
   }
 }
 
-function conversationIdFor(customer) {
-  return `customer-${customer._id}`
+function conversationIdFor(customer, contactType) {
+  return `${contactType.toLowerCase()}-${customer._id}`
 }
 
-export default function CustomerInboxThread({ customer }) {
+/**
+ * Inbox-style SMS / email / call thread for one contact.
+ * `customer` only needs _id, name, email, phoneNumber, locationID and — for a
+ * lead or converted customer — leadSourceID (the lead id threads are keyed by).
+ * `initialChannel` ('SMS' | 'Email' | 'Call') picks the tab it opens on.
+ */
+export default function CustomerInboxThread({ customer, contactType = 'Customer', initialChannel = 'SMS' }) {
   const toast = useToast()
   const [leadId, setLeadId] = useState(
     customer.leadSourceID ? String(customer.leadSourceID) : null,
   )
   const [contact, setContact] = useState(() =>
-    contactFromCustomer(customer, customer.leadSourceID ? String(customer.leadSourceID) : null),
+    contactFromCustomer(customer, customer.leadSourceID ? String(customer.leadSourceID) : null, contactType),
   )
   const [messages, setMessages] = useState([])
   const [hasMore, setHasMore] = useState(false)
@@ -97,8 +103,8 @@ export default function CustomerInboxThread({ customer }) {
   const [outboundCallStatus, setOutboundCallStatus] = useState('connecting')
 
   const conversationId = useMemo(
-    () => conversationIdFor(customer),
-    [customer._id],
+    () => conversationIdFor(customer, contactType),
+    [customer._id, contactType],
   )
   const conversation = useMemo(
     () => ({
@@ -107,9 +113,9 @@ export default function CustomerInboxThread({ customer }) {
       lastMessage: '',
       timestamp: new Date().toISOString(),
       unread: 0,
-      channel: 'SMS',
+      channel: initialChannel,
     }),
-    [conversationId, contact],
+    [conversationId, contact, initialChannel],
   )
 
   const requestGenRef = useRef(0)
@@ -228,7 +234,7 @@ export default function CustomerInboxThread({ customer }) {
     const gen = ++requestGenRef.current
     const initialLeadId = customer.leadSourceID ? String(customer.leadSourceID) : null
     setLeadId(initialLeadId)
-    setContact(contactFromCustomer(customer, initialLeadId))
+    setContact(contactFromCustomer(customer, initialLeadId, contactType))
     setMessages([])
     setHasMore(false)
     setSmsPage(1)
@@ -244,11 +250,14 @@ export default function CustomerInboxThread({ customer }) {
       if (gen !== requestGenRef.current) return
 
       const convs = convRes.success ? convRes.data || [] : []
-      const match = convs.find(
-        (c) =>
-          (phone && last10Digits(c.phoneNumber) === phone) ||
-          (email && normalizeEmailAddress(c.email) === email),
-      )
+      // Exact lead first — the same phone can belong to another lead at a different studio.
+      const match =
+        (initialLeadId && convs.find((c) => String(c.leadID || '') === initialLeadId)) ||
+        convs.find(
+          (c) =>
+            (phone && last10Digits(c.phoneNumber) === phone) ||
+            (email && normalizeEmailAddress(c.email) === email),
+        )
       const resolvedLeadId = match?.leadID
         ? String(match.leadID)
         : initialLeadId
@@ -258,7 +267,7 @@ export default function CustomerInboxThread({ customer }) {
 
       setContact((prev) => ({
         ...prev,
-        ...contactFromCustomer(customer, resolvedLeadId),
+        ...contactFromCustomer(customer, resolvedLeadId, contactType),
         phoneNumber: match?.phoneNumber || customer.phoneNumber || prev.phoneNumber,
         email: match?.email || customer.email || prev.email,
         locationID: match?.locationID || customer.locationID || prev.locationID,
@@ -278,6 +287,7 @@ export default function CustomerInboxThread({ customer }) {
     customer.phoneNumber,
     customer.name,
     customer.leadSourceID,
+    contactType,
     loadEmails,
     loadSmsPage,
   ])
@@ -319,7 +329,7 @@ export default function CustomerInboxThread({ customer }) {
       toast.success({
         title: next ? 'AI replies on' : 'AI replies off',
         message: next
-          ? 'The agent will reply to this customer again.'
+          ? `The agent will reply to this ${contactType.toLowerCase()} again.`
           : 'The agent will stay quiet until you turn this back on.',
       })
     } catch (err) {
