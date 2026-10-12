@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import SearchableSelect from '@/components/ui/searchable-select'
-import NewEnrollmentPackageInline from '@/app/calendar/components/NewEnrollmentPackageInline'
+import NewEnrollmentPackageInline, { enrollmentLinkTarget } from '@/app/calendar/components/NewEnrollmentPackageInline'
 import AssignMembershipForm from '@/components/membership/AssignMembershipForm'
+import { sendPaymentLink } from '@/components/payments/SendPaymentLinkMenu'
 import api from '@/lib/api'
 import { nameWithMembers } from '@/lib/utils'
 import { dateInputToISO } from '@/lib/studioLocalDate'
@@ -311,6 +312,11 @@ export default function CreateEnrollmentSheet({
       }
       checkoutUrl = payRes.data?.checkoutUrl || null
     }
+
+    // Sent here, not by the form: behind an agreement gate this runs only once it's signed.
+    const linkChannel = payload.billing?.sendLinkChannel
+    const linkTarget = linkChannel && enrollmentLinkTarget(payload, enrollmentID, addRes.data?.paymentPlan)
+    if (linkTarget) await sendPaymentLink({ customerID: resolvedCustomerID, target: linkTarget, channel: linkChannel })
 
     if (linkContractID) {
       api.patch(`/api/agreement-session/${linkContractID}/link-payment`, { enrollmentID }).catch(() => {})

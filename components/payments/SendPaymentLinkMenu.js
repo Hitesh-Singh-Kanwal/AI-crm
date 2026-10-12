@@ -35,25 +35,55 @@ const CHANNELS = [
 const money = (amount) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount) || 0)
 
+// Sends the link and says how it went. Returns whether it was sent.
+export async function sendPaymentLink({ customerID, target, channel }) {
+  const result = await api.post('/api/payment-request', { customerID, target, channel })
+  if (result.success) {
+    toast.success('Payment link sent', {
+      description: `They can pay ${money(result.data.amount)} from the link. This updates itself once they do.`,
+    })
+    return true
+  }
+  // The server's message is the useful one — it says which setup step is missing, or
+  // that the customer has no phone number on file.
+  toast.error('Could not send the payment link', { description: result.error })
+  return false
+}
+
+// Channel choice for a form whose method is "Share Link" (SHARE_LINK_METHOD).
+export function SendLinkChannelPicker({ value, onChange }) {
+  return (
+    <div className="flex gap-1.5">
+      {[
+        { value: 'email', label: 'Email' },
+        { value: 'sms', label: 'Text' },
+        { value: 'both', label: 'Both' },
+      ].map((c) => (
+        <button
+          key={c.value}
+          type="button"
+          onClick={() => onChange(c.value)}
+          className={`h-7 flex-1 rounded-md border text-[11px] font-medium transition-colors ${
+            value === c.value
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-border text-muted-foreground hover:bg-muted/40'
+          }`}
+        >
+          {c.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function SendPaymentLinkMenu({ customerID, target, onSent }) {
   const [sending, setSending] = useState(false)
 
   async function send(channel) {
     setSending(true)
-    const result = await api.post('/api/payment-request', { customerID, target, channel })
+    const sent = await sendPaymentLink({ customerID, target, channel })
     setSending(false)
-
-    if (result.success) {
-      toast.success('Payment link sent', {
-        description: `They can pay ${money(result.data.amount)} from the link. This updates itself once they do.`,
-      })
-      onSent?.()
-      return
-    }
-
-    // The server's message is the useful one — it says which setup step is missing, or
-    // that the customer has no phone number on file.
-    toast.error('Could not send the payment link', { description: result.error })
+    if (sent) onSent?.()
   }
 
   return (

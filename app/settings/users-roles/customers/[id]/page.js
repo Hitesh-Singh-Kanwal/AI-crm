@@ -53,6 +53,7 @@ import CustomerInboxThread from "@/components/customers/CustomerInboxThread";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import LocationSelector from "@/components/shared/LocationSelector";
 import SendPaymentLinkMenu from "@/components/payments/SendPaymentLinkMenu";
+import AutopayControl from "@/components/payments/AutopayControl";
 import PayInstallmentDialog from "@/components/payments/PayInstallmentDialog";
 import PaymentDueCard from "@/components/payments/PaymentDueCard";
 import api from "@/lib/api";
@@ -69,7 +70,6 @@ import { PAYMENT_METHODS, NO_DEVICE_PAYMENT_METHODS } from "@/lib/paymentMethods
 import {
   dateInputToISO,
   todayDateInput,
-  studioDayStartISO,
   toDateInput,
   toStudioLocalDate,
   formatStudioDate,
@@ -1244,6 +1244,18 @@ function PaymentSchedule({
 
       {open && (
         <div className="mt-3">
+          {["active", "past_due"].includes(plan.status) &&
+            plan.installments.some((i) => i.status === "pending") && (
+              <div className="mb-3">
+                <AutopayControl
+                  path={`/api/payment-plan/${plan._id}/autopay`}
+                  autoCharge={plan.autoCharge}
+                  customerID={customerID}
+                  locationID={locationID}
+                  onChange={onSent}
+                />
+              </div>
+            )}
           {(() => {
             const nextDueIdx = plan.installments.findIndex((i) => i.status === "pending");
             // Paid installments belong in Payment History, not this
@@ -5607,11 +5619,10 @@ function EnrollmentsTab({
 }
 
 // Purchase-header date that reads as text ("Purchased Oct 9, 2026"). Pressing it
-// runs `onClick`, or opens the native date picker and reports the day to `onPick`.
-function DateChip({ label, value, placeholder = "Not set", valueClassName, onPick, onClick, children }) {
+// opens the native date picker and reports the day to `onPick`.
+function DateChip({ label, value, placeholder = "Not set", onPick }) {
   const inputRef = useRef(null);
   function open() {
-    if (onClick) return onClick();
     const el = inputRef.current;
     try {
       el.showPicker();
@@ -5629,22 +5640,19 @@ function DateChip({ label, value, placeholder = "Not set", valueClassName, onPic
       >
         <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-muted-foreground">{label}</span>
-        <span className={value ? `font-medium ${valueClassName ?? "text-foreground"}` : "text-muted-foreground"}>
+        <span className={value ? "font-medium text-foreground" : "text-muted-foreground"}>
           {value ? formatDate(value) : placeholder}
         </span>
       </button>
-      {children}
-      {onPick && (
-        <input
-          ref={inputRef}
-          type="date"
-          tabIndex={-1}
-          aria-hidden="true"
-          value={toDateInput(value)}
-          onChange={(e) => e.target.value && onPick(e.target.value)}
-          className="pointer-events-none absolute inset-0 opacity-0"
-        />
-      )}
+      <input
+        ref={inputRef}
+        type="date"
+        tabIndex={-1}
+        aria-hidden="true"
+        value={toDateInput(value)}
+        onChange={(e) => e.target.value && onPick(e.target.value)}
+        className="pointer-events-none absolute inset-0 opacity-0"
+      />
     </div>
   );
 }
@@ -5702,38 +5710,16 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
     else toast.error(res.error || "Failed to update purchase date");
   }
 
-  // Cancel dates are whole studio days: send midnight at the studio, so today cancels at
-  // once and a later day is run by the scheduler as that day starts there.
-  const toYmd = toDateInput;
-  const cancelDateISO = studioDayStartISO;
-
-  async function changeCancelDate(row, ymd) {
-    const res = await api.put(`/api/purchase/${row._id}`, { cancelDate: cancelDateISO(ymd) });
-    if (res.success) { toast.success("Cancel date updated"); load(); }
-    else toast.error(res.error || "Failed to update cancel date");
-  }
-
-  async function undoScheduledCancel(row) {
-    const res = await api.put(`/api/purchase/${row._id}`, { cancelDate: null });
-    if (res.success) { toast.success("Scheduled cancellation removed"); load(); }
-    else toast.error(res.error || "Failed to undo");
-  }
-
   async function handleCancelPurchase(refundOption, refundAmount) {
-    if (!cancelTarget?.cancelDate) return;
+    if (!cancelTarget) return;
     setCancelling(true);
     const res = await api.patch(`/api/purchase/${cancelTarget._id}/cancel`, {
       refundOption,
       refundAmount,
-      cancelDate: cancelDateISO(cancelTarget.cancelDate),
     });
     setCancelling(false);
     if (res.success) {
-      toast.success(
-        cancelTarget.cancelDate > todayDateInput()
-          ? `Cancellation scheduled for ${formatDate(cancelDateISO(cancelTarget.cancelDate))}.`
-          : "Purchase cancelled.",
-      );
+      toast.success("Purchase cancelled.");
       setCancelTarget(null);
       load();
     } else toast.error(res.error || "Failed to cancel.");
@@ -5821,7 +5807,13 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
                     )}
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    {r.cancelStatus !== "cancelled" && (
+                    {r.cancelStatus === "cancelled" ? (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusColor("cancelled")}`}
+                      >
+                        cancelled
+                      </span>
+                    ) : (
                       <span
                         className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${paymentStatusColor(r.billingStatus)}`}
                       >
@@ -5833,40 +5825,15 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
                       value={r.purchaseDate ?? r.createdAt}
                       onPick={(ymd) => changePurchaseDate(r, ymd)}
                     />
-                    {r.cancelStatus === "cancelled" ? (
-                      // Already cancelled: re-dating only changes the record, no money moves.
-                      <DateChip
-                        label="Cancelled"
-                        value={r.cancelDate}
-                        valueClassName="text-destructive"
-                        onPick={(ymd) => changeCancelDate(r, ymd)}
-                      />
-                    ) : (
-                      // Opens the Cancel dialog; its date and this one are the same value.
-                      <DateChip
-                        label={r.cancelStatus === "scheduled" ? "Cancels" : "Cancel date"}
-                        value={
-                          String(cancelTarget?._id) === String(r._id) && cancelTarget.cancelDate
-                            ? `${cancelTarget.cancelDate}T00:00`
-                            : r.cancelDate
-                        }
-                        valueClassName="text-warning"
-                        onClick={() =>
-                          setCancelTarget({ ...r, cancelDate: toYmd(r.cancelDate) || todayDateInput() })
-                        }
+                    {r.cancelStatus !== "cancelled" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2.5 text-[11px] font-medium border-destructive/40 text-destructive hover:bg-destructive/10"
+                        onClick={() => setCancelTarget(r)}
                       >
-                        {r.cancelStatus === "scheduled" && (
-                          <button
-                            type="button"
-                            aria-label="Remove scheduled cancellation"
-                            title="Remove scheduled cancellation"
-                            onClick={() => undoScheduledCancel(r)}
-                            className="mr-1 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </DateChip>
+                        <X className="h-3 w-3 mr-1" /> Cancel
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -6088,8 +6055,6 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
         maxRefundable={Math.max(0, Number(cancelTarget?.amountPaid) || 0)}
         submitting={cancelling}
         onConfirm={handleCancelPurchase}
-        date={cancelTarget?.cancelDate}
-        onDateChange={(d) => setCancelTarget((t) => ({ ...t, cancelDate: d }))}
       />
     </div>
   );
@@ -6102,6 +6067,7 @@ function PaymentsTab({ customerID }) {
   const [total, setTotal] = useState(0);
   const [refundTarget, setRefundTarget] = useState(null);
   const LIMIT = 20;
+  const lifetime = useLifetimeStats(customerID);
 
   const load = useCallback(
     async (p = 1) => {
@@ -6259,6 +6225,13 @@ function PaymentsTab({ customerID }) {
         </>
       )}
 
+      {/* Newest first, so the old system's total belongs after the last page. */}
+      {lifetime?.spend.imported > 0 && page >= totalPages && (
+        <ImportedHistoryNote importedAt={lifetime.importedAt}>
+          ${lifetime.spend.imported.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} spent
+        </ImportedHistoryNote>
+      )}
+
       <IssueRefundDialog
         open={Boolean(refundTarget)}
         onClose={() => setRefundTarget(null)}
@@ -6289,7 +6262,19 @@ function deriveEventStatus(ev) {
 // only "paid" while the package it draws from is fully collected — a refund that
 // drops paymentStatus below "paid" (or amountCollected below totalPaid) flips
 // the lesson back to Unpaid, matching the calendar.
+// Lessons brought in by a migration import. They were taken and settled in the old
+// system, so they carry no package charge and must not read as unpaid here.
+const isMigratedEvent = (ev) => Boolean(ev?.importBatchID);
+
+// The importer keeps the lesson type and teacher as text in notes ("Type: private —
+// Teacher: Olga"), since they are not resolved to a catalog service or a user.
+function migratedNote(ev, label) {
+  const m = String(ev?.notes || "").match(new RegExp(label + ": ([^—]+)"));
+  return m ? m[1].trim() : "";
+}
+
 function deriveEventPaid(ev) {
+  if (isMigratedEvent(ev)) return true;
   if (ev.payment?.collected) return true;
   if (["credits", "direct", "mixed", "membership"].includes(ev.chargeMethod))
     return true;
@@ -7215,15 +7200,16 @@ function LessonsTab({ customer }) {
   const [showFilters, setShowFilters] = useState(false);
   const [sortOrder, setSortOrder] = useState("new_to_old");
   const custId = String(customer?._id ?? "");
+  const lifetime = useLifetimeStats(customer?._id);
 
   useEffect(() => {
     if (!customer?._id) return;
-    const past = new Date();
-    past.setFullYear(past.getFullYear() - 2);
+    // No lower bound: a migrated student can have lessons from years back, and all of
+    // them belong in this history.
     const future = new Date();
     future.setFullYear(future.getFullYear() + 1);
     const params = new URLSearchParams({
-      start: past.toISOString(),
+      start: new Date("1990-01-01").toISOString(),
       end: future.toISOString(),
     });
     // Query the customer directly. The org-wide /api/calendar list this used to
@@ -7258,6 +7244,15 @@ function LessonsTab({ customer }) {
       </div>
     );
   }
+
+  // The old system's lesson count, as the oldest entry: at the bottom New to Old, the
+  // top Old to New. Unfiltered list only — it is not a lesson a filter can match.
+  const importedNote =
+    lifetime?.lessons.imported > 0 && activeFilters.size === 0 ? (
+      <ImportedHistoryNote importedAt={lifetime.importedAt}>
+        {lifetime.lessons.imported.toLocaleString()} lesson{lifetime.lessons.imported === 1 ? "" : "s"} taken
+      </ImportedHistoryNote>
+    ) : null;
 
   const filteredEvents = events
     .filter((ev) => {
@@ -7373,6 +7368,8 @@ function LessonsTab({ customer }) {
         </div>
       )}
 
+      {sortOrder === "old_to_new" && importedNote}
+
       {filteredEvents.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
           No events found
@@ -7389,10 +7386,17 @@ function LessonsTab({ customer }) {
             const end = ev.endDateTime
               ? toStudioLocalDate(new Date(ev.endDateTime), getStudioTimezone())
               : null;
-            const instructor = ev.teacherID?.name;
-            const label = ev.title || ev.calendarServiceID?.name || "Event";
-            const serviceCode =
-              ev.calendarServiceID?.serviceCode ?? ev.type ?? "";
+            const migrated = isMigratedEvent(ev);
+            const instructor = ev.teacherID?.name || (migrated ? migratedNote(ev, "Teacher") : "");
+            const migratedType = migrated ? migratedNote(ev, "Type") : "";
+            const label = migrated
+              ? migratedType
+                ? migratedType.charAt(0).toUpperCase() + migratedType.slice(1) + " lesson"
+                : "Lesson"
+              : ev.title || ev.calendarServiceID?.name || "Event";
+            const serviceCode = migrated
+              ? "Previous system"
+              : ev.calendarServiceID?.serviceCode ?? ev.type ?? "";
             const isPaid = deriveEventPaid(ev);
             const isCancelledNoCharge =
               status === "cancelled_no_charge" ||
@@ -7426,12 +7430,19 @@ function LessonsTab({ customer }) {
                       {label}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
-                      {date.toLocaleTimeString("en-US", {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                      {end &&
-                        ` – ${end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`}
+                      {migrated ? (
+                        // A history sheet has a day, not a time — show the year instead.
+                        date.toLocaleDateString("en-US", { year: "numeric" })
+                      ) : (
+                        <>
+                          {date.toLocaleTimeString("en-US", {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                          {end &&
+                            ` – ${end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`}
+                        </>
+                      )}
                       {instructor && ` · ${instructor}`}
                     </p>
                     {serviceCode && (
@@ -7471,6 +7482,8 @@ function LessonsTab({ customer }) {
           })}
         </div>
       )}
+
+      {sortOrder === "new_to_old" && importedNote}
     </div>
   );
 }
@@ -7499,10 +7512,13 @@ function HistoryTab({ customer }) {
   const legacy = customer?.customFields?.migrationLegacy || {};
   const hasLegacy = Object.keys(legacy).length > 0;
 
-  const totalLessons = HISTORY_COUNT_FIELDS.reduce(
-    (sum, { key }) => sum + (Number(legacy[key]) || 0),
-    0,
-  );
+  // Same rule as the Total Lessons Taken card: the single imported total when given,
+  // else the per-type counters added up.
+  const countFields = HISTORY_COUNT_FIELDS.filter(({ key }) => legacy[key] != null);
+  const totalLessons =
+    legacy.totalLessonsTaken != null
+      ? Number(legacy.totalLessonsTaken) || 0
+      : countFields.reduce((sum, { key }) => sum + (Number(legacy[key]) || 0), 0);
 
   return (
     <div className="flex flex-col gap-4">
@@ -7565,7 +7581,7 @@ function HistoryTab({ customer }) {
             <div className="rounded-xl border border-border bg-card p-5">
               <h2 className="mb-4 text-[13px] font-semibold text-foreground">Historic lesson counts</h2>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-                {HISTORY_COUNT_FIELDS.map(({ key, label }) => (
+                {countFields.map(({ key, label }) => (
                   <div key={key} className="rounded-xl border border-border bg-card px-4 py-3">
                     <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
                     <p className="text-[19px] font-semibold text-foreground">
@@ -8189,9 +8205,37 @@ function SectionIndex({ section, summary, onOpen }) {
 
 // ─── Overview ────────────────────────────────────────────────────────────────
 
+// Lifetime lessons taken / lifetime spend: the old system's totals from the import
+// plus everything recorded here since (GET /api/customer/:id/lifetime-stats).
+function useLifetimeStats(customerID) {
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    if (!customerID) return;
+    let alive = true;
+    api.get(`/api/customer/${customerID}/lifetime-stats`).then((res) => {
+      if (alive && res.success) setStats(res.data);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [customerID]);
+  return stats;
+}
+
+// The "before this app" line at the bottom of a history list, so the imported total
+// reads as the oldest entry with everything recorded here above it.
+function ImportedHistoryNote({ importedAt, children }) {
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-5 py-3.5 text-[12px] text-muted-foreground">
+      <span className="font-medium text-foreground">{children}</span>
+      {" "}in the previous system{importedAt ? `, imported ${formatDate(importedAt)}` : ""}.
+    </div>
+  );
+}
+
 function MetricCard({ label, value, hint, accent = "text-foreground", children }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
+    <div className="h-full rounded-2xl border border-border bg-card p-4">
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
@@ -8322,7 +8366,10 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
 
   const totalOwed = owed.reduce((sum, r) => sum + r.amount, 0);
 
-  const lifetimeSpend = useMemo(
+  // Server totals include the old system's imported figures and aren't capped by the
+  // payment page size; the local sum is only a stand-in until they load.
+  const lifetime = useLifetimeStats(customer._id);
+  const localSpend = useMemo(
     () =>
       summary.payments
         .filter((p) => p.status === "completed")
@@ -8332,6 +8379,7 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
         ),
     [summary.payments],
   );
+  const lifetimeSpend = lifetime ? lifetime.spend.total : localSpend;
 
   const nextLesson = useMemo(
     () =>
@@ -8385,7 +8433,7 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
   return (
     <div className="space-y-4">
       {/* Health metrics */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           label="Current enrollment"
           value={`${summary.sessions.remaining} lesson${summary.sessions.remaining === 1 ? "" : "s"}`}
@@ -8411,11 +8459,26 @@ function OverviewSection({ customer, locations, summary, onOpen, onUpdated }) {
               : undefined
           }
         />
+        <ClickableRow onClick={() => onOpen("lessons")} className="rounded-2xl">
+          <MetricCard
+            label="Total lessons taken"
+            value={lifetime ? lifetime.lessons.total.toLocaleString() : "—"}
+            hint={
+              lifetime?.lessons.imported
+                ? `${lifetime.lessons.imported.toLocaleString()} before this app · view history →`
+                : "View lesson history →"
+            }
+          />
+        </ClickableRow>
         <ClickableRow onClick={() => onOpen("payments")} className="rounded-2xl">
           <MetricCard
             label="Lifetime spend"
             value={money(lifetimeSpend)}
-            hint="Completed payments less refunds · view history →"
+            hint={
+              lifetime?.spend.imported
+                ? `${money(lifetime.spend.imported)} before this app · view history →`
+                : "Completed payments less refunds · view history →"
+            }
           />
         </ClickableRow>
       </div>

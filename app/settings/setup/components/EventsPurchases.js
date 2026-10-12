@@ -21,14 +21,17 @@ import { Label } from '@/components/ui/label'
 import SearchInput from '@/components/ui/search-input'
 import api from '@/lib/api'
 import { nameWithMembers, formatDate } from '@/lib/utils'
-import { dateInputToISO, todayDateInput, studioDayStartISO } from '@/lib/studioLocalDate'
+import { dateInputToISO, todayDateInput } from '@/lib/studioLocalDate'
 import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import SavedCardField from '@/components/payments/SavedCardField'
 import CheckNumberField from '@/components/payments/CheckNumberField'
 import TerminalDeviceField, { terminalTipPayload } from '@/components/payments/TerminalDeviceField'
 import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
-import { PAYMENT_METHODS_WITH_SAVED_CARD } from '@/lib/paymentMethods'
+import { SendLinkChannelPicker, sendPaymentLink } from '@/components/payments/SendPaymentLinkMenu'
+import { PAYMENT_METHODS_WITH_SAVED_CARD, SHARE_LINK_METHOD } from '@/lib/paymentMethods'
+
+const PURCHASE_PAY_METHODS = [...PAYMENT_METHODS_WITH_SAVED_CARD.filter((m) => m.value !== 'wallet'), SHARE_LINK_METHOD]
 import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
 
 const money = (n) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -608,14 +611,13 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const [saving, setSaving] = useState(false)
   const todayISO = todayDateInput
   const [purchaseDate, setPurchaseDate] = useState(todayISO())
-  const [cancelDate, setCancelDate] = useState('')
-  // The studio's tomorrow, as a date-input value (today's date + 1, in UTC so DST can't skip it).
-  const tomorrow = new Date(Date.parse(todayISO()) + 86400000).toISOString().slice(0, 10)
 
   // Billing
   const [billingType, setBillingType] = useState('one_time') // one_time | payment_plan | flexible
   const [collectNow, setCollectNow] = useState(true)
-  const [payMethod, setPayMethod] = useState('cash') // cash | card | ach | terminal | cheque | other | saved_card
+  const [payMethod, setPayMethod] = useState('cash') // cash | card | ach | terminal | cheque | other | saved_card | link
+  const [linkChannel, setLinkChannel] = useState('email')
+  const isLink = payMethod === SHARE_LINK_METHOD.value
   const [savedCardID, setSavedCardID] = useState('')
   const [deviceID, setDeviceID] = useState('')
   const [checkNumber, setCheckNumber] = useState('')
@@ -641,8 +643,8 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     setStep(1)
     setCustomer(initialCustomerID ? { _id: initialCustomerID, name: initialCustomerName || '' } : null)
     setCustomerQuery(''); setEventTypeID(''); setTemplateID('')
-    setName(''); setItems([]); setSaveAsTemplate(false); setPurchaseDate(todayISO()); setCancelDate('')
-    setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setSavedCardID(''); setDeviceID(''); setCheckNumber(''); setCollectDate(todayISO())
+    setName(''); setItems([]); setSaveAsTemplate(false); setPurchaseDate(todayISO())
+    setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setLinkChannel('email'); setSavedCardID(''); setDeviceID(''); setCheckNumber(''); setCollectDate(todayISO())
     setUseWallet(false); setWalletAmount(''); setWalletBalance(null)
     setTipEnabled(false); setTipTeacherID(''); setTipAmount('')
     setPlanCount('3'); setPlanFreq('monthly'); setPlanStart(todayISO())
@@ -699,7 +701,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
 
   const isPlan = billingType === 'payment_plan'
   const isFlex = billingType === 'flexible'
-  const walletEligible = billingType === 'one_time' && collectNow && useWallet && walletBalance != null
+  const walletEligible = billingType === 'one_time' && collectNow && !isLink && useWallet && walletBalance != null
   const walletEntered = walletEligible ? Number(walletAmount) || 0 : 0
   const walletApplied = Math.min(walletEntered, payable, walletBalance ?? 0)
   const walletOver = walletEligible && walletEntered > (walletBalance ?? 0)
@@ -755,7 +757,6 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     if (!name.trim()) { toast.error('Enter a purchase name'); return }
     const lineItems = items.filter((li) => (li.name || '').trim())
     if (lineItems.length === 0) { toast.error('Add at least one line item'); return }
-    if (cancelDate && cancelDate < tomorrow) { toast.error('Cancel date must be after today'); return }
     if (payable > 0 && collectsBySavedCard && !savedCardID) { toast.error('Select a saved card'); return }
     if (payable > 0 && collectNow && achNotAvailable) { toast.error('ACH needs Stripe — connect it in Settings → Integrations.'); return }
     if (payable > 0 && collectNow && terminalDeviceMissing) { toast.error('Select a terminal device'); return }
@@ -767,8 +768,6 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         sourceTemplateID: templateID || undefined,
         name: name.trim(),
         purchaseDate: purchaseDate ? dateInputToISO(purchaseDate) : undefined,
-        // Midnight at the studio on that day, same as the customer profile's cancel date.
-        cancelDate: studioDayStartISO(cancelDate),
         lineItems,
         saveAsTemplate,
         templateName: name.trim(),
@@ -780,7 +779,10 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
       if (payable <= 0) {
         toast.success('Events & products created')
       } else if (billingType === 'one_time') {
-        if (collectNow && !walletOver) {
+        if (collectNow && isLink) {
+          toast.success('Events & products created')
+          await sendPaymentLink({ customerID: customer._id, target: { kind: 'purchase', purchaseID: purchase._id }, channel: linkChannel })
+        } else if (collectNow && !walletOver) {
           const tip = tipEnabled && tipTeacherID && Number(tipAmount) > 0
             ? { teacherID: tipTeacherID, amount: Number(tipAmount), method: payMethod === 'card' ? 'card' : payMethod }
             : undefined
@@ -816,10 +818,21 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
           billing = { customInstallments: scheduleRows, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}), ...(payMethod === 'terminal' ? { deviceID, ...terminalTipPayload() } : {}) }
         }
         const effectiveCollectNow = isPlan ? collectNow : flexInitialAmountN > 0 && collectNow
+        // "link" is not a method the backend records: the plan is created uncollected and
+        // its first installment (flexible: the initial payment) goes out as a link.
+        if (isLink) billing.method = undefined
         const planRes = await api.post('/api/payment-plan/purchase', {
-          customerID: customer._id, purchaseID: purchase._id, collectNow: effectiveCollectNow, billing,
+          customerID: customer._id, purchaseID: purchase._id, collectNow: effectiveCollectNow && !isLink, billing,
         })
         if (!planRes.success) toast.error('Purchase saved, but the payment plan failed', { description: planRes.error })
+        else if (isLink && effectiveCollectNow) {
+          toast.success(`${isPlan ? 'Payment plan' : 'Flexible schedule'} created`)
+          await sendPaymentLink({
+            customerID: customer._id,
+            target: { kind: 'installment', paymentPlanID: planRes.data?.plan?._id, installmentIndex: 0 },
+            channel: linkChannel,
+          })
+        }
         else if (planRes.data?.checkoutUrl) { window.open(planRes.data.checkoutUrl, '_blank', 'noopener'); toast.success('Plan created — first installment checkout opened') }
         else if (planRes.data?.pending && payMethod === 'terminal') toast.success('Plan created — charge sent to the reader, waiting for the card.')
         else toast.success(`${isPlan ? 'Payment plan' : 'Flexible schedule'} created`)
@@ -917,21 +930,10 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                 <Input id="cep-name" placeholder="e.g. AODC New Jersey 2026" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="cep-purchase-date">Purchase date</Label>
-                  <Input id="cep-purchase-date" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="cep-cancel-date">Cancel date <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                  <Input id="cep-cancel-date" type="date" min={tomorrow} value={cancelDate} onChange={(e) => setCancelDate(e.target.value)} />
-                </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cep-purchase-date">Purchase date</Label>
+                <Input id="cep-purchase-date" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
               </div>
-              {cancelDate && (
-                <p className="text-xs text-muted-foreground -mt-3">
-                  Cancels automatically on this date: remaining payments stop and no refund is issued. You can change or undo it from the customer profile.
-                </p>
-              )}
 
               <p className="text-xs text-muted-foreground -mb-2">
                 Give a product an event date to auto-check it once that time passes; leave it blank to check it off manually from the customer profile.
@@ -994,10 +996,18 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                 <div className="flex flex-col gap-1.5">
                   <Label>Payment method</Label>
                   <PaymentMethodPicker
-                    methods={PAYMENT_METHODS_WITH_SAVED_CARD.filter((m) => m.value !== 'wallet')}
+                    methods={PURCHASE_PAY_METHODS}
                     value={payMethod}
                     onChange={setPayMethod}
                   />
+                  {isLink && (
+                    <>
+                      <p className="text-[12px] text-muted-foreground">
+                        Created unpaid; whatever you&apos;d collect now is sent to the customer as a payment link.
+                      </p>
+                      <SendLinkChannelPicker value={linkChannel} onChange={setLinkChannel} />
+                    </>
+                  )}
                   {achNotAvailable && (
                     <p className="text-[12px] text-muted-foreground">
                       ACH needs Stripe — connect it in Settings → Integrations.
@@ -1018,10 +1028,12 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                   />
                   <CheckNumberField method={payMethod} checkNumber={checkNumber} onChange={setCheckNumber} />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="cep-date">Payment date</Label>
-                  <Input id="cep-date" type="date" value={collectDate} onChange={(e) => setCollectDate(e.target.value)} />
-                </div>
+                {!isLink && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="cep-date">Payment date</Label>
+                    <Input id="cep-date" type="date" value={collectDate} onChange={(e) => setCollectDate(e.target.value)} />
+                  </div>
+                )}
               </div>
 
               {billingType === 'one_time' && (
@@ -1032,7 +1044,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                   </label>
                   {!collectNow ? (
                     <p className="text-xs text-muted-foreground">Recorded as unpaid — collect later from the customer’s Events &amp; Products tab.</p>
-                  ) : (
+                  ) : isLink ? null : (
                     <>
                       <div className="rounded-xl border border-border p-4 flex flex-col gap-3">
                         <label className="flex items-center justify-between gap-2 text-sm font-medium">
@@ -1205,7 +1217,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                     : isFlex
                       ? 'Create schedule'
                       : collectNow
-                        ? (payMethod === 'card'
+                        ? isLink ? 'Create & send link' : (payMethod === 'card'
                             ? 'Create & open checkout'
                             : payMethod === 'ach'
                               ? 'Create & pay by bank transfer'

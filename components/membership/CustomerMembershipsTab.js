@@ -14,6 +14,8 @@ import CancelRefundDialog from '@/components/shared/CancelRefundDialog'
 import FreezeMembershipDialog from '@/components/shared/FreezeMembershipDialog'
 import AssignMembershipForm from './AssignMembershipForm'
 import SendPaymentLinkMenu from '@/components/payments/SendPaymentLinkMenu'
+import PaymentDueCard from '@/components/payments/PaymentDueCard'
+import AutopayControl from '@/components/payments/AutopayControl'
 import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 import { NO_DEVICE_PAYMENT_METHODS } from '@/lib/paymentMethods'
@@ -222,7 +224,14 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
     setBusyId(m._id)
     try {
       const r = await api.patch(`/api/customer-membership/${m._id}/renew`)
-      if (r.success) { toast.success('Membership renewed'); load() }
+      if (r.success) {
+        toast.success('Membership renewed', {
+          description: r.data?.paymentStatus === 'payment_pending'
+            ? 'Charging the autopay card for the new period.'
+            : 'The new period is due — collect it below.',
+        })
+        load()
+      }
       else toast.error('Failed', { description: r.error })
     } finally { setBusyId(null) }
   }
@@ -267,6 +276,10 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
             const collected = Number(m.amountCollected ?? 0)
             const total = Number(m.totalPaid ?? 0)
             const outstanding = Math.max(0, total - collected)
+            // A balance no pending installment covers — a renewal, or a sale left unpaid.
+            const scheduled = plan?.status === 'active' &&
+              plan.installments.some((i) => i.status === 'pending' || i.status === 'payment_pending')
+            const showDue = outstanding > 0 && !scheduled && m.status !== 'cancelled' && m.paymentStatus !== 'payment_pending'
             return (
             <div key={m._id} className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-start justify-between gap-3 mb-3">
@@ -449,6 +462,35 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
                   {plan.nextPaymentDate && plan.status === 'active' && (
                     <p className="text-[11px] text-muted-foreground mt-1.5">Next payment due: {fmtDate(plan.nextPaymentDate)}</p>
                   )}
+                </div>
+              )}
+
+              {/* One card covers the membership: each renewal and any open installments. */}
+              {!['cancelled', 'expired'].includes(m.status) && (m.autoRenew || scheduled) && (
+                <div className="mb-4">
+                  <AutopayControl
+                    path={`/api/customer-membership/${m._id}/autopay`}
+                    autoCharge={m.autoCharge}
+                    customerID={customerID}
+                    locationID={locationID}
+                    onChange={load}
+                  />
+                </div>
+              )}
+
+              {showDue && (
+                <div className="mb-4">
+                  <PaymentDueCard
+                    itemName={m.membershipName}
+                    badgeLabel="Membership"
+                    amountDue={outstanding}
+                    customerID={customerID}
+                    locationID={locationID}
+                    paymentType="membership_purchase"
+                    paymentTarget={{ customerMembershipID: m._id }}
+                    sendLinkTarget={{ kind: 'membership', customerMembershipID: m._id }}
+                    onSuccess={load}
+                  />
                 </div>
               )}
 

@@ -10,9 +10,14 @@ import { Label } from '@/components/ui/label'
 import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 
-import { PURCHASE_METHODS } from '@/lib/paymentMethods'
+import { PURCHASE_METHODS, SHARE_LINK_METHOD } from '@/lib/paymentMethods'
 import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
 import CheckNumberField from '@/components/payments/CheckNumberField'
+import { SendLinkChannelPicker, sendPaymentLink } from '@/components/payments/SendPaymentLinkMenu'
+import { dateInputToISO, todayDateInput } from '@/lib/studioLocalDate'
+import { formatDate } from '@/lib/utils'
+
+const MEMBERSHIP_METHODS = [...PURCHASE_METHODS, SHARE_LINK_METHOD]
 
 function todayISO() {
   const d = new Date()
@@ -26,7 +31,12 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
   const [templates, setTemplates] = useState([])
   const [membershipID, setMembershipID] = useState('')
   const [billingType, setBillingType] = useState('one_time')
+  // Both back-datable, for members who joined and paid before being entered here.
+  const [purchaseDate, setPurchaseDate] = useState(todayDateInput)
+  const [paymentDate, setPaymentDate] = useState(todayDateInput)
   const [method, setMethod] = useState('cash')
+  const [linkChannel, setLinkChannel] = useState('email')
+  const isLink = method === SHARE_LINK_METHOD.value
   const [checkNumber, setCheckNumber] = useState('')
   // Flexible billing — same "initial payment + future payments" builder as
   // enrollments/events so staff see one consistent flow everywhere.
@@ -82,9 +92,15 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
 
   const selected = templates.find((t) => t._id === membershipID)
   const price = Number(selected?.price ?? 0)
+  // Same arithmetic as the backend: purchase date + durationDays. A back-dated period
+  // that has already ended renews (and bills) on the next nightly run.
+  const periodEnd = selected && purchaseDate
+    ? new Date(Date.parse(purchaseDate) + (selected.durationDays || 30) * 86400000).toISOString().slice(0, 10)
+    : ''
+  const periodEnded = Boolean(periodEnd) && periodEnd <= todayDateInput()
 
   // How much of the one-time price is paid from the wallet vs. the chosen method.
-  const walletEligible = billingType === 'one_time' && useWallet && walletBalance != null
+  const walletEligible = billingType === 'one_time' && useWallet && walletBalance != null && !isLink
   const walletEntered = walletEligible ? Number(walletAmount) || 0 : 0
   const walletApplied = Math.min(walletEntered, price, walletBalance ?? 0)
   const remaining = Math.max(0, price - walletApplied)
@@ -157,7 +173,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
       const schedule = billingType === 'flexible'
         ? [
             ...(flexInitialAmountN > 0 && flexInitialDate
-              ? [{ description: 'Initial payment', amount: flexInitialAmountN, dueDate: flexInitialDate, status: collectInitialNow ? 'paid' : 'upcoming' }]
+              ? [{ description: 'Initial payment', amount: flexInitialAmountN, dueDate: flexInitialDate, status: collectInitialNow && !isLink ? 'paid' : 'upcoming' }]
               : []),
             ...flexFuturePayments
               .filter((c) => c.dueDate && Number(c.amount) > 0)
@@ -170,7 +186,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
         isRecurringBilling: Boolean(selected?.autoRenew),
         draftEnrollment: {
           label: selected?.membershipName,
-          purchaseDate: new Date(),
+          purchaseDate: dateInputToISO(purchaseDate),
           services: [{
             serviceName: selected?.membershipName,
             sessionsTotal: 1,
@@ -203,11 +219,16 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
   }
 
   async function performAssign(linkContractID = null) {
+    // "Share Link" assigns it unpaid and sends a link for what would be collected now.
+    const sendLink = isLink && (billingType === 'one_time' ? price > 0 : collectingFlexInitial)
     const billing = {}
     if (billingType === 'one_time') {
-      billing.method = method
-      if (method === 'cheque') billing.checkNumber = checkNumber
-      if (walletApplied > 0) billing.walletAmount = walletApplied
+      if (isLink) billing.collectNow = false
+      else {
+        billing.method = method
+        if (method === 'cheque') billing.checkNumber = checkNumber
+        if (walletApplied > 0) billing.walletAmount = walletApplied
+      }
     }
     else if (billingType === 'flexible') {
       if (!flexBalanced) {
@@ -225,10 +246,11 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
       if (scheduleRows.length === 0) { toast.error('Add at least one payment'); return }
 
       billing.customInstallments = scheduleRows
-      billing.method = method
+      if (!isLink) billing.method = method
       if (method === 'cheque') billing.checkNumber = checkNumber
-      if (flexInitialAmountN > 0) billing.collectNow = collectInitialNow
+      if (flexInitialAmountN > 0) billing.collectNow = collectInitialNow && !isLink
     }
+    if (!isLink) billing.collectDate = dateInputToISO(paymentDate)
 
     const checkoutTab = payWithClover ? openCheckoutTab() : null
     setSubmitting(true)
@@ -236,6 +258,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
       const result = await api.post('/api/customer-membership', {
         customerID,
         membershipID,
+        purchaseDate: dateInputToISO(purchaseDate),
         billingType,
         billing,
         notes: notes.trim() || undefined,
@@ -252,6 +275,16 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
           api.patch(`/api/agreement-session/${linkContractID}/link-payment`, {
             paymentID: result.data?.paymentID || result.data?._id,
           }).catch(() => {})
+        }
+        if (sendLink) {
+          // Flexible's initial payment is the plan's first installment.
+          await sendPaymentLink({
+            customerID,
+            channel: linkChannel,
+            target: billingType === 'one_time'
+              ? { kind: 'membership', customerMembershipID: result.data?.customerMembership?._id }
+              : { kind: 'installment', paymentPlanID: result.data?.paymentPlan?._id, installmentIndex: 0 },
+          })
         }
         onSuccess?.()
       } else {
@@ -339,6 +372,20 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
       )}
 
       <div className="flex flex-col gap-1.5">
+        <Label htmlFor="am-purchase-date">Purchase date</Label>
+        <Input id="am-purchase-date" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="h-9 w-[180px]" />
+        {periodEnd && (
+          <p className={`text-[11px] ${periodEnded ? 'text-warning' : 'text-muted-foreground'}`}>
+            {selected?.autoRenew ? 'Renews' : 'Expires'} {formatDate(periodEnd)}
+            {periodEnded &&
+              (selected?.autoRenew
+                ? ' — already passed, so it renews tonight and bills a new period. For a member who is paid up, use the date their current period started.'
+                : ' — already passed, so it will show as expired.')}
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
         <Label>Billing</Label>
         <div className="inline-flex rounded-lg border border-border bg-background p-0.5 w-fit">
           {[
@@ -362,7 +409,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
 
       {billingType === 'one_time' && (
         <div className="space-y-3">
-          {walletBalance != null && walletBalance > 0 && (
+          {walletBalance != null && walletBalance > 0 && !isLink && (
             <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
               <label className="flex items-center justify-between gap-2 cursor-pointer">
                 <span className="text-[12px] font-medium text-foreground">
@@ -412,8 +459,15 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
           {remaining > 0 && (
             <div className="flex flex-col gap-1.5">
               <Label>{walletApplied > 0 ? 'Remaining payment method' : 'Payment Method'}</Label>
-              <PaymentMethodPicker methods={PURCHASE_METHODS} value={method} onChange={setMethod} />
+              <PaymentMethodPicker methods={MEMBERSHIP_METHODS} value={method} onChange={setMethod} />
               <CheckNumberField method={method} checkNumber={checkNumber} onChange={setCheckNumber} />
+              {isLink && <SendLinkChannelPicker value={linkChannel} onChange={setLinkChannel} />}
+            </div>
+          )}
+          {price > 0 && !isLink && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="am-payment-date">Payment date</Label>
+              <Input id="am-payment-date" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="h-9 w-[180px]" />
             </div>
           )}
 
@@ -484,8 +538,16 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
               {collectInitialNow && (
                 <div className="flex flex-col gap-1.5">
                   <Label>Payment Method</Label>
-                  <PaymentMethodPicker methods={PURCHASE_METHODS} value={method} onChange={setMethod} />
+                  <PaymentMethodPicker methods={MEMBERSHIP_METHODS} value={method} onChange={setMethod} />
                   <CheckNumberField method={method} checkNumber={checkNumber} onChange={setCheckNumber} />
+                  {isLink ? (
+                    <SendLinkChannelPicker value={linkChannel} onChange={setLinkChannel} />
+                  ) : (
+                    <>
+                      <Label htmlFor="am-flex-payment-date">Payment date</Label>
+                      <Input id="am-flex-payment-date" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="h-9 w-[180px]" />
+                    </>
+                  )}
                 </div>
               )}
             </div>

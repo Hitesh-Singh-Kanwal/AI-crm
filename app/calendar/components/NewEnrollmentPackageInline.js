@@ -9,7 +9,8 @@ import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST 
 import { toast } from "@/components/ui/toast";
 import SearchableSelect from "@/components/ui/searchable-select";
 
-import { PAYMENT_METHODS_WITH_SAVED_CARD, TIP_METHODS } from "@/lib/paymentMethods";
+import { PAYMENT_METHODS_WITH_SAVED_CARD, SHARE_LINK_METHOD, TIP_METHODS } from "@/lib/paymentMethods";
+import { SendLinkChannelPicker } from "@/components/payments/SendPaymentLinkMenu";
 import TerminalDeviceField, { terminalTipPayload } from "@/components/payments/TerminalDeviceField";
 import SavedCardField from "@/components/payments/SavedCardField";
 import CheckNumberField from "@/components/payments/CheckNumberField";
@@ -21,31 +22,18 @@ function todayISO() {
   return new Date(d.getTime() - offset * 60 * 1000).toISOString().slice(0, 10);
 }
 
-const LINK_CHANNELS = [
-  { value: "email", label: "Email" },
-  { value: "sms", label: "Text" },
-  { value: "both", label: "Both" },
-];
-
-function SendLinkChannelPicker({ value, onChange }) {
-  return (
-    <div className="flex gap-1.5">
-      {LINK_CHANNELS.map((c) => (
-        <button
-          key={c.value}
-          type="button"
-          onClick={() => onChange(c.value)}
-          className={`h-7 flex-1 rounded-md border text-[11px] font-medium transition-colors ${
-            value === c.value
-              ? "border-primary bg-primary/10 text-primary"
-              : "border-border text-muted-foreground hover:bg-muted/40"
-          }`}
-        >
-          {c.label}
-        </button>
-      ))}
-    </div>
-  );
+// What a "Share Link" enrollment's payment link pays, once the enrollment exists: the
+// whole balance, the first installment, or — flexible — just the initial payment, since
+// the plan already holds the rest. Called by whichever onSubmit created it.
+export function enrollmentLinkTarget(payload, enrollmentID, paymentPlan) {
+  if (payload.billingType === "payment_plan") {
+    const installmentIndex = (paymentPlan?.installments || []).findIndex((i) => i.status === "pending");
+    return installmentIndex === -1 ? null : { kind: "installment", paymentPlanID: paymentPlan._id, installmentIndex };
+  }
+  if (payload.billingType === "flexible") {
+    return { kind: "package", enrollmentID, amount: Number(payload.billing?.initialAmount) || 0 };
+  }
+  return { kind: "package", enrollmentID };
 }
 
 // A date input's "2026-10-08" parses as UTC midnight; formatDate reads that as the
@@ -85,7 +73,6 @@ const BLANK_FORM = {
     collectNow: true,
     collectAmount: "",
     collectDate: todayISO(),
-    sendLinkInstead: false,
     sendLinkChannel: "email",
     useWallet: false,
     walletAmount: "",
@@ -418,11 +405,14 @@ export default function NewEnrollmentPackageInline({
     return sum + Math.max(0, gross - (Number(s.finalAmount) || 0));
   }, 0);
 
+  const isLink = form.billing.method === SHARE_LINK_METHOD.value;
+
   // Wallet split is offered only for one-time billing (the path wired for it).
   const collectAmt = Number(form.billing.collectAmount || 0);
   const walletEligible =
     form.billingType === "one_time" &&
     form.billing.collectNow &&
+    !isLink &&
     form.billing.useWallet &&
     walletBalance != null;
   const walletEntered = walletEligible ? Number(form.billing.walletAmount) || 0 : 0;
@@ -437,10 +427,12 @@ export default function NewEnrollmentPackageInline({
   // reader the same way PaymentDueCard's balance payments do (see
   // customerPackage.controller.js#addPackageToCustomer and
   // paymentPlan.controller.js#processInstallmentPayment).
-  const collectMethodOptions =
-    form.billingType === "one_time"
+  const collectMethodOptions = [
+    ...(form.billingType === "one_time"
       ? PAYMENT_METHODS_WITH_SAVED_CARD.filter((m) => m.value !== "wallet")
-      : PAYMENT_METHODS_WITH_SAVED_CARD;
+      : PAYMENT_METHODS_WITH_SAVED_CARD),
+    SHARE_LINK_METHOD,
+  ];
 
   // Non-one-time collection paid directly from the wallet via the method dropdown.
   const collectFromWallet =
@@ -622,7 +614,7 @@ export default function NewEnrollmentPackageInline({
 
   async function handleSubmit() {
     setError("");
-    const sendLink = form.billingType !== "pay_per_session" && form.billing.sendLinkInstead;
+    const sendLink = form.billingType !== "pay_per_session" && form.billing.collectNow && isLink;
     const collect =
       !sendLink &&
       form.billingType !== "pay_per_session" &&
@@ -635,6 +627,9 @@ export default function NewEnrollmentPackageInline({
       ...(serviceOnly ? { label: "", expiryDays: SERVICE_ONLY_EXPIRY_DAYS } : {}),
       billing: {
         ...form.billing,
+        // "link" is not a method the backend records; the creator sends the link instead.
+        method: isLink ? undefined : form.billing.method,
+        sendLinkChannel: sendLink ? form.billing.sendLinkChannel : undefined,
         collectNow: collect,
         collectAmount: collect ? Number(form.billing.collectAmount) : 0,
         collectDate: effectiveCollectDate || undefined,
@@ -658,16 +653,6 @@ export default function NewEnrollmentPackageInline({
       closeCheckoutTab(checkoutTab);
       setError("Failed to create enrollment and package.");
       return;
-    }
-    if (sendLink && res.enrollmentID) {
-      const linkRes = await api.post("/api/payment-request", {
-        customerID,
-        target: { kind: "package", enrollmentID: res.enrollmentID },
-        channel: form.billing.sendLinkChannel,
-      });
-      toast[linkRes.success ? "success" : "error"](
-        linkRes.success ? "Payment link sent." : linkRes.error || "Enrollment created, but the payment link failed to send.",
-      );
     }
     setLoading(false);
     if (res.checkoutUrl) {
@@ -1336,21 +1321,15 @@ export default function NewEnrollmentPackageInline({
                   <div className="pt-2 border-t border-border">
                     {initialAmount > 0 ? (
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[11px] font-medium text-foreground">
-                            {form.billing.sendLinkInstead ? "Send a payment link instead" : "Collect initial payment now"}
-                          </p>
-                          {form.billing.sendLinkInstead && (
-                            <button
-                              type="button"
-                              onClick={() => setForm((p) => ({ ...p, billing: { ...p.billing, sendLinkInstead: false } }))}
-                              className="text-[10px] font-medium text-primary hover:underline"
-                            >
-                              Collect now instead
-                            </button>
-                          )}
-                        </div>
-                        {form.billing.sendLinkInstead ? (
+                        <p className="text-[11px] font-medium text-foreground">
+                          {isLink ? "Send a payment link instead" : "Collect initial payment now"}
+                        </p>
+                        <PaymentMethodPicker
+                          methods={collectMethodOptions}
+                          value={form.billing.method}
+                          onChange={(v) => setForm((p) => ({ ...p, billing: { ...p.billing, method: v } }))}
+                        />
+                        {isLink ? (
                           <div className="space-y-1.5">
                             <p className="text-[11px] text-muted-foreground">
                               The enrollment is created unpaid, and a payment link for ${initialAmount.toFixed(2)} is sent to the customer right away.
@@ -1362,11 +1341,6 @@ export default function NewEnrollmentPackageInline({
                           </div>
                         ) : (
                           <>
-                            <PaymentMethodPicker
-                              methods={collectMethodOptions}
-                              value={form.billing.method}
-                              onChange={(v) => setForm((p) => ({ ...p, billing: { ...p.billing, method: v } }))}
-                            />
                             {form.billing.method === "ach" && (
                               <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
                                 <p className="text-[11px] text-foreground">
@@ -1376,7 +1350,7 @@ export default function NewEnrollmentPackageInline({
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    setForm((p) => ({ ...p, billing: { ...p.billing, sendLinkInstead: true } }))
+                                    setForm((p) => ({ ...p, billing: { ...p.billing, method: SHARE_LINK_METHOD.value } }))
                                   }
                                   className="shrink-0 rounded-md bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
                                 >
@@ -1425,49 +1399,27 @@ export default function NewEnrollmentPackageInline({
                     <p className="text-[11px] font-medium text-foreground">
                       {collectsFirstInstallment ? "Collect first installment now" : "Collect payment now"}
                     </p>
-                    <div className="flex items-center gap-2.5">
-                      {form.billing.collectNow && form.billing.sendLinkInstead && (
-                        <button
-                          type="button"
-                          onClick={() => setForm((p) => ({ ...p, billing: { ...p.billing, sendLinkInstead: false } }))}
-                          className="text-[10px] font-medium text-primary hover:underline"
-                        >
-                          Collect now instead
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setForm((p) => ({
-                            ...p,
-                            billing: { ...p.billing, collectNow: !p.billing.collectNow },
-                          }))
-                        }
-                        className={`relative h-5 w-9 rounded-full transition-colors ${
-                          form.billing.collectNow ? "bg-primary" : "bg-muted-foreground/30"
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((p) => ({
+                          ...p,
+                          billing: { ...p.billing, collectNow: !p.billing.collectNow },
+                        }))
+                      }
+                      className={`relative h-5 w-9 rounded-full transition-colors ${
+                        form.billing.collectNow ? "bg-primary" : "bg-muted-foreground/30"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                          form.billing.collectNow ? "translate-x-4" : "translate-x-0"
                         }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                            form.billing.collectNow ? "translate-x-4" : "translate-x-0"
-                          }`}
-                        />
-                      </button>
-                    </div>
+                      />
+                    </button>
                   </div>
 
-                  {form.billing.collectNow && form.billing.sendLinkInstead && (
-                    <div className="space-y-1.5">
-                      <p className="text-[11px] text-muted-foreground">
-                        The enrollment is created unpaid, and a payment link is sent to the customer right away.
-                      </p>
-                      <SendLinkChannelPicker
-                        value={form.billing.sendLinkChannel}
-                        onChange={(v) => setForm((p) => ({ ...p, billing: { ...p.billing, sendLinkChannel: v } }))}
-                      />
-                    </div>
-                  )}
-                  {form.billing.collectNow && !form.billing.sendLinkInstead && (
+                  {form.billing.collectNow && (
                     <div className="space-y-2">
                       <div className="relative">
                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
@@ -1503,7 +1455,7 @@ export default function NewEnrollmentPackageInline({
                           <button
                             type="button"
                             onClick={() =>
-                              setForm((p) => ({ ...p, billing: { ...p.billing, sendLinkInstead: true } }))
+                              setForm((p) => ({ ...p, billing: { ...p.billing, method: SHARE_LINK_METHOD.value } }))
                             }
                             className="shrink-0 rounded-md bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
                           >
@@ -1511,9 +1463,20 @@ export default function NewEnrollmentPackageInline({
                           </button>
                         </div>
                       )}
+                      {isLink && (
+                        <div className="space-y-1.5">
+                          <p className="text-[11px] text-muted-foreground">
+                            The enrollment is created unpaid, and a payment link is sent to the customer right away.
+                          </p>
+                          <SendLinkChannelPicker
+                            value={form.billing.sendLinkChannel}
+                            onChange={(v) => setForm((p) => ({ ...p, billing: { ...p.billing, sendLinkChannel: v } }))}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
-                  {form.billing.collectNow && !form.billing.sendLinkInstead && (
+                  {form.billing.collectNow && !isLink && (
                     <TerminalDeviceField
                       method={form.billing.method}
                       locationID={locationID}
@@ -1521,7 +1484,7 @@ export default function NewEnrollmentPackageInline({
                       onDeviceChange={setDeviceID}
                     />
                   )}
-                  {form.billing.collectNow && !form.billing.sendLinkInstead && (
+                  {form.billing.collectNow && !isLink && (
                     <SavedCardField
                       method={form.billing.method}
                       locationID={locationID}
@@ -1530,14 +1493,14 @@ export default function NewEnrollmentPackageInline({
                       onCardChange={setSavedCardID}
                     />
                   )}
-                  {form.billing.collectNow && !form.billing.sendLinkInstead && (
+                  {form.billing.collectNow && !isLink && (
                     <CheckNumberField
                       method={form.billing.method}
                       checkNumber={checkNumber}
                       onChange={setCheckNumber}
                     />
                   )}
-                  {form.billing.collectNow && !form.billing.sendLinkInstead && (
+                  {form.billing.collectNow && !isLink && (
                     <div className="space-y-1">
                       <label className="text-[11px] text-muted-foreground">Payment date</label>
                       <input
@@ -1554,7 +1517,7 @@ export default function NewEnrollmentPackageInline({
                       />
                     </div>
                   )}
-                  {collectFromWallet && !form.billing.sendLinkInstead && (
+                  {collectFromWallet && !isLink && (
                     <p className={`text-[11px] ${collectWalletShort ? "text-destructive" : "text-muted-foreground"}`}>
                       Wallet balance: ${walletBalance.toFixed(2)}
                       {collectWalletShort && ` — not enough to cover $${collectAmt.toFixed(2)}`}
@@ -1562,7 +1525,7 @@ export default function NewEnrollmentPackageInline({
                   )}
                   {form.billingType === "one_time" &&
                     form.billing.collectNow &&
-                    !form.billing.sendLinkInstead &&
+                    !isLink &&
                     walletBalance != null &&
                     walletBalance > 0 && (
                       <div className="rounded-lg border border-border bg-muted/20 p-2.5 space-y-2">
