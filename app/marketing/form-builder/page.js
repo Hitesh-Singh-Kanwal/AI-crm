@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck, Image, Volume2, Calculator, EyeOff, Link2, Code2, ExternalLink, Users, UserCheck } from 'lucide-react'
+import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck, Image, Volume2, Calculator, EyeOff, Link2, Code2, ExternalLink, Users, UserCheck, MousePointerClick } from 'lucide-react'
 import { FORM_ANALYTICS_RANGES } from '@/lib/form-analytics'
 import SearchInput from '@/components/ui/search-input'
 import MainLayout from '@/components/layout/MainLayout'
@@ -22,7 +22,6 @@ import GlobalLoader from '@/components/shared/GlobalLoader'
 import { getCurrentUser, getEffectiveBranch } from '@/lib/auth'
 import { canManageDefaultWorkflows, hasPermission, isSuperAdmin } from '@/lib/permissions'
 import LocationSelector, { ALL_BRANCHES_VALUE } from '@/components/shared/LocationSelector'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import SetTemplateScopeDialog from '@/components/templates/SetTemplateScopeDialog'
 import {
@@ -1332,128 +1331,13 @@ function FormsPageInner() {
     }
   }
 
-  const [gaViews, setGaViews] = useState({ allTime: 0, last30Days: 0, last7Days: 0 })
-  const [gaActiveUsers, setGaActiveUsers] = useState({ allTime: 0, last30Days: 0, last7Days: 0 })
-  const [gaPages, setGaPages] = useState({ allTime: [], last30Days: [], last7Days: [] })
-  const [gaPagesRange, setGaPagesRange] = useState('last30Days')
-  const [gaPagesDimension, setGaPagesDimension] = useState('pagePath') // pagePath | pageTitle
-  const [gaDemographics, setGaDemographics] = useState({
-    countries: { allTime: [], last30Days: [], last7Days: [] },
-    regions: { allTime: [], last30Days: [], last7Days: [] },
-    cities: { allTime: [], last30Days: [], last7Days: [] },
-  })
-  const [gaDemographicsRange, setGaDemographicsRange] = useState('last30Days')
-  const [gaViewsLoading, setGaViewsLoading] = useState(false)
-  const [gaViewsError, setGaViewsError] = useState(null)
-
-  // Platform submissions + conversions per form (from leads, not Google Analytics)
+  // Submissions + conversions (from leads) and first-party form traffic (views, starts)
   const [analyticsForms, setAnalyticsForms] = useState([])
   const [analyticsTotals, setAnalyticsTotals] = useState(null)
+  const [analyticsPages, setAnalyticsPages] = useState([])
   const [analyticsRange, setAnalyticsRange] = useState('30d')
   const [analyticsFormsLoading, setAnalyticsFormsLoading] = useState(false)
   const [analyticsFormsError, setAnalyticsFormsError] = useState(null)
-
-  // Theme-aligned palette (brand + semantic accents via CSS vars)
-  const COUNTRY_COLORS = [
-    'var(--studio-primary)',
-    'var(--studio-gradient)',
-    'var(--side-gradient-end)',
-    'var(--side-gradient-start)',
-    'hsl(var(--destructive))',
-    'hsl(var(--foreground) / 0.85)',
-    'hsl(var(--foreground) / 0.65)',
-    'hsl(var(--foreground) / 0.45)',
-  ]
-
-  const formatDuration = (seconds) => {
-    const s = Number(seconds)
-    if (!Number.isFinite(s) || s <= 0) return '0s'
-    const total = Math.round(s)
-    const m = Math.floor(total / 60)
-    const r = total % 60
-    return m > 0 ? `${m}m ${r}s` : `${r}s`
-  }
-
-  const makePieSegments = (items) => {
-    const total = items.reduce((sum, it) => sum + (Number(it?.value) || 0), 0)
-    if (!total) return { total: 0, segments: [] }
-    let start = 0
-    const segments = items.map((it, idx) => {
-      const v = Number(it?.value) || 0
-      const frac = v / total
-      const seg = { ...it, startFrac: start, endFrac: start + frac, color: COUNTRY_COLORS[idx % COUNTRY_COLORS.length] }
-      start += frac
-      return seg
-    })
-    return { total, segments }
-  }
-
-  const segmentLabelPosition = (cx, cy, r, startFrac, endFrac) => {
-    const mid = (startFrac + endFrac) / 2
-    const angle = mid * Math.PI * 2 - Math.PI / 2
-    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) }
-  }
-
-  const describeArc = (cx, cy, r, startFrac, endFrac) => {
-    const startAngle = startFrac * Math.PI * 2 - Math.PI / 2
-    const endAngle = endFrac * Math.PI * 2 - Math.PI / 2
-    const x1 = cx + r * Math.cos(startAngle)
-    const y1 = cy + r * Math.sin(startAngle)
-    const x2 = cx + r * Math.cos(endAngle)
-    const y2 = cy + r * Math.sin(endAngle)
-    const largeArc = endFrac - startFrac > 0.5 ? 1 : 0
-    return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`
-  }
-
-  const fetchGaViews = useCallback(async () => {
-    setGaViewsLoading(true)
-    setGaViewsError(null)
-    try {
-      const res = await fetch(`/api/ga/forms-views?pagesDimension=${encodeURIComponent(gaPagesDimension)}`)
-      const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.success) {
-        setGaViewsError(body?.error || 'Failed to load Google Analytics views')
-        return
-      }
-      setGaViews({
-        allTime: Number(body.data?.views?.allTime) || 0,
-        last30Days: Number(body.data?.views?.last30Days) || 0,
-        last7Days: Number(body.data?.views?.last7Days) || 0,
-      })
-      setGaActiveUsers({
-        allTime: Number(body.data?.activeUsers?.allTime) || 0,
-        last30Days: Number(body.data?.activeUsers?.last30Days) || 0,
-        last7Days: Number(body.data?.activeUsers?.last7Days) || 0,
-      })
-      setGaPages({
-        allTime: Array.isArray(body.data?.pages?.allTime) ? body.data.pages.allTime : [],
-        last30Days: Array.isArray(body.data?.pages?.last30Days) ? body.data.pages.last30Days : [],
-        last7Days: Array.isArray(body.data?.pages?.last7Days) ? body.data.pages.last7Days : [],
-      })
-      const demo = body.data?.demographics || {}
-      setGaDemographics({
-        countries: {
-          allTime: Array.isArray(demo?.countries?.allTime) ? demo.countries.allTime : [],
-          last30Days: Array.isArray(demo?.countries?.last30Days) ? demo.countries.last30Days : [],
-          last7Days: Array.isArray(demo?.countries?.last7Days) ? demo.countries.last7Days : [],
-        },
-        regions: {
-          allTime: Array.isArray(demo?.regions?.allTime) ? demo.regions.allTime : [],
-          last30Days: Array.isArray(demo?.regions?.last30Days) ? demo.regions.last30Days : [],
-          last7Days: Array.isArray(demo?.regions?.last7Days) ? demo.regions.last7Days : [],
-        },
-        cities: {
-          allTime: Array.isArray(demo?.cities?.allTime) ? demo.cities.allTime : [],
-          last30Days: Array.isArray(demo?.cities?.last30Days) ? demo.cities.last30Days : [],
-          last7Days: Array.isArray(demo?.cities?.last7Days) ? demo.cities.last7Days : [],
-        },
-      })
-    } catch (e) {
-      setGaViewsError('Failed to load Google Analytics views')
-    } finally {
-      setGaViewsLoading(false)
-    }
-  }, [gaPagesDimension])
 
   const fetchAnalyticsForms = useCallback(async () => {
     setAnalyticsFormsLoading(true)
@@ -1463,6 +1347,7 @@ function FormsPageInner() {
       if (result.success && Array.isArray(result.data?.forms)) {
         setAnalyticsForms(result.data.forms)
         setAnalyticsTotals(result.data.totals || null)
+        setAnalyticsPages(Array.isArray(result.data.pages) ? result.data.pages : [])
       } else {
         setAnalyticsFormsError(result.error || 'Failed to load form analytics')
       }
@@ -1474,49 +1359,8 @@ function FormsPageInner() {
   }, [analyticsRange])
 
   useEffect(() => {
-    if (activeTab === 'analytics') fetchGaViews()
-  }, [activeTab, fetchGaViews])
-
-  useEffect(() => {
     if (activeTab === 'analytics') fetchAnalyticsForms()
   }, [activeTab, fetchAnalyticsForms])
-
-  const extractViewTimestamps = (form) => {
-    const candidates = [
-      form?.views,
-      form?.viewEvents,
-      form?.analytics?.views,
-      form?.analytics?.viewEvents,
-    ]
-    for (const c of candidates) {
-      if (!c) continue
-      if (Array.isArray(c)) return c
-    }
-    return []
-  }
-
-  const viewsSummary = (() => {
-    const now = Date.now()
-    const weekAgo = now - 7 * 24 * 60 * 60 * 1000
-    const monthAgo = now - 30 * 24 * 60 * 60 * 1000
-
-    let all = 0
-    let lastWeek = 0
-    let lastMonth = 0
-
-    for (const f of forms) {
-      const tsList = extractViewTimestamps(f)
-      for (const t of tsList) {
-        const ms = typeof t === 'number' ? t : Date.parse(String(t))
-        if (!Number.isFinite(ms)) continue
-        all += 1
-        if (ms >= monthAgo) lastMonth += 1
-        if (ms >= weekAgo) lastWeek += 1
-      }
-    }
-
-    return { all, lastMonth, lastWeek }
-  })()
 
   // Builder form metadata
   const [formName, setFormName] = useState('')
@@ -2925,18 +2769,6 @@ function FormsPageInner() {
       .map((field) => generateFieldHTML(field))
       .filter(Boolean)
       .join('\n')
-    // Analytics snippet injected into exported HTML <head>
-    const gtagScript = `  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-4PKNTJ6CWT"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-
-    gtag('config', 'G-4PKNTJ6CWT');
-  </script>
-`
-
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3086,7 +2918,6 @@ function FormsPageInner() {
       to { opacity: 1; transform: translateY(0); }
     }
   </style>
-${gtagScript}
   ${embedGlobalStylesMeta(globalStyles, globalStyleExcludeKeys)}
 </head>
 <body>
@@ -4438,12 +4269,7 @@ ${getFormPhoneExportRuntimeScript()}
         {/* Analytics View */}
         {activeTab === 'analytics' && (
           <div className="space-y-6 relative">
-          {gaViewsLoading ? (
-            <div className="absolute inset-0 z-10 rounded-lg bg-background/70 backdrop-blur-[1px] flex items-center justify-center">
-              <GlobalLoader text="Fetching analytics…" />
-            </div>
-          ) : null}
-          {!gaViewsLoading && analyticsFormsLoading ? (
+          {analyticsFormsLoading ? (
             <div className="absolute inset-0 z-10 rounded-lg bg-background/70 backdrop-blur-[1px] flex items-center justify-center">
               <GlobalLoader text="Loading form analytics…" />
             </div>
@@ -4453,7 +4279,7 @@ ${getFormPhoneExportRuntimeScript()}
               <div>
                 <h2 className="text-base font-semibold text-foreground">Form performance</h2>
                 <p className="text-xs text-muted-foreground">
-                  Submissions and conversions recorded on the platform from your forms
+                  Views and starts tracked on your hosted and embedded forms, plus submissions and conversions from leads
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -4472,6 +4298,38 @@ ${getFormPhoneExportRuntimeScript()}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {[
+                {
+                  label: 'Form views',
+                  value: analyticsTotals?.traffic?.views,
+                  hint: 'Times a form was seen on screen',
+                  icon: Eye,
+                  iconWrap: 'bg-amber-100',
+                  iconClass: 'text-amber-600',
+                },
+                {
+                  label: 'Unique visitors',
+                  value: analyticsTotals?.traffic?.visitors,
+                  hint: 'Different people who saw a form',
+                  icon: Users,
+                  iconWrap: 'bg-sky-100',
+                  iconClass: 'text-sky-600',
+                },
+                {
+                  label: 'Started a form',
+                  value: analyticsTotals?.traffic?.starts,
+                  hint: 'Clicked into at least one field',
+                  icon: MousePointerClick,
+                  iconWrap: 'bg-indigo-100',
+                  iconClass: 'text-indigo-600',
+                },
+                {
+                  label: 'View → submit rate',
+                  value: analyticsTotals?.traffic ? `${Number(analyticsTotals.traffic.submitRate || 0).toFixed(1)}%` : undefined,
+                  hint: 'Tracked submits ÷ views',
+                  icon: BarChart3,
+                  iconWrap: 'bg-rose-100',
+                  iconClass: 'text-rose-600',
+                },
                 {
                   label: 'Total form submissions',
                   value: analyticsTotals?.submissions,
@@ -4524,358 +4382,69 @@ ${getFormPhoneExportRuntimeScript()}
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Total Views (all-time)</p>
-                    <h3 className="text-3xl font-bold text-foreground">
-                      {gaViewsLoading ? '—' : gaViews.allTime}
-                    </h3>
-                    {gaViewsError ? (
-                      <p className="text-xs text-destructive mt-2">{gaViewsError}</p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground mt-2">From Google Analytics</p>
-                    )}
-                  </div>
-                  <div className="h-12 w-12 rounded-lg bg-brand-light flex items-center justify-center">
-                    <FileText className="h-6 w-6 text-brand" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Views (last 30 days)</p>
-                    <h3 className="text-3xl font-bold text-foreground">
-                      {gaViewsLoading ? '—' : gaViews.last30Days}
-                    </h3>
-                  </div>
-                  <div className="h-12 w-12 rounded-lg bg-green-100 flex items-center justify-center">
-                    <BarChart3 className="h-6 w-6 text-green-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Views (last 7 days)</p>
-                    <h3 className="text-3xl font-bold text-foreground">
-                      {gaViewsLoading ? '—' : gaViews.last7Days}
-                    </h3>
-                  </div>
-                  <div className="h-12 w-12 rounded-lg bg-purple-100 flex items-center justify-center">
-                    <BarChart3 className="h-6 w-6 text-purple-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Active Users (all-time)</p>
-                    <h3 className="text-3xl font-bold text-foreground">
-                      {gaViewsLoading ? '—' : gaActiveUsers.allTime}
-                    </h3>
-                  </div>
-                  <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
-                    <BarChart3 className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Active Users (last 30 days)</p>
-                    <h3 className="text-3xl font-bold text-foreground">
-                      {gaViewsLoading ? '—' : gaActiveUsers.last30Days}
-                    </h3>
-                  </div>
-                  <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
-                    <BarChart3 className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Active Users (last 7 days)</p>
-                    <h3 className="text-3xl font-bold text-foreground">
-                      {gaViewsLoading ? '—' : gaActiveUsers.last7Days}
-                    </h3>
-                  </div>
-                  <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
-                    <BarChart3 className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
           <Card>
             <CardHeader className="pb-2">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <CardTitle className="text-base">Demographics</CardTitle>
-                  <CardDescription>Active users distribution</CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant={gaDemographicsRange === 'allTime' ? 'default' : 'outline'}
-                    onClick={() => setGaDemographicsRange('allTime')}
-                    disabled={gaViewsLoading}
-                  >
-                    All time
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={gaDemographicsRange === 'last30Days' ? 'default' : 'outline'}
-                    onClick={() => setGaDemographicsRange('last30Days')}
-                    disabled={gaViewsLoading}
-                  >
-                    Last 30 days
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={gaDemographicsRange === 'last7Days' ? 'default' : 'outline'}
-                    onClick={() => setGaDemographicsRange('last7Days')}
-                    disabled={gaViewsLoading}
-                  >
-                    Last 7 days
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-2">
-              {(() => {
-                const mkItems = (raw, key) => {
-                  const rows = Array.isArray(raw) ? raw : []
-                  const filtered = rows.filter((x) => x && (Number(x.activeUsers) || 0) > 0)
-                  const top = filtered
-                    .slice(0, 5)
-                    .map((x) => ({ label: x?.[key] || '(not set)', value: Number(x.activeUsers) || 0 }))
-                  const otherValue = filtered.slice(5).reduce((sum, x) => sum + (Number(x?.activeUsers) || 0), 0)
-                  return otherValue > 0 ? [...top, { label: 'Other', value: otherValue }] : top
-                }
-
-                const countryItems = mkItems(gaDemographics?.countries?.[gaDemographicsRange], 'country')
-                const regionItems = mkItems(gaDemographics?.regions?.[gaDemographicsRange], 'region')
-                const cityItems = mkItems(gaDemographics?.cities?.[gaDemographicsRange], 'city')
-
-                const charts = [
-                  { title: 'Country', items: countryItems, aria: 'Active users by country' },
-                  { title: 'Region', items: regionItems, aria: 'Active users by region' },
-                  { title: 'Town/City', items: cityItems, aria: 'Active users by city' },
-                ]
-
-                return (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {charts.map((c, cIdx) => {
-                      const { total, segments } = makePieSegments(c.items)
-                      if (!segments.length) {
-                        return (
-                          <div key={c.title} className="rounded-lg border border-border bg-card p-4">
-                            <div className="text-sm font-semibold text-foreground">{c.title}</div>
-                            <div className="text-sm text-muted-foreground py-8">No data yet.</div>
-                          </div>
-                        )
-                      }
-
-                      return (
-                        <div key={c.title} className="rounded-lg border border-border bg-card p-4">
-                          <div className="text-sm font-semibold text-foreground mb-3">{c.title}</div>
-                          <div className="flex items-start gap-4">
-                            <svg width="200" height="200" viewBox="0 0 220 220" role="img" aria-label={c.aria}>
-                              <defs>
-                                <filter id={`pieShadow-${cIdx}`} x="-20%" y="-20%" width="140%" height="140%">
-                                  <feDropShadow dx="0" dy="6" stdDeviation="6" floodColor="rgba(15, 23, 42, 0.12)" />
-                                </filter>
-                              </defs>
-                              <circle cx="110" cy="110" r="92" fill="hsl(var(--muted))" />
-                              {segments.length === 1 ? (
-                                <circle
-                                  cx="110"
-                                  cy="110"
-                                  r="90"
-                                  fill={segments[0].color}
-                                  filter={`url(#pieShadow-${cIdx})`}
-                                  stroke="hsl(var(--card))"
-                                  strokeWidth="2"
-                                />
-                              ) : (
-                                segments.map((s, idx) => (
-                                  <path
-                                    key={idx}
-                                    d={describeArc(110, 110, 90, s.startFrac, s.endFrac)}
-                                    fill={s.color}
-                                    filter={`url(#pieShadow-${cIdx})`}
-                                    stroke="hsl(var(--card))"
-                                    strokeWidth="2"
-                                  />
-                                ))
-                              )}
-                              {segments.map((s, idx) => {
-                                const pct = total ? (s.value / total) * 100 : 0
-                                if (pct < 4) return null
-                                const { x, y } = segmentLabelPosition(110, 110, 62, s.startFrac, s.endFrac)
-                                return (
-                                  <text
-                                    key={`t-${idx}`}
-                                    x={x}
-                                    y={y}
-                                    textAnchor="middle"
-                                    dominantBaseline="middle"
-                                    fill={segments.length === 1 ? 'hsl(var(--primary-foreground))' : 'white'}
-                                    fontSize="14"
-                                    fontWeight="700"
-                                  >
-                                    {Math.round(pct)}%
-                                  </text>
-                                )
-                              })}
-                            </svg>
-
-                            <div className="flex-1 space-y-2 pt-1">
-                              {segments.map((s, idx) => (
-                                <div key={idx} className="flex items-center justify-between gap-3 text-sm">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.color }} />
-                                    <span className="truncate text-muted-foreground">{s.label}</span>
-                                  </div>
-                                  <div className="shrink-0 tabular-nums text-foreground font-medium">{s.value}</div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })()}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base">Pages and screens</CardTitle>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          disabled={gaViewsLoading}
-                          className="h-7 w-7 border-border bg-muted/50 hover:bg-muted text-muted-foreground shadow-sm"
-                          title="Change pages dimension"
-                        >
-                          <ChevronDown className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="min-w-[260px]">
-                        <DropdownMenuItem
-                          onClick={() => setGaPagesDimension('pagePath')}
-                          className={gaPagesDimension === 'pagePath' ? 'bg-accent text-accent-foreground' : ''}
-                        >
-                          Page path + screen class
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setGaPagesDimension('pageTitle')}
-                          className={gaPagesDimension === 'pageTitle' ? 'bg-accent text-accent-foreground' : ''}
-                        >
-                          Page title + screen class
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <CardDescription>
-                    {gaPagesDimension === 'pageTitle' ? 'Page title and screen class' : 'Page path and screen class'}
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant={gaPagesRange === 'allTime' ? 'default' : 'outline'}
-                    onClick={() => setGaPagesRange('allTime')}
-                    disabled={gaViewsLoading}
-                  >
-                    All time
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={gaPagesRange === 'last30Days' ? 'default' : 'outline'}
-                    onClick={() => setGaPagesRange('last30Days')}
-                    disabled={gaViewsLoading}
-                  >
-                    Last 30 days
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={gaPagesRange === 'last7Days' ? 'default' : 'outline'}
-                    onClick={() => setGaPagesRange('last7Days')}
-                    disabled={gaViewsLoading}
-                  >
-                    Last 7 days
-                  </Button>
-                </div>
-              </div>
+              <CardTitle className="text-base">Top pages</CardTitle>
+              <CardDescription>
+                Where your forms were viewed — your website pages for embedded forms, the share link for hosted ones.
+              </CardDescription>
             </CardHeader>
             <CardContent className="pt-2">
               <div className="overflow-auto rounded-md border border-border">
-                <table className="min-w-[720px] w-full text-sm">
+                <table className="min-w-[760px] w-full text-sm">
                   <thead className="bg-muted/40">
                     <tr className="text-left text-muted-foreground">
-                      <th className="px-4 py-3 font-medium">
-                        {gaPagesDimension === 'pageTitle' ? 'Page title' : 'Page path'}
-                      </th>
+                      <th className="px-4 py-3 font-medium">Page</th>
+                      <th className="px-4 py-3 font-medium">Template</th>
                       <th className="px-4 py-3 font-medium text-right">Views</th>
-                      <th className="px-4 py-3 font-medium text-right">Active users</th>
-                      <th className="px-4 py-3 font-medium text-right">Views / active user</th>
-                      <th className="px-4 py-3 font-medium text-right">Avg engagement / active user</th>
+                      <th className="px-4 py-3 font-medium text-right">Visitors</th>
+                      <th className="px-4 py-3 font-medium text-right">Submits</th>
+                      <th className="px-4 py-3 font-medium text-right">View → submit</th>
                     </tr>
                   </thead>
                   <tbody className="bg-card">
-                    {(gaPages?.[gaPagesRange] || []).length === 0 ? (
+                    {analyticsPages.length === 0 ? (
                       <tr>
-                        <td className="px-4 py-6 text-muted-foreground" colSpan={5}>
-                          No data yet.
+                        <td className="px-4 py-6 text-muted-foreground" colSpan={6}>
+                          {analyticsFormsLoading
+                            ? 'Loading…'
+                            : 'No form views yet. Views are recorded from now on whenever someone sees one of your forms.'}
                         </td>
                       </tr>
                     ) : (
-                      (gaPages?.[gaPagesRange] || []).map((row, idx) => (
-                        <tr key={`${row?.value || 'row'}-${idx}`} className="border-t border-border">
-                          <td className="px-4 py-3 font-mono text-xs text-foreground">
-                            {row?.value || '—'}
+                      analyticsPages.map((p) => (
+                        <tr key={`${p.formID}-${p.host || ''}-${p.pagePath || ''}`} className="border-t border-border">
+                          <td className="px-4 py-3">
+                            {p.pageUrl ? (
+                              <a
+                                href={p.pageUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-mono text-xs text-foreground hover:underline break-all"
+                              >
+                                {p.pagePath || '/'}
+                              </a>
+                            ) : (
+                              <span className="font-mono text-xs text-muted-foreground">Unknown page</span>
+                            )}
+                            {p.host ? <div className="text-xs text-muted-foreground">{p.host}</div> : null}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                            {Number(row?.views) || 0}
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              className="text-left font-medium text-foreground hover:underline"
+                              onClick={() =>
+                                router.push(`/marketing/form-builder/template-analytics/${p.formID}?range=${analyticsRange}`)
+                              }
+                            >
+                              {p.formName}
+                            </button>
                           </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.views) || 0}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.visitors) || 0}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.submits) || 0}</td>
                           <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                            {Number(row?.activeUsers) || 0}
-                          </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                            {Number(row?.viewsPerActiveUser) ? Number(row.viewsPerActiveUser).toFixed(2) : '0.00'}
-                          </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                            {formatDuration(row?.avgEngagementTimePerActiveUser)}
+                            {Number(p.submitRate || 0).toFixed(1)}%
                           </td>
                         </tr>
                       ))
@@ -4892,7 +4461,7 @@ ${getFormPhoneExportRuntimeScript()}
                 <div>
                   <CardTitle className="text-base">Templates</CardTitle>
                   <CardDescription>
-                    Every form with its submissions and conversions ({FORM_ANALYTICS_RANGES.find((r) => r.value === analyticsRange)?.label.toLowerCase()}). Click a form to see its full analysis.
+                    Every form with its views, submissions and conversions ({FORM_ANALYTICS_RANGES.find((r) => r.value === analyticsRange)?.label.toLowerCase()}). Click a form to see its full analysis.
                   </CardDescription>
                 </div>
               </div>
@@ -4914,10 +4483,13 @@ ${getFormPhoneExportRuntimeScript()}
                     router.push(`/marketing/form-builder/template-analytics/${f._id}?range=${analyticsRange}`)
                   return (
                     <div className="overflow-auto rounded-md border border-border">
-                      <table className="min-w-[860px] w-full text-sm">
+                      <table className="min-w-[1100px] w-full text-sm">
                         <thead className="bg-muted/40">
                           <tr className="text-left text-muted-foreground">
                             <th className="px-4 py-3 font-medium">Form</th>
+                            <th className="px-4 py-3 font-medium text-right">Views</th>
+                            <th className="px-4 py-3 font-medium text-right">Visitors</th>
+                            <th className="px-4 py-3 font-medium text-right">View → submit</th>
                             <th className="px-4 py-3 font-medium text-right">Submissions</th>
                             <th className="px-4 py-3 font-medium text-right">People</th>
                             <th className="px-4 py-3 font-medium text-right">Converted</th>
@@ -4943,6 +4515,11 @@ ${getFormPhoneExportRuntimeScript()}
                                 ) : f?.templateScope === 'organization_default' ? (
                                   <div className="text-xs text-muted-foreground">Organisation default</div>
                                 ) : null}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.traffic?.views) || 0}</td>
+                              <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.traffic?.visitors) || 0}</td>
+                              <td className="px-4 py-3 text-right tabular-nums text-foreground">
+                                {Number(f?.traffic?.submitRate || 0).toFixed(1)}%
                               </td>
                               <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.submissions) || 0}</td>
                               <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.leads) || 0}</td>

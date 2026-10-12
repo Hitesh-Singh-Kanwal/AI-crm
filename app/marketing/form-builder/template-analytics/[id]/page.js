@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, BarChart3, FileText, UserCheck, Users } from 'lucide-react'
+import { ArrowLeft, BarChart3, Eye, FileText, MousePointerClick, UserCheck, Users } from 'lucide-react'
 
 import MainLayout from '@/components/layout/MainLayout'
 import GlobalLoader from '@/components/shared/GlobalLoader'
@@ -47,23 +47,37 @@ function StatCard({ label, value, hint, icon: Icon, iconWrap, iconClass }) {
   )
 }
 
-function SubmissionsChart({ series }) {
-  const max = Math.max(1, ...series.map((b) => b.submissions))
+function TrafficChart({ series }) {
+  const max = Math.max(1, ...series.map((b) => Math.max(b.views || 0, b.submissions)))
   const labelEvery = series.length > 14 ? 5 : 1
+  const barHeight = (n) => ({ height: `${(n / max) * 100}%`, minHeight: n ? 4 : 0 })
   return (
-    <div className="flex h-48 items-end gap-1">
-      {series.map((b, idx) => (
-        <div key={b.key} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
+    <div className="space-y-3">
+      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-[var(--studio-primary)]/25" /> Views
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-[var(--studio-primary)]" /> Submissions
+        </span>
+      </div>
+      <div className="flex h-48 items-end gap-1">
+        {series.map((b, idx) => (
           <div
-            className="w-full rounded-t bg-[var(--studio-primary)]/80 transition-all hover:bg-[var(--studio-primary)]"
-            style={{ height: `${(b.submissions / max) * 100}%`, minHeight: b.submissions ? 4 : 0 }}
-            title={`${bucketLabel(b.key)}: ${b.submissions} submission${b.submissions === 1 ? '' : 's'}, ${b.converted} converted`}
-          />
-          <span className="h-4 truncate text-[10px] text-muted-foreground">
-            {idx % labelEvery === 0 || idx === series.length - 1 ? bucketLabel(b.key) : ''}
-          </span>
-        </div>
-      ))}
+            key={b.key}
+            className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1"
+            title={`${bucketLabel(b.key)}: ${b.views || 0} view${b.views === 1 ? '' : 's'}, ${b.submissions} submission${b.submissions === 1 ? '' : 's'}, ${b.converted} converted`}
+          >
+            <div className="flex h-full w-full items-end gap-px">
+              <div className="flex-1 rounded-t bg-[var(--studio-primary)]/25" style={barHeight(b.views || 0)} />
+              <div className="flex-1 rounded-t bg-[var(--studio-primary)]" style={barHeight(b.submissions)} />
+            </div>
+            <span className="h-4 truncate text-[10px] text-muted-foreground">
+              {idx % labelEvery === 0 || idx === series.length - 1 ? bucketLabel(b.key) : ''}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -131,10 +145,12 @@ function FormAnalyticsContent() {
   const stages = (Array.isArray(data?.stages) ? data.stages : []).map((s) => ({ key: s.stage, count: s.count }))
   const sources = (Array.isArray(data?.sources) ? data.sources : []).map((s) => ({ key: s.source, count: s.count }))
   const recent = Array.isArray(data?.recent) ? data.recent : []
+  const pages = Array.isArray(data?.pages) ? data.pages : []
+  const traffic = totals?.traffic
   const rangeLabel = FORM_ANALYTICS_RANGES.find((r) => r.value === range)?.label || ''
 
   return (
-    <MainLayout title={data?.form?.name || 'Form analytics'} subtitle="Submissions and conversions for this form">
+    <MainLayout title={data?.form?.name || 'Form analytics'} subtitle="Views, submissions and conversions for this form">
       <div className="space-y-6 relative">
         {loading ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[1px]">
@@ -189,6 +205,38 @@ function FormAnalyticsContent() {
           <>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
+                label="Form views"
+                value={traffic ? traffic.views : '—'}
+                hint="Times the form was seen on screen"
+                icon={Eye}
+                iconWrap="bg-amber-100"
+                iconClass="text-amber-600"
+              />
+              <StatCard
+                label="Unique visitors"
+                value={traffic ? traffic.visitors : '—'}
+                hint="Different people who saw it"
+                icon={Users}
+                iconWrap="bg-sky-100"
+                iconClass="text-sky-600"
+              />
+              <StatCard
+                label="Started the form"
+                value={traffic ? traffic.starts : '—'}
+                hint="Clicked into at least one field"
+                icon={MousePointerClick}
+                iconWrap="bg-indigo-100"
+                iconClass="text-indigo-600"
+              />
+              <StatCard
+                label="View → submit rate"
+                value={traffic ? `${Number(traffic.submitRate || 0).toFixed(1)}%` : '—'}
+                hint="Tracked submits ÷ views"
+                icon={BarChart3}
+                iconWrap="bg-rose-100"
+                iconClass="text-rose-600"
+              />
+              <StatCard
                 label="Total submissions"
                 value={totals ? totals.submissions : '—'}
                 hint="Includes repeat submissions"
@@ -228,17 +276,70 @@ function FormAnalyticsContent() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Submissions over time</CardTitle>
+                <CardTitle className="text-base">Views and submissions over time</CardTitle>
                 <CardDescription>
                   {range === 'all' ? 'Per month, last 12 months' : `Per day, ${rangeLabel.toLowerCase()}`}
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-2">
-                {series.some((b) => b.submissions > 0) ? (
-                  <SubmissionsChart series={series} />
+                {series.some((b) => b.submissions > 0 || b.views > 0) ? (
+                  <TrafficChart series={series} />
                 ) : (
                   <div className="py-10 text-center text-sm text-muted-foreground">
-                    No submissions in this period.
+                    No views or submissions in this period.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Pages this form was viewed on</CardTitle>
+                <CardDescription>Your website pages for embeds, the share link for the hosted form</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-2">
+                {pages.length === 0 ? (
+                  <div className="py-6 text-sm text-muted-foreground">No views recorded in this period.</div>
+                ) : (
+                  <div className="overflow-auto rounded-md border border-border">
+                    <table className="w-full min-w-[640px] text-sm">
+                      <thead className="bg-muted/40">
+                        <tr className="text-left text-muted-foreground">
+                          <th className="px-4 py-3 font-medium">Page</th>
+                          <th className="px-4 py-3 font-medium text-right">Views</th>
+                          <th className="px-4 py-3 font-medium text-right">Visitors</th>
+                          <th className="px-4 py-3 font-medium text-right">Submits</th>
+                          <th className="px-4 py-3 font-medium text-right">View → submit</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-card">
+                        {pages.map((p) => (
+                          <tr key={`${p.host || ''}-${p.pagePath || ''}`} className="border-t border-border">
+                            <td className="px-4 py-3">
+                              {p.pageUrl ? (
+                                <a
+                                  href={p.pageUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="break-all font-mono text-xs text-foreground hover:underline"
+                                >
+                                  {p.pagePath || '/'}
+                                </a>
+                              ) : (
+                                <span className="font-mono text-xs text-muted-foreground">Unknown page</span>
+                              )}
+                              {p.host ? <div className="text-xs text-muted-foreground">{p.host}</div> : null}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.views) || 0}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.visitors) || 0}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.submits) || 0}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-foreground">
+                              {Number(p.submitRate || 0).toFixed(1)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </CardContent>
