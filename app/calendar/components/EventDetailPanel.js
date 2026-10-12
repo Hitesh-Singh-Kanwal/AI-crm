@@ -2442,13 +2442,23 @@ export default function EventDetailPanel({
                   </div>
                 )}
 
-                {/* Quick status actions — only shown when event is still scheduled */}
-                {event.effectiveStatus === "scheduled" ||
-                event.status === "scheduled" ? (
+                {/* Quick status actions — shown while the lesson is scheduled, and also once
+                    it has ended and reads "completed": that is the moment staff learn the
+                    student did not come, and without these a no-show could never be recorded.
+                    The server accepts the change and gives the lesson credit back for the
+                    "no charge" choices. */}
+                {["scheduled", "completed"].includes(event.effectiveStatus) ||
+                ["scheduled", "completed"].includes(event.status) ? (
                   <div className="space-y-3">
                     <p className="text-[14px] font-medium text-foreground">
                       Cancellation &amp; no-show
                     </p>
+                    {(event.effectiveStatus === "completed" || event.status === "completed") && (
+                      <p className="text-[12px] text-muted-foreground">
+                        This lesson has ended, so it shows as completed. If the student
+                        didn&apos;t come, or it was cancelled, record that here.
+                      </p>
+                    )}
                     {/* Unallocated lessons are never auto-completed, so they
                         need an explicit way out — either allocate above, or
                         complete as a comp if permitted. */}

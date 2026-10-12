@@ -26,7 +26,8 @@ import {
 } from "@/lib/studioSlotHours";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import MultiSelectCheckboxDropdown from "@/components/shared/MultiSelectCheckboxDropdown";
-import NewEnrollmentPackageInline from "@/app/calendar/components/NewEnrollmentPackageInline";
+import NewEnrollmentPackageInline, { enrollmentLinkTarget } from "@/app/calendar/components/NewEnrollmentPackageInline";
+import { sendPaymentLink } from "@/components/payments/SendPaymentLinkMenu";
 import LocationSelector from "@/components/shared/LocationSelector";
 import SearchableSelect from "@/components/ui/searchable-select";
 // A session payment lands on CalendarEvent.payment.method, whose enum has no wallet.
@@ -2786,6 +2787,8 @@ export default function AppointmentComposerPanel({
           ? {
               method: payload.billing?.method || "cash",
               collectDate: payload.billing?.collectDate || undefined,
+              // Collect-now off (or a payment link going out instead) leaves it unpaid.
+              ...(payload.billing?.collectNow === false ? { collectNow: false } : {}),
               ...(payload.billing?.method === "terminal"
                 ? { deviceID: payload.billing?.deviceID, promptTip: payload.billing?.promptTip }
                 : {}),
@@ -2836,6 +2839,10 @@ export default function AppointmentComposerPanel({
       payload.billingType === "one_time"
         ? addRes.data?.checkoutUrl || null
         : await recordInitialPayment(customerID, enrollmentID, payload);
+
+    const linkChannel = payload.billing?.sendLinkChannel;
+    const linkTarget = linkChannel && enrollmentLinkTarget(payload, enrollmentID, addRes.data?.paymentPlan);
+    if (linkTarget) await sendPaymentLink({ customerID, target: linkTarget, channel: linkChannel });
 
     const listRes = await api.get(`/api/enrollment?customerID=${customerID}`);
     if (listRes.success && Array.isArray(listRes.data)) {
