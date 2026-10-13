@@ -5,6 +5,7 @@ import { History } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { formatLeadStageLabel, getLeadStageColor } from '@/lib/lead-stages'
 import { formatReasonLabel } from '@/lib/dynamic-list-normalize'
+import { formatLeadSource } from '@/lib/lead-source'
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
 
 /** Past attempts rendered before collapsing — the array has no backend cap. */
@@ -107,7 +108,7 @@ function fieldValue(key, value, { stages, leadReasons }) {
     )
   }
   if (key === 'reason') return formatReasonLabel(value, leadReasons)
-  if (key === 'utm_source') return value === 'google-add' ? 'Google Ads' : value === 'website' ? 'Website' : value
+  if (key === 'utm_source') return formatLeadSource(value)
   if (key === 'utm_url') {
     return (
       <span className="block truncate" title={value}>

@@ -759,7 +759,7 @@ export default function StylePanel({
                     )}
                     {field.name === 'utm_source' && (
                       <p className="text-xs text-muted-foreground">
-                        Source options are fixed: Google Ads and Website. Saved as utm_source.
+                        Usually not needed: the ad or site a visitor came from (Facebook, Google, Instagram…) is captured automatically from their link. This field is only used when nothing was captured.
                       </p>
                     )}
                     <ul className="text-xs text-muted-foreground space-y-1 rounded-md border border-border p-2 max-h-36 overflow-y-auto">
