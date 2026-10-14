@@ -82,6 +82,8 @@ function buildPreviewHeadGuard(viewportWidth = EMAIL_DESIGN_WIDTH) {
 <style type="text/css" data-crm-preview-guard="1">
   :root{color-scheme:light only;}
   html,body{margin:0;padding:0;color:#111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;}
+  /* templates' html,body{height:100%} would keep the auto-sized iframe from ever shrinking */
+  html,body{height:auto !important;min-height:0 !important;}
   img{max-width:100%;height:auto;}
   img[data-crm-img="1"]{width:100%;}
   img[data-crm-play="1"]{width:64px !important;height:64px !important;max-width:64px !important;display:inline-block !important;}
