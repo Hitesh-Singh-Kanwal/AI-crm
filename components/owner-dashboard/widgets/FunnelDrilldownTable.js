@@ -31,7 +31,7 @@ function renderCell(row, col) {
  * clicked. Fetches the widget's full detail set once (same endpoint as the
  * "Details" button) and narrows it to the clicked stage with `filterFn`.
  */
-export default function FunnelDrilldownTable({ title, metric, rangeDays, columns, filterFn, onClose }) {
+export default function FunnelDrilldownTable({ title, metric, rangeDays, columns, filterFn, onClose, onRowClick }) {
   const [page, setPage] = useState(1)
   const { data, isLoading } = useOwnerOverviewDetails({
     metric,
@@ -87,7 +87,11 @@ export default function FunnelDrilldownTable({ title, metric, rangeDays, columns
             </TableHeader>
             <TableBody>
               {pageRows.map((row, i) => (
-                <TableRow key={row._id || row.id || i} className="even:bg-muted/20">
+                <TableRow
+                  key={row._id || row.id || i}
+                  className={`even:bg-muted/20 ${onRowClick ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
                   {columns.map((col) => (
                     <TableCell key={col.key} className="whitespace-nowrap text-sm">
                       {renderCell(row, col)}

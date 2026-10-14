@@ -43,7 +43,7 @@ function buildCards({ current, previous, lastYear }, rangeDays) {
     {
       label: 'Intros Taught',
       value: value(cur.introsTaught, num),
-      note: cur.introsBooked !== null && cur.introsBooked !== undefined ? `${num(cur.introsBooked)} booked in this window` : null,
+      note: cur.introsBooked !== null && cur.introsBooked !== undefined ? `${num(cur.introsBooked)} of ${num(cur.convertedLeads)} converted leads booked an intro` : null,
       ...ratio('introsTaught'),
     },
     { label: 'Lead → Intro', value: value(cur.leadToIntroPct, (v) => `${v}%`), ...points('leadToIntroPct') },

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import LeadsDialog from '@/app/leads/components/LeadsDialog'
 import { Card } from '@/components/dashboard/widgets/shared'
 import { FunnelStage, FunnelConnector } from './shared'
 import WidgetHeader from './WidgetHeader'
@@ -31,6 +33,8 @@ const STAGES = [
 
 export default function ConversionFunnelReportsWidget({ funnel, rangeDays, onRangeChange }) {
   const [activeStage, setActiveStage] = useState(null)
+  const [viewLeadId, setViewLeadId] = useState(null)
+  const router = useRouter()
 
   const report1 = funnel?.report1 || { leadCount: 0, introBookedCount: 0, ratePct: 0, avgDaysToBook: 0 }
   const report2 = funnel?.report2 || { introCount: 0, firstPurchaseCount: 0, ratePct: 0, avgDaysToPurchase: 0 }
@@ -105,8 +109,12 @@ export default function ConversionFunnelReportsWidget({ funnel, rangeDays, onRan
           columns={DETAIL_COLUMNS}
           filterFn={active.filterFn}
           onClose={() => setActiveStage(null)}
+          onRowClick={(row) =>
+            row.customerID ? router.push(`/settings/users-roles/customers/${row.customerID}`) : setViewLeadId(row._id)
+          }
         />
       )}
+      <LeadsDialog open={Boolean(viewLeadId)} onClose={() => setViewLeadId(null)} initialLeadId={viewLeadId} viewOnly />
     </Card>
   )
 }

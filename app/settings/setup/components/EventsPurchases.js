@@ -24,6 +24,7 @@ import { nameWithMembers, formatDate } from '@/lib/utils'
 import { dateInputToISO, todayDateInput } from '@/lib/studioLocalDate'
 import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+import LocationSelector from '@/components/shared/LocationSelector'
 import SavedCardField from '@/components/payments/SavedCardField'
 import CheckNumberField from '@/components/payments/CheckNumberField'
 import TerminalDeviceField, { terminalTipPayload } from '@/components/payments/TerminalDeviceField'
@@ -103,24 +104,27 @@ function SortableTable({ rows, setRows, url, reload, children }) {
 
 /* ─────────────────────────── Products ─────────────────────────── */
 
+const locIds = (x) => (Array.isArray(x) ? x : x ? [x] : []).map((l) => l?._id ?? l).filter(Boolean)
+
 function ProductDialog({ open, onClose, product, onRefresh }) {
   const isEdit = Boolean(product)
-  const [form, setForm] = useState({ name: '', description: '', defaultPrice: '' })
+  const [form, setForm] = useState({ name: '', description: '', defaultPrice: '', locationID: [] })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setForm(product
-      ? { name: product.name || '', description: product.description || '', defaultPrice: product.defaultPrice ?? '' }
-      : { name: '', description: '', defaultPrice: '' })
+      ? { name: product.name || '', description: product.description || '', defaultPrice: product.defaultPrice ?? '', locationID: locIds(product.locationID) }
+      : { name: '', description: '', defaultPrice: '', locationID: [] })
   }, [open, product])
 
   async function submit(e) {
     e.preventDefault()
     if (!form.name.trim()) { toast.error('Name is required'); return }
+    if (!form.locationID.length) { toast.error('Please select at least one location'); return }
     setSaving(true)
     try {
-      const payload = { name: form.name.trim(), description: form.description.trim() || undefined, defaultPrice: Number(form.defaultPrice) || 0 }
+      const payload = { locationID: form.locationID, name: form.name.trim(), description: form.description.trim() || undefined, defaultPrice: Number(form.defaultPrice) || 0 }
       const res = isEdit ? await api.put(`/api/product/${product._id}`, payload) : await api.post('/api/product', payload)
       if (res.success) { toast.success(isEdit ? 'Product updated' : 'Product created'); onRefresh(); onClose() }
       else toast.error('Failed', { description: res.error })
@@ -132,6 +136,10 @@ function ProductDialog({ open, onClose, product, onRefresh }) {
       <DialogContent>
         <DialogHeader><DialogTitle>{isEdit ? 'Edit Product' : 'Add Product'}</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4 py-2">
+          <div className="flex flex-col gap-1.5">
+            <Label>Location</Label>
+            <LocationSelector value={form.locationID} onChange={(ids) => setForm((f) => ({ ...f, locationID: ids }))} multiple={true} />
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="p-name">Name</Label>
             <Input id="p-name" placeholder="Guest ticket, hotel night…" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
@@ -234,20 +242,21 @@ export function ProductsTab() {
 
 function EventTypeDialog({ open, onClose, eventType, onRefresh }) {
   const isEdit = Boolean(eventType)
-  const [form, setForm] = useState({ name: '', description: '' })
+  const [form, setForm] = useState({ name: '', description: '', locationID: [] })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    setForm(eventType ? { name: eventType.name || '', description: eventType.description || '' } : { name: '', description: '' })
+    setForm(eventType ? { name: eventType.name || '', description: eventType.description || '', locationID: locIds(eventType.locationID) } : { name: '', description: '', locationID: [] })
   }, [open, eventType])
 
   async function submit(e) {
     e.preventDefault()
     if (!form.name.trim()) { toast.error('Name is required'); return }
+    if (!form.locationID.length) { toast.error('Please select at least one location'); return }
     setSaving(true)
     try {
-      const payload = { name: form.name.trim(), description: form.description.trim() || undefined }
+      const payload = { locationID: form.locationID, name: form.name.trim(), description: form.description.trim() || undefined }
       const res = isEdit ? await api.put(`/api/event-type/${eventType._id}`, payload) : await api.post('/api/event-type', payload)
       if (res.success) { toast.success(isEdit ? 'Event type updated' : 'Event type created'); onRefresh(); onClose() }
       else toast.error('Failed', { description: res.error })
@@ -259,6 +268,10 @@ function EventTypeDialog({ open, onClose, eventType, onRefresh }) {
       <DialogContent>
         <DialogHeader><DialogTitle>{isEdit ? 'Edit Event Type' : 'Add Event Type'}</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4 py-2">
+          <div className="flex flex-col gap-1.5">
+            <Label>Location</Label>
+            <LocationSelector value={form.locationID} onChange={(ids) => setForm((f) => ({ ...f, locationID: ids }))} multiple={true} />
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="et-name">Name</Label>
             <Input id="et-name" placeholder="Competition, showcase, retreat…" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />

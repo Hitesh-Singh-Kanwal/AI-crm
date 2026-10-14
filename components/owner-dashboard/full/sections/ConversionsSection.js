@@ -48,6 +48,7 @@ const PRODUCT_MIX_COLORS = {
   'Other Package': 'var(--chart-5)',
   Membership: 'var(--chart-2)',
   'Single Session': 'var(--chart-6)',
+  'Event & Product': 'var(--chart-3)',
   Other: 'var(--chart-7)',
 }
 
