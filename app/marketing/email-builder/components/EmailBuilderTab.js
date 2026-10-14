@@ -39,6 +39,7 @@ import EmailVisualHtmlEditor from './EmailVisualHtmlEditor'
 import EmailTemplateDetailsForm, { isTemplateDetailsComplete } from './EmailTemplateDetailsForm'
 import { EmailImageMediaFields, EmailVideoMediaFields } from './EmailMediaFields'
 import EmailFooterPicker from './EmailFooterPicker'
+import EmailFileUploadButton from './EmailFileUploadButton'
 import {
   extractCategoriesList,
   buildVideoEmailHtml,
@@ -478,6 +479,15 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
     setHtmlBody(generatedHtml)
   }
 
+  const hasEmailContent = htmlCustomized ? !!String(htmlBody || '').trim() : emailBlocks.length > 0
+
+  const importHtmlFromFile = (html) => {
+    htmlBodyRef.current = html
+    setHtmlBody(html)
+    setHtmlCustomized(true)
+    setCanvasView('preview')
+  }
+
   const addBlock = (type) => {
     const newBlock = {
       id: Date.now().toString(),
@@ -814,6 +824,11 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
                       </Button>
                     ) : null}
                     <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                      <EmailFileUploadButton
+                        hasContent={hasEmailContent}
+                        onImport={importHtmlFromFile}
+                        className="h-8"
+                      />
                       <EmailFooterPicker
                         html={effectiveHtmlBody}
                         onHtmlChange={(next) => {
@@ -873,7 +888,7 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
                             </div>
                             <p className="text-slate-800 text-sm font-semibold">Start your email</p>
                             <p className="text-slate-500 text-xs mt-1 max-w-sm mx-auto">
-                              Drag blocks from the left, or paste HTML.
+                              Drag blocks from the left, paste HTML, or upload an .html / .htm / .txt file.
                             </p>
                             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                               <Button
@@ -896,6 +911,13 @@ export default function EmailBuilderTab({ onCreated, onBack }) {
                                 <Code2 className="h-3.5 w-3.5 mr-1.5" />
                                 Paste HTML
                               </Button>
+                              <EmailFileUploadButton
+                                hasContent={hasEmailContent}
+                                onImport={importHtmlFromFile}
+                                className="h-8"
+                                iconClassName="h-3.5 w-3.5 mr-1.5"
+                                labelClassName=""
+                              />
                             </div>
                           </div>
                         ) : (

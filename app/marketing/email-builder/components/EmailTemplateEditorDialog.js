@@ -16,6 +16,7 @@ import EmailHtmlPanel from './EmailHtmlPanel'
 import EmailPreviewFrame from './EmailPreviewFrame'
 import EmailVisualHtmlEditor from './EmailVisualHtmlEditor'
 import EmailFooterPicker from './EmailFooterPicker'
+import EmailFileUploadButton from './EmailFileUploadButton'
 import {
   extractCategoriesList,
   getTemplateCategoryId,
@@ -177,6 +178,17 @@ export default function EmailTemplateEditorDialog({
                 {subject.trim() || 'Untitled template'}
               </p>
             </div>
+
+            {!loading && !error ? (
+              <EmailFileUploadButton
+                hasContent={!!String(htmlBody || '').trim()}
+                onImport={(html) => {
+                  handleHtmlChange(html)
+                  setEditTab('preview')
+                }}
+                className="h-8 shrink-0"
+              />
+            ) : null}
 
             {!loading && !error ? (
               <EmailFooterPicker

@@ -7,7 +7,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import { ADMIN_TEMPLATE_VARIABLES, STUDIO_TEMPLATE_VARIABLES } from '@/lib/template-scope'
-
 const MERGE_TAGS = [
   '{{name}}',
   '{{first_name}}',
@@ -134,7 +133,7 @@ export default function EmailHtmlPanel({
           onChange={(e) => onHtmlBodyChange?.(e.target.value)}
           readOnly={readOnly}
           rows={editorOnly ? 24 : minRows}
-          placeholder={`<!-- Paste your email HTML here -->\n\n<h1>Welcome, {{name}}!</h1>\n<p>We are excited to have you at the studio.</p>`}
+          placeholder={`<!-- Paste your email HTML here, or use "Upload file" above for an .html / .htm / .txt file -->\n\n<h1>Welcome, {{name}}!</h1>\n<p>We are excited to have you at the studio.</p>`}
           className={cn(
             'flex-1 w-full min-h-0 resize-none rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0',
             'font-mono text-[13px] leading-relaxed px-4 py-3',
