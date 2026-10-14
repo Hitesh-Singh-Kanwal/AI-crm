@@ -175,11 +175,13 @@ function addressFromRecord(address) {
 }
 
 const toDateInputValue = (value) => (value ? String(value).slice(0, 10) : '')
+// Stable default — a fresh `[]` per render would retrigger the open effect forever.
+const NO_LEADS = []
 
 export default function LeadsDialog({
   open,
   onClose,
-  leads = [],
+  leads = NO_LEADS,
   onRefresh,
   initialLeadId = null,
   viewOnly = false,
@@ -232,52 +234,52 @@ export default function LeadsDialog({
       setMode('create')
       return
     }
-    if (initialLeadId && leads && leads.length > 0) {
-      const found = leads.find((l) => l._id === initialLeadId)
-      if (found) {
-        const initialCallbackDate = toDateInputValue(found.callbackDate)
-        setEditingLead({
-          ...found,
-          callbackDate: initialCallbackDate,
-          dateOfBirth: toDateInputValue(found.dateOfBirth),
-          gender: found.gender || '',
-          address: addressFromRecord(found.address),
-          notes: Array.isArray(found.notes) ? found.notes : [],
-          members: Array.isArray(found.members) ? found.members : [],
-        })
-        setSavedCallbackDate(initialCallbackDate)
-        setMode(viewOnly ? 'view' : 'edit')
-        // The leads list payload may omit actualReason / members / personal
-        // details; fetch the full record to fill them in.
-        api.get(`/api/lead/${initialLeadId}`).then((res) => {
-          if (res?.success && res.data) {
-            setEditingLead((prev) =>
-              prev && prev._id === initialLeadId
-                ? {
-                    ...prev,
-                    actualReason: res.data.actualReason,
-                    dateOfBirth: toDateInputValue(res.data.dateOfBirth) || prev.dateOfBirth,
-                    gender: res.data.gender || prev.gender,
-                    address: res.data.address ? addressFromRecord(res.data.address) : prev.address,
-                    members: Array.isArray(res.data.members) ? res.data.members : prev.members || [],
-                    engagementHistory: Array.isArray(res.data.engagementHistory)
-                      ? res.data.engagementHistory
-                      : prev.engagementHistory || [],
-                    createdAt: res.data.createdAt || prev.createdAt,
-                    utm_source: res.data.utm_source ?? prev.utm_source,
-                    utm_medium: res.data.utm_medium ?? prev.utm_medium,
-                    utm_campaign: res.data.utm_campaign ?? prev.utm_campaign,
-                    attribution: res.data.attribution ?? prev.attribution,
-                  }
-                : prev
-            )
-          }
-        })
-      }
-    } else {
+    if (!initialLeadId) {
       setEditingLead(createEmptyLead())
       setMode('create')
+      return
     }
+    const toEditable = (lead) => ({
+      ...lead,
+      callbackDate: toDateInputValue(lead.callbackDate),
+      dateOfBirth: toDateInputValue(lead.dateOfBirth),
+      gender: lead.gender || '',
+      address: addressFromRecord(lead.address),
+      notes: Array.isArray(lead.notes) ? lead.notes : [],
+      members: Array.isArray(lead.members) ? lead.members : [],
+    })
+    // Lead may not be in `leads` (e.g. opened by ID from a dashboard drill-down)
+    // — then nothing renders until the fetch below fills it in.
+    const found = leads?.find((l) => l._id === initialLeadId)
+    setEditingLead(found ? toEditable(found) : null)
+    setSavedCallbackDate(found ? toDateInputValue(found.callbackDate) : '')
+    setMode(viewOnly ? 'view' : 'edit')
+    // The leads list payload may omit actualReason / members / personal
+    // details; fetch the full record to fill them in.
+    api.get(`/api/lead/${initialLeadId}`).then((res) => {
+      if (!res?.success || !res.data) return
+      if (!found) setSavedCallbackDate(toDateInputValue(res.data.callbackDate))
+      setEditingLead((prev) => {
+        if (!prev) return found ? prev : toEditable(res.data)
+        if (prev._id !== initialLeadId) return prev
+        return {
+          ...prev,
+          actualReason: res.data.actualReason,
+          dateOfBirth: toDateInputValue(res.data.dateOfBirth) || prev.dateOfBirth,
+          gender: res.data.gender || prev.gender,
+          address: res.data.address ? addressFromRecord(res.data.address) : prev.address,
+          members: Array.isArray(res.data.members) ? res.data.members : prev.members || [],
+          engagementHistory: Array.isArray(res.data.engagementHistory)
+            ? res.data.engagementHistory
+            : prev.engagementHistory || [],
+          createdAt: res.data.createdAt || prev.createdAt,
+          utm_source: res.data.utm_source ?? prev.utm_source,
+          utm_medium: res.data.utm_medium ?? prev.utm_medium,
+          utm_campaign: res.data.utm_campaign ?? prev.utm_campaign,
+          attribution: res.data.attribution ?? prev.attribution,
+        }
+      })
+    })
   }, [open, initialLeadId, leads, viewOnly])
 
   function openEdit(lead) {

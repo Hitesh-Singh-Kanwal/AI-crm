@@ -41,7 +41,7 @@ function buildCards({ current, previous, lastYear }) {
       label: 'Intros Taught',
       value: value(cur.introsTaught, num),
       href: 'od-conversions',
-      note: cur.introsBooked !== null ? `${num(cur.introsBooked)} booked in this window` : null,
+      note: cur.introsBooked !== null ? `${num(cur.introsBooked)} of ${num(cur.convertedLeads)} converted leads booked an intro` : null,
       ...ratio('introsTaught'),
     },
     {

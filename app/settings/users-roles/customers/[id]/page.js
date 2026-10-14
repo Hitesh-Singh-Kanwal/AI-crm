@@ -3486,6 +3486,12 @@ const BLANK_ENR_FORM = {
   },
 };
 
+// The Enrollments tab's "Active" bucket — the Services index counts with the
+// same rule so its number always matches what clicking through shows.
+function isActiveEnrollment(e) {
+  return e.status === "active" && e.package?.status !== "cancelled";
+}
+
 function EnrollmentsTab({
   customerID,
   customerName = "",
@@ -3936,8 +3942,7 @@ function EnrollmentsTab({
 
   const filteredEnrollments = statusFilter
     ? enrollments.filter((e) => {
-        if (statusFilter === "active")
-          return e.status === "active" && e.package?.status !== "cancelled";
+        if (statusFilter === "active") return isActiveEnrollment(e);
         if (statusFilter === "cancelled")
           return e.package?.status === "cancelled";
         if (statusFilter === "expired") return e.package?.status === "expired";
@@ -5659,7 +5664,21 @@ function DateChip({ label, value, placeholder = "Not set", onPick }) {
 
 // ─── Payment History Tab ─────────────────────────────────────────────────────
 
+// Enrollments' buckets minus "expired" — purchases carry no expiry date.
+// Completed = every product checked off (dated ones auto-check once their
+// date passes) with nothing left owed.
+function purchaseStatus(p) {
+  if (p.cancelStatus === "cancelled") return "cancelled";
+  const items = p.lineItems || [];
+  const allChecked =
+    items.length > 0 && items.every((li) => li.checkStatus === "checked");
+  return allChecked && Number(p.amountDue ?? p.total ?? 0) <= 0
+    ? "completed"
+    : "active";
+}
+
 function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID = null }) {
+  const [statusFilter, setStatusFilter] = useState("active");
   const [rows, setRows] = useState([]);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5740,46 +5759,71 @@ function PurchasesTab({ customerID, customerName, locationID, initialPurchaseID 
       </div>
     );
 
+  const filteredRows = rows.filter((r) => purchaseStatus(r) === statusFilter);
+  const isActiveTab = statusFilter === "active";
+
   // Rows arrive newest-first (createdAt: -1) — falls back to the newest
   // purchase, same convention as the Enrollments dropdown above.
   const selectedRow =
-    rows.find((r) => String(r._id) === String(selectedPurchaseId)) ?? rows[0] ?? null;
+    filteredRows.find((r) => String(r._id) === String(selectedPurchaseId)) ??
+    filteredRows[0] ??
+    null;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        {rows.length > 0 ? (
+        <div className="flex items-center gap-2">
           <div className="relative">
             <select
-              value={selectedRow ? String(selectedRow._id) : ""}
-              onChange={(e) => setSelectedPurchaseId(e.target.value)}
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setSelectedPurchaseId(null);
+              }}
               className="h-8 rounded-lg border border-border bg-background pl-3 pr-8 text-[12px] font-medium text-foreground outline-none focus:border-primary appearance-none cursor-pointer"
             >
-              {rows.map((r) => (
-                <option key={r._id} value={String(r._id)}>
-                  {r.name}
-                  {r.purchaseDate ?? r.createdAt ? ` — ${formatDate(r.purchaseDate ?? r.createdAt)}` : ""}
-                  {r.cancelStatus === "cancelled" ? " (cancelled)" : ""}
-                </option>
-              ))}
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           </div>
-        ) : (
-          <p className="text-[13px] text-muted-foreground">0 purchases</p>
+          {filteredRows.length > 0 ? (
+            <div className="relative">
+              <select
+                value={selectedRow ? String(selectedRow._id) : ""}
+                onChange={(e) => setSelectedPurchaseId(e.target.value)}
+                className="h-8 rounded-lg border border-border bg-background pl-3 pr-8 text-[12px] font-medium text-foreground outline-none focus:border-primary appearance-none cursor-pointer"
+              >
+                {filteredRows.map((r) => (
+                  <option key={r._id} value={String(r._id)}>
+                    {r.name}
+                    {r.purchaseDate ?? r.createdAt ? ` — ${formatDate(r.purchaseDate ?? r.createdAt)}` : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            </div>
+          ) : (
+            <p className="text-[13px] text-muted-foreground">0 purchases</p>
+          )}
+        </div>
+        {isActiveTab && (
+          <Button
+            size="sm"
+            className="h-8 text-[12px]"
+            onClick={() => setCreatePurchaseOpen(true)}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1.5" /> Enroll
+          </Button>
         )}
-        <Button
-          size="sm"
-          className="h-8 text-[12px]"
-          onClick={() => setCreatePurchaseOpen(true)}
-        >
-          <Plus className="h-3.5 w-3.5 mr-1.5" /> Enroll
-        </Button>
       </div>
 
       {!selectedRow ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center text-[13px] text-muted-foreground">
-          No events or products yet. Click "Enroll" to create one.
+          {isActiveTab
+            ? 'No active events or products. Click "Enroll" to create one.'
+            : `No ${statusFilter} events or products.`}
         </div>
       ) : (
         (() => {
@@ -8030,9 +8074,7 @@ function SectionIndex({ section, summary, onOpen }) {
     );
     switch (viewId) {
       case "active-enrollments": {
-        const activeEnrollments = summary.enrollments.filter(
-          (e) => (e.package?.status ?? e.status) === "active",
-        );
+        const activeEnrollments = summary.enrollments.filter(isActiveEnrollment);
         return {
           value: `${activeEnrollments.length} active`,
           hint: activeEnrollments.length ? "Active" : "None yet",
@@ -8059,11 +8101,13 @@ function SectionIndex({ section, summary, onOpen }) {
         };
       }
       case "purchases": {
-        const purchases = summary.purchases;
+        const activePurchases = summary.purchases.filter(
+          (p) => purchaseStatus(p) === "active",
+        );
         return {
-          value: `${purchases.length} total`,
-          hint: purchases.length ? "Events & Products" : "None yet",
-          children: purchases.map((p) => {
+          value: `${activePurchases.length} active`,
+          hint: activePurchases.length ? "Active" : "None yet",
+          children: activePurchases.map((p) => {
             const due = Number(p.amountDue ?? p.total ?? 0);
             return {
               id: String(p._id),
@@ -8885,6 +8929,15 @@ export default function CustomerDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Drill-in views change their own data (cancel, pay, enroll) — refresh the
+  // shared summary on the way back so the indexes and Overview aren't stale.
+  const { reload: reloadSummary } = summary;
+  const prevViewRef = useRef(nav.view);
+  useEffect(() => {
+    if (prevViewRef.current && !nav.view) reloadSummary();
+    prevViewRef.current = nav.view;
+  }, [nav.view, reloadSummary]);
 
   if (loading) {
     return (

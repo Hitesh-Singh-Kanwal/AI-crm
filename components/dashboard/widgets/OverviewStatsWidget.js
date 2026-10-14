@@ -47,7 +47,7 @@ export default function OverviewStatsWidget({ overviewStats, defaultRange }) {
       trendType: totalBookings.trendType,
     },
     {
-      title: 'Booking Rate',
+      title: 'Total Booking Rate',
       value: `${Math.round(num(bookingRate.value))}%`,
       trend: pct(bookingRate),
       trendLabel: pctLabel(bookingRate),

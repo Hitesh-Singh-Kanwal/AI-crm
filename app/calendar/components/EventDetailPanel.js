@@ -596,10 +596,12 @@ function GroupStudentRoster({
   const handleSellSuccess = async () => {
     const customer = pendingSellRef.current;
     pendingSellRef.current = null;
+    // Roster data first: it replaces sessionMap, and confirmAdd's refresh then
+    // layers the charged package's post-deduction count on top.
+    await loadRosterData();
     if (customer && !currentIds.has(String(customer._id))) {
       await confirmAdd(customer, []);
     }
-    await loadRosterData();
   };
 
   const handleAdd = (customer) => {
@@ -644,7 +646,11 @@ function GroupStudentRoster({
           .map((ch) => String(ch.customerID)),
       );
       setChargedIds(charged);
-      setEnrolled((prev) => [...prev, customer]);
+      // Idempotent: a double-click can run confirmAdd twice for one student
+      // before the first re-render disables the button.
+      setEnrolled((prev) =>
+        prev.some((c) => String(c._id) === cid) ? prev : [...prev, customer],
+      );
       setEventMemberIds(mergedMemberIds);
       if (memberIds.length > 0) {
         setEnrolledMemberMap((prev) => ({
@@ -668,6 +674,9 @@ function GroupStudentRoster({
       );
       setFundingChoicePrompt(null);
       setPendingAdd(null);
+      // The PUT response doesn't populate charges, so re-read the event to show
+      // the post-deduction "N left" (and Unpaid) right away instead of on reopen.
+      await fetchEnrolled();
     } else if (res.errorData?.needsFundingChoice) {
       // The funding-choice prompt lives inside the pending-add panel, so a
       // members-less customer (added via the direct confirmAdd path) needs that
@@ -767,6 +776,7 @@ function GroupStudentRoster({
       setEditingMembersId(null);
       setEditingMemberIds([]);
       setEditingAbsent(false);
+      await fetchEnrolled();
     } else if (res.errorData?.needsFundingChoice) {
       setFundingChoicePrompt({
         context: "edit",
@@ -928,6 +938,7 @@ function GroupStudentRoster({
                   <button
                     key={getFundingOptionId(opt)}
                     type="button"
+                    disabled={saving === String(pendingAdd.customer._id)}
                     onClick={() =>
                       confirmAdd(
                         pendingAdd.customer,
@@ -936,7 +947,7 @@ function GroupStudentRoster({
                         { source: opt.source, id: getFundingOptionId(opt) },
                       )
                     }
-                    className="h-7 px-2.5 rounded-md border border-border bg-background text-left text-[11px] font-medium text-foreground hover:bg-muted/50"
+                    className="h-7 px-2.5 rounded-md border border-border bg-background text-left text-[11px] font-medium text-foreground hover:bg-muted/50 disabled:opacity-50"
                   >
                     {opt.label}
                   </button>

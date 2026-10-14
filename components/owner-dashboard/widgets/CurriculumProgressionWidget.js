@@ -1,7 +1,7 @@
 'use client'
 
 import { Card, EmptyChart } from '@/components/dashboard/widgets/shared'
-import { FunnelStage, FunnelConnector } from './shared'
+import { FunnelStage } from './shared'
 import WidgetHeader from './WidgetHeader'
 import DetailsButton from './DetailsButton'
 
@@ -16,6 +16,7 @@ const DETAIL_COLUMNS = [
 export default function CurriculumProgressionWidget({ funnel, rangeDays, onRangeChange }) {
   const stages = funnel?.report4?.curriculumProgression || []
   const hasData = stages.some((s) => s.count > 0)
+  const maxCount = Math.max(...stages.map((s) => s.count), 1)
 
   return (
     <Card>
@@ -36,16 +37,26 @@ export default function CurriculumProgressionWidget({ funnel, rangeDays, onRange
         Report 4 — how many students have ever reached each curriculum tier.
       </p>
       {hasData ? (
-        <div className="mt-4 flex items-stretch justify-center gap-1 overflow-x-auto pb-1">
+        // Wrapping grid, not a horizontal rail — orgs have many tiers, and a
+        // centered overflow rail clipped the first ones out of reach.
+        <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
           {stages.map((s, i) => (
-            <div key={s.label} className="flex items-stretch gap-1">
-              {i > 0 && (
-                <FunnelConnector
-                  ratePct={stages[i - 1].count ? Math.round((s.count / stages[i - 1].count) * 100) : 0}
-                />
-              )}
-              <FunnelStage label={s.label} value={s.count.toLocaleString()} />
-            </div>
+            <FunnelStage
+              key={s.label}
+              label={s.label}
+              value={s.count.toLocaleString()}
+              barPct={Math.round((s.count / maxCount) * 100)}
+              metrics={
+                i > 0
+                  ? [
+                      {
+                        label: 'From previous tier',
+                        value: `${stages[i - 1].count ? Math.round((s.count / stages[i - 1].count) * 100) : 0}%`,
+                      },
+                    ]
+                  : []
+              }
+            />
           ))}
         </div>
       ) : (
