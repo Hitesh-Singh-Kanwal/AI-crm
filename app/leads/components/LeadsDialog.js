@@ -16,6 +16,45 @@ import { useLeadStages } from '@/lib/lead-stages'
 import { getLeadReasonOptions } from '@/lib/lead-filter-fields'
 import { formatReasonLabel } from '@/lib/dynamic-list-normalize'
 import LeadEngagementHistory from '@/components/leads/LeadEngagementHistory'
+import { formatLeadSource } from '@/lib/lead-source'
+
+const CLICK_ID_LABELS = {
+  gclid: 'Google Ads click',
+  gbraid: 'Google Ads click',
+  wbraid: 'Google Ads click',
+  fbclid: 'Meta click',
+  msclkid: 'Microsoft Ads click',
+  ttclid: 'TikTok Ads click',
+  li_fat_id: 'LinkedIn Ads click',
+}
+
+function LeadSourceDetails({ lead }) {
+  const attribution = lead.attribution || {}
+  const clickLabels = [...new Set(Object.keys(attribution.clickIds || {}).map((k) => CLICK_ID_LABELS[k]).filter(Boolean))]
+  const first = attribution.firstTouch
+  const showFirst = first?.source && first.source !== lead.utm_source
+  return (
+    <div className="md:col-span-2">
+      <label className="block text-sm font-medium mb-1">Lead source</label>
+      <div className="w-full space-y-1 px-3 py-2 border border-border rounded-md bg-muted/30 text-sm text-foreground">
+        <p>
+          <span className="font-medium">{formatLeadSource(lead.utm_source) || 'Unknown'}</span>
+          {lead.utm_medium ? <span className="text-muted-foreground"> · {lead.utm_medium}</span> : null}
+          {lead.utm_campaign ? <span className="text-muted-foreground"> · Campaign: {lead.utm_campaign}</span> : null}
+        </p>
+        {clickLabels.length ? <p className="text-xs text-muted-foreground">{clickLabels.join(', ')}</p> : null}
+        {showFirst ? (
+          <p className="text-xs text-muted-foreground">First came from {formatLeadSource(first.source)}</p>
+        ) : null}
+        {attribution.landingPage ? (
+          <p className="truncate text-xs text-muted-foreground" title={attribution.landingPage}>
+            Landed on {attribution.landingPage}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  )
+}
 
 const bookingStatusOptions = [
   { value: 'Not Booked', label: 'Not Booked' },
@@ -234,6 +273,10 @@ export default function LeadsDialog({
             ? res.data.engagementHistory
             : prev.engagementHistory || [],
           createdAt: res.data.createdAt || prev.createdAt,
+          utm_source: res.data.utm_source ?? prev.utm_source,
+          utm_medium: res.data.utm_medium ?? prev.utm_medium,
+          utm_campaign: res.data.utm_campaign ?? prev.utm_campaign,
+          attribution: res.data.attribution ?? prev.attribution,
         }
       })
     })
@@ -500,6 +543,9 @@ export default function LeadsDialog({
                   “{editingLead.actualReason}”
                 </p>
               </div>
+            )}
+            {viewOnly && (editingLead.utm_source || editingLead.attribution?.landingPage) && (
+              <LeadSourceDetails lead={editingLead} />
             )}
             {/* Send Payment Link — shown for engaged/re_engaged leads in view mode */}
             {viewOnly && editingLead?._id && PAYMENT_LINK_STAGES.has(editingLead.stage) && (

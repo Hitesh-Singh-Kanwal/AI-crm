@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import api from '@/lib/api'
 import { FORM_ANALYTICS_RANGES, normalizeFormAnalyticsRange } from '@/lib/form-analytics'
 import { formatLeadStageLabel, useLeadStages } from '@/lib/lead-stages'
+import { formatLeadSource } from '@/lib/lead-source'
 import { cn, formatDate } from '@/lib/utils'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -24,8 +25,7 @@ function bucketLabel(key) {
 }
 
 function formatSource(source) {
-  if (!source || source === 'direct') return 'Direct / unknown'
-  return String(source).replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  return formatLeadSource(source) || 'Direct / unknown'
 }
 
 function StatCard({ label, value, hint, icon: Icon, iconWrap, iconClass }) {

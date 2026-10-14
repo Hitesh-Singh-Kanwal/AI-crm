@@ -25,6 +25,7 @@ import {
   formatReasonLabel,
 } from '@/lib/dynamic-list-normalize'
 import { formatLeadStageLabel, getLeadStageColor, useLeadStages } from '@/lib/lead-stages'
+import { formatLeadSource } from '@/lib/lead-source'
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
 
 function avatarTone(name = '') {
@@ -220,7 +221,7 @@ export default function MemberLeadViewDialog({
               <InfoCard
                 icon={Tag}
                 label="Source"
-                value={source ? formatFieldDisplayValue(source) : ''}
+                value={formatLeadSource(source)}
                 tone="rose"
               />
               <InfoCard icon={MapPin} label="Location" value={locationLabel} tone="emerald" className="md:col-span-2" />

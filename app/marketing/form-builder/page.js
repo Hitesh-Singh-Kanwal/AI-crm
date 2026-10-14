@@ -49,7 +49,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { extractLeadReasonsList } from '../email-builder/emailBuilderApi'
-import { SOURCE_OPTIONS } from '@/lib/dynamic-list-constants'
+import { FORM_SOURCE_FIELD_VALUES, leadSourceOptions } from '@/lib/lead-source'
 import { formatReasonLabel } from '@/lib/dynamic-list-normalize'
 import {
   DynamicCaptcha,
@@ -79,10 +79,7 @@ import FormPhoneInput, {
   getFormPhoneExportRuntimeScript,
 } from '@/components/forms/FormPhoneInput'
 
-const UTM_SOURCE_FIELD_OPTIONS = SOURCE_OPTIONS.map((value) => ({
-  value,
-  label: value === 'google-add' ? 'Google Ads' : value === 'website' ? 'Website' : value,
-}))
+const UTM_SOURCE_FIELD_OPTIONS = leadSourceOptions(FORM_SOURCE_FIELD_VALUES)
 
 /** Lead schema properties available in the builder. `name` is the fixed submit key. */
 const LEAD_PROPERTIES = [

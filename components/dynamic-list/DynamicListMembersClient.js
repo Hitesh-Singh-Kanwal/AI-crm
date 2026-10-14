@@ -39,6 +39,7 @@ import DynamicListMembersFilterPanel from '@/components/dynamic-list/DynamicList
 import DynamicListMembersQuickBar from '@/components/dynamic-list/DynamicListMembersQuickBar'
 import MemberLeadViewDialog from '@/components/dynamic-list/MemberLeadViewDialog'
 import { formatLeadStageLabel, getLeadStageColor, useLeadStages } from '@/lib/lead-stages'
+import { formatLeadSource } from '@/lib/lead-source'
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
 
 function leadAvatarClass(name = '') {
@@ -541,7 +542,7 @@ export default function DynamicListMembersClient({ listId, listPathBase = '/ai-a
                           )}
                         </td>
                         <td className="px-4 py-4 text-foreground">
-                          {selectableLead?.utm_source ? formatFieldDisplayValue(selectableLead.utm_source) : '—'}
+                          {selectableLead?.utm_source ? formatLeadSource(selectableLead.utm_source) : '—'}
                         </td>
                         <td className="px-4 py-4 text-foreground">
                           {resolveLeadLocation(selectableLead || lead, locations)}
