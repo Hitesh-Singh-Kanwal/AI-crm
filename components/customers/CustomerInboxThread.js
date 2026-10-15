@@ -39,8 +39,9 @@ function isMongoId(value) {
 
 function leadAiRepliesOn(lead) {
   if (!lead) return true
+  // Off only when the inbox toggle was explicitly flipped. Human Intervention
+  // stops follow-ups/workflows; it does not silence live replies.
   if (lead.aiRepliesEnabled === false) return false
-  if (lead.stage === 'human intervention' && lead.aiRepliesEnabled !== true) return false
   return true
 }
 

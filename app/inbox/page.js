@@ -876,11 +876,11 @@ function InboxPageContent() {
     }))
   }
 
-  // Missing flag is on, except a human-intervention lead that was never explicitly re-enabled.
+  // Off only when the inbox toggle was explicitly flipped (or staff sent a 1:1 message).
+  // Human Intervention stops follow-ups/workflows; it does not silence live replies.
   const leadAiRepliesOn = (lead) => {
     if (!lead) return true
     if (lead.aiRepliesEnabled === false) return false
-    if (lead.stage === 'human intervention' && lead.aiRepliesEnabled !== true) return false
     return true
   }
 
