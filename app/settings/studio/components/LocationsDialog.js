@@ -134,6 +134,45 @@ function phoneStatusBadge(status) {
   return <Badge variant="secondary">Calling not connected</Badge>
 }
 
+// One radio card per option — used by the per-location policy choices below.
+function OptionCards({ options, value, onChange }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {options.map((option) => {
+        const selected = value === option.value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(option.value)}
+            className={[
+              'flex flex-col gap-1 rounded-md border p-3 text-left transition-colors',
+              selected
+                ? 'border-brand bg-brand/5'
+                : 'border-border hover:border-muted-foreground/40',
+            ].join(' ')}
+          >
+            <span className="flex items-center gap-2">
+              <span
+                className={[
+                  'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
+                  selected ? 'border-brand' : 'border-muted-foreground/40',
+                ].join(' ')}
+              >
+                {selected && <span className="h-2 w-2 rounded-full bg-brand" />}
+              </span>
+              <span className="text-sm font-medium text-foreground">{option.title}</span>
+            </span>
+            <span className="text-xs text-muted-foreground">{option.description}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 const emptyLocation = () => ({
   name: '',
   address: '',
@@ -224,6 +263,7 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
         timezone: editingLocation.timezone || DEFAULT_LOCATION_TIMEZONE,
         emailConversationEnabled: Boolean(editingLocation.emailConversationEnabled),
         tipDestination: editingLocation.tipDestination || 'enrollment_teacher',
+        lessonMessageChannel: editingLocation.lessonMessageChannel || 'sms',
         defaultLessonMinutes: Number(editingLocation.defaultLessonMinutes) || 60,
         admin: String(editingLocation.admin || '').trim() || null,
         operatingHours: normalizeOperatingHours(editingLocation.operatingHours),
@@ -625,8 +665,8 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                 </p>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-2">
-                {[
+              <OptionCards
+                options={[
                   {
                     value: 'enrollment_teacher',
                     title: 'Enrollment teacher',
@@ -639,46 +679,45 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                     description:
                       'Collected into a shared pool for the studio to split. Kept out of teacher commissions.',
                   },
-                ].map((option) => {
-                  const selected =
-                    (editingLocation.tipDestination || 'enrollment_teacher') === option.value
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() =>
-                        setEditingLocation((p) => ({ ...p, tipDestination: option.value }))
-                      }
-                      className={[
-                        'flex flex-col gap-1 rounded-md border p-3 text-left transition-colors',
-                        selected
-                          ? 'border-brand bg-brand/5'
-                          : 'border-border hover:border-muted-foreground/40',
-                      ].join(' ')}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={[
-                            'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
-                            selected ? 'border-brand' : 'border-muted-foreground/40',
-                          ].join(' ')}
-                        >
-                          {selected && <span className="h-2 w-2 rounded-full bg-brand" />}
-                        </span>
-                        <span className="text-sm font-medium text-foreground">{option.title}</span>
-                      </span>
-                      <span className="text-xs text-muted-foreground">{option.description}</span>
-                    </button>
-                  )
-                })}
-              </div>
+                ]}
+                value={editingLocation.tipDestination || 'enrollment_teacher'}
+                onChange={(v) => setEditingLocation((p) => ({ ...p, tipDestination: v }))}
+              />
 
               <p className="text-[11px] text-muted-foreground">
                 Only affects tips taken from now on — tips already recorded keep the destination they
                 were collected under.
               </p>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-border">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+                  Lesson Confirmations
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  How students hear about a booked lesson and the reminder the day before.
+                </p>
+              </div>
+
+              <OptionCards
+                options={[
+                  {
+                    value: 'sms',
+                    title: 'Text message',
+                    description:
+                      'Sent from the studio phone number. Students with no phone on file, or who opted out of texts, get an email instead.',
+                  },
+                  {
+                    value: 'email',
+                    title: 'Email',
+                    description:
+                      'Sent from the studio email. Students with no email on file, or who unsubscribed, get a text instead.',
+                  },
+                ]}
+                value={editingLocation.lessonMessageChannel || 'sms'}
+                onChange={(v) => setEditingLocation((p) => ({ ...p, lessonMessageChannel: v }))}
+              />
             </div>
 
             <div className="space-y-4 pt-4 border-t border-border">
