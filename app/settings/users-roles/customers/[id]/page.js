@@ -88,6 +88,7 @@ import { useCustomerLifecycleStatuses } from "@/lib/use-customer-lifecycle";
 import StatusColorBadge from "@/components/shared/StatusColorBadge";
 import { formatReasonLabel } from "@/lib/dynamic-list-normalize";
 import { extractLeadReasonsList } from "@/lib/workflow-normalize";
+import { buildPackageSessionOrder, resolveEventPayment } from "@/lib/event-payment";
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 // Short name for an enrollment. A real package uses its template name; a
@@ -6302,12 +6303,8 @@ function deriveEventStatus(ev) {
   return explicit || "scheduled";
 }
 
-// Whether this event's student has actually paid for it. A package charge is
-// only "paid" while the package it draws from is fully collected — a refund that
-// drops paymentStatus below "paid" (or amountCollected below totalPaid) flips
-// the lesson back to Unpaid, matching the calendar.
 // Lessons brought in by a migration import. They were taken and settled in the old
-// system, so they carry no package charge and must not read as unpaid here.
+// system, so they carry no package charge (resolveEventPayment reads them as paid).
 const isMigratedEvent = (ev) => Boolean(ev?.importBatchID);
 
 // The importer keeps the lesson type and teacher as text in notes ("Type: private —
@@ -6315,23 +6312,6 @@ const isMigratedEvent = (ev) => Boolean(ev?.importBatchID);
 function migratedNote(ev, label) {
   const m = String(ev?.notes || "").match(new RegExp(label + ": ([^—]+)"));
   return m ? m[1].trim() : "";
-}
-
-function deriveEventPaid(ev) {
-  if (isMigratedEvent(ev)) return true;
-  if (ev.payment?.collected) return true;
-  if (["credits", "direct", "mixed", "membership"].includes(ev.chargeMethod))
-    return true;
-  if (ev.chargeMethod === "package" && ev.packageBillingType !== "flexible") {
-    const charge = (ev.charges || []).find((c) => c.method === "package");
-    const pkg = charge?.enrollmentID?.package ?? charge?.customerPackageID;
-    if (!pkg) return true; // no package data on the payload — stay optimistic
-    if (pkg.paymentStatus) return pkg.paymentStatus === "paid";
-    const collected = Number(pkg.amountCollected ?? 0);
-    const total = Number(pkg.totalPaid ?? 0);
-    return total > 0 && collected >= total;
-  }
-  return false;
 }
 
 function eventStatusBadge(status) {
@@ -7243,6 +7223,7 @@ function LessonsTab({ customer }) {
   const [activeFilters, setActiveFilters] = useState(new Set());
   const [showFilters, setShowFilters] = useState(false);
   const [sortOrder, setSortOrder] = useState("new_to_old");
+  const [membershipCoverageSet, setMembershipCoverageSet] = useState(() => new Set());
   const custId = String(customer?._id ?? "");
   const lifetime = useLifetimeStats(customer?._id);
 
@@ -7270,7 +7251,26 @@ function LessonsTab({ customer }) {
       }
       setLoading(false);
     });
+    // Same coverage the calendar builds, so a lesson an active membership covers
+    // reads Paid on both screens.
+    api.get(`/api/customer-membership/customer/${customer._id}`).then((res) => {
+      const set = new Set();
+      (res.success && Array.isArray(res.data) ? res.data : []).forEach((m) => {
+        if (m.status !== "active") return;
+        (m.services || []).forEach((s) => {
+          if (s.serviceCode) set.add(`${customer._id}::${s.serviceCode}`);
+        });
+      });
+      setMembershipCoverageSet(set);
+    });
   }, [customer?._id]);
+
+  // The calendar's own paid rule, judged on this student's charge.
+  const paymentCtx = useMemo(
+    () => ({ ...buildPackageSessionOrder(events), membershipCoverageSet, customerID: custId }),
+    [events, membershipCoverageSet, custId],
+  );
+  const deriveEventPaid = (ev) => resolveEventPayment(ev, paymentCtx).paid;
 
   function toggleFilter(id) {
     setActiveFilters((prev) => {
