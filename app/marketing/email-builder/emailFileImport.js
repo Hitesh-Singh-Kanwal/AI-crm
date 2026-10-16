@@ -77,3 +77,65 @@ export async function readEmailImportFile(file) {
   if (emailImportKind(file) === 'html' || looksLikeHtml(raw)) return { kind: 'html', html: raw }
   return { kind: 'text', html: plainTextToEmailHtml(raw) }
 }
+
+export const EMAIL_BULK_MAX_FILES = 50
+
+/** Template name from a file name: "09-Lead Email Drip.txt" → "09 Lead Email Drip". */
+export function subjectFromImportFilename(name) {
+  const base = String(name || '')
+    .replace(/^.*[/\\]/, '')
+    .replace(/\.(html?|txt)$/i, '')
+    .replace(/[_]+/g, ' ')
+    .replace(/[-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return base || 'Untitled template'
+}
+
+/**
+ * Read a folder (or multi-file) selection into importable email templates.
+ * Skips non-.html/.htm/.txt files. Caps at EMAIL_BULK_MAX_FILES.
+ */
+export async function readEmailImportFolder(fileList) {
+  const files = Array.from(fileList || []).filter((f) => emailImportKind(f))
+  if (files.length === 0) {
+    throw new Error('No .html, .htm or .txt files found in that folder.')
+  }
+  if (files.length > EMAIL_BULK_MAX_FILES) {
+    throw new Error(`Choose a folder with at most ${EMAIL_BULK_MAX_FILES} email files.`)
+  }
+
+  const items = []
+  for (let i = 0; i < files.length; i += 1) {
+    const file = files[i]
+    const path = String(file.webkitRelativePath || file.name || '').trim() || file.name
+    const fileName = path.replace(/^.*[/\\]/, '') || file.name
+    try {
+      const { kind, html } = await readEmailImportFile(file)
+      items.push({
+        id: `import-${i}-${fileName}`,
+        fileName,
+        path,
+        subject: subjectFromImportFilename(fileName),
+        kind,
+        html,
+        error: null,
+        included: true,
+      })
+    } catch (err) {
+      items.push({
+        id: `import-${i}-${fileName}`,
+        fileName,
+        path,
+        subject: subjectFromImportFilename(fileName),
+        kind: emailImportKind(file),
+        html: '',
+        error: err?.message || 'Could not read the file.',
+        included: false,
+      })
+    }
+  }
+
+  items.sort((a, b) => String(a.fileName).localeCompare(String(b.fileName), undefined, { numeric: true }))
+  return items
+}

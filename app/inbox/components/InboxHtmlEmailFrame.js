@@ -207,8 +207,13 @@ export default function InboxHtmlEmailFrame({
     }
   }, [srcDoc, measure, minHeight])
 
+  // Remount when HTML changes — browsers often ignore srcDoc updates on a live iframe,
+  // so footers / edits would not appear until a full refresh.
+  const frameKey = `${srcDoc.length}:${srcDoc.slice(0, 48)}:${srcDoc.slice(-96)}`
+
   return (
     <iframe
+      key={frameKey}
       ref={iframeRef}
       title={title}
       srcDoc={srcDoc}

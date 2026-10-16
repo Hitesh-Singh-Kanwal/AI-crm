@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  EMAIL_BULK_MAX_FILES,
   EMAIL_IMPORT_MAX_BYTES,
   emailImportKind,
   plainTextToEmailHtml,
   readEmailImportFile,
+  readEmailImportFolder,
+  subjectFromImportFilename,
 } from '../emailFileImport'
 
 const fakeFile = (name, content, type = '') => ({
@@ -75,5 +78,36 @@ describe('readEmailImportFile', () => {
     await expect(readEmailImportFile(fakeFile('a.txt', '   '))).rejects.toThrow(/empty/)
     const big = { ...fakeFile('a.html', 'x'), size: EMAIL_IMPORT_MAX_BYTES + 1 }
     await expect(readEmailImportFile(big)).rejects.toThrow(/2 MB/)
+  })
+})
+
+describe('subjectFromImportFilename', () => {
+  it('turns file names into readable template subjects', () => {
+    expect(subjectFromImportFilename('09-Lead Email Drip 9 - Dance to Reconnect-COPY-CODE.txt')).toBe(
+      '09 Lead Email Drip 9 Dance to Reconnect COPY CODE',
+    )
+    expect(subjectFromImportFilename('folder/welcome_week_1.html')).toBe('welcome week 1')
+  })
+})
+
+describe('readEmailImportFolder', () => {
+  it('reads only email files and skips others', async () => {
+    const items = await readEmailImportFolder([
+      fakeFile('skip.pdf', '%PDF'),
+      fakeFile('hello.txt', 'Hello {{first_name}}'),
+      { ...fakeFile('promo.html', '<html><body>Hi</body></html>'), webkitRelativePath: 'drip/promo.html' },
+    ])
+    expect(items).toHaveLength(2)
+    expect(items.map((i) => i.fileName).sort()).toEqual(['hello.txt', 'promo.html'])
+    expect(items.find((i) => i.fileName === 'promo.html').path).toBe('drip/promo.html')
+    expect(items.find((i) => i.fileName === 'hello.txt').html).toContain('Hello {{first_name}}')
+  })
+
+  it('rejects empty or oversized folders', async () => {
+    await expect(readEmailImportFolder([fakeFile('a.pdf', 'x')])).rejects.toThrow(/No \.html/)
+    const tooMany = Array.from({ length: EMAIL_BULK_MAX_FILES + 1 }, (_, i) =>
+      fakeFile(`f${i}.txt`, 'hi'),
+    )
+    await expect(readEmailImportFolder(tooMany)).rejects.toThrow(/at most/)
   })
 })
