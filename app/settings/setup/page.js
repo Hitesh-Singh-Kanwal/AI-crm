@@ -32,7 +32,7 @@ import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import ServiceDialog from '@/app/calendar/services/components/ServiceDialog'
-import LessonDialog from '@/app/calendar/lessons/components/LessonDialog'
+import GroupClassDrawer from '@/app/calendar/group-classes/components/GroupClassDrawer'
 import ToDoDialog from '@/app/calendar/todos/components/ToDoDialog'
 import {
   ProductsTab, EventTypesTab, SavedTemplatesTab, CreateEventPurchaseDialog,
@@ -506,7 +506,7 @@ function LessonsTab() {
   const toggleOne = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
   const toggleAll = () => { if (selectedIds.length === lessons.length) setSelectedIds([]); else setSelectedIds(lessons.map((l) => l._id)) }
 
-  const isActiveLesson = (lesson) => { const end = lesson?.endDate ? new Date(lesson.endDate) : null; return !end || end >= new Date() }
+  const isActiveLesson = (lesson) => lesson?.isActive !== false
 
   async function handleDelete(lesson) {
     if (!window.confirm(`Delete "${lesson.name}"? This cannot be undone.`)) return
@@ -616,7 +616,7 @@ function LessonsTab() {
         />
       </div>
 
-      <LessonDialog open={dialogOpen} onClose={() => setDialogOpen(false)} lesson={editingLesson} onRefresh={() => loadLessons(currentPage, searchQuery)} />
+      <GroupClassDrawer open={dialogOpen} onClose={() => setDialogOpen(false)} lesson={editingLesson} onSaved={() => loadLessons(currentPage, searchQuery)} />
     </div>
   )
 }

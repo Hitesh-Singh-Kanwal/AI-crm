@@ -2199,7 +2199,6 @@ function GroupClassFields({
       <WhenSection
         form={form}
         setField={setField}
-        withRecurrence
         lessonDuration={lessonDuration}
         slotStepMins={slotStepMins}
         slotAlignMins={slotAlignMins}
@@ -2208,6 +2207,14 @@ function GroupClassFields({
         hoursLoading={hoursLoading}
         studioTz={studioTz}
       />
+      {/* Recurring classes live in one place so the calendar, AI agent and
+          website all read the same schedule. */}
+      <p className="text-[11px] text-muted-foreground">
+        Runs every week?{" "}
+        <a href="/calendar/group-classes" className="font-medium text-brand hover:underline">
+          Set up a weekly schedule in Group Classes
+        </a>
+      </p>
       <div className="space-y-3">
         <SectionDivider label="Notes" />
         <NotesBlock form={form} setField={setField} />
@@ -2967,7 +2974,9 @@ export default function AppointmentComposerPanel({
     // Validate: an incomplete Repeat rule used to be dropped silently — the
     // payload fell back to `{ enabled: false }` and a single event was created,
     // so staff believed they had scheduled a whole series.
-    if (form.recurrence_enabled) {
+    // Group classes repeat through Group Classes schedules, never from here.
+    const repeats = form.recurrence_enabled && activeTab !== "Group Class";
+    if (repeats) {
       const repeatError = validateRecurrence(form);
       if (repeatError) {
         setError(repeatError);
@@ -3064,7 +3073,7 @@ export default function AppointmentComposerPanel({
         [form.public_note, form.internal_note].filter(Boolean).join("\n") ||
         undefined,
       recurrence:
-        form.recurrence_enabled &&
+        repeats &&
         form.recurrence_frequency &&
         form.recurrence_end_date
           ? {
