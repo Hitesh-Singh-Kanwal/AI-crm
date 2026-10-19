@@ -1,6 +1,7 @@
 'use client'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { PaginatedRows } from './analyticsTablePagination'
 
 function rateLabel(row) {
   const views = Number(row?.views) || 0
@@ -24,6 +25,8 @@ export default function FormSourceTable({ rows, loading = false }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-2">
+        <PaginatedRows rows={list}>
+          {(pageRows, footer) => (
         <div className="overflow-auto rounded-md border border-border">
           <table className="min-w-[640px] w-full text-sm">
             <thead className="bg-muted/40">
@@ -44,7 +47,7 @@ export default function FormSourceTable({ rows, loading = false }) {
                   </td>
                 </tr>
               ) : (
-                list.map((row) => (
+                pageRows.map((row) => (
                   <tr key={row.source} className="border-t border-border">
                     <td className="px-4 py-3 font-medium text-foreground">{row.label || row.source}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(row.views) || 0}</td>
@@ -57,7 +60,10 @@ export default function FormSourceTable({ rows, loading = false }) {
               )}
             </tbody>
           </table>
+          {footer}
         </div>
+          )}
+        </PaginatedRows>
       </CardContent>
     </Card>
   )

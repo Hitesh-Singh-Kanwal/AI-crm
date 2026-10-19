@@ -13,6 +13,7 @@ import api from '@/lib/api'
 import { FORM_ANALYTICS_RANGES, formAnalyticsQuery, formAnalyticsReady, normalizeFormAnalyticsRange } from '@/lib/form-analytics'
 import FormPerformanceFunnel from '../../components/FormPerformanceFunnel'
 import FormSourceTable from '../../components/FormSourceTable'
+import { PaginatedRows } from '../../components/analyticsTablePagination'
 import { formatLeadStageLabel, useLeadStages } from '@/lib/lead-stages'
 import { formatLeadSource } from '@/lib/lead-source'
 import { formatDate } from '@/lib/utils'
@@ -223,6 +224,8 @@ function FormAnalyticsContent() {
                 {pages.length === 0 ? (
                   <div className="py-6 text-sm text-muted-foreground">No views recorded in this period.</div>
                 ) : (
+                  <PaginatedRows rows={pages}>
+                    {(pageRows, footer) => (
                   <div className="overflow-auto rounded-md border border-border">
                     <table className="w-full min-w-[640px] text-sm">
                       <thead className="bg-muted/40">
@@ -235,7 +238,7 @@ function FormAnalyticsContent() {
                         </tr>
                       </thead>
                       <tbody className="bg-card">
-                        {pages.map((p) => (
+                        {pageRows.map((p) => (
                           <tr key={`${p.host || ''}-${p.pagePath || ''}`} className="border-t border-border">
                             <td className="px-4 py-3">
                               {p.pageUrl ? (
@@ -262,7 +265,10 @@ function FormAnalyticsContent() {
                         ))}
                       </tbody>
                     </table>
+                    {footer}
                   </div>
+                    )}
+                  </PaginatedRows>
                 )}
               </CardContent>
             </Card>
@@ -293,6 +299,8 @@ function FormAnalyticsContent() {
                 {recent.length === 0 ? (
                   <div className="py-6 text-sm text-muted-foreground">No submissions in this period.</div>
                 ) : (
+                  <PaginatedRows rows={recent}>
+                    {(pageRows, footer) => (
                   <div className="overflow-auto rounded-md border border-border">
                     <table className="w-full min-w-[760px] text-sm">
                       <thead className="bg-muted/40">
@@ -306,7 +314,7 @@ function FormAnalyticsContent() {
                         </tr>
                       </thead>
                       <tbody className="bg-card">
-                        {recent.map((r, idx) => (
+                        {pageRows.map((r, idx) => (
                           <tr key={`${r.leadID}-${idx}`} className="border-t border-border">
                             <td className="px-4 py-3 font-medium text-foreground">{r.name || '—'}</td>
                             <td className="px-4 py-3 text-muted-foreground">
@@ -331,7 +339,10 @@ function FormAnalyticsContent() {
                         ))}
                       </tbody>
                     </table>
+                    {footer}
                   </div>
+                    )}
+                  </PaginatedRows>
                 )}
               </CardContent>
             </Card>

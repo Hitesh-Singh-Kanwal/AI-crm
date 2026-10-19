@@ -6,6 +6,7 @@ import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, T
 import { FORM_ANALYTICS_RANGES, formAnalyticsQuery, formAnalyticsReady } from '@/lib/form-analytics'
 import FormPerformanceFunnel from './components/FormPerformanceFunnel'
 import FormSourceTable from './components/FormSourceTable'
+import { PaginatedRows } from './components/analyticsTablePagination'
 import SearchInput from '@/components/ui/search-input'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
@@ -4322,6 +4323,8 @@ ${getFormPhoneExportRuntimeScript()}
                   const openForm = (f) =>
                     router.push(`/marketing/form-builder/template-analytics/${f._id}?${formAnalyticsQuery({ range: analyticsRange, from: analyticsFrom, to: analyticsTo })}`)
                   return (
+                    <PaginatedRows rows={rows}>
+                      {(pageRows, footer) => (
                     <div className="overflow-auto rounded-md border border-border">
                       <table className="min-w-[1100px] w-full text-sm">
                         <thead className="bg-muted/40">
@@ -4340,7 +4343,7 @@ ${getFormPhoneExportRuntimeScript()}
                           </tr>
                         </thead>
                         <tbody className="bg-card">
-                          {rows.map((f) => (
+                          {pageRows.map((f) => (
                             <tr
                               key={f._id}
                               className="border-t border-border cursor-pointer hover:bg-muted/30"
@@ -4389,13 +4392,15 @@ ${getFormPhoneExportRuntimeScript()}
                           ))}
                         </tbody>
                       </table>
+                      {footer}
                     </div>
+                      )}
+                    </PaginatedRows>
                   )
                 })()
               )}
             </CardContent>
           </Card>
-          <FormSourceTable rows={analyticsSources} loading={analyticsFormsLoading} />
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Top pages</CardTitle>
@@ -4404,6 +4409,8 @@ ${getFormPhoneExportRuntimeScript()}
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-2">
+              <PaginatedRows rows={analyticsPages}>
+                {(pageRows, footer) => (
               <div className="overflow-auto rounded-md border border-border">
                 <table className="min-w-[760px] w-full text-sm">
                   <thead className="bg-muted/40">
@@ -4426,7 +4433,7 @@ ${getFormPhoneExportRuntimeScript()}
                         </td>
                       </tr>
                     ) : (
-                      analyticsPages.map((p) => (
+                      pageRows.map((p) => (
                         <tr key={`${p.formID}-${p.host || ''}-${p.pagePath || ''}`} className="border-t border-border">
                           <td className="px-4 py-3">
                             {p.pageUrl ? (
@@ -4465,9 +4472,13 @@ ${getFormPhoneExportRuntimeScript()}
                     )}
                   </tbody>
                 </table>
+                {footer}
               </div>
+                )}
+              </PaginatedRows>
             </CardContent>
           </Card>
+          <FormSourceTable rows={analyticsSources} loading={analyticsFormsLoading} />
 
           </div>
         )}
