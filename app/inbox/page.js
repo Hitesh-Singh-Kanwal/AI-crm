@@ -59,6 +59,7 @@ import {
   mergeSmsPages,
   mergeThreadByTimestamp,
 } from '@/lib/inboxThread'
+import { isCustomerAiRepliesEnabled } from '@/lib/customerAiReplies'
 
 function resolveContactType(leadOrConv = {}) {
   const explicit = String(leadOrConv.type || '').toLowerCase()
@@ -283,6 +284,8 @@ function InboxPageContent() {
   const [scheduledLoading, setScheduledLoading] = useState(true)
   const [selectedScheduledId, setSelectedScheduledId] = useState(null)
   const [selectedLeadData, setSelectedLeadData] = useState(null)
+  /** 'lead' | 'customer' — which record the AI replies switch writes to. */
+  const [selectedContactKind, setSelectedContactKind] = useState(null)
   const [aiToggleSaving, setAiToggleSaving] = useState(false)
   const [emailSending, setEmailSending] = useState(false)
   const [smsSending, setSmsSending] = useState(false)
@@ -809,28 +812,74 @@ function InboxPageContent() {
     selectedConversationRef.current = selectedConversation
   }, [selectedConversation])
 
-  // Fetch full lead profile when conversation changes
+  // Fetch lead or customer profile when conversation changes
   useEffect(() => {
     if (!selectedConversation) {
       setSelectedLeadData(null)
+      setSelectedContactKind(null)
       return
     }
     if (!selectedConversation.startsWith('lead-')) {
       setSelectedLeadData(null)
+      setSelectedContactKind(null)
       return
     }
-    const leadId = selectedConversation.replace('lead-', '')
-    // Drop the previous customer's profile immediately so the AI switch
-    // cannot be toggled against the wrong lead while this fetch is in flight.
+    const contactId = selectedConversation.replace('lead-', '')
+    // Drop the previous profile immediately so the AI switch cannot be toggled
+    // against the wrong person while this fetch is in flight.
     setSelectedLeadData(null)
+    setSelectedContactKind(null)
     let cancelled = false
-    api.get(`/api/lead/${leadId}`).then((res) => {
+
+    ;(async () => {
+      const leadRes = await api.get(`/api/lead/${contactId}`).catch(() => ({ success: false }))
       if (cancelled) return
-      const lead = res.data || null
-      setSelectedLeadData(lead)
-      if (!lead) return
-      // Update profile fields only. Do NOT force-switch inbox tabs here —
-      // that fought header tab clicks (Customers / Leads / Teachers).
+      if (leadRes.success && leadRes.data) {
+        const lead = leadRes.data
+        setSelectedLeadData(lead)
+        setSelectedContactKind('lead')
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === selectedConversation
+              ? {
+                  ...c,
+                  contact: {
+                    ...c.contact,
+                    email: lead.email || c.contact.email,
+                    phoneNumber: lead.phoneNumber || '',
+                    stage: lead.stage || c.contact.stage,
+                    name: nameWithMembers(lead) || c.contact.name,
+                    type: resolveLeadProfileInboxType(lead, c.contact.type),
+                    convertedCustomerID:
+                      lead.convertedCustomerID || c.contact.convertedCustomerID || null,
+                    linkedCustomerID: c.contact.linkedCustomerID || null,
+                    leadSourceID: c.contact.leadSourceID || null,
+                    locationID: lead.locationID || c.contact.locationID || [],
+                  },
+                }
+              : c,
+          ),
+        )
+        return
+      }
+
+      // Thread keyed by customer id (imported students, converted without lead row).
+      const custRes = await api.get(`/api/customer/${contactId}`).catch(() => ({ success: false }))
+      if (cancelled) return
+      if (!custRes.success || !custRes.data) {
+        setSelectedLeadData(null)
+        setSelectedContactKind(null)
+        return
+      }
+      const customer = custRes.data
+      const effectiveOn = isCustomerAiRepliesEnabled(customer)
+      setSelectedLeadData({
+        ...customer,
+        _id: customer._id,
+        aiRepliesEnabled: effectiveOn,
+        stage: customer.lifecycleStatus || 'converted',
+      })
+      setSelectedContactKind('customer')
       setConversations((prev) =>
         prev.map((c) =>
           c.id === selectedConversation
@@ -838,28 +887,25 @@ function InboxPageContent() {
                 ...c,
                 contact: {
                   ...c.contact,
-                  email: lead.email || c.contact.email,
-                  phoneNumber: lead.phoneNumber || '',
-                  stage: lead.stage || c.contact.stage,
-                  name: nameWithMembers(lead) || c.contact.name,
-                  // Pending Payment / Engaged stay Leads until payment converts them.
-                  // Preserve Teacher if this thread was already classified that way.
-                  type: resolveLeadProfileInboxType(lead, c.contact.type),
-                  convertedCustomerID:
-                    lead.convertedCustomerID || c.contact.convertedCustomerID || null,
-                  // Keep merge helper link so customer-id emails still load after profile refresh.
+                  email: customer.email || c.contact.email,
+                  phoneNumber: customer.phoneNumber || c.contact.phoneNumber || '',
+                  stage: customer.lifecycleStatus || c.contact.stage,
+                  name: getContactDisplayName(customer) || c.contact.name,
+                  type: 'Customer',
+                  convertedCustomerID: customer._id,
                   linkedCustomerID: c.contact.linkedCustomerID || null,
-                  leadSourceID: c.contact.leadSourceID || null,
-                  locationID: lead.locationID || c.contact.locationID || [],
+                  leadSourceID: customer.leadSourceID || c.contact.leadSourceID || null,
+                  locationID: customer.locationID || c.contact.locationID || [],
                 },
               }
             : c,
         ),
       )
-    }).catch(() => {
-      if (!cancelled) setSelectedLeadData(null)
-    })
-    return () => { cancelled = true }
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [selectedConversation])
 
   const selectedConvData = selectedConversation
@@ -876,11 +922,14 @@ function InboxPageContent() {
     }))
   }
 
-  // Off only when the inbox toggle was explicitly flipped (or staff sent a 1:1 message).
+  // Leads: off only when explicitly flipped. Customers: explicit flag or lifecycle default.
   // Human Intervention stops follow-ups/workflows; it does not silence live replies.
-  const leadAiRepliesOn = (lead) => {
-    if (!lead) return true
-    if (lead.aiRepliesEnabled === false) return false
+  const leadAiRepliesOn = (profile) => {
+    if (!profile) return true
+    if (selectedContactKind === 'customer') {
+      return isCustomerAiRepliesEnabled(profile)
+    }
+    if (profile.aiRepliesEnabled === false) return false
     return true
   }
 
@@ -891,21 +940,32 @@ function InboxPageContent() {
         ? { ...prev, aiRepliesEnabled: false }
         : prev,
     )
+    // Customer threads are keyed by customer id — pause that flag too (lead pause is a no-op).
+    if (selectedContactKind === 'customer') {
+      api
+        .put(`/api/customer/${leadData._id}`, { aiRepliesEnabled: false })
+        .catch(() => {})
+    }
   }
 
   const handleToggleAiReplies = async (next) => {
-    const leadId = selectedLeadData?._id
-    if (!leadId || aiToggleSaving) return
+    const contactId = selectedLeadData?._id
+    if (!contactId || aiToggleSaving) return
     const previous = selectedLeadData
-    const stillThisLead = (prev) => prev && String(prev._id) === String(leadId)
+    const kind = selectedContactKind || 'lead'
+    const stillThis = (prev) => prev && String(prev._id) === String(contactId)
     setSelectedLeadData((prev) =>
-      stillThisLead(prev) ? { ...prev, aiRepliesEnabled: next } : prev,
+      stillThis(prev) ? { ...prev, aiRepliesEnabled: next } : prev,
     )
     setAiToggleSaving(true)
     try {
-      const result = await api.put(`/api/lead/${leadId}`, { aiRepliesEnabled: next })
+      const path =
+        kind === 'customer'
+          ? `/api/customer/${contactId}`
+          : `/api/lead/${contactId}`
+      const result = await api.put(path, { aiRepliesEnabled: next })
       if (!result.success) {
-        setSelectedLeadData((prev) => (stillThisLead(prev) ? previous : prev))
+        setSelectedLeadData((prev) => (stillThis(prev) ? previous : prev))
         toast.error({
           title: 'Could not update AI replies',
           message: result.error || 'Try again.',
@@ -913,17 +973,28 @@ function InboxPageContent() {
         return
       }
       const saved = result.data
-      if (saved && String(saved._id) === String(leadId)) {
-        setSelectedLeadData((prev) => (stillThisLead(prev) ? saved : prev))
+      if (saved && String(saved._id) === String(contactId)) {
+        setSelectedLeadData((prev) => {
+          if (!stillThis(prev)) return prev
+          if (kind === 'customer') {
+            return {
+              ...prev,
+              ...saved,
+              aiRepliesEnabled: next,
+              stage: saved.lifecycleStatus || saved.stage || prev.stage,
+            }
+          }
+          return { ...saved, aiRepliesEnabled: next }
+        })
       }
       toast.success({
         title: next ? 'AI replies on' : 'AI replies off',
         message: next
-          ? 'The agent will reply to this customer again.'
+          ? 'The agent will reply to this contact again.'
           : 'The agent will stay quiet until you turn this back on.',
       })
     } catch (err) {
-      setSelectedLeadData((prev) => (stillThisLead(prev) ? previous : prev))
+      setSelectedLeadData((prev) => (stillThis(prev) ? previous : prev))
       toast.error({
         title: 'Could not update AI replies',
         message: err?.message || 'Try again.',
