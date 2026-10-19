@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import api from '@/lib/api'
 import { FORM_ANALYTICS_RANGES, formAnalyticsQuery, formAnalyticsReady, normalizeFormAnalyticsRange } from '@/lib/form-analytics'
 import FormPerformanceFunnel from '../../components/FormPerformanceFunnel'
+import FormSourceTable from '../../components/FormSourceTable'
 import { formatLeadStageLabel, useLeadStages } from '@/lib/lead-stages'
 import { formatLeadSource } from '@/lib/lead-source'
 import { formatDate } from '@/lib/utils'
@@ -134,7 +135,6 @@ function FormAnalyticsContent() {
   const totals = data?.totals
   const series = Array.isArray(data?.series) ? data.series : []
   const stages = (Array.isArray(data?.stages) ? data.stages : []).map((s) => ({ key: s.stage, count: s.count }))
-  const sources = (Array.isArray(data?.sources) ? data.sources : []).map((s) => ({ key: s.source, count: s.count }))
   const recent = Array.isArray(data?.recent) ? data.recent : []
   const pages = Array.isArray(data?.pages) ? data.pages : []
   const traffic = totals?.traffic
@@ -267,36 +267,22 @@ function FormAnalyticsContent() {
               </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Where these leads are now</CardTitle>
-                  <CardDescription>Current lead stage of people who filled this form</CardDescription>
-                </CardHeader>
-                <CardContent className="pt-2">
-                  <BreakdownList
-                    items={stages}
-                    total={totals?.leads || 0}
-                    getLabel={(key) => formatLeadStageLabel(key, stageOptions) || 'Unknown'}
-                    emptyText="No leads in this period."
-                  />
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Traffic sources</CardTitle>
-                  <CardDescription>UTM source recorded on each submission</CardDescription>
-                </CardHeader>
-                <CardContent className="pt-2">
-                  <BreakdownList
-                    items={sources}
-                    total={totals?.submissions || 0}
-                    getLabel={formatSource}
-                    emptyText="No submissions in this period."
-                  />
-                </CardContent>
-              </Card>
-            </div>
+            <FormSourceTable rows={data?.trafficSources} loading={loading} />
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Where these leads are now</CardTitle>
+                <CardDescription>Current lead stage of people who filled this form</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-2">
+                <BreakdownList
+                  items={stages}
+                  total={totals?.leads || 0}
+                  getLabel={(key) => formatLeadStageLabel(key, stageOptions) || 'Unknown'}
+                  emptyText="No leads in this period."
+                />
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader className="pb-2">

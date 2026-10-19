@@ -5,6 +5,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { Plus, FileText, BarChart3, Eye, Copy, Trash2, Sparkles, GripVertical, Type, Mail, Phone, CheckSquare, Calendar, ChevronDown, Paperclip, Star, Download, Heart, X, ArrowLeft, LayoutTemplate, UserRound, Search, MapPin, Megaphone, Hash, Heading, ShieldCheck, Image, Volume2, Calculator, EyeOff, Link2, Code2, ExternalLink, Users, UserCheck, MousePointerClick } from 'lucide-react'
 import { FORM_ANALYTICS_RANGES, formAnalyticsQuery, formAnalyticsReady } from '@/lib/form-analytics'
 import FormPerformanceFunnel from './components/FormPerformanceFunnel'
+import FormSourceTable from './components/FormSourceTable'
 import SearchInput from '@/components/ui/search-input'
 import MainLayout from '@/components/layout/MainLayout'
 import { Button } from '@/components/ui/button'
@@ -1333,6 +1334,7 @@ function FormsPageInner() {
   const [analyticsForms, setAnalyticsForms] = useState([])
   const [analyticsTotals, setAnalyticsTotals] = useState(null)
   const [analyticsPages, setAnalyticsPages] = useState([])
+  const [analyticsSources, setAnalyticsSources] = useState([])
   const [analyticsRange, setAnalyticsRange] = useState('30d')
   const [analyticsFrom, setAnalyticsFrom] = useState('')
   const [analyticsTo, setAnalyticsTo] = useState('')
@@ -1350,6 +1352,7 @@ function FormsPageInner() {
         setAnalyticsForms(result.data.forms)
         setAnalyticsTotals(result.data.totals || null)
         setAnalyticsPages(Array.isArray(result.data.pages) ? result.data.pages : [])
+        setAnalyticsSources(Array.isArray(result.data.trafficSources) ? result.data.trafficSources : [])
       } else {
         setAnalyticsFormsError(result.error || 'Failed to load form analytics')
       }
@@ -4294,79 +4297,6 @@ ${getFormPhoneExportRuntimeScript()}
           />
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Top pages</CardTitle>
-              <CardDescription>
-                Where your forms were viewed — your website pages for embedded forms, the share link for hosted ones.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-2">
-              <div className="overflow-auto rounded-md border border-border">
-                <table className="min-w-[760px] w-full text-sm">
-                  <thead className="bg-muted/40">
-                    <tr className="text-left text-muted-foreground">
-                      <th className="px-4 py-3 font-medium">Page</th>
-                      <th className="px-4 py-3 font-medium">Template</th>
-                      <th className="px-4 py-3 font-medium text-right">Views</th>
-                      <th className="px-4 py-3 font-medium text-right">Visitors</th>
-                      <th className="px-4 py-3 font-medium text-right">Submits</th>
-                      <th className="px-4 py-3 font-medium text-right">View → submit</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-card">
-                    {analyticsPages.length === 0 ? (
-                      <tr>
-                        <td className="px-4 py-6 text-muted-foreground" colSpan={6}>
-                          {analyticsFormsLoading
-                            ? 'Loading…'
-                            : 'No form views yet. Views are recorded from now on whenever someone sees one of your forms.'}
-                        </td>
-                      </tr>
-                    ) : (
-                      analyticsPages.map((p) => (
-                        <tr key={`${p.formID}-${p.host || ''}-${p.pagePath || ''}`} className="border-t border-border">
-                          <td className="px-4 py-3">
-                            {p.pageUrl ? (
-                              <a
-                                href={p.pageUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-mono text-xs text-foreground hover:underline break-all"
-                              >
-                                {p.pagePath || '/'}
-                              </a>
-                            ) : (
-                              <span className="font-mono text-xs text-muted-foreground">Unknown page</span>
-                            )}
-                            {p.host ? <div className="text-xs text-muted-foreground">{p.host}</div> : null}
-                          </td>
-                          <td className="px-4 py-3">
-                            <button
-                              type="button"
-                              className="text-left font-medium text-foreground hover:underline"
-                              onClick={() =>
-                                router.push(`/marketing/form-builder/template-analytics/${p.formID}?${formAnalyticsQuery({ range: analyticsRange, from: analyticsFrom, to: analyticsTo })}`)
-                              }
-                            >
-                              {p.formName}
-                            </button>
-                          </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.views) || 0}</td>
-                          <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.visitors) || 0}</td>
-                          <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.submits) || 0}</td>
-                          <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                            {Number(p.submitRate || 0).toFixed(1)}%
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <CardTitle className="text-base">Templates</CardTitle>
@@ -4463,6 +4393,79 @@ ${getFormPhoneExportRuntimeScript()}
                   )
                 })()
               )}
+            </CardContent>
+          </Card>
+          <FormSourceTable rows={analyticsSources} loading={analyticsFormsLoading} />
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Top pages</CardTitle>
+              <CardDescription>
+                Where your forms were viewed — your website pages for embedded forms, the share link for hosted ones.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <div className="overflow-auto rounded-md border border-border">
+                <table className="min-w-[760px] w-full text-sm">
+                  <thead className="bg-muted/40">
+                    <tr className="text-left text-muted-foreground">
+                      <th className="px-4 py-3 font-medium">Page</th>
+                      <th className="px-4 py-3 font-medium">Template</th>
+                      <th className="px-4 py-3 font-medium text-right">Views</th>
+                      <th className="px-4 py-3 font-medium text-right">Visitors</th>
+                      <th className="px-4 py-3 font-medium text-right">Submits</th>
+                      <th className="px-4 py-3 font-medium text-right">View → submit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-card">
+                    {analyticsPages.length === 0 ? (
+                      <tr>
+                        <td className="px-4 py-6 text-muted-foreground" colSpan={6}>
+                          {analyticsFormsLoading
+                            ? 'Loading…'
+                            : 'No form views yet. Views are recorded from now on whenever someone sees one of your forms.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      analyticsPages.map((p) => (
+                        <tr key={`${p.formID}-${p.host || ''}-${p.pagePath || ''}`} className="border-t border-border">
+                          <td className="px-4 py-3">
+                            {p.pageUrl ? (
+                              <a
+                                href={p.pageUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-mono text-xs text-foreground hover:underline break-all"
+                              >
+                                {p.pagePath || '/'}
+                              </a>
+                            ) : (
+                              <span className="font-mono text-xs text-muted-foreground">Unknown page</span>
+                            )}
+                            {p.host ? <div className="text-xs text-muted-foreground">{p.host}</div> : null}
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              className="text-left font-medium text-foreground hover:underline"
+                              onClick={() =>
+                                router.push(`/marketing/form-builder/template-analytics/${p.formID}?${formAnalyticsQuery({ range: analyticsRange, from: analyticsFrom, to: analyticsTo })}`)
+                              }
+                            >
+                              {p.formName}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.views) || 0}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.visitors) || 0}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.submits) || 0}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-foreground">
+                            {Number(p.submitRate || 0).toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
 
