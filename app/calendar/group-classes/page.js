@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronLeft, ChevronRight, Layers, MoreHorizontal, Plus, Repeat, Sparkles } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Globe, Layers, MoreHorizontal, Plus, Repeat, Sparkles } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import SearchInput from '@/components/ui/search-input'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import GlobalLoader from '@/components/shared/GlobalLoader'
 import api from '@/lib/api'
 import { toast } from '@/components/ui/toast'
 import GroupClassDrawer, { WEEKDAYS } from './components/GroupClassDrawer'
+import WebsiteEmbedDialog from './components/WebsiteEmbedDialog'
 
 const todayLocal = () => new Date().toLocaleDateString('en-CA')
 
@@ -93,6 +94,7 @@ export default function GroupClassesPage() {
   const [filter, setFilter] = useState('all')
   const [expanded, setExpanded] = useState(() => new Set())
   const [drawer, setDrawer] = useState({ open: false, lesson: null, schedule: null })
+  const [embedOpen, setEmbedOpen] = useState(false)
 
   const load = useCallback(async () => {
     // ponytail: whole library in one request; studios have tens of class types.
@@ -169,10 +171,16 @@ export default function GroupClassesPage() {
               One class library. One schedule. Ready for your calendar, website, and AI agent.
             </p>
           </div>
-          <Button className="h-9 shrink-0 gap-2 rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand-dark" onClick={() => openDrawer()}>
-            <Plus className="h-4 w-4" />
-            New class
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" className="h-9 gap-2 rounded-lg px-4" onClick={() => setEmbedOpen(true)}>
+              <Globe className="h-4 w-4" />
+              Website embed
+            </Button>
+            <Button className="h-9 gap-2 rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand-dark" onClick={() => openDrawer()}>
+              <Plus className="h-4 w-4" />
+              New class
+            </Button>
+          </div>
         </div>
 
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -348,6 +356,7 @@ export default function GroupClassesPage() {
           </div>
         )}
 
+        <WebsiteEmbedDialog open={embedOpen} onClose={() => setEmbedOpen(false)} />
         <GroupClassDrawer
           open={drawer.open}
           lesson={drawer.lesson}
