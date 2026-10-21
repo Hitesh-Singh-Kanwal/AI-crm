@@ -3,18 +3,20 @@
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, BarChart3, Eye, FileText, MousePointerClick, UserCheck, Users } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
 import MainLayout from '@/components/layout/MainLayout'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import api from '@/lib/api'
-import { FORM_ANALYTICS_RANGES, normalizeFormAnalyticsRange } from '@/lib/form-analytics'
+import { FORM_ANALYTICS_RANGES, formAnalyticsQuery, formAnalyticsReady, normalizeFormAnalyticsRange } from '@/lib/form-analytics'
+import FormPerformanceFunnel from '../../components/FormPerformanceFunnel'
+import FormSourceTable from '../../components/FormSourceTable'
+import { PaginatedRows } from '../../components/analyticsTablePagination'
 import { formatLeadStageLabel, useLeadStages } from '@/lib/lead-stages'
 import { formatLeadSource } from '@/lib/lead-source'
-import { cn, formatDate } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -26,25 +28,6 @@ function bucketLabel(key) {
 
 function formatSource(source) {
   return formatLeadSource(source) || 'Direct / unknown'
-}
-
-function StatCard({ label, value, hint, icon: Icon, iconWrap, iconClass }) {
-  return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground mb-1">{label}</p>
-            <h3 className="text-3xl font-bold text-foreground tabular-nums">{value}</h3>
-            {hint ? <p className="text-xs text-muted-foreground mt-2">{hint}</p> : null}
-          </div>
-          <div className={cn('h-12 w-12 rounded-lg flex items-center justify-center', iconWrap)}>
-            <Icon className={cn('h-6 w-6', iconClass)} />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
 }
 
 function TrafficChart({ series }) {
@@ -111,6 +94,8 @@ function FormAnalyticsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const range = normalizeFormAnalyticsRange(searchParams.get('range'))
+  const from = searchParams.get('from') || ''
+  const to = searchParams.get('to') || ''
   const { stages: stageOptions } = useLeadStages()
 
   const [data, setData] = useState(null)
@@ -118,10 +103,11 @@ function FormAnalyticsContent() {
   const [error, setError] = useState(null)
 
   const load = useCallback(async () => {
+    if (!formAnalyticsReady({ range, from, to })) return
     setLoading(true)
     setError(null)
     try {
-      const result = await api.get(`/api/formBuilder/${id}/analytics?range=${encodeURIComponent(range)}`)
+      const result = await api.get(`/api/formBuilder/${id}/analytics?${formAnalyticsQuery({ range, from, to })}`)
       if (result.success && result.data) {
         setData(result.data)
       } else {
@@ -132,18 +118,24 @@ function FormAnalyticsContent() {
     } finally {
       setLoading(false)
     }
-  }, [id, range])
+  }, [id, range, from, to])
 
   useEffect(() => {
     load()
   }, [load])
 
-  const setRange = (value) => router.replace(`/marketing/form-builder/template-analytics/${id}?range=${value}`)
+  const setRange = (value) => {
+    const query = formAnalyticsQuery({ range: value, from, to })
+    router.replace(`/marketing/form-builder/template-analytics/${id}?${query}`)
+  }
+  const setCustom = (nextFrom, nextTo) => {
+    const query = formAnalyticsQuery({ range: 'custom', from: nextFrom, to: nextTo })
+    router.replace(`/marketing/form-builder/template-analytics/${id}?${query}`)
+  }
 
   const totals = data?.totals
   const series = Array.isArray(data?.series) ? data.series : []
   const stages = (Array.isArray(data?.stages) ? data.stages : []).map((s) => ({ key: s.stage, count: s.count }))
-  const sources = (Array.isArray(data?.sources) ? data.sources : []).map((s) => ({ key: s.source, count: s.count }))
   const recent = Array.isArray(data?.recent) ? data.recent : []
   const pages = Array.isArray(data?.pages) ? data.pages : []
   const traffic = totals?.traffic
@@ -182,20 +174,21 @@ function FormAnalyticsContent() {
               ) : null}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {FORM_ANALYTICS_RANGES.map((r) => (
-              <Button
-                key={r.value}
-                size="sm"
-                variant={range === r.value ? 'default' : 'outline'}
-                onClick={() => setRange(r.value)}
-                disabled={loading}
-              >
-                {r.label}
-              </Button>
-            ))}
-          </div>
         </div>
+
+        <FormPerformanceFunnel
+          loading={loading}
+          visitors={formAnalyticsReady({ range, from, to }) ? traffic?.visitors : undefined}
+          views={traffic?.views}
+          leads={totals?.leads}
+          customers={totals?.converted}
+          range={range}
+          from={from}
+          to={to}
+          spendScope={String(id || 'form')}
+          onRangeChange={setRange}
+          onCustomChange={setCustom}
+        />
 
         {error ? (
           <Card>
@@ -203,76 +196,6 @@ function FormAnalyticsContent() {
           </Card>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard
-                label="Form views"
-                value={traffic ? traffic.views : '—'}
-                hint="Times the form was seen on screen"
-                icon={Eye}
-                iconWrap="bg-amber-100"
-                iconClass="text-amber-600"
-              />
-              <StatCard
-                label="Unique visitors"
-                value={traffic ? traffic.visitors : '—'}
-                hint="Different people who saw it"
-                icon={Users}
-                iconWrap="bg-sky-100"
-                iconClass="text-sky-600"
-              />
-              <StatCard
-                label="Started the form"
-                value={traffic ? traffic.starts : '—'}
-                hint="Clicked into at least one field"
-                icon={MousePointerClick}
-                iconWrap="bg-indigo-100"
-                iconClass="text-indigo-600"
-              />
-              <StatCard
-                label="View → submit rate"
-                value={traffic ? `${Number(traffic.submitRate || 0).toFixed(1)}%` : '—'}
-                hint="Tracked submits ÷ views"
-                icon={BarChart3}
-                iconWrap="bg-rose-100"
-                iconClass="text-rose-600"
-              />
-              <StatCard
-                label="Total submissions"
-                value={totals ? totals.submissions : '—'}
-                hint="Includes repeat submissions"
-                icon={FileText}
-                iconWrap="bg-brand-light"
-                iconClass="text-brand"
-              />
-              <StatCard
-                label="People who filled"
-                value={totals ? totals.leads : '—'}
-                hint="Unique leads"
-                icon={Users}
-                iconWrap="bg-blue-100"
-                iconClass="text-blue-600"
-              />
-              <StatCard
-                label="Converted to customer"
-                value={totals ? totals.converted : '—'}
-                hint="Leads now customers"
-                icon={UserCheck}
-                iconWrap="bg-green-100"
-                iconClass="text-green-600"
-              />
-              <StatCard
-                label="Conversion rate"
-                value={totals ? `${Number(totals.conversionRate || 0).toFixed(1)}%` : '—'}
-                hint={
-                  totals?.lastSubmissionAt
-                    ? `Last submission ${formatDate(totals.lastSubmissionAt)}`
-                    : 'Converted ÷ people who filled'
-                }
-                icon={BarChart3}
-                iconWrap="bg-purple-100"
-                iconClass="text-purple-600"
-              />
-            </div>
 
             <Card>
               <CardHeader className="pb-2">
@@ -301,6 +224,8 @@ function FormAnalyticsContent() {
                 {pages.length === 0 ? (
                   <div className="py-6 text-sm text-muted-foreground">No views recorded in this period.</div>
                 ) : (
+                  <PaginatedRows rows={pages}>
+                    {(pageRows, footer) => (
                   <div className="overflow-auto rounded-md border border-border">
                     <table className="w-full min-w-[640px] text-sm">
                       <thead className="bg-muted/40">
@@ -313,7 +238,7 @@ function FormAnalyticsContent() {
                         </tr>
                       </thead>
                       <tbody className="bg-card">
-                        {pages.map((p) => (
+                        {pageRows.map((p) => (
                           <tr key={`${p.host || ''}-${p.pagePath || ''}`} className="border-t border-border">
                             <td className="px-4 py-3">
                               {p.pageUrl ? (
@@ -340,41 +265,30 @@ function FormAnalyticsContent() {
                         ))}
                       </tbody>
                     </table>
+                    {footer}
                   </div>
+                    )}
+                  </PaginatedRows>
                 )}
               </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Where these leads are now</CardTitle>
-                  <CardDescription>Current lead stage of people who filled this form</CardDescription>
-                </CardHeader>
-                <CardContent className="pt-2">
-                  <BreakdownList
-                    items={stages}
-                    total={totals?.leads || 0}
-                    getLabel={(key) => formatLeadStageLabel(key, stageOptions) || 'Unknown'}
-                    emptyText="No leads in this period."
-                  />
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Traffic sources</CardTitle>
-                  <CardDescription>UTM source recorded on each submission</CardDescription>
-                </CardHeader>
-                <CardContent className="pt-2">
-                  <BreakdownList
-                    items={sources}
-                    total={totals?.submissions || 0}
-                    getLabel={formatSource}
-                    emptyText="No submissions in this period."
-                  />
-                </CardContent>
-              </Card>
-            </div>
+            <FormSourceTable rows={data?.trafficSources} loading={loading} />
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Where these leads are now</CardTitle>
+                <CardDescription>Current lead stage of people who filled this form</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-2">
+                <BreakdownList
+                  items={stages}
+                  total={totals?.leads || 0}
+                  getLabel={(key) => formatLeadStageLabel(key, stageOptions) || 'Unknown'}
+                  emptyText="No leads in this period."
+                />
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader className="pb-2">
@@ -385,6 +299,8 @@ function FormAnalyticsContent() {
                 {recent.length === 0 ? (
                   <div className="py-6 text-sm text-muted-foreground">No submissions in this period.</div>
                 ) : (
+                  <PaginatedRows rows={recent}>
+                    {(pageRows, footer) => (
                   <div className="overflow-auto rounded-md border border-border">
                     <table className="w-full min-w-[760px] text-sm">
                       <thead className="bg-muted/40">
@@ -398,7 +314,7 @@ function FormAnalyticsContent() {
                         </tr>
                       </thead>
                       <tbody className="bg-card">
-                        {recent.map((r, idx) => (
+                        {pageRows.map((r, idx) => (
                           <tr key={`${r.leadID}-${idx}`} className="border-t border-border">
                             <td className="px-4 py-3 font-medium text-foreground">{r.name || '—'}</td>
                             <td className="px-4 py-3 text-muted-foreground">
@@ -423,7 +339,10 @@ function FormAnalyticsContent() {
                         ))}
                       </tbody>
                     </table>
+                    {footer}
                   </div>
+                    )}
+                  </PaginatedRows>
                 )}
               </CardContent>
             </Card>

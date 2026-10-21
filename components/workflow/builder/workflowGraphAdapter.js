@@ -157,14 +157,18 @@ function stepFromNode(node, offsetMinutes) {
   if (type === 'email') {
     const emailType = config.emailType === 'template' ? 'template' : 'message'
     const htmlBody = config.htmlBody || ''
+    const subject = String(config.subject || '').trim()
     const hasFooter =
       typeof config.hasFooter === 'boolean'
         ? config.hasFooter
         : /data-cadance-studio-footer\s*=/i.test(htmlBody)
     return {
       ...base,
+      // Sender reads description when subject is missing. Keep them the same
+      // so the Subject field is what gets emailed.
+      description: subject || String(config.description || '').trim(),
       emailType,
-      subject: config.subject || '',
+      subject,
       ...(emailType === 'template'
         ? { htmlBody, hasFooter }
         : { script: config.body || config.script || '' }),
