@@ -270,12 +270,11 @@ function EmailFields({ config, onChange }) {
         open={pickerOpen}
         selectedId={config.emailTemplateId || ''}
         onClose={() => setPickerOpen(false)}
-        onSelect={({ emailTemplateId, emailTemplateSubject, subject, htmlBody, hasFooter }) =>
+        onSelect={({ emailTemplateId, emailTemplateSubject, htmlBody, hasFooter }) =>
           onChange({
             emailType: 'template',
             emailTemplateId,
             emailTemplateSubject,
-            subject: subject || config.subject || '',
             htmlBody,
             hasFooter: Boolean(hasFooter),
           })

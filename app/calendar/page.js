@@ -15,6 +15,7 @@ import EventDetailPanel from "./components/EventDetailPanel";
 import api from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { toStudioLocalDate } from "@/lib/studioLocalDate";
+import { buildPackageSessionOrder, resolveEventPayment } from "@/lib/event-payment";
 import { getCurrentUserId, getEffectiveBranch } from "@/lib/auth";
 import { isOwnScope } from "@/lib/permissions";
 
@@ -277,76 +278,7 @@ function deriveEffectiveStatus(appt) {
 }
 
 function transformAppointments(appointments, colorMap, memberSelections = {}, membershipCoverageSet = new Set(), studioTz = null) {
-  // Track session order per (customerID + package reference) for all package
-  // billing types. A "package" charge is booked against either a CustomerPackage
-  // (charge.customerPackageID — the direct-purchase path, tried first below at
-  // sessionsRemaining resolution) or an Enrollment (charge.enrollmentID — the
-  // curriculum-enrollment path); either identifies the same kind of credit pool,
-  // so both are accepted here. Key: `${customerId}::${packageRefId}::${serviceCode}`,
-  // value: sorted array of appointment IDs by date. Used to figure out each
-  // session's chronological position so we can decide which sessions are
-  // covered by the credits paid so far.
-  const pkgSessionOrder = {};
-
-  appointments.forEach((appt) => {
-    const pkgCharge = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
-    if (!pkgCharge) return;
-    const packageRefId = String(
-      pkgCharge.customerPackageID?._id ?? pkgCharge.customerPackageID ??
-      pkgCharge.enrollmentID?._id ?? pkgCharge.enrollmentID ?? "",
-    );
-    if (!packageRefId) return;
-    // Order sessions per service: a package's private-lesson credits are tracked
-    // separately from its group-class (or any other) service lines.
-    const serviceCode = pkgCharge.serviceCode ?? "";
-    const customerIds = Array.isArray(appt.customerIDs)
-      ? appt.customerIDs.map((c) => String(c._id ?? c))
-      : [];
-    customerIds.forEach((cid) => {
-      const key = `${cid}::${packageRefId}::${serviceCode}`;
-      if (!pkgSessionOrder[key]) pkgSessionOrder[key] = [];
-      pkgSessionOrder[key].push({
-        id: String(appt._id),
-        date: new Date(appt.startDateTime),
-        sessionNumber:
-          typeof pkgCharge.sessionNumber === "number"
-            ? pkgCharge.sessionNumber
-            : null,
-      });
-    });
-  });
-
-  // Sort each group chronologically
-  Object.values(pkgSessionOrder).forEach((arr) => arr.sort((a, b) => a.date - b.date));
-
-  // Credit pools whose stamped session numbers cannot be right, so their
-  // ordering is recovered from the calendar (chronological) order instead —
-  // which is what the stamps were meant to express.
-  //
-  //  1. Two events in the pool claim the same position. Bookings made before
-  //     the backend took its position from the same atomic operation as the
-  //     session deduction could observe each other's increments, and a batch
-  //     of slots booked together came back sharing one number — five lessons
-  //     reading "5 Paid" instead of counting down.
-  //  2. The stamps disagree with chronological order. The backend numbers a
-  //     session from `sessionsUsed` at booking time, i.e. the order the staff
-  //     member created the bookings — so booking five slots newest-first
-  //     leaves the earliest lesson stamped #5. `arr` is already sorted by
-  //     date, so its stamps must be non-decreasing or the pool is unreliable.
-  const untrustedPools = new Set();
-  Object.entries(pkgSessionOrder).forEach(([key, arr]) => {
-    const stamped = arr.map((e) => e.sessionNumber).filter((n) => n != null);
-    if (new Set(stamped).size !== stamped.length) {
-      untrustedPools.add(key);
-      return;
-    }
-    for (let i = 1; i < stamped.length; i++) {
-      if (stamped[i] < stamped[i - 1]) {
-        untrustedPools.add(key);
-        return;
-      }
-    }
-  });
+  const { pkgSessionOrder, untrustedPools } = buildPackageSessionOrder(appointments);
 
   return appointments.map((appt) => {
     const teacherId = String(
@@ -410,233 +342,9 @@ function transformAppointments(appointments, colorMap, memberSelections = {}, me
 
     const serviceCode = appt.calendarServiceID?.serviceCode || "";
 
-    // Find sessions remaining from the first package/enrollment charge record
-    let sessionsRemaining = null;
-    let totalSessions = null;
-    let sessionsPaidFor = null;
-    let pkgFullyPaid = false;
-    if (Array.isArray(appt.charges) && appt.charges.length > 0) {
-      // Membership session-type charges
-      const memCharge = appt.charges.find((c) => c.method === "membership" && c.accessType === "sessions");
-      if (memCharge?.customerMembershipID) {
-        const cm = memCharge.customerMembershipID;
-        const cmSvc = (cm.services || []).find((s) => s.serviceCode === serviceCode);
-        if (cmSvc) {
-          sessionsRemaining = cmSvc.sessionsRemaining ?? null;
-          totalSessions = (cmSvc.sessionsUsed ?? 0) + (cmSvc.sessionsRemaining ?? 0);
-        }
-      }
-
-      const pkgCharge = appt.charges.find((c) => c.method === "package");
-      if (pkgCharge) {
-        const billingType = appt.packageBillingType ?? null;
-        const enrollmentPkg = pkgCharge?.enrollmentID?.package ?? null;
-        // Where the money actually lives: an enrollment's package, or the package
-        // itself on a direct purchase. Same resolution deriveEventPaid uses on the
-        // customer's Lessons tab, so the two screens agree about one booking.
-        const billingPkg = enrollmentPkg ?? pkgCharge?.customerPackageID ?? null;
-        const amountCollected = billingPkg?.amountCollected ?? 0;
-        const totalPaid = billingPkg?.totalPaid ?? 0;
-        pkgFullyPaid =
-          billingPkg?.paymentStatus === "paid" ||
-          (amountCollected > 0 && amountCollected >= totalPaid);
-
-        // Positive evidence that the package has NOT been settled — an explicit
-        // non-paid status, or (when the backend sent none) a collected figure short
-        // of the price. Missing data leaves the "settled at purchase" assumption
-        // alone rather than flipping every one-time booking to Unpaid; a $0 package
-        // has nothing to settle and stays paid.
-        const packageUnderpaid = billingPkg?.paymentStatus
-          ? billingPkg.paymentStatus !== "paid"
-          : totalPaid > 0 && amountCollected < totalPaid;
-
-        // A service is "free" when non-chargeable or fully discounted — it has no
-        // credits, only sessions, and must be excluded from the paid-credit math.
-        const isFreeSvc = (s) =>
-          s.isChargeable === false || Number(s.finalAmount || 0) <= 0;
-
-        const resolveSessionsPaidFor = (svc, services) => {
-          if (isFreeSvc(svc)) return null;
-          const sessTotal = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
-          const bt = billingType ?? enrollmentPkg?.billingType;
-          // A one-time / pay-per-session package is settled at purchase, so every
-          // session it holds is a paid credit — but only while it really is settled.
-          // Once it is partly collected or refunded it accrues credits from the money
-          // actually taken, exactly like an installment package. Without this, an
-          // enrollment showing $300 collected of $4350 with $4050 refunded still
-          // reported all 30 of its bookings as "Paid" on the calendar.
-          if (bt !== "flexible" && bt !== "payment_plan" && !packageUnderpaid) {
-            return sessTotal;
-          }
-          // Mirror the customer-profile calc: split the collected amount across
-          // paid (non-free) services by their share of the package price, then
-          // convert this service's share to sessions at its post-discount price.
-          const grossOf = (s) =>
-            ((s.sessionsUsed ?? 0) + (s.sessionsRemaining ?? 0)) *
-            Number(s.pricePerSession || 0);
-          const chargeablePriceTotal = (services ?? []).reduce(
-            (sum, s) => sum + (isFreeSvc(s) ? 0 : grossOf(s)),
-            0,
-          );
-          const svcShare =
-            chargeablePriceTotal > 0 ? grossOf(svc) / chargeablePriceTotal : 1;
-          const svcAmountPaid = amountCollected * svcShare;
-          const effectivePps =
-            sessTotal > 0 && Number(svc.finalAmount) > 0
-              ? Number(svc.finalAmount) / sessTotal
-              : Number(svc.pricePerSession || 0);
-          if (effectivePps <= 0) return null;
-          return svcAmountPaid / effectivePps;
-        };
-
-        // Try customerPackageID first
-        if (pkgCharge?.customerPackageID?.services) {
-          const pkg = pkgCharge.customerPackageID;
-          const svc = pkg.services.find((s) => s.serviceCode === pkgCharge.serviceCode) ?? pkg.services.find((s) => (s.pricePerSession ?? 0) > 0);
-          if (svc) {
-            sessionsRemaining = svc.sessionsRemaining ?? null;
-            totalSessions = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
-            sessionsPaidFor = resolveSessionsPaidFor(svc, pkg.services);
-          }
-        }
-        // Fall back to enrollmentID
-        if (sessionsRemaining === null && enrollmentPkg?.services) {
-          const svc = enrollmentPkg.services.find((s) => s.serviceCode === pkgCharge.serviceCode) ?? enrollmentPkg.services.find((s) => (s.pricePerSession ?? 0) > 0);
-          if (svc) {
-            sessionsRemaining = svc.sessionsRemaining ?? null;
-            totalSessions = (svc.sessionsUsed ?? 0) + (svc.sessionsRemaining ?? 0);
-            sessionsPaidFor = resolveSessionsPaidFor(svc, enrollmentPkg.services);
-          }
-        }
-      }
-    }
-
-    // "Already used" per the package's own aggregate (sessionsUsed vs
-    // sessionsRemaining). The backend increments sessionsUsed synchronously
-    // the moment a session is *booked* against the package (see
-    // calendarEvent.controller.js's charge-application step) — not when it's
-    // attended — so for a normal package this count is already fully
-    // explained by the real bookings sitting in pkgSessionOrder below. It only
-    // has "invisible" extra beyond that for a migrated package's baseline
-    // usage (imported with no CalendarEvent behind it) or bookings outside
-    // this fetch's date range.
-    const sessionsBeforeFromHistory = totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0;
-
-    // Determine this event's chronological session number within its enrollment.
-    let pkgSessionNumber = null;
-    {
-      const pkgCharge2 = Array.isArray(appt.charges) ? appt.charges.find((c) => c.method === "package") : null;
-      if (pkgCharge2) {
-        // Must match the packageRefId resolution used to build pkgSessionOrder
-        // above — customerPackageID (direct-purchase) or enrollmentID
-        // (curriculum-enrollment), whichever this charge carries.
-        const packageRefId2 = String(
-          pkgCharge2.customerPackageID?._id ?? pkgCharge2.customerPackageID ??
-          pkgCharge2.enrollmentID?._id ?? pkgCharge2.enrollmentID ?? "",
-        );
-        const serviceCode2 = pkgCharge2.serviceCode ?? "";
-        const customerIds2 = Array.isArray(appt.customerIDs) ? appt.customerIDs.map((c) => String(c._id ?? c)) : [];
-        // Duplicate stamps anywhere in this pool mean none of them can be
-        // trusted to order it — see untrustedPools above.
-        const poolIsTrusted = !customerIds2.some((cid) =>
-          untrustedPools.has(`${cid}::${packageRefId2}::${serviceCode2}`),
-        );
-
-        // The backend stamps each package-funded charge with its true position
-        // in the credit pool at booking time (baseline sessionsUsed + this
-        // occurrence's own share — see computeSessionBaselines in
-        // calendarEvent.controller.js). That's authoritative and immune to
-        // this fetch's date window, unlike the client-side fallback below —
-        // prefer it whenever it's present and its pool is self-consistent.
-        if (typeof pkgCharge2.sessionNumber === "number" && poolIsTrusted) {
-          pkgSessionNumber = pkgCharge2.sessionNumber;
-        } else {
-          // Fallback for events booked before the backend started stamping
-          // sessionNumber: derive it from chronological order among whatever
-          // sibling bookings happen to be loaded in the current fetch. This is
-          // only as good as that fetch's date window — a package whose
-          // bookings span further than it (e.g. a long recurring series) can
-          // make this undercount, since it can't tell "not visible" apart from
-          // "didn't happen yet".
-          for (const cid of customerIds2) {
-            const key = `${cid}::${packageRefId2}::${serviceCode2}`;
-            const order = pkgSessionOrder[key];
-            if (order) {
-              const idx = order.findIndex((e) => e.id === String(appt._id));
-              if (idx >= 0) {
-                // sessionsBeforeFromHistory in excess of what `order` itself
-                // accounts for is the genuinely invisible portion (see comment
-                // above) — that's the only part that should stack on top of this
-                // event's own position in the list. When `order` already
-                // explains all of it (the common case: every booking for this
-                // key loaded in this fetch), nothing is added and each sibling
-                // gets its own increasing position instead of collapsing onto
-                // one shared floor.
-                const invisiblePriorUsage = Math.max(0, sessionsBeforeFromHistory - order.length);
-                pkgSessionNumber = invisiblePriorUsage + idx + 1;
-                break;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Credits available for this specific session = sessions paid for minus the
-    // sessions that come chronologically before it. pkgSessionNumber above
-    // already folds in any invisible prior usage, so it's used as-is when
-    // resolved; sessionsBeforeFromHistory is only the fallback for an event
-    // whose package charge/order couldn't be matched at all. A session is
-    // "paid" once it has at least ~one full credit (≥ 0.9, allowing for
-    // rounding). This unifies every billing type: a settled one-time/upfront
-    // package pays for all sessions at purchase (full credits), while flexible/
-    // payment-plan — and any package left partly collected or refunded — accrue
-    // credits from the money actually taken.
-    const sessionsBefore =
-      pkgSessionNumber != null ? pkgSessionNumber - 1 : sessionsBeforeFromHistory;
-    const coveredByCredits = sessionsPaidFor != null && sessionsPaidFor - sessionsBefore >= 0.999;
-    // A package charge whose service is free/non-chargeable has nothing to pay.
-    const freePackageService =
-      appt.chargeMethod === "package" && sessionsRemaining != null && sessionsPaidFor == null;
-
-    // Check if any customer on this event is covered by an active membership for this service
-    const coveredByMembership =
-      appt.chargeMethod === "membership" ||
-      (appt.chargeMethod === "none" &&
-        serviceCode &&
-        Array.isArray(appt.customerIDs) &&
-        appt.customerIDs.some((c) =>
-          membershipCoverageSet.has(`${String(c._id ?? c)}::${serviceCode}`)
-        ));
-
-    // Coarse "paid" signals that don't look at this session's own credit:
-    // an explicit payment on the event, a non-installment package (one-time /
-    // pay-per-session — settled at purchase), a fully-paid enrollment, or a
-    // non-package charge method that always settles up front.
-    const paidByCoarseSignal =
-      appt.payment?.collected ||
-      (appt.chargeMethod === "package" &&
-        appt.packageBillingType !== "flexible" &&
-        appt.packageBillingType !== "payment_plan") ||
-      pkgFullyPaid ||
-      appt.chargeMethod === "credits" ||
-      appt.chargeMethod === "direct" ||
-      appt.chargeMethod === "mixed" ||
-      coveredByMembership;
-
-    // When we could resolve the package's credit data, whether THIS session is
-    // covered by a purchased/paid credit is authoritative and vetoes the coarse
-    // signals above: a one-time (or fully-paid) package that's been booked past
-    // the number of sessions it actually paid for must not read as "Paid" just
-    // because of its billing type. An explicit payment recorded on the event
-    // still counts (e.g. the extra session was paid for separately).
-    const packageCreditDataResolved =
-      appt.chargeMethod === "package" &&
-      (sessionsPaidFor != null || sessionsRemaining != null);
-    const _isActuallyPaid = packageCreditDataResolved
-      ? coveredByCredits || freePackageService || Boolean(appt.payment?.collected)
-      : paidByCoarseSignal || coveredByCredits || freePackageService;
-    const paymentCollected = _isActuallyPaid ? "paid" : "unpaid";
+    const { sessionsRemaining, totalSessions, sessionsPaidFor, pkgSessionNumber, coveredByMembership, paid } =
+      resolveEventPayment(appt, { pkgSessionOrder, untrustedPools, membershipCoverageSet });
+    const paymentCollected = paid ? "paid" : "unpaid";
 
     return {
       id: String(appt._id || appt.id),
@@ -1833,9 +1541,9 @@ function AppointmentTimedEventRows({ event, compact = false }) {
               ? pkgSessionNumber - 1
               : (totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0);
           const net = sessionsPaidFor - (sessionsBefore + 1);
-          // When credits run out, show the fractional remainder (e.g. 0.3) so the
-          // customer can see what they still have — don't collapse to 0.
-          const raw = net >= 0 ? net : sessionsPaidFor % 1;
+          // Once credits run out this lesson is unpaid, so nothing is left after it —
+          // a leftover fraction (e.g. 0.75) belongs to the earlier lesson, not here.
+          const raw = Math.max(0, net);
           // Snap near-integers (float dust), otherwise truncate — never round a
           // partially-paid session up to a full, schedulable-looking credit.
           const display =
@@ -3616,6 +3324,7 @@ function CalendarPageInner() {
   const [instructors, setInstructors] = useState([]);
   const memberSelectionsRef = useRef({});
   const membershipCoverageRef = useRef(new Set()); // "customerID::serviceCode" for active memberships // appointmentId -> memberIds[]
+  const paymentContextRef = useRef({}); // resolveEventPayment() context of the loaded events
   const allTeachersRef = useRef([]);
   const studioTzRef = useRef(null); // IANA timezone for the active studio location
   const [studioTz, setStudioTz] = useState(null);
@@ -3736,6 +3445,12 @@ function CalendarPageInner() {
         merged = derived;
       }
       const colorMap = buildColorMap(merged);
+      // The event panel judges each student against the same booking order the
+      // grid used, so the two never disagree about one lesson.
+      paymentContextRef.current = {
+        ...buildPackageSessionOrder(result.data),
+        membershipCoverageSet: membershipCoverageRef.current,
+      };
       setEvents(transformAppointments(result.data, colorMap, memberSelectionsRef.current, membershipCoverageRef.current, studioTzRef.current));
       setInstructors(merged.length > 0 ? merged : derived);
     }
@@ -4406,6 +4121,7 @@ function CalendarPageInner() {
               <EventDetailPanel
                 open={Boolean(selectedEvent) && !isAppointmentPanelOpen}
                 event={selectedEvent ?? {}}
+                paymentContext={paymentContextRef.current}
                 studioTz={studioTz}
                 onClose={() => setSelectedEvent(null)}
                 onUpdated={() => {

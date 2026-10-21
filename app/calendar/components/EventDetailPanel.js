@@ -22,6 +22,7 @@ import CheckNumberField from "@/components/payments/CheckNumberField";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import LocationSelector from "@/components/shared/LocationSelector";
 import MiniStudentPanel from "./MiniStudentPanel";
+import { resolveEventPayment } from "@/lib/event-payment";
 import CreateEnrollmentSheet from "@/components/enrollment/CreateEnrollmentSheet";
 
 const STATUS_OPTIONS = [
@@ -148,19 +149,26 @@ function isUnallocated(event) {
 }
 
 // Whether a student's charge record actually means they've paid for the lesson.
-// Cash/credit/membership charges are settled on the spot; a package charge only
-// counts once the package it draws from is fully collected. A payment-plan or
-// flexible package that still owes a balance leaves the student Unpaid — which
-// is exactly what the customer's Lessons tab shows (deriveEventPaid there).
-function chargeCoversPayment(ch, event) {
+// Cash/credit/membership charges are settled on the spot; a package charge is
+// paid when the money collected on the package covers this session's position
+// in it — the same rule as the calendar grid and the customer's Lessons tab.
+// `ev` must be the event as GET /api/calendar/:id returns it (packages populated);
+// `ctx` is the calendar's buildPackageSessionOrder() of the events it loaded.
+function chargeCoversPayment(ch, ev, ctx) {
   if (ch.method !== "package") return true;
-  if (event?.packageBillingType === "flexible") return false;
-  const pkg = ch.enrollmentID?.package ?? ch.customerPackageID;
-  if (!pkg) return true; // no package data on the payload — stay optimistic
-  if (pkg.paymentStatus) return pkg.paymentStatus === "paid";
-  const collected = Number(pkg.amountCollected ?? 0);
-  const total = Number(pkg.totalPaid ?? 0);
-  return total > 0 && collected >= total;
+  return resolveEventPayment(ev, { ...ctx, customerID: ch.customerID }).paid;
+}
+
+function paidCustomerIds(ev, ctx) {
+  // A migrated lesson was settled in the old system — everyone on it is paid.
+  if (ev?.importBatchID) {
+    return new Set((ev.customerIDs || []).map((c) => String(c?._id ?? c)));
+  }
+  return new Set(
+    (ev?.charges || [])
+      .filter((ch) => chargeCoversPayment(ch, ev, ctx))
+      .map((ch) => String(ch.customerID)),
+  );
 }
 
 // One stable id for a funding option regardless of which kind it is — the three
@@ -330,6 +338,7 @@ function GroupStudentRoster({
   eventId,
   serviceCode,
   servicePrice,
+  paymentContext,
   onRosterChanged,
   onSelectStudent,
 }) {
@@ -365,6 +374,13 @@ function GroupStudentRoster({
 
   const dropRef = useRef(null);
 
+  // PUT and charge-student return the event without its packages populated, so
+  // re-read it before deciding who has paid.
+  const refreshChargedIds = async () => {
+    const evRes = await api.get(`/api/calendar/${eventId}`);
+    if (evRes.success) setChargedIds(paidCustomerIds(evRes.data, paymentContext));
+  };
+
   // Fetch the event's current customerIDs then resolve each to a full customer object
   const fetchEnrolled = async () => {
     const evRes = await api.get(`/api/calendar/${eventId}`);
@@ -377,12 +393,7 @@ function GroupStudentRoster({
     );
     setEventMemberIds(persistedMemberIds);
     const charges = evRes.data?.charges || [];
-    const charged = new Set(
-      charges
-        .filter((ch) => chargeCoversPayment(ch, event))
-        .map((ch) => String(ch.customerID)),
-    );
-    setChargedIds(charged);
+    setChargedIds(paidCustomerIds(evRes.data, paymentContext));
     // Prefer the package/membership this event actually charged against — the
     // roster's fallback (scanning all active enrollments) can pick a different,
     // unrelated package when a customer holds more than one.
@@ -640,12 +651,7 @@ function GroupStudentRoster({
     };
     const res = await api.put(`/api/calendar/${eventId}`, body);
     if (res.success) {
-      const charged = new Set(
-        (res.data?.charges || [])
-          .filter((ch) => chargeCoversPayment(ch, event))
-          .map((ch) => String(ch.customerID)),
-      );
-      setChargedIds(charged);
+      await refreshChargedIds();
       // Idempotent: a double-click can run confirmAdd twice for one student
       // before the first re-render disables the button.
       setEnrolled((prev) =>
@@ -715,12 +721,7 @@ function GroupStudentRoster({
       absentCustomerIDs: newAbsentIds,
     });
     if (res.success) {
-      const charged = new Set(
-        (res.data?.charges || [])
-          .filter((ch) => chargeCoversPayment(ch, event))
-          .map((ch) => String(ch.customerID)),
-      );
-      setChargedIds(charged);
+      await refreshChargedIds();
       setEnrolled((prev) => prev.filter((c) => String(c._id) !== customerId));
       setEventMemberIds(newMemberIds);
       setAbsentCustomerIds(new Set(newAbsentIds));
@@ -825,13 +826,7 @@ function GroupStudentRoster({
     if (res.success) {
       if (res.data?.checkoutUrl) navigateCheckoutTab(checkoutTab, res.data.checkoutUrl);
       else closeCheckoutTab(checkoutTab);
-      const charges = res.data?.charges || [];
-      const charged = new Set(
-        charges
-          .filter((ch) => chargeCoversPayment(ch, event))
-          .map((ch) => String(ch.customerID)),
-      );
-      setChargedIds(charged);
+      await refreshChargedIds();
       setPayingId(null);
     } else {
       closeCheckoutTab(checkoutTab);
@@ -1505,6 +1500,7 @@ export default function EventDetailPanel({
   onRosterChanged,
   onPaymentSuccess,
   studioTz,
+  paymentContext = {},
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -2152,7 +2148,14 @@ export default function EventDetailPanel({
                         }
                       />
                       {isUnallocated(event) && <UnallocatedBadge />}
-                      {event.calendarServiceID?.isChargeable && event.chargeApplied && (
+                      {/* A private lesson booked on a package its payments don't cover yet
+                          reads Unpaid, as on the grid — not "Paid with package". Group
+                          lessons show this per student in the roster instead. */}
+                      {event.calendarServiceID?.isChargeable && event.chargeApplied &&
+                        event.type !== "lesson" &&
+                        !resolveEventPayment(event, paymentContext).paid ? (
+                        <span className="text-[12px] font-semibold text-destructive">Unpaid</span>
+                      ) : event.calendarServiceID?.isChargeable && event.chargeApplied && (
                         <span className="text-[12px] text-muted-foreground">
                           {event.chargeMethod === "package" && "Paid with package"}
                           {event.chargeMethod === "membership" && "Covered by membership"}
@@ -2170,6 +2173,7 @@ export default function EventDetailPanel({
                       eventId={event._id}
                       serviceCode={event.calendarServiceID?.serviceCode}
                       servicePrice={event.calendarServiceID?.price}
+                      paymentContext={paymentContext}
                       onRosterChanged={onRosterChanged}
                       onSelectStudent={(id, name) => {
                         setSelectedStudentId(id);

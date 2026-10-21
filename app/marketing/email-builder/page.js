@@ -6,14 +6,20 @@ import MainLayout from '@/components/layout/MainLayout'
 import { Tabs } from '@/components/ui/tabs'
 import EmailTemplatesTab from './components/EmailTemplatesTab'
 import EmailBuilderTab from './components/EmailBuilderTab'
+import EmailBulkCreateTab from './components/EmailBulkCreateTab'
 import GlobalLoader from '@/components/shared/GlobalLoader'
+
+function resolveEmailView(raw) {
+  if (raw === 'builder') return 'builder'
+  if (raw === 'bulk') return 'bulk'
+  return 'templates'
+}
 
 function EmailsPageInner() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const rawView = searchParams.get('view') || 'templates'
-  const activeTab = rawView === 'builder' ? 'builder' : 'templates'
+  const activeTab = resolveEmailView(searchParams.get('view') || 'templates')
   const [dataVersion, setDataVersion] = useState(0)
 
   const setActiveTab = (tab) => {
@@ -32,8 +38,16 @@ function EmailsPageInner() {
             dataVersion={dataVersion}
             onDataChanged={() => setDataVersion((v) => v + 1)}
             onCreateNew={() => setActiveTab('builder')}
+            onCreateMultiple={() => setActiveTab('bulk')}
           />
           <EmailBuilderTab
+            onBack={() => setActiveTab('templates')}
+            onCreated={() => {
+              setDataVersion((v) => v + 1)
+              setActiveTab('templates')
+            }}
+          />
+          <EmailBulkCreateTab
             onBack={() => setActiveTab('templates')}
             onCreated={() => {
               setDataVersion((v) => v + 1)

@@ -9,6 +9,7 @@ import {
   Mail,
   Pencil,
   Eye,
+  Layers,
   Plus,
   Sparkles,
   Star,
@@ -62,7 +63,12 @@ const SORT_OPTIONS = [
   { value: 'updatedAt:desc', label: 'Recently updated' },
 ]
 
-export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onDataChanged }) {
+export default function EmailTemplatesTab({
+  onCreateNew,
+  onCreateMultiple,
+  dataVersion = 0,
+  onDataChanged,
+}) {
   const toast = useToast()
   const manageDefaults = canManageDefaultWorkflows()
   const superAdmin = isSuperAdmin()
@@ -783,6 +789,14 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
                 <Type className="h-4 w-4" />
                 Text Email
               </Link>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={onCreateMultiple}
+              >
+                <Layers className="h-4 w-4 mr-2" />
+                Create multiple
+              </Button>
               <Button variant="gradient" className="w-full sm:w-auto" onClick={onCreateNew}>
                 <Plus className="h-4 w-4 mr-2" />
                 Create template
@@ -980,10 +994,16 @@ export default function EmailTemplatesTab({ onCreateNew, dataVersion = 0, onData
                         ? 'Try clearing search or filters.'
                         : 'Create a template and assign it to this category.'}
                     </p>
-                    <Button variant="gradient" className="mt-6" onClick={onCreateNew}>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Create template
-                    </Button>
+                    <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                      <Button variant="outline" onClick={onCreateMultiple}>
+                        <Layers className="h-4 w-4 mr-2" />
+                        Create multiple
+                      </Button>
+                      <Button variant="gradient" onClick={onCreateNew}>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Create template
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               )}

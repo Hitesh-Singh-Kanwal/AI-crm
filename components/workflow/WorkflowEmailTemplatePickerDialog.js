@@ -210,7 +210,6 @@ export default function WorkflowEmailTemplatePickerDialog({
     onSelect?.({
       emailTemplateId: tpl._id,
       emailTemplateSubject: subject || 'Untitled template',
-      subject: subject || '',
       htmlBody,
       hasFooter:
         hasFooter === true || hasFooter === false

@@ -47,6 +47,8 @@ export default function EmailPreviewFrame({
   embedded = false,
   fullWidth = false,
   showDeviceToggle = true,
+  /** Desktop preview max height; raise for bulk/full-page so footers stay on-screen. */
+  desktopMaxHeight = 900,
 }) {
   const [device, setDevice] = useState('desktop') // 'desktop' | 'mobile'
   const hasHtml = !!String(html || '').trim()
@@ -79,14 +81,17 @@ export default function EmailPreviewFrame({
     </div>
   )
 
+  // Remount when HTML changes (footer inject, upload, etc.) so the iframe reloads.
+  const previewRevision = `${String(html || '').length}:${String(html || '').slice(-120)}`
+
   // Identical canvas for both modes — only the chrome + scale factor change.
   const emailBody = hasHtml ? (
     <ScaledInboxHtmlEmail
-      key={`preview-${device}`}
+      key={`preview-${device}-${previewRevision}`}
       html={html}
       title={subject || 'Email preview'}
       minHeight={compact ? 160 : 220}
-      maxHeight={isMobile ? phoneScreenHeight : 900}
+      maxHeight={isMobile ? phoneScreenHeight : desktopMaxHeight}
       viewportHeight={isMobile ? phoneScreenHeight : null}
     />
   ) : null

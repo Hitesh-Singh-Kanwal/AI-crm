@@ -23,6 +23,7 @@ import {
   mergeSmsPages,
   mergeThreadByTimestamp,
 } from '@/lib/inboxThread'
+import { isCustomerAiRepliesEnabled } from '@/lib/customerAiReplies'
 
 function locationIdsFrom(raw) {
   if (!raw) return []
@@ -43,6 +44,10 @@ function leadAiRepliesOn(lead) {
   // stops follow-ups/workflows; it does not silence live replies.
   if (lead.aiRepliesEnabled === false) return false
   return true
+}
+
+function customerAiRepliesOn(customer) {
+  return isCustomerAiRepliesEnabled(customer)
 }
 
 function emailsMatchingAddress(records, contactEmail, contactName) {
@@ -94,9 +99,16 @@ export default function CustomerInboxThread({ customer, contactType = 'Customer'
   const [loadingMore, setLoadingMore] = useState(false)
   const [emailSending, setEmailSending] = useState(false)
   const [smsSending, setSmsSending] = useState(false)
-  const [aiRepliesOn, setAiRepliesOn] = useState(true)
+  const [aiRepliesOn, setAiRepliesOn] = useState(() =>
+    contactType === 'Customer' || contactType === 'Customers'
+      ? customerAiRepliesOn(customer)
+      : true,
+  )
   const [aiToggleSaving, setAiToggleSaving] = useState(false)
   const aiToggleGenRef = useRef(0)
+  const customerId = customer?._id ? String(customer._id) : null
+  const isCustomerThread =
+    contactType === 'Customer' || contactType === 'Customers'
   const [callPlacing, setCallPlacing] = useState(false)
   const [callLogsLoading, setCallLogsLoading] = useState(false)
   const [activeOutboundCall, setActiveOutboundCall] = useState(null)
@@ -293,7 +305,27 @@ export default function CustomerInboxThread({ customer, contactType = 'Customer'
     loadSmsPage,
   ])
 
+  const customerLifecycle = customer?.lifecycleStatus
+  const customerAiFlag = customer?.aiRepliesEnabled
+
   useEffect(() => {
+    if (!isCustomerThread || !customerId || !isMongoId(customerId)) return
+    const genAtStart = aiToggleGenRef.current
+    let cancelled = false
+    api.get(`/api/customer/${customerId}`).then((res) => {
+      if (cancelled || !res.success) return
+      if (aiToggleGenRef.current !== genAtStart) return
+      setAiRepliesOn(customerAiRepliesOn(res.data))
+    })
+    return () => {
+      cancelled = true
+    }
+    // customer object identity changes every parent render in some dialogs;
+    // only the id and the two fields that decide the switch should refetch.
+  }, [isCustomerThread, customerId, customerLifecycle, customerAiFlag])
+
+  useEffect(() => {
+    if (isCustomerThread) return
     if (!leadId || !isMongoId(leadId)) {
       setAiRepliesOn(true)
       return
@@ -308,16 +340,20 @@ export default function CustomerInboxThread({ customer, contactType = 'Customer'
     return () => {
       cancelled = true
     }
-  }, [leadId])
+  }, [leadId, isCustomerThread])
 
   const handleToggleAiReplies = useCallback(async (next) => {
-    if (!leadId || !isMongoId(leadId) || aiToggleSaving) return
+    const targetId = isCustomerThread ? customerId : leadId
+    const path = isCustomerThread
+      ? `/api/customer/${targetId}`
+      : `/api/lead/${targetId}`
+    if (!targetId || !isMongoId(targetId) || aiToggleSaving) return
     const previous = aiRepliesOn
     aiToggleGenRef.current += 1
     setAiRepliesOn(next)
     setAiToggleSaving(true)
     try {
-      const result = await api.put(`/api/lead/${leadId}`, { aiRepliesEnabled: next })
+      const result = await api.put(path, { aiRepliesEnabled: next })
       if (!result.success) {
         setAiRepliesOn(previous)
         toast.error({
@@ -326,7 +362,11 @@ export default function CustomerInboxThread({ customer, contactType = 'Customer'
         })
         return
       }
-      setAiRepliesOn(leadAiRepliesOn(result.data || { aiRepliesEnabled: next }))
+      setAiRepliesOn(
+        isCustomerThread
+          ? customerAiRepliesOn({ ...(result.data || {}), aiRepliesEnabled: next })
+          : leadAiRepliesOn(result.data || { aiRepliesEnabled: next }),
+      )
       toast.success({
         title: next ? 'AI replies on' : 'AI replies off',
         message: next
@@ -342,7 +382,7 @@ export default function CustomerInboxThread({ customer, contactType = 'Customer'
     } finally {
       setAiToggleSaving(false)
     }
-  }, [aiRepliesOn, aiToggleSaving, leadId, toast])
+  }, [aiRepliesOn, aiToggleSaving, leadId, customerId, isCustomerThread, contactType, toast])
 
   const loadCalls = useCallback(
     async ({ force = false } = {}) => {
@@ -622,7 +662,14 @@ export default function CustomerInboxThread({ customer, contactType = 'Customer'
             result.message ||
             (scheduleNow ? 'SMS sent successfully' : 'SMS scheduled successfully'),
         })
-        if (leadId && isMongoId(leadId)) setAiRepliesOn(false)
+        if (isCustomerThread && customerId && isMongoId(customerId)) {
+          aiToggleGenRef.current += 1
+          setAiRepliesOn(false)
+          api.put(`/api/customer/${customerId}`, { aiRepliesEnabled: false }).catch(() => {})
+        } else if (leadId && isMongoId(leadId)) {
+          aiToggleGenRef.current += 1
+          setAiRepliesOn(false)
+        }
         return true
       }
 
@@ -655,7 +702,14 @@ export default function CustomerInboxThread({ customer, contactType = 'Customer'
           result.message ||
           (scheduleNow ? 'Email sent successfully' : 'Email scheduled successfully'),
       })
-      if (leadId && isMongoId(leadId)) setAiRepliesOn(false)
+      if (isCustomerThread && customerId && isMongoId(customerId)) {
+        aiToggleGenRef.current += 1
+        setAiRepliesOn(false)
+        api.put(`/api/customer/${customerId}`, { aiRepliesEnabled: false }).catch(() => {})
+      } else if (leadId && isMongoId(leadId)) {
+        aiToggleGenRef.current += 1
+        setAiRepliesOn(false)
+      }
       return true
     } catch (e) {
       console.error('Failed to send message:', e)
@@ -856,10 +910,21 @@ export default function CustomerInboxThread({ customer, contactType = 'Customer'
         onLoadMore={handleLoadMore}
         hasMore={hasMore}
         loadingMore={loadingMore}
-        leadData={leadId && isMongoId(leadId) ? { ...contact, _id: leadId } : contact}
+        leadData={
+          isCustomerThread && customerId && isMongoId(customerId)
+            ? { ...contact, _id: customerId, aiRepliesEnabled: aiRepliesOn }
+            : leadId && isMongoId(leadId)
+              ? { ...contact, _id: leadId }
+              : contact
+        }
         aiRepliesOn={aiRepliesOn}
         aiToggleSaving={aiToggleSaving}
-        onToggleAiReplies={leadId && isMongoId(leadId) ? handleToggleAiReplies : null}
+        onToggleAiReplies={
+          (isCustomerThread && customerId && isMongoId(customerId)) ||
+          (leadId && isMongoId(leadId))
+            ? handleToggleAiReplies
+            : null
+        }
         emailSending={emailSending}
         smsSending={smsSending}
         callPlacing={callPlacing}
