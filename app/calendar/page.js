@@ -1541,9 +1541,9 @@ function AppointmentTimedEventRows({ event, compact = false }) {
               ? pkgSessionNumber - 1
               : (totalSessions != null && sessionsRemaining != null ? totalSessions - sessionsRemaining : 0);
           const net = sessionsPaidFor - (sessionsBefore + 1);
-          // When credits run out, show the fractional remainder (e.g. 0.3) so the
-          // customer can see what they still have — don't collapse to 0.
-          const raw = net >= 0 ? net : sessionsPaidFor % 1;
+          // Once credits run out this lesson is unpaid, so nothing is left after it —
+          // a leftover fraction (e.g. 0.75) belongs to the earlier lesson, not here.
+          const raw = Math.max(0, net);
           // Snap near-integers (float dust), otherwise truncate — never round a
           // partially-paid session up to a full, schedulable-looking credit.
           const display =
