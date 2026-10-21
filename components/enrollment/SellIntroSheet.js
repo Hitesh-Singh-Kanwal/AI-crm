@@ -363,8 +363,9 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
       const res = await api.post('/api/payment-request/lead', body)
       if (!res?.success) {
         const flags = res?.errorData
+        // Only the prior-intro / active-package warning is confirmable. A 409 for
+        // a busy teacher must stay an error — confirming would resubmit the same slot.
         if (
-          res?.status === 409 ||
           flags?.needsConfirm ||
           /already has an intro|active package/i.test(String(res?.error || ''))
         ) {
