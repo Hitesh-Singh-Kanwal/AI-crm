@@ -237,5 +237,6 @@ Open http://localhost:3100 → Calendar › Group Classes.
 
 - **2026-10-19** — Phases 1–3 (backend `bc10bfb`), Phase 6 (frontend `0437996`), Phase 4 (backend `1f9b8fd`). End-to-end tested against the local test org; six bugs found and fixed (§4). This document started.
 - **2026-10-19** — Live LLM conversation with the SMS agent: 6/6 after broadening the tool wording so "do you have X class?" checks the schedule (backend `ca09af3`, bug 7 in §4).
+- **2026-10-22** — Found by hand-testing in Postman (backend `c6efa81`): a lead who texted "done!" without paying was told "you're all set". The agent had no payment signal; the prompt now says each turn whether the lead's group class link is unpaid (never confirm) or paid (they are enrolled). Verified unpaid → "I don't see the payment", paid → "you're enrolled".
 - **2026-10-22** — Phase 5: public class schedule endpoint, `embed.js` and a Website embed dialog for staff.
 - **2026-10-21** — Phase 4b (backend `af7e58e`): the agent sells a group class drop-in by payment link and seats the lead on the roster once they pay. Live LLM conversation → link → payment → roster: 14/14; voice via simulated webhook: 5/5; no regressions across 268 payment/agent tests.
