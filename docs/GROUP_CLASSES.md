@@ -5,10 +5,10 @@ Covers **both repos** — `AI-crm` (frontend) and `DanceStudio-CRM-Backend` (bac
 
 | | |
 |---|---|
-| Last updated | 2026-10-21 |
+| Last updated | 2026-10-22 |
 | Frontend branch | `feat/group-class-source-fe` |
 | Backend branch | `feat/group-class-source-be` |
-| Status | Phases 1–4, 4b and 6 done · Phase 7 (backfill) and 5 (website) next |
+| Status | Phases 1–6 and 4b done · Phase 7 (backfill) is last, before deploy |
 
 ---
 
@@ -52,7 +52,7 @@ Lesson (class type)  ──►  ClassSchedule (weekly rule)  ──►  Calendar
 | 4 | AI agent `getGroupClasses` tool (text + voice) | ✅ Done — backend `1f9b8fd` + `ca09af3` |
 | 4b | AI agent sells a drop-in by payment link; the lead joins the class once they pay | ✅ Done — backend `af7e58e` |
 | 7 | Backfill existing series + retire old classes | ⏳ Next — **needed before deploy** (see §6) |
-| 5 | Website plugin (`/public/classes` + `embed.js`) | ⏳ Planned |
+| 5 | Website plugin (`/public/classes` + `embed.js` + "Website embed" button) | ✅ Done — backend `bda428e`, frontend `508aaee` |
 | — | Vapi webhook authentication (pre-existing gap) | ⚠️ Needs a decision (see §6) |
 
 ---
@@ -103,6 +103,12 @@ How it works: the agent describes the class → quotes the drop-in price → the
 
 **For a studio to sell a class this way:** the class needs a billing service with a price, and the studio needs Clover or Stripe connected (same as intro lessons). A class with no price is described as "can't be paid online — team follow-up".
 
+**Website plugin (Phase 5)**
+- `src/routes/publicClasses.routes.js` *(new)*, mounted at `/public/classes` in `src/app.js` — modelled on the forms embed: GET-only, CORS open to any origin, rate-limited per IP.
+  - `GET /public/classes/:locationID/sessions?days&tag` — the same `listClassSessions()` rows as the staff week view and the AI agent: published schedules of active classes only, cancellations flagged, spots left (including held spots). Returned through a **whitelist** (`toPublicSession`): class name, description, tags, studio-local date/day/time, instructor first name, room, spots left, cancelled. **No ids, rosters, capacity or prices.** Unknown or malformed location → 404.
+  - `GET /public/classes/embed.js` — `CadanceClasses.create({ locationId, target, tag?, days?, cssClass? })`. Renders with `textContent` only (no HTML injection from class text), under `.cadance-classes` / `.cadance-classes__item` so the studio's CSS can restyle it. Category/level filters come from class **tags** — there is no website-only schedule.
+- Frontend: `app/calendar/group-classes/components/WebsiteEmbedDialog.js` + a **Website embed** button on the Group classes page — pick a location (and optional tag), copy the snippet.
+
 ### API — `/api/class-schedule` (permission: calendar › lessons)
 
 | Method & path | Does |
@@ -143,6 +149,7 @@ How it works: the agent describes the class → quotes the drop-in price → the
 | AI agent, live LLM conversation (SMS agent, `gpt-5.6-terra`) | ✅ 6/6 — calls the tool for every class question, quotes the live Tue/Thu 7:30 PM times, nothing from an ended schedule, "offered but not scheduled" for an unscheduled class, a definite "not offered" for a style the studio doesn't teach |
 | Drop-in sale, live LLM end to end (Phase 4b) | ✅ 14/14 — lead asks → agent quotes $25 + date → proposes → lead confirms → real `/pay/` link, spot held (spots 14 → 13) → lead to Pending Payment → payment settled through the real settlement function → lead converted, on the roster, $25 recorded, hold released, payment linked to the session |
 | Drop-in sale by voice (simulated Vapi webhook) | ✅ 5/5 — price + sessionID listed, a made-up sessionID refused, real one creates a $25 link and holds the spot, agent told not to read the URL/ID aloud |
+| Website embed (Phase 5) | ✅ 9/9 API + browser — public payload has no ids/rosters/prices; tag filter; 404s; CORS `*`; the embed renders on a different origin (class, time, instructor, spots left, friendly day headings); unscheduled/inactive classes hidden; empty state. Plus 4/4 UI — the dialog's generated snippet, pasted as-is onto another site, renders the schedule |
 | Unit tests for drop-ins | ✅ 7 new (bookability rules, holds vs capacity, price/sessionID in the answer, SMS propose/confirm, server-side price); no regressions across 268 payment/agent tests |
 | Voice agent with a real phone call | ⏳ Not run — needs Vapi + a phone number; the voice path is covered by the simulated webhook call above |
 
@@ -230,4 +237,5 @@ Open http://localhost:3100 → Calendar › Group Classes.
 
 - **2026-10-19** — Phases 1–3 (backend `bc10bfb`), Phase 6 (frontend `0437996`), Phase 4 (backend `1f9b8fd`). End-to-end tested against the local test org; six bugs found and fixed (§4). This document started.
 - **2026-10-19** — Live LLM conversation with the SMS agent: 6/6 after broadening the tool wording so "do you have X class?" checks the schedule (backend `ca09af3`, bug 7 in §4).
+- **2026-10-22** — Phase 5: public class schedule endpoint, `embed.js` and a Website embed dialog for staff.
 - **2026-10-21** — Phase 4b (backend `af7e58e`): the agent sells a group class drop-in by payment link and seats the lead on the roster once they pay. Live LLM conversation → link → payment → roster: 14/14; voice via simulated webhook: 5/5; no regressions across 268 payment/agent tests.
