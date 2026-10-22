@@ -758,6 +758,7 @@ export default function NewEnrollmentPackageInline({
                   if (svc) addService(svc);
                 }}
                 options={catalogServices
+                  .filter((s) => s.type !== "intro")
                   .filter(
                     (s) =>
                       !form.services.some((fs) => fs.serviceCode && fs.serviceCode === s.serviceCode),
@@ -926,7 +927,7 @@ export default function NewEnrollmentPackageInline({
             {/* Add service button */}
             {!serviceOnly && (
               <ServicePicker
-                catalogServices={catalogServices}
+                catalogServices={catalogServices.filter((s) => s.type !== "intro")}
                 onSelect={addService}
               />
             )}
