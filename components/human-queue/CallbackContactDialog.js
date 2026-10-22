@@ -85,6 +85,7 @@ export default function CallbackContactDialog({
   canManage = false,
   preferredChannel = 'sms',
   onUpdated,
+  onPlaceCall,
 }) {
   const toast = useToast()
   const toastRef = useRef(toast)
@@ -328,49 +329,20 @@ export default function CallbackContactDialog({
         : locationRaw
           ? [String(locationRaw?._id ?? locationRaw)]
           : []
-      const result = await api.post('/api/human-call/call-now', {
-        lead: {
-          _id: leadId,
-          phoneNumber: phone,
-          name: displayName,
-          locationID: locationIDs,
-        },
+      const started = await onPlaceCall?.({
+        leadId,
+        phone,
+        name: displayName,
+        locationIDs,
+        callbackId: item?.id || item?._id,
+        status: queueStatus || 'pending',
+        reason: String(item?.reason || item?.ivrLabel || '').trim(),
+        aiSummary: String(item?.aiSummary || '').trim(),
       })
-      if (!result.success) throw new Error(result.error || 'Could not place the call.')
-
-      const conferenceName = result.data?.conferenceName
-      const callHistoryId = result.data?.callHistoryId || result.data?.call?._id
-      if (conferenceName) {
-        const { joinConferenceCall, subscribeToConnectionEvents } = await import(
-          '@/lib/twilioVoiceClient'
-        )
-        const connection = await joinConferenceCall({
-          fetchToken: () => api.get('/api/human-call/voice-token'),
-          conferenceName,
-          callHistoryId,
-        })
-        subscribeToConnectionEvents(connection, {
-          disconnect: () => {
-            if (callHistoryId) {
-              api.post(`/api/human-call/${callHistoryId}/end`).catch(() => {})
-            }
-          },
-        })
+      if (started) {
+        await loadTimeline()
+        onUpdated?.()
       }
-      toast.success({
-        title: 'Calling',
-        message: 'Outbound call started. Resolve the queue item when you are done.',
-      })
-      if (item?.id || item?._id) {
-        await api
-          .patch(`/api/callback-requests/${item.id || item._id}/status`, {
-            status: queueStatus || 'pending',
-            touchLastContact: true,
-          })
-          .catch(() => {})
-      }
-      await loadTimeline()
-      onUpdated?.()
     } catch (err) {
       toast.error({ title: 'Call failed', message: err.message })
     } finally {

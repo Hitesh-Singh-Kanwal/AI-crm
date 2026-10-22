@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { nameWithMembers } from '@/lib/utils'
 import MainLayout from '@/components/layout/MainLayout'
@@ -23,6 +24,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useInboxHeader } from '@/contexts/InboxHeaderContext'
 import { cn, getContactDisplayName } from '@/lib/utils'
 import api from '@/lib/api'
+import { isPersistedCallId, nextOutboundPanelStatus } from '@/lib/outboundCallStatus'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import { useToast } from '@/components/ui/toast'
 import {
@@ -313,6 +315,13 @@ function InboxPageContent() {
   const callLogRefreshTimersRef = useRef(new Map())
   const endOutboundCallRef = useRef(null)
   const activeOutboundConnectionRef = useRef(null)
+  const activeOutboundCallRef = useRef(null)
+  const outboundCallStatusRef = useRef('connecting')
+  const outboundAttemptRef = useRef(0)
+  const setOutboundStatus = useCallback((next) => {
+    outboundCallStatusRef.current = next
+    setOutboundCallStatus(next)
+  }, [])
 
   const upsertConversationAndAppendMessage = useCallback((payload) => {
     const { convId, contact, channel, content, subject, timestamp, extra = {} } = payload
@@ -1606,6 +1615,9 @@ function InboxPageContent() {
   useEffect(() => {
     activeOutboundConnectionRef.current = activeOutboundConnection
   }, [activeOutboundConnection])
+  useEffect(() => {
+    activeOutboundCallRef.current = activeOutboundCall
+  }, [activeOutboundCall])
 
   const handleCallTabActive = useCallback(() => {
     const convId = selectedConversationRef.current || selectedConversation
@@ -1622,18 +1634,19 @@ function InboxPageContent() {
   const clearOutboundCallUi = useCallback(() => {
     setActiveOutboundCall(null)
     setActiveOutboundConnection(null)
-    setOutboundCallStatus('connecting')
-  }, [])
+    setOutboundStatus('connecting')
+  }, [setOutboundStatus])
 
   const handleEndOutboundCall = useCallback(async (opts = {}) => {
     const remoteHangup = Boolean(opts && opts.remoteHangup === true)
     if (endingOutboundRef.current) return
     endingOutboundRef.current = true
-    const callId = activeOutboundCall?.id || activeOutboundCall?._id
+    outboundAttemptRef.current += 1
+    const callId = activeOutboundCallRef.current?.id || activeOutboundCall?.id || activeOutboundCall?._id
     try {
       const { disconnectConnection } = await import('@/lib/twilioVoiceClient')
       disconnectConnection(activeOutboundConnectionRef.current || activeOutboundConnection)
-      if (callId) {
+      if (isPersistedCallId(callId)) {
         await api.post(`/api/human-call/${callId}/end`)
       }
     } catch (e) {
@@ -1694,6 +1707,20 @@ function InboxPageContent() {
 
     setCallPlacing(true)
     endingOutboundRef.current = false
+    const attempt = ++outboundAttemptRef.current
+    const displayName = getContactDisplayName(contact)
+    setActiveOutboundCall({
+      id: `pending-${Date.now()}`,
+      name: displayName,
+      leadName: displayName,
+      callerName: displayName,
+      phone: phoneNumber,
+      phoneNumber,
+      callerPhone: phoneNumber,
+      initiatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    })
+    setOutboundStatus('connecting')
     let callHistoryId = null
     try {
       const locationRaw = contact.locationID || selectedLeadData?.locationID || []
@@ -1710,10 +1737,11 @@ function InboxPageContent() {
       }
       const result = await api.post('/api/human-call/call-now', { lead: leadPayload })
       if (!result.success) {
-        toast.error({
-          title: 'Call failed',
-          message: result.error || 'Could not place the call.',
-        })
+        throw new Error(result.error || 'Could not place the call.')
+      }
+      if (attempt !== outboundAttemptRef.current) {
+        const cancelledId = result.data?.callHistoryId || result.data?.call?._id
+        if (isPersistedCallId(cancelledId)) api.post(`/api/human-call/${cancelledId}/end`).catch(() => {})
         return
       }
 
@@ -1724,10 +1752,12 @@ function InboxPageContent() {
       const panelCall = {
         id: callHistoryId,
         _id: callHistoryId,
-        name: getContactDisplayName(contact),
-        leadName: getContactDisplayName(contact),
+        name: displayName,
+        leadName: displayName,
+        callerName: displayName,
         phone: phoneNumber,
         phoneNumber,
+        callerPhone: phoneNumber,
         fromNumber,
         conferenceName,
         initiatedAt: new Date().toISOString(),
@@ -1735,39 +1765,37 @@ function InboxPageContent() {
       }
 
       setActiveOutboundCall(panelCall)
-      setOutboundCallStatus('connecting')
+      setOutboundStatus('connecting')
 
       if (conferenceName) {
         try {
           const {
             joinConferenceCall,
             subscribeToConnectionEvents,
+            disconnectConnection,
           } = await import('@/lib/twilioVoiceClient')
           const connection = await joinConferenceCall({
             fetchToken: () => api.get('/api/human-call/voice-token'),
             conferenceName,
             callHistoryId,
           })
+          if (attempt !== outboundAttemptRef.current) {
+            disconnectConnection(connection)
+            if (isPersistedCallId(callHistoryId)) api.post(`/api/human-call/${callHistoryId}/end`).catch(() => {})
+            return
+          }
           setActiveOutboundConnection(connection)
-          setOutboundCallStatus('connected')
           subscribeToConnectionEvents(connection, {
-            accept: () => setOutboundCallStatus('connected'),
+            accept: () => {},
             disconnect: () => {
-              setOutboundCallStatus('ended')
+              if (endingOutboundRef.current) return
               setActiveOutboundConnection(null)
-              if (!endingOutboundRef.current) {
-                endOutboundCallRef.current?.({ remoteHangup: true })
-              }
             },
             cancel: () => {
-              setOutboundCallStatus('ended')
+              if (endingOutboundRef.current) return
               setActiveOutboundConnection(null)
-              if (!endingOutboundRef.current) {
-                endOutboundCallRef.current?.({ remoteHangup: true })
-              }
             },
             error: () => {
-              setOutboundCallStatus('ended')
               toast.error({
                 title: 'Call audio error',
                 message: 'Browser call connection failed. Check microphone permissions.',
@@ -1776,18 +1804,12 @@ function InboxPageContent() {
           })
         } catch (voiceErr) {
           console.error(voiceErr)
-          if (callHistoryId) {
-            await api.post(`/api/human-call/${callHistoryId}/end`).catch(() => {})
-          }
-          clearOutboundCallUi()
           toast.error({
             title: 'Browser audio failed',
             message:
               voiceErr?.message ||
-              'Could not connect your browser mic. Allow microphone access and try again.',
+              'Could not connect your browser mic. The dialer stayed open so you can hang up.',
           })
-          scheduleCallLogRefresh(convId)
-          return
         }
       }
 
@@ -1854,11 +1876,12 @@ function InboxPageContent() {
       })
     } catch (e) {
       console.error(e)
-      if (callHistoryId) {
-        await api.post(`/api/human-call/${callHistoryId}/end`).catch(() => {})
-      }
-      clearOutboundCallUi()
-      toast.error({ title: 'Call failed', message: 'Something went wrong placing the call.' })
+      if (attempt !== outboundAttemptRef.current) return
+      if (!callHistoryId) clearOutboundCallUi()
+      toast.error({
+        title: 'Call failed',
+        message: e.message || 'Something went wrong placing the call.',
+      })
     } finally {
       setCallPlacing(false)
     }
@@ -1868,6 +1891,7 @@ function InboxPageContent() {
     displayedConversations,
     conversations,
     selectedLeadData,
+    setOutboundStatus,
     toast,
     clearOutboundCallUi,
     scheduleCallLogRefresh,
@@ -1876,31 +1900,48 @@ function InboxPageContent() {
   // Poll so contact hangup closes the CRM panel even if the Voice SDK lag.
   useEffect(() => {
     const callId = activeOutboundCall?.id || activeOutboundCall?._id
-    if (!callId) return undefined
+    if (!isPersistedCallId(callId)) return undefined
 
     let cancelled = false
-    const terminal = new Set(['completed', 'busy', 'no-answer', 'canceled', 'failed'])
 
     const poll = async () => {
       try {
         if (endingOutboundRef.current) return
         const res = await api.get(`/api/human-call/${callId}`)
         if (cancelled || endingOutboundRef.current || !res.success || !res.data) return
-        const status = String(res.data.status || '').toLowerCase()
-        if (!terminal.has(status)) return
-        endOutboundCallRef.current?.({ remoteHangup: true })
+        const next = nextOutboundPanelStatus(res.data.status, outboundCallStatusRef.current)
+        if (next === 'ended') {
+          endOutboundCallRef.current?.({ remoteHangup: true })
+          return
+        }
+        if (next !== outboundCallStatusRef.current) setOutboundStatus(next)
       } catch (e) {
         console.error(e)
       }
     }
 
-    const interval = setInterval(poll, 3000)
+    const interval = setInterval(poll, 1000)
     poll()
     return () => {
       cancelled = true
       clearInterval(interval)
     }
-  }, [activeOutboundCall?.id, activeOutboundCall?._id])
+  }, [activeOutboundCall?.id, activeOutboundCall?._id, setOutboundStatus])
+
+  const handleOutboundHold = useCallback(async (onHold) => {
+    const callId = activeOutboundCallRef.current?.id || activeOutboundCall?.id || activeOutboundCall?._id
+    if (!isPersistedCallId(callId)) return
+    const r = await api.post(`/api/human-call/${callId}/hold`, { hold: onHold })
+    if (!r.success) {
+      toast.error({ title: 'Hold failed', message: r.error || 'Could not update hold status.' })
+      throw new Error(r.error || 'Hold failed')
+    }
+    setOutboundStatus(onHold ? 'on_hold' : 'connected')
+    toast.success({
+      title: onHold ? 'Caller on hold' : 'Caller resumed',
+      message: onHold ? 'The caller is hearing hold music.' : 'You are connected again.',
+    })
+  }, [activeOutboundCall, setOutboundStatus, toast])
 
   const fetchLeadMessages = useCallback(async (conversationId, page = 1, { contact = null } = {}) => {
     const isNumberThread = conversationId.startsWith('sms-')
@@ -2036,16 +2077,18 @@ function InboxPageContent() {
 
   return (
     <MainLayout title="Inbox" subtitle="Manage all your conversations in one place" mainClassName="overflow-hidden flex flex-col !px-0 !py-0 sm:!px-0 sm:!py-0 lg:!px-2 lg:!py-2">
-      {activeOutboundCall && (
+      {activeOutboundCall && typeof document !== 'undefined' && createPortal(
         <ActiveCallPanel
           mode="outbound"
+          layerZIndex={500}
           call={activeOutboundCall}
           connection={activeOutboundConnection}
           callStatus={outboundCallStatus}
-          canManage={false}
           onEndCall={() => handleEndOutboundCall()}
+          onHoldChange={handleOutboundHold}
           onClose={() => handleEndOutboundCall()}
-        />
+        />,
+        document.body,
       )}
       {mainView === 'bulk' ? (
         <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">

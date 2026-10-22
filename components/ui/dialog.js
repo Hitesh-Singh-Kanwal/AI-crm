@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 let bodyScrollLockCount = 0
 let dialogStack = []
 
-function Dialog({ open, onClose, children, maxWidth = 'lg' }) {
+function Dialog({ open, onClose, children, maxWidth = 'lg', keepMounted = false }) {
   const [mounted, setMounted] = useState(false)
   const [stackDepth, setStackDepth] = useState(0)
   const onCloseRef = useRef(onClose)
@@ -51,7 +51,8 @@ function Dialog({ open, onClose, children, maxWidth = 'lg' }) {
     }
   }, [open])
 
-  if (!open || !mounted) return null
+  if (!mounted) return null
+  if (!open && !keepMounted) return null
 
   const maxWidthClasses = {
     sm: 'max-w-sm',
@@ -71,22 +72,23 @@ function Dialog({ open, onClose, children, maxWidth = 'lg' }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 overflow-y-auto"
+      className={open ? 'fixed inset-0 overflow-y-auto' : 'hidden'}
       role="presentation"
-      style={{ zIndex: 200 + layer }}
+      style={open ? { zIndex: 200 + layer } : undefined}
+      aria-hidden={open ? undefined : true}
     >
       <div
-        className="fixed inset-0 bg-background/80 backdrop-blur-sm"
+        className={open ? 'fixed inset-0 bg-background/80 backdrop-blur-sm' : 'hidden'}
         onClick={() => onCloseRef.current?.()}
         aria-hidden="true"
       />
-      <div className="flex min-h-full items-center justify-center p-3 sm:p-4 md:p-6">
+      <div className={open ? 'flex min-h-full items-center justify-center p-3 sm:p-4 md:p-6' : undefined}>
         <div
-          role="dialog"
-          aria-modal="true"
-          className={`relative my-auto w-full ${maxWidthClasses[maxWidth] || maxWidthClasses.lg} animate-scale-in`}
-          style={{ zIndex: 201 + layer }}
-          onClick={(e) => e.stopPropagation()}
+          role={open ? 'dialog' : undefined}
+          aria-modal={open ? 'true' : undefined}
+          className={open ? `relative my-auto w-full ${maxWidthClasses[maxWidth] || maxWidthClasses.lg} animate-scale-in` : undefined}
+          style={open ? { zIndex: 201 + layer } : undefined}
+          onClick={open ? (e) => e.stopPropagation() : undefined}
         >
           {children}
         </div>

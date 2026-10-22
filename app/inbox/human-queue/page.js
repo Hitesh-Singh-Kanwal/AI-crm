@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRightLeft,
@@ -26,6 +27,7 @@ import { toStudioLocalDate } from '@/lib/studioLocalDate'
 import { getStudioTimezone } from '@/lib/studioTimezone'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import api from '@/lib/api'
+import { isPersistedCallId, nextOutboundPanelStatus } from '@/lib/outboundCallStatus'
 import { isNotificationEnabled } from '@/lib/notificationPreferences'
 import { playIncomingRing } from '@/lib/notificationSounds'
 import { useToast } from '@/components/ui/toast'
@@ -378,6 +380,9 @@ function HumanQueuePageContent() {
   const [activeConnection, setActiveConnection] = useState(null)
   const [activeCall, setActiveCall] = useState(null)
   const [callStatus, setCallStatus] = useState('idle')
+  const [callbackOutboundCall, setCallbackOutboundCall] = useState(null)
+  const [callbackOutboundConnection, setCallbackOutboundConnection] = useState(null)
+  const [callbackOutboundStatus, setCallbackOutboundStatus] = useState('connecting')
   const [soundEnabled, setSoundEnabled] = useState(true)
 
   const canViewSettings = hasPermission('inbox', 'QueueSettings', 'read')
@@ -404,6 +409,16 @@ function HumanQueuePageContent() {
 
   const prevWaitingCountRef = useRef(0)
   const callerDisconnectToastRef = useRef(false)
+  const endingCallbackOutboundRef = useRef(false)
+  const endCallbackOutboundRef = useRef(null)
+  const callbackOutboundConnectionRef = useRef(null)
+  const callbackOutboundCallRef = useRef(null)
+  const callbackOutboundStatusRef = useRef('connecting')
+  const callbackAttemptRef = useRef(0)
+  const setOutboundStatus = useCallback((next) => {
+    callbackOutboundStatusRef.current = next
+    setCallbackOutboundStatus(next)
+  }, [])
 
   const clearActiveCallUi = useCallback((message) => {
     disconnectConnection(activeConnectionRef.current)
@@ -710,6 +725,245 @@ function HumanQueuePageContent() {
     }
   }
 
+  useEffect(() => { callbackOutboundConnectionRef.current = callbackOutboundConnection }, [callbackOutboundConnection])
+  useEffect(() => { callbackOutboundCallRef.current = callbackOutboundCall }, [callbackOutboundCall])
+  useEffect(() => { callbackOutboundStatusRef.current = callbackOutboundStatus }, [callbackOutboundStatus])
+
+  useEffect(() => {
+    return () => {
+      const call = callbackOutboundCallRef.current
+      const callId = call?.id || call?._id
+      const connection = callbackOutboundConnectionRef.current
+      if (!isPersistedCallId(callId) && !connection) return
+      endingCallbackOutboundRef.current = true
+      callbackAttemptRef.current += 1
+      disconnectConnection(connection)
+      if (isPersistedCallId(callId)) api.post(`/api/human-call/${callId}/end`).catch(() => {})
+    }
+  }, [])
+
+  const clearCallbackOutboundUi = useCallback(() => {
+    setCallbackOutboundCall(null)
+    setCallbackOutboundConnection(null)
+    setOutboundStatus('connecting')
+  }, [])
+
+  const handleEndCallbackOutbound = useCallback(async (opts = {}) => {
+    const remoteHangup = Boolean(opts && opts.remoteHangup === true)
+    const silent = Boolean(opts && opts.silent === true)
+    if (endingCallbackOutboundRef.current) return
+    endingCallbackOutboundRef.current = true
+    callbackAttemptRef.current += 1
+    const callId = callbackOutboundCallRef.current?.id || callbackOutboundCall?.id || callbackOutboundCall?._id
+    try {
+      disconnectConnection(callbackOutboundConnectionRef.current || callbackOutboundConnection)
+      if (isPersistedCallId(callId)) await api.post(`/api/human-call/${callId}/end`)
+    } catch (error) {
+      console.error(error)
+    } finally {
+      clearCallbackOutboundUi()
+      if (!silent) {
+        toast.info({
+          title: 'Call ended',
+          message: remoteHangup ? 'The other party disconnected.' : 'You left the call.',
+        })
+      }
+      setTimeout(() => { endingCallbackOutboundRef.current = false }, 500)
+    }
+  }, [callbackOutboundCall, callbackOutboundConnection, clearCallbackOutboundUi, toast])
+
+  useEffect(() => {
+    endCallbackOutboundRef.current = handleEndCallbackOutbound
+  }, [handleEndCallbackOutbound])
+
+  useEffect(() => {
+    const callId = callbackOutboundCall?.id || callbackOutboundCall?._id
+    if (!callId || !isPersistedCallId(callId)) return undefined
+    let cancelled = false
+    const poll = async () => {
+      try {
+        if (endingCallbackOutboundRef.current) return
+        const res = await api.get(`/api/human-call/${callId}`)
+        if (cancelled || endingCallbackOutboundRef.current || !res.success || !res.data) return
+        const status = String(res.data.status || '').toLowerCase()
+        const next = nextOutboundPanelStatus(status, callbackOutboundStatusRef.current)
+        if (next === 'ended') {
+          endCallbackOutboundRef.current?.({ remoteHangup: true })
+          return
+        }
+        if (next !== callbackOutboundStatusRef.current) {
+          setOutboundStatus(next)
+        }
+      } catch (error) {
+        console.error(error)
+      }
+    }
+    const interval = setInterval(poll, 1000)
+    poll()
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [callbackOutboundCall?.id, callbackOutboundCall?._id])
+
+  const placeCallbackCall = useCallback(async ({
+    leadId,
+    phone,
+    name,
+    locationIDs,
+    callbackId,
+    status,
+    reason,
+    aiSummary,
+  }) => {
+    if (activeConnection || callbackOutboundCall) {
+      toast.error({ title: 'Already on a call', message: 'Finish your current call first.' })
+      return false
+    }
+    if (!phone) {
+      toast.error({ title: 'Missing phone', message: 'This lead has no phone number.' })
+      return false
+    }
+    endingCallbackOutboundRef.current = false
+    const attempt = ++callbackAttemptRef.current
+    const pendingId = `pending-${callbackId || Date.now()}`
+    setCallbackOutboundCall({
+      id: pendingId,
+      _id: pendingId,
+      callbackId,
+      name,
+      leadName: name,
+      callerName: name,
+      phone,
+      phoneNumber: phone,
+      callerPhone: phone,
+      escalationReason: reason || '',
+      lastMessage: reason || '',
+      aiSummary: aiSummary || '',
+      initiatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    })
+    setOutboundStatus('connecting')
+    setSelectedCallback(null)
+    let callHistoryId = null
+    try {
+      const result = await api.post('/api/human-call/call-now', {
+        lead: {
+          ...(leadId ? { _id: leadId } : {}),
+          phoneNumber: phone,
+          name,
+          locationID: locationIDs || [],
+        },
+      })
+      if (!result.success) throw new Error(result.error || 'Could not place the call.')
+      if (attempt !== callbackAttemptRef.current) {
+        const cancelledId = result.data?.callHistoryId || result.data?.call?._id
+        if (isPersistedCallId(cancelledId)) api.post(`/api/human-call/${cancelledId}/end`).catch(() => {})
+        return false
+      }
+
+      const conferenceName = result.data?.conferenceName
+      callHistoryId = result.data?.callHistoryId || result.data?.call?._id
+      const fromNumber = result.data?.from || ''
+      const session = {
+        id: callHistoryId,
+        _id: callHistoryId,
+        callbackId,
+        name,
+        leadName: name,
+        callerName: name,
+        phone,
+        phoneNumber: phone,
+        callerPhone: phone,
+        fromNumber,
+        conferenceName,
+        escalationReason: reason || '',
+        lastMessage: reason || '',
+        aiSummary: aiSummary || '',
+        initiatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      }
+      setCallbackOutboundCall(session)
+      setOutboundStatus('connecting')
+
+      if (conferenceName) {
+        const connection = await joinConferenceCall({
+          fetchToken: () => api.get('/api/human-call/voice-token'),
+          conferenceName,
+          callHistoryId,
+        })
+        if (attempt !== callbackAttemptRef.current) {
+          disconnectConnection(connection)
+          if (isPersistedCallId(callHistoryId)) api.post(`/api/human-call/${callHistoryId}/end`).catch(() => {})
+          return false
+        }
+        setCallbackOutboundConnection(connection)
+        subscribeToConnectionEvents(connection, {
+          accept: () => {},
+          // A browser-leg blip must not unmount the popup. The status poll
+          // closes it once the customer call is actually finished.
+          disconnect: () => {
+            if (endingCallbackOutboundRef.current) return
+            setCallbackOutboundConnection(null)
+          },
+          cancel: () => {
+            if (endingCallbackOutboundRef.current) return
+            setCallbackOutboundConnection(null)
+          },
+          error: () => {
+            toast.error({
+              title: 'Call audio error',
+              message: 'Browser call connection failed. Check microphone permissions.',
+            })
+          },
+        })
+      }
+
+      if (callbackId) {
+        api.patch(`/api/callback-requests/${callbackId}/status`, {
+          status: status || 'pending',
+          touchLastContact: true,
+        }).catch(() => {})
+      }
+      fetchCallbacks({ silent: true })
+      toast.success({
+        title: 'Calling…',
+        message: fromNumber
+          ? `Dialing ${phone} from studio ${fromNumber}.`
+          : `Dialing ${phone} from your studio number.`,
+      })
+      return true
+    } catch (error) {
+      console.error(error)
+      if (attempt !== callbackAttemptRef.current) return false
+      if (callHistoryId) {
+        toast.error({
+          title: 'Call audio failed',
+          message: error.message || 'The dialer stayed open so you can hang up.',
+        })
+        return true
+      }
+      clearCallbackOutboundUi()
+      toast.error({ title: 'Call failed', message: error.message || 'Could not place the call.' })
+      return false
+    }
+  }, [activeConnection, callbackOutboundCall, clearCallbackOutboundUi, fetchCallbacks, setOutboundStatus, toast])
+
+  const handleCallbackHold = useCallback(async (onHold) => {
+    const callId = callbackOutboundCall?.id || callbackOutboundCall?._id
+    if (!callId) return
+    const r = await api.post(`/api/human-call/${callId}/hold`, { hold: onHold })
+    if (!r.success) {
+      toast.error({ title: 'Hold failed', message: r.error || 'Could not update hold status.' })
+      throw new Error(r.error || 'Hold failed')
+    }
+    setOutboundStatus(onHold ? 'on_hold' : 'connected')
+    toast.success({
+      title: onHold ? 'Caller on hold' : 'Caller resumed',
+      message: onHold ? 'The caller is hearing hold music.' : 'You are connected again.',
+    })
+  }, [callbackOutboundCall, toast, setOutboundStatus])
+
   // ── Queue actions ──
   const handleAnswer = async (item) => {
     const itemId = item.id || item._id
@@ -726,7 +980,7 @@ function HumanQueuePageContent() {
       toast.error({ title: 'You are offline', message: 'Toggle yourself online in Team Availability before answering calls.' })
       return
     }
-    if (activeConnection) {
+    if (activeConnection || callbackOutboundCall) {
       toast.error({ title: 'Already on a call', message: 'Finish your current call first.' })
       return
     }
@@ -886,6 +1140,20 @@ function HumanQueuePageContent() {
             onHoldChange={handleHoldChange}
             onClose={handleCloseCallPanel}
           />
+        )}
+        {callbackOutboundCall && typeof document !== 'undefined' && createPortal(
+          <ActiveCallPanel
+            mode="outbound"
+            layerZIndex={500}
+            call={callbackOutboundCall}
+            connection={callbackOutboundConnection}
+            callStatus={callbackOutboundStatus}
+            canManage={canManageCalls}
+            onEndCall={() => handleEndCallbackOutbound()}
+            onHoldChange={handleCallbackHold}
+            onClose={() => handleEndCallbackOutbound()}
+          />,
+          document.body,
         )}
 
         {/* ── Top bar: tabs + controls ── */}
@@ -1208,12 +1476,13 @@ function HumanQueuePageContent() {
               </div>
 
               <CallbackContactDialog
-                open={Boolean(selectedCallback)}
+                open={Boolean(selectedCallback) && !callbackOutboundCall}
                 onClose={() => setSelectedCallback(null)}
                 item={selectedCallback}
                 canManage={canManageCalls}
                 preferredChannel={selectedCallback?.channel || 'call'}
                 onUpdated={() => fetchCallbacks({ silent: true })}
+                onPlaceCall={placeCallbackCall}
               />
             </section>
           )
