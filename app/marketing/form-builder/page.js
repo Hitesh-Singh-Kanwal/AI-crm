@@ -4312,7 +4312,7 @@ ${getFormPhoneExportRuntimeScript()}
                 <div className="text-sm text-destructive">{analyticsFormsError}</div>
               ) : (
                 (() => {
-                  const rows = Array.isArray(analyticsForms) ? analyticsForms : []
+                  const rows = (Array.isArray(analyticsForms) ? analyticsForms : []).filter((f) => !f?.unassigned)
                   if (!rows.length) {
                     return (
                       <div className="text-sm text-muted-foreground py-4">
@@ -4362,7 +4362,7 @@ ${getFormPhoneExportRuntimeScript()}
                               <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.traffic?.views) || 0}</td>
                               <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.traffic?.visitors) || 0}</td>
                               <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                                {Number(f?.traffic?.submitRate || 0).toFixed(1)}%
+                                {Number(f?.traffic?.views) > 0 ? `${Number(f?.traffic?.submitRate || 0).toFixed(1)}%` : '—'}
                               </td>
                               <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.submissions) || 0}</td>
                               <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(f?.leads) || 0}</td>
@@ -4465,7 +4465,7 @@ ${getFormPhoneExportRuntimeScript()}
                           <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.visitors) || 0}</td>
                           <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.submits) || 0}</td>
                           <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                            {Number(p.submitRate || 0).toFixed(1)}%
+                            {Number(p.views) > 0 ? `${Number(p.submitRate || 0).toFixed(1)}%` : '—'}
                           </td>
                         </tr>
                       ))
