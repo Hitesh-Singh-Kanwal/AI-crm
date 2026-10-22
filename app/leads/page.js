@@ -51,7 +51,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { hasPermission } from '@/lib/permissions'
 import { isViewingAllBranches, getBranchQueryParam } from '@/lib/branch-filter'
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
-import { cn, nameWithMembers, formatDate } from '@/lib/utils'
+import { cn, nameWithMembers, formatDate, formatDateTime } from '@/lib/utils'
 
 const LEAD_CSV_FIELDS = [
   { key: 'name', header: 'name', sample: 'John Doe' },
@@ -662,7 +662,7 @@ function LeadsPageInner() {
               leads.map((lead) => {
                 const stageKey = (lead.stage || 'new').toLowerCase()
                 const createdAt = lead.createdAt ? new Date(lead.createdAt) : null
-                const createdLabel = createdAt ? formatDate(createdAt) : '-'
+                const createdLabel = createdAt ? formatDateTime(createdAt) : '-'
                 const lastActiveLabel = lead.updatedAt
                   ? formatDate(lead.updatedAt)
                   : createdLabel
