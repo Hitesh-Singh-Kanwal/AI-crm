@@ -74,6 +74,8 @@ export default function ConversationView({
   const [nameDraft, setNameDraft] = useState(null) // null = not editing
   const [savingName, setSavingName] = useState(false)
   const isOther = String(conversation?.contact?.type || '').toLowerCase() === 'other'
+  // Unknown numbers and leads can be renamed here (e.g. a caller who turns out to be a student).
+  const canRename = isOther || String(conversation?.contact?.type || '').toLowerCase() === 'lead'
   const profileUrl = profileHref(conversation?.contact)
   const scrollRef = useRef(null)
   const prevScrollHeightRef = useRef(0)
@@ -233,7 +235,7 @@ export default function ConversationView({
                 />
               </div>
             )}
-            {isOther && onRenameContact && nameDraft === null && (
+            {canRename && onRenameContact && nameDraft === null && (
               <button
                 type="button"
                 onClick={() => setNameDraft(conversation.contact?.name || '')}
@@ -296,7 +298,7 @@ export default function ConversationView({
                 View profile
               </button>
             )}
-            {isOther && onRenameContact && nameDraft === null && (
+            {canRename && onRenameContact && nameDraft === null && (
               <button
                 type="button"
                 onClick={() => setNameDraft(conversation.contact?.name || '')}

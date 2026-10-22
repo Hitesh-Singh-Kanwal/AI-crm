@@ -21,6 +21,7 @@ import { getActiveReportFilterChips, removeReportFilterChip } from '@/lib/report
 import { exportCurrentPageToCsv } from '@/lib/reports/exportCsv'
 import { exportCurrentPageToPdf } from '@/lib/reports/exportPdf'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
+import { getStudioTimezone } from '@/lib/studioTimezone'
 import { ReportTimezoneProvider } from '@/lib/reports/ReportTimezoneContext'
 import { Button } from '@/components/ui/button'
 import ReportPageSuspense from '@/components/reports/ReportPageSuspense'
@@ -60,6 +61,7 @@ function ReportPageShellContent({
 
   const reportTimezone =
     (filters.studioId && studios.find((s) => s.id === filters.studioId)?.timezone) ||
+    getStudioTimezone() ||
     activeLocationTimezone ||
     'America/New_York'
 
