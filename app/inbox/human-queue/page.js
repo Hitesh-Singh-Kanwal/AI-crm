@@ -41,11 +41,28 @@ import IncomingCallBanner from '@/components/human-queue/IncomingCallBanner'
 import ResolvedCallDetail from '@/components/human-queue/ResolvedCallDetail'
 import CallbackContactDialog from '@/components/human-queue/CallbackContactDialog'
 
-const CALLBACK_CHANNELS = [
-  { id: 'call', label: 'Calls', icon: PhoneCall },
-  { id: 'sms', label: 'SMS', icon: MessageSquare },
-  { id: 'email', label: 'Email', icon: Mail },
-]
+const CALLBACK_CHANNEL_META = {
+  call: {
+    label: 'Call',
+    icon: PhoneCall,
+    className: 'bg-info/10 text-info',
+  },
+  sms: {
+    label: 'SMS',
+    icon: MessageSquare,
+    className: 'bg-success/10 text-success',
+  },
+  email: {
+    label: 'Email',
+    icon: Mail,
+    className: 'bg-[var(--studio-primary-light)] text-[var(--studio-primary)]',
+  },
+}
+
+function callbackChannelMeta(channel) {
+  const key = String(channel || 'call').toLowerCase()
+  return CALLBACK_CHANNEL_META[key] || CALLBACK_CHANNEL_META.call
+}
 
 const CALLBACK_STATUS_FILTERS = [
   { value: '', label: 'All' },
@@ -410,10 +427,8 @@ function HumanQueuePageContent() {
     resolved: 0,
     called: 0,
     cancelled: 0,
-    channelPending: { call: 0, sms: 0, email: 0 },
   })
   const [callbackFilter, setCallbackFilter] = useState('pending')
-  const [callbackChannel, setCallbackChannel] = useState('call')
   const [selectedCallback, setSelectedCallback] = useState(null)
   const [callbackPage, setCallbackPage] = useState(1)
   const [callbackTotal, setCallbackTotal] = useState(0)
@@ -528,7 +543,6 @@ function HumanQueuePageContent() {
   const fetchCallbacks = useCallback(async ({
     silent = false,
     filter = callbackFilter,
-    channel = callbackChannel,
     page = callbackPage,
   } = {}) => {
     try {
@@ -537,7 +551,6 @@ function HumanQueuePageContent() {
       const buildUrl = (pageNum) => {
         const params = new URLSearchParams()
         if (filter) params.set('status', filter)
-        if (channel) params.set('channel', channel)
         params.set('limit', String(CALLBACK_PAGE_SIZE))
         params.set('skip', String(Math.max(0, (pageNum - 1) * CALLBACK_PAGE_SIZE)))
         return `/api/callback-requests?${params.toString()}`
@@ -574,7 +587,6 @@ function HumanQueuePageContent() {
           resolved: statsResult.data.resolved ?? statsResult.data.called ?? 0,
           called: statsResult.data.called ?? statsResult.data.resolved ?? 0,
           cancelled: statsResult.data.cancelled || 0,
-          channelPending: statsResult.data.channelPending || { call: 0, sms: 0, email: 0 },
         })
         setTabCounts((prev) => ({ ...prev, callbacks: statsResult.data.pending || 0 }))
       }
@@ -584,7 +596,7 @@ function HumanQueuePageContent() {
     } finally {
       if (!silent) setCallbacksLoading(false)
     }
-  }, [callbackFilter, callbackChannel, callbackPage, applyAgentsPermissionPayload])
+  }, [callbackFilter, callbackPage, applyAgentsPermissionPayload])
 
   useEffect(() => {
     let cancelled = false
@@ -992,7 +1004,7 @@ function HumanQueuePageContent() {
                   <div>
                     <h2 className="text-sm font-semibold text-foreground">Needs a person</h2>
                     <p className="text-xs text-muted-foreground">
-                      Leads who asked for a teammate — contact them and resolve when done
+                      Calls, texts, and emails that need a teammate — contact them and resolve when done
                     </p>
                   </div>
                   <select
@@ -1004,7 +1016,6 @@ function HumanQueuePageContent() {
                       fetchCallbacks({
                         silent: false,
                         filter: next,
-                        channel: callbackChannel,
                         page: 1,
                       })
                     }}
@@ -1018,52 +1029,10 @@ function HumanQueuePageContent() {
                   </select>
                 </div>
 
-                <div className="mb-4 flex flex-wrap items-center gap-1 rounded-full bg-muted p-1 w-fit">
-                  {CALLBACK_CHANNELS.map((ch) => {
-                    const count = callbackStats.channelPending?.[ch.id] || 0
-                    const isActive = callbackChannel === ch.id
-                    return (
-                      <button
-                        key={ch.id}
-                        type="button"
-                        onClick={() => {
-                          setCallbackChannel(ch.id)
-                          setCallbackPage(1)
-                          fetchCallbacks({
-                            silent: false,
-                            filter: callbackFilter,
-                            channel: ch.id,
-                            page: 1,
-                          })
-                        }}
-                        className={cn(
-                          'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-all',
-                          isActive
-                            ? 'bg-background text-[var(--studio-primary)] shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground',
-                        )}
-                      >
-                        <ch.icon className="h-3.5 w-3.5" />
-                        {ch.label}
-                        <span
-                          className={cn(
-                            'inline-flex min-w-5 justify-center rounded-full px-1 text-[10px]',
-                            isActive
-                              ? 'bg-[var(--studio-primary-light)] text-[var(--studio-primary)]'
-                              : 'bg-background text-muted-foreground',
-                          )}
-                        >
-                          {count}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-
                 {callbacks.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border bg-background py-12 text-center text-sm text-muted-foreground">
                     <PhoneMissed className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    No {callbackChannel} items
+                    No callbacks
                     {callbackFilter ? ` · ${callbackFilter}` : ''}.
                   </div>
                 ) : (
@@ -1072,6 +1041,8 @@ function HumanQueuePageContent() {
                       const cbId = cb.id || cb._id
                       const status = cb.status === 'called' ? 'resolved' : cb.status
                       const isPending = status === 'pending'
+                      const channelMeta = callbackChannelMeta(cb.channel)
+                      const ChannelIcon = channelMeta.icon
                       return (
                         <button
                           key={cbId}
@@ -1087,9 +1058,20 @@ function HumanQueuePageContent() {
                                 </AvatarFallback>
                               </Avatar>
                               <div className="min-w-0">
-                                <p className="text-sm font-medium text-foreground truncate">
-                                  {cb.leadName || cb.callerName || 'Unknown'}
-                                </p>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <p className="text-sm font-medium text-foreground truncate">
+                                    {cb.leadName || cb.callerName || 'Unknown'}
+                                  </p>
+                                  <span
+                                    className={cn(
+                                      'shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                                      channelMeta.className,
+                                    )}
+                                  >
+                                    <ChannelIcon className="h-3 w-3" />
+                                    {channelMeta.label}
+                                  </span>
+                                </div>
                                 <p className="text-xs text-muted-foreground truncate">
                                   {cb.phone || cb.callerPhone || cb.email || cb.callerEmail || '—'}
                                 </p>
@@ -1230,7 +1212,7 @@ function HumanQueuePageContent() {
                 onClose={() => setSelectedCallback(null)}
                 item={selectedCallback}
                 canManage={canManageCalls}
-                preferredChannel={callbackChannel}
+                preferredChannel={selectedCallback?.channel || 'call'}
                 onUpdated={() => fetchCallbacks({ silent: true })}
               />
             </section>
