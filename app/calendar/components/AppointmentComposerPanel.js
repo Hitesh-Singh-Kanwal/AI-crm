@@ -500,6 +500,7 @@ function NewStudentInlineForm({ onCreate, onCancel }) {
 // can later fund it.
 function UnallocatedServicePicker({
   reason,
+  hideDisclaimer = false,
   allServices,
   selectedServiceId,
   onServiceSelect,
@@ -531,15 +532,23 @@ function UnallocatedServicePicker({
   }
 
   return (
-    <div className="rounded-xl border border-warning/30 bg-warning/5 p-3 space-y-2.5">
-      <div className="flex items-start gap-2">
-        <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
-        <p className="text-[11px] text-warning leading-relaxed">
-          {reason} You can still book ahead — pick a service below. Nothing is
-          charged now, and the next package purchased will claim these lessons
-          automatically.
-        </p>
-      </div>
+    <div
+      className={
+        hideDisclaimer
+          ? "rounded-xl border border-border bg-muted/20 p-3 space-y-2.5"
+          : "rounded-xl border border-warning/30 bg-warning/5 p-3 space-y-2.5"
+      }
+    >
+      {!hideDisclaimer && (
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+          <p className="text-[11px] text-warning leading-relaxed">
+            {reason} You can still book ahead — pick a service below. Nothing is
+            charged now, and the next package purchased will claim these lessons
+            automatically.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-1">
         <FieldLabel>Service</FieldLabel>
@@ -630,15 +639,17 @@ function EnrollmentServiceSelector({
 
   if (!customerId) return null;
 
-  // A paid intro is already a purchase. The "book ahead, nothing is charged"
-  // warning is only for a student who has bought nothing — no package and no intro.
-  // Wait for the intro lookup so the warning does not flash first.
-  if (bookableEnrollments.length === 0 && (!introLookupSettled || hasPurchasedIntro)) return null;
+  // The service picker and "sell a package" stay. Only the "book ahead, nothing
+  // is charged" sentence is for a student who bought nothing — no package and
+  // no intro. Hold that sentence until the intro lookup finishes so it does
+  // not flash for someone who already paid for an intro.
+  const hideUnallocatedDisclaimer = !introLookupSettled || hasPurchasedIntro;
 
   if (enrollments.length === 0) {
     return (
       <UnallocatedServicePicker
         reason="This student has no enrollments yet."
+        hideDisclaimer={hideUnallocatedDisclaimer}
         allServices={allServices}
         selectedServiceId={selectedServiceId}
         onServiceSelect={handleUnallocatedServiceSelect}
@@ -651,6 +662,7 @@ function EnrollmentServiceSelector({
     return (
       <UnallocatedServicePicker
         reason="This student has no active package."
+        hideDisclaimer={hideUnallocatedDisclaimer}
         allServices={allServices}
         selectedServiceId={selectedServiceId}
         onServiceSelect={handleUnallocatedServiceSelect}
@@ -672,6 +684,7 @@ function EnrollmentServiceSelector({
     return (
       <UnallocatedServicePicker
         reason="This student has used every session in their package."
+        hideDisclaimer={hideUnallocatedDisclaimer}
         allServices={allServices}
         selectedServiceId={selectedServiceId}
         onServiceSelect={handleUnallocatedServiceSelect}
