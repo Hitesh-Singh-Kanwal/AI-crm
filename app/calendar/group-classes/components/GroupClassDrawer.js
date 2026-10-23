@@ -247,7 +247,8 @@ export default function GroupClassDrawer({ open, onClose, lesson = null, schedul
                 <Label htmlFor="gc-service">Billing service</Label>
                 <NativeSelect id="gc-service" value={form.calendarServiceID} onChange={(v) => set('calendarServiceID', v)}>
                   <option value="">No billing service</option>
-                  {services.map((s) => (
+                  {/* Group services only; a class already on another service keeps it listed so the field isn't blank. */}
+                  {services.filter((s) => s.type === 'group' || s._id === form.calendarServiceID).map((s) => (
                     <option key={s._id} value={s._id}>
                       {s.serviceCode ? `[${s.serviceCode}] ` : ''}
                       {s.serviceName}

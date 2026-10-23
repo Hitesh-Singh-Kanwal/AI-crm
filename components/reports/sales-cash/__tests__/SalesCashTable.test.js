@@ -93,8 +93,8 @@ describe('SalesCashTable', () => {
     const footerRow = screen.getByText('Page Total').closest('tr')
     const cells = within(footerRow).getAllByRole('cell').map((c) => c.textContent)
     expect(cells[0]).toBe('Page Total')
-    expect(cells[headers.indexOf('Sale Amount')]).toBe('500')
-    expect(cells[headers.indexOf('Cash Collected')]).toBe('200')
+    expect(cells[headers.indexOf('Sale Amount')]).toBe('$500.00')
+    expect(cells[headers.indexOf('Cash Collected')]).toBe('$200.00')
   })
 
   it('shows an empty state when there are no rows', () => {
@@ -117,11 +117,11 @@ describe('SalesCashTable', () => {
     expect(screen.getByText('Cancelled (Wallet Credit)')).toBeInTheDocument()
     // saleAmount is negative (the sale was reversed) — appears in both the
     // row cell and the (single-row) page-total footer.
-    expect(screen.getAllByText('-500').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('-$500.00').length).toBeGreaterThan(0)
     // ...but cashCollected stays 0 (the money never left the business, it moved
     // to the wallet) — several other columns are also legitimately 0 for this
     // row, so just confirm at least one 0 cell rendered rather than asserting
     // a single unique match.
-    expect(screen.getAllByText('0').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('$0.00').length).toBeGreaterThan(0)
   })
 })

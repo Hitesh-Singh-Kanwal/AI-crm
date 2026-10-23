@@ -3,6 +3,7 @@
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ReportTableShell, reportTableHeadClass, reportTableRowClass, reportTableCellClass } from '@/components/reports/ReportTableShell'
 import { formatReportCellValue } from '@/lib/reports/formatReportCell'
+import { formatCurrency } from '@/lib/utils'
 import { useReportTimezone } from '@/lib/reports/ReportTimezoneContext'
 import { computeColumnTotals, formatColumnTotal } from '@/lib/reports/reportTotals'
 
@@ -14,11 +15,11 @@ export const SALES_CASH_COLUMNS = [
   { key: 'studentName', label: 'Student Name' },
   { key: 'teacherName', label: 'Teacher' },
   { key: 'transactionDate', label: 'Transaction Date' },
-  { key: 'saleAmount', label: 'Sale Amount', total: true },
-  { key: 'cashCollected', label: 'Cash Collected', total: true },
-  { key: 'remainingBalance', label: 'Remaining Balance' },
-  { key: 'tipAmount', label: 'Tip Amount', total: true },
-  { key: 'refundAmount', label: 'Refund Amount', total: true },
+  { key: 'saleAmount', label: 'Sale Amount', total: true, currency: true },
+  { key: 'cashCollected', label: 'Cash Collected', total: true, currency: true },
+  { key: 'remainingBalance', label: 'Remaining Balance', currency: true },
+  { key: 'tipAmount', label: 'Tip Amount', total: true, currency: true },
+  { key: 'refundAmount', label: 'Refund Amount', total: true, currency: true },
   { key: 'transactionType', label: 'Transaction Type' },
   { key: 'paymentMethod', label: 'Payment Method' },
   { key: 'paymentStatus', label: 'Payment Status' },
@@ -49,7 +50,9 @@ export function SalesCashTable({ rows, onRowClick }) {
             <TableRow key={row.id} className={reportTableRowClass} onClick={() => onRowClick(row)}>
               {SALES_CASH_COLUMNS.map((col) => (
                 <TableCell key={col.key} className={reportTableCellClass}>
-                  {formatReportCellValue(row[col.key], col, timeZone)}
+                  {col.currency && Number.isFinite(Number(row[col.key]))
+                    ? formatCurrency(Number(row[col.key]))
+                    : formatReportCellValue(row[col.key], col, timeZone)}
                 </TableCell>
               ))}
             </TableRow>
@@ -59,7 +62,7 @@ export function SalesCashTable({ rows, onRowClick }) {
           <TableRow className="hover:bg-transparent">
             {SALES_CASH_COLUMNS.map((col, idx) => (
               <TableCell key={col.key} className={reportTableCellClass}>
-                {idx === 0 ? 'Page Total' : col.key in totals ? formatColumnTotal(totals[col.key]) : ''}
+                {idx === 0 ? 'Page Total' : col.key in totals ? (col.currency ? formatCurrency(totals[col.key]) : formatColumnTotal(totals[col.key])) : ''}
               </TableCell>
             ))}
           </TableRow>

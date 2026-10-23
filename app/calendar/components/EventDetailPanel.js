@@ -415,13 +415,22 @@ function GroupStudentRoster({
         svc = ch.customerMembershipID?.services?.find((s) => s.serviceCode === code);
       }
       if (svc) {
-        chargeSMap[cid] = {
-          sessionsRemaining: svc.sessionsRemaining,
-          packageName,
-        };
+        let sessionsRemaining = svc.sessionsRemaining;
+        // "N left" is what the package had left right after THIS lesson, so two lessons
+        // in a row read 7 then 6 — not the package's balance today on both. Falls back to
+        // today's balance when the lesson's position in the package can't be resolved.
+        if (ch.method === "package") {
+          const pos = resolveEventPayment(evRes.data, { ...paymentContext, customerID: cid });
+          if (pos.pkgSessionNumber != null && pos.totalSessions != null) {
+            sessionsRemaining = Math.max(0, pos.totalSessions - pos.pkgSessionNumber);
+          }
+        }
+        chargeSMap[cid] = { sessionsRemaining, packageName };
       }
     });
-    setSessionMap((prev) => ({ ...prev, ...chargeSMap }));
+    // Only what this lesson actually charged: a student with no charge here has no
+    // "N left" for it, rather than the balance of whichever package they happen to hold.
+    setSessionMap(chargeSMap);
     const noShows = new Set(
       (evRes.data?.noShowIDs || []).map((id) => String(id?._id ?? id)),
     );

@@ -14,8 +14,8 @@ export default function SalesCashReportPage() {
       TableComponent={SalesCashTable}
       drillTitle="Transaction Detail"
       summaryKeys={[
-        { key: 'totalSaleAmount', label: 'Total Sales' },
-        { key: 'totalCashCollected', label: 'Total Cash Collected' },
+        { key: 'totalSaleAmount', label: 'Total Sales', currency: true },
+        { key: 'totalCashCollected', label: 'Total Cash Collected', currency: true },
       ]}
       renderDrill={(detail) => (
         <div className="space-y-2 p-4 text-sm">
