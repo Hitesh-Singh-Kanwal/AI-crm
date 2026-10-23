@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRightLeft,
@@ -8,6 +9,8 @@ import {
   ChevronDown,
   Clock3,
   Headphones,
+  Mail,
+  MessageSquare,
   PhoneCall,
   PhoneForwarded,
   PhoneMissed,
@@ -24,6 +27,7 @@ import { toStudioLocalDate } from '@/lib/studioLocalDate'
 import { getStudioTimezone } from '@/lib/studioTimezone'
 import GlobalLoader from '@/components/shared/GlobalLoader'
 import api from '@/lib/api'
+import { isPersistedCallId, nextOutboundPanelStatus } from '@/lib/outboundCallStatus'
 import { isNotificationEnabled } from '@/lib/notificationPreferences'
 import { playIncomingRing } from '@/lib/notificationSounds'
 import { useToast } from '@/components/ui/toast'
@@ -37,6 +41,39 @@ import {
 import ActiveCallPanel from '@/components/human-queue/ActiveCallPanel'
 import IncomingCallBanner from '@/components/human-queue/IncomingCallBanner'
 import ResolvedCallDetail from '@/components/human-queue/ResolvedCallDetail'
+import CallbackContactDialog from '@/components/human-queue/CallbackContactDialog'
+
+const CALLBACK_CHANNEL_META = {
+  call: {
+    label: 'Call',
+    icon: PhoneCall,
+    className: 'bg-info/10 text-info',
+  },
+  sms: {
+    label: 'SMS',
+    icon: MessageSquare,
+    className: 'bg-success/10 text-success',
+  },
+  email: {
+    label: 'Email',
+    icon: Mail,
+    className: 'bg-[var(--studio-primary-light)] text-[var(--studio-primary)]',
+  },
+}
+
+function callbackChannelMeta(channel) {
+  const key = String(channel || 'call').toLowerCase()
+  return CALLBACK_CHANNEL_META[key] || CALLBACK_CHANNEL_META.call
+}
+
+const CALLBACK_STATUS_FILTERS = [
+  { value: '', label: 'All' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'resolved', label: 'Resolved' },
+  { value: 'cancelled', label: 'Cancelled' },
+]
+
+const CALLBACK_PAGE_SIZE = 20
 
 const HUMAN_QUEUE_TABS = [
   { id: 'waiting', label: 'Waiting' },
@@ -343,6 +380,9 @@ function HumanQueuePageContent() {
   const [activeConnection, setActiveConnection] = useState(null)
   const [activeCall, setActiveCall] = useState(null)
   const [callStatus, setCallStatus] = useState('idle')
+  const [callbackOutboundCall, setCallbackOutboundCall] = useState(null)
+  const [callbackOutboundConnection, setCallbackOutboundConnection] = useState(null)
+  const [callbackOutboundStatus, setCallbackOutboundStatus] = useState('connecting')
   const [soundEnabled, setSoundEnabled] = useState(true)
 
   const canViewSettings = hasPermission('inbox', 'QueueSettings', 'read')
@@ -369,6 +409,16 @@ function HumanQueuePageContent() {
 
   const prevWaitingCountRef = useRef(0)
   const callerDisconnectToastRef = useRef(false)
+  const endingCallbackOutboundRef = useRef(false)
+  const endCallbackOutboundRef = useRef(null)
+  const callbackOutboundConnectionRef = useRef(null)
+  const callbackOutboundCallRef = useRef(null)
+  const callbackOutboundStatusRef = useRef('connecting')
+  const callbackAttemptRef = useRef(0)
+  const setOutboundStatus = useCallback((next) => {
+    callbackOutboundStatusRef.current = next
+    setCallbackOutboundStatus(next)
+  }, [])
 
   const clearActiveCallUi = useCallback((message) => {
     disconnectConnection(activeConnectionRef.current)
@@ -387,8 +437,16 @@ function HumanQueuePageContent() {
   const [callbacksLoading, setCallbacksLoading] = useState(false)
   const [markingCalledId, setMarkingCalledId] = useState(null)
   const [cancellingCallbackId, setCancellingCallbackId] = useState(null)
-  const [callbackStats, setCallbackStats] = useState({ pending: 0, called: 0, cancelled: 0 })
-  const [callbackFilter, setCallbackFilter] = useState('')
+  const [callbackStats, setCallbackStats] = useState({
+    pending: 0,
+    resolved: 0,
+    called: 0,
+    cancelled: 0,
+  })
+  const [callbackFilter, setCallbackFilter] = useState('pending')
+  const [selectedCallback, setSelectedCallback] = useState(null)
+  const [callbackPage, setCallbackPage] = useState(1)
+  const [callbackTotal, setCallbackTotal] = useState(0)
 
   // -- Agent availability toggling --
   const [togglingAgentId, setTogglingAgentId] = useState(null)
@@ -497,20 +555,54 @@ function HumanQueuePageContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, applyAgentsPermissionPayload])
 
-  const fetchCallbacks = useCallback(async ({ silent = false, filter = callbackFilter } = {}) => {
+  const fetchCallbacks = useCallback(async ({
+    silent = false,
+    filter = callbackFilter,
+    page = callbackPage,
+  } = {}) => {
     try {
       if (!silent) setCallbacksLoading(true)
-      const url = filter ? `/api/callback-requests?status=${filter}` : '/api/callback-requests'
-      const [listResult, statsResult, agentsResult] = await Promise.all([
-        api.get(url),
+
+      const buildUrl = (pageNum) => {
+        const params = new URLSearchParams()
+        if (filter) params.set('status', filter)
+        params.set('limit', String(CALLBACK_PAGE_SIZE))
+        params.set('skip', String(Math.max(0, (pageNum - 1) * CALLBACK_PAGE_SIZE)))
+        return `/api/callback-requests?${params.toString()}`
+      }
+
+      let listResult = await api.get(buildUrl(page))
+      const [statsResult, agentsResult] = await Promise.all([
         api.get('/api/callback-requests/stats'),
         api.get('/api/human-queue/agents'),
       ])
+
       if (listResult.success) {
-        setCallbacks(Array.isArray(listResult.data?.items) ? listResult.data.items : [])
+        let total = Number(listResult.data?.total) || 0
+        let items = Array.isArray(listResult.data?.items) ? listResult.data.items : []
+        const skip = Math.max(0, (page - 1) * CALLBACK_PAGE_SIZE)
+
+        // Resolve/cancel on the last page can leave skip past the end — step back once.
+        if (page > 1 && skip >= total) {
+          const lastPage = Math.max(1, Math.ceil(total / CALLBACK_PAGE_SIZE) || 1)
+          setCallbackPage(lastPage)
+          listResult = await api.get(buildUrl(lastPage))
+          if (listResult.success) {
+            total = Number(listResult.data?.total) || 0
+            items = Array.isArray(listResult.data?.items) ? listResult.data.items : []
+          }
+        }
+
+        setCallbacks(items)
+        setCallbackTotal(total)
       }
       if (statsResult.success && statsResult.data) {
-        setCallbackStats(statsResult.data)
+        setCallbackStats({
+          pending: statsResult.data.pending || 0,
+          resolved: statsResult.data.resolved ?? statsResult.data.called ?? 0,
+          called: statsResult.data.called ?? statsResult.data.resolved ?? 0,
+          cancelled: statsResult.data.cancelled || 0,
+        })
         setTabCounts((prev) => ({ ...prev, callbacks: statsResult.data.pending || 0 }))
       }
       if (agentsResult?.success) applyAgentsPermissionPayload(agentsResult.data)
@@ -519,7 +611,7 @@ function HumanQueuePageContent() {
     } finally {
       if (!silent) setCallbacksLoading(false)
     }
-  }, [callbackFilter, applyAgentsPermissionPayload])
+  }, [callbackFilter, callbackPage, applyAgentsPermissionPayload])
 
   useEffect(() => {
     let cancelled = false
@@ -606,7 +698,7 @@ function HumanQueuePageContent() {
     try {
       const r = await api.post(`/api/callback-requests/${cbId}/mark-called`, {})
       if (!r.success) throw new Error(r.error || 'Could not mark callback as called.')
-      toast.success({ title: 'Done', message: 'Callback marked as called.' })
+      toast.success({ title: 'Done', message: 'Marked as resolved.' })
       fetchCallbacks({ silent: true })
     } catch (err) {
       toast.error({ title: 'Failed', message: err.message })
@@ -624,7 +716,7 @@ function HumanQueuePageContent() {
     try {
       const r = await api.post(`/api/callback-requests/${cbId}/cancel`, {})
       if (!r.success) throw new Error(r.error || 'Could not cancel callback.')
-      toast.success({ title: 'Cancelled', message: 'Callback request cancelled.' })
+      toast.success({ title: 'Cancelled', message: 'Removed from the pending queue.' })
       fetchCallbacks({ silent: true })
     } catch (err) {
       toast.error({ title: 'Error', message: err.message })
@@ -632,6 +724,245 @@ function HumanQueuePageContent() {
       setCancellingCallbackId(null)
     }
   }
+
+  useEffect(() => { callbackOutboundConnectionRef.current = callbackOutboundConnection }, [callbackOutboundConnection])
+  useEffect(() => { callbackOutboundCallRef.current = callbackOutboundCall }, [callbackOutboundCall])
+  useEffect(() => { callbackOutboundStatusRef.current = callbackOutboundStatus }, [callbackOutboundStatus])
+
+  useEffect(() => {
+    return () => {
+      const call = callbackOutboundCallRef.current
+      const callId = call?.id || call?._id
+      const connection = callbackOutboundConnectionRef.current
+      if (!isPersistedCallId(callId) && !connection) return
+      endingCallbackOutboundRef.current = true
+      callbackAttemptRef.current += 1
+      disconnectConnection(connection)
+      if (isPersistedCallId(callId)) api.post(`/api/human-call/${callId}/end`).catch(() => {})
+    }
+  }, [])
+
+  const clearCallbackOutboundUi = useCallback(() => {
+    setCallbackOutboundCall(null)
+    setCallbackOutboundConnection(null)
+    setOutboundStatus('connecting')
+  }, [])
+
+  const handleEndCallbackOutbound = useCallback(async (opts = {}) => {
+    const remoteHangup = Boolean(opts && opts.remoteHangup === true)
+    const silent = Boolean(opts && opts.silent === true)
+    if (endingCallbackOutboundRef.current) return
+    endingCallbackOutboundRef.current = true
+    callbackAttemptRef.current += 1
+    const callId = callbackOutboundCallRef.current?.id || callbackOutboundCall?.id || callbackOutboundCall?._id
+    try {
+      disconnectConnection(callbackOutboundConnectionRef.current || callbackOutboundConnection)
+      if (isPersistedCallId(callId)) await api.post(`/api/human-call/${callId}/end`)
+    } catch (error) {
+      console.error(error)
+    } finally {
+      clearCallbackOutboundUi()
+      if (!silent) {
+        toast.info({
+          title: 'Call ended',
+          message: remoteHangup ? 'The other party disconnected.' : 'You left the call.',
+        })
+      }
+      setTimeout(() => { endingCallbackOutboundRef.current = false }, 500)
+    }
+  }, [callbackOutboundCall, callbackOutboundConnection, clearCallbackOutboundUi, toast])
+
+  useEffect(() => {
+    endCallbackOutboundRef.current = handleEndCallbackOutbound
+  }, [handleEndCallbackOutbound])
+
+  useEffect(() => {
+    const callId = callbackOutboundCall?.id || callbackOutboundCall?._id
+    if (!callId || !isPersistedCallId(callId)) return undefined
+    let cancelled = false
+    const poll = async () => {
+      try {
+        if (endingCallbackOutboundRef.current) return
+        const res = await api.get(`/api/human-call/${callId}`)
+        if (cancelled || endingCallbackOutboundRef.current || !res.success || !res.data) return
+        const status = String(res.data.status || '').toLowerCase()
+        const next = nextOutboundPanelStatus(status, callbackOutboundStatusRef.current)
+        if (next === 'ended') {
+          endCallbackOutboundRef.current?.({ remoteHangup: true })
+          return
+        }
+        if (next !== callbackOutboundStatusRef.current) {
+          setOutboundStatus(next)
+        }
+      } catch (error) {
+        console.error(error)
+      }
+    }
+    const interval = setInterval(poll, 1000)
+    poll()
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [callbackOutboundCall?.id, callbackOutboundCall?._id])
+
+  const placeCallbackCall = useCallback(async ({
+    leadId,
+    phone,
+    name,
+    locationIDs,
+    callbackId,
+    status,
+    reason,
+    aiSummary,
+  }) => {
+    if (activeConnection || callbackOutboundCall) {
+      toast.error({ title: 'Already on a call', message: 'Finish your current call first.' })
+      return false
+    }
+    if (!phone) {
+      toast.error({ title: 'Missing phone', message: 'This lead has no phone number.' })
+      return false
+    }
+    endingCallbackOutboundRef.current = false
+    const attempt = ++callbackAttemptRef.current
+    const pendingId = `pending-${callbackId || Date.now()}`
+    setCallbackOutboundCall({
+      id: pendingId,
+      _id: pendingId,
+      callbackId,
+      name,
+      leadName: name,
+      callerName: name,
+      phone,
+      phoneNumber: phone,
+      callerPhone: phone,
+      escalationReason: reason || '',
+      lastMessage: reason || '',
+      aiSummary: aiSummary || '',
+      initiatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    })
+    setOutboundStatus('connecting')
+    setSelectedCallback(null)
+    let callHistoryId = null
+    try {
+      const result = await api.post('/api/human-call/call-now', {
+        lead: {
+          ...(leadId ? { _id: leadId } : {}),
+          phoneNumber: phone,
+          name,
+          locationID: locationIDs || [],
+        },
+      })
+      if (!result.success) throw new Error(result.error || 'Could not place the call.')
+      if (attempt !== callbackAttemptRef.current) {
+        const cancelledId = result.data?.callHistoryId || result.data?.call?._id
+        if (isPersistedCallId(cancelledId)) api.post(`/api/human-call/${cancelledId}/end`).catch(() => {})
+        return false
+      }
+
+      const conferenceName = result.data?.conferenceName
+      callHistoryId = result.data?.callHistoryId || result.data?.call?._id
+      const fromNumber = result.data?.from || ''
+      const session = {
+        id: callHistoryId,
+        _id: callHistoryId,
+        callbackId,
+        name,
+        leadName: name,
+        callerName: name,
+        phone,
+        phoneNumber: phone,
+        callerPhone: phone,
+        fromNumber,
+        conferenceName,
+        escalationReason: reason || '',
+        lastMessage: reason || '',
+        aiSummary: aiSummary || '',
+        initiatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      }
+      setCallbackOutboundCall(session)
+      setOutboundStatus('connecting')
+
+      if (conferenceName) {
+        const connection = await joinConferenceCall({
+          fetchToken: () => api.get('/api/human-call/voice-token'),
+          conferenceName,
+          callHistoryId,
+        })
+        if (attempt !== callbackAttemptRef.current) {
+          disconnectConnection(connection)
+          if (isPersistedCallId(callHistoryId)) api.post(`/api/human-call/${callHistoryId}/end`).catch(() => {})
+          return false
+        }
+        setCallbackOutboundConnection(connection)
+        subscribeToConnectionEvents(connection, {
+          accept: () => {},
+          // A browser-leg blip must not unmount the popup. The status poll
+          // closes it once the customer call is actually finished.
+          disconnect: () => {
+            if (endingCallbackOutboundRef.current) return
+            setCallbackOutboundConnection(null)
+          },
+          cancel: () => {
+            if (endingCallbackOutboundRef.current) return
+            setCallbackOutboundConnection(null)
+          },
+          error: () => {
+            toast.error({
+              title: 'Call audio error',
+              message: 'Browser call connection failed. Check microphone permissions.',
+            })
+          },
+        })
+      }
+
+      if (callbackId) {
+        api.patch(`/api/callback-requests/${callbackId}/status`, {
+          status: status || 'pending',
+          touchLastContact: true,
+        }).catch(() => {})
+      }
+      fetchCallbacks({ silent: true })
+      toast.success({
+        title: 'Calling…',
+        message: fromNumber
+          ? `Dialing ${phone} from studio ${fromNumber}.`
+          : `Dialing ${phone} from your studio number.`,
+      })
+      return true
+    } catch (error) {
+      console.error(error)
+      if (attempt !== callbackAttemptRef.current) return false
+      if (callHistoryId) {
+        toast.error({
+          title: 'Call audio failed',
+          message: error.message || 'The dialer stayed open so you can hang up.',
+        })
+        return true
+      }
+      clearCallbackOutboundUi()
+      toast.error({ title: 'Call failed', message: error.message || 'Could not place the call.' })
+      return false
+    }
+  }, [activeConnection, callbackOutboundCall, clearCallbackOutboundUi, fetchCallbacks, setOutboundStatus, toast])
+
+  const handleCallbackHold = useCallback(async (onHold) => {
+    const callId = callbackOutboundCall?.id || callbackOutboundCall?._id
+    if (!callId) return
+    const r = await api.post(`/api/human-call/${callId}/hold`, { hold: onHold })
+    if (!r.success) {
+      toast.error({ title: 'Hold failed', message: r.error || 'Could not update hold status.' })
+      throw new Error(r.error || 'Hold failed')
+    }
+    setOutboundStatus(onHold ? 'on_hold' : 'connected')
+    toast.success({
+      title: onHold ? 'Caller on hold' : 'Caller resumed',
+      message: onHold ? 'The caller is hearing hold music.' : 'You are connected again.',
+    })
+  }, [callbackOutboundCall, toast, setOutboundStatus])
 
   // ── Queue actions ──
   const handleAnswer = async (item) => {
@@ -649,7 +980,7 @@ function HumanQueuePageContent() {
       toast.error({ title: 'You are offline', message: 'Toggle yourself online in Team Availability before answering calls.' })
       return
     }
-    if (activeConnection) {
+    if (activeConnection || callbackOutboundCall) {
       toast.error({ title: 'Already on a call', message: 'Finish your current call first.' })
       return
     }
@@ -810,6 +1141,20 @@ function HumanQueuePageContent() {
             onClose={handleCloseCallPanel}
           />
         )}
+        {callbackOutboundCall && typeof document !== 'undefined' && createPortal(
+          <ActiveCallPanel
+            mode="outbound"
+            layerZIndex={500}
+            call={callbackOutboundCall}
+            connection={callbackOutboundConnection}
+            callStatus={callbackOutboundStatus}
+            canManage={canManageCalls}
+            onEndCall={() => handleEndCallbackOutbound()}
+            onHoldChange={handleCallbackHold}
+            onClose={() => handleEndCallbackOutbound()}
+          />,
+          document.body,
+        )}
 
         {/* ── Top bar: tabs + controls ── */}
         <section className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
@@ -912,7 +1257,7 @@ function HumanQueuePageContent() {
               <div className="grid grid-cols-3 gap-3">
                 {[
                   { label: 'Pending', value: callbackStats.pending, color: 'text-warning' },
-                  { label: 'Called', value: callbackStats.called, color: 'text-success' },
+                  { label: 'Resolved', value: callbackStats.resolved ?? callbackStats.called, color: 'text-success' },
                   { label: 'Cancelled', value: callbackStats.cancelled, color: 'text-muted-foreground' },
                 ].map((stat) => (
                   <div key={stat.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm text-center">
@@ -923,38 +1268,56 @@ function HumanQueuePageContent() {
               </div>
 
               <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-                <div className="flex items-center justify-between gap-2 mb-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <div>
-                    <h2 className="text-sm font-semibold text-foreground">Callback Requests</h2>
-                    <p className="text-xs text-muted-foreground">Callers who asked to be called back by a team member</p>
+                    <h2 className="text-sm font-semibold text-foreground">Needs a person</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Calls, texts, and emails that need a teammate — contact them and resolve when done
+                    </p>
                   </div>
                   <select
                     value={callbackFilter}
                     onChange={(e) => {
-                      setCallbackFilter(e.target.value)
-                      fetchCallbacks({ silent: false, filter: e.target.value })
+                      const next = e.target.value
+                      setCallbackFilter(next)
+                      setCallbackPage(1)
+                      fetchCallbacks({
+                        silent: false,
+                        filter: next,
+                        page: 1,
+                      })
                     }}
                     className="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground outline-none"
                   >
-                    <option value="">All</option>
-                    <option value="pending">Pending</option>
-                    <option value="called">Called</option>
-                    <option value="cancelled">Cancelled</option>
+                    {CALLBACK_STATUS_FILTERS.map((f) => (
+                      <option key={f.value || 'all'} value={f.value}>
+                        {f.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 {callbacks.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border bg-background py-12 text-center text-sm text-muted-foreground">
                     <PhoneMissed className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    No callback requests.
+                    No callbacks
+                    {callbackFilter ? ` · ${callbackFilter}` : ''}.
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {callbacks.map((cb) => {
                       const cbId = cb.id || cb._id
-                      const isPending = cb.status === 'pending'
+                      const status = cb.status === 'called' ? 'resolved' : cb.status
+                      const isPending = status === 'pending'
+                      const channelMeta = callbackChannelMeta(cb.channel)
+                      const ChannelIcon = channelMeta.icon
                       return (
-                        <div key={cbId} className="rounded-xl border border-border bg-background p-4">
+                        <button
+                          key={cbId}
+                          type="button"
+                          onClick={() => setSelectedCallback(cb)}
+                          className="w-full rounded-xl border border-border bg-background p-4 text-left transition-colors hover:border-[var(--studio-primary)]/40 hover:bg-muted/30"
+                        >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-3 min-w-0">
                               <Avatar className="h-9 w-9 shrink-0">
@@ -963,74 +1326,164 @@ function HumanQueuePageContent() {
                                 </AvatarFallback>
                               </Avatar>
                               <div className="min-w-0">
-                                <p className="text-sm font-medium text-foreground truncate">
-                                  {cb.leadName || cb.callerName || 'Unknown caller'}
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <p className="text-sm font-medium text-foreground truncate">
+                                    {cb.leadName || cb.callerName || 'Unknown'}
+                                  </p>
+                                  <span
+                                    className={cn(
+                                      'shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                                      channelMeta.className,
+                                    )}
+                                  >
+                                    <ChannelIcon className="h-3 w-3" />
+                                    {channelMeta.label}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {cb.phone || cb.callerPhone || cb.email || cb.callerEmail || '—'}
                                 </p>
-                                <p className="text-xs text-muted-foreground">{cb.phone || cb.callerPhone}</p>
                               </div>
                             </div>
-                            <span className={cn(
-                              'shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium',
-                              cb.status === 'pending'
-                                ? 'bg-warning/10 text-warning'
-                                : cb.status === 'called'
-                                  ? 'bg-success/10 text-success'
-                                  : 'bg-muted text-muted-foreground',
-                            )}>
-                              {cb.status}
+                            <span
+                              className={cn(
+                                'shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium capitalize',
+                                status === 'pending'
+                                  ? 'bg-warning/10 text-warning'
+                                  : status === 'resolved'
+                                    ? 'bg-success/10 text-success'
+                                    : 'bg-muted text-muted-foreground',
+                              )}
+                            >
+                              {status}
                             </span>
                           </div>
 
-                          {cb.reason && (
-                            <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2 text-xs text-foreground">
-                              <span className="text-muted-foreground font-medium">Reason: </span>{cb.reason}
-                            </div>
-                          )}
+                          {(() => {
+                            const whyText = String(cb.reason || cb.ivrLabel || '').trim()
+                            const summaryText = String(cb.aiSummary || '').trim()
+                            if (!whyText && !summaryText) return null
+                            return (
+                              <div className="mt-3 space-y-1.5">
+                                {whyText ? (
+                                  <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-foreground line-clamp-4">
+                                    <span className="text-muted-foreground font-medium">Why: </span>
+                                    {whyText}
+                                  </div>
+                                ) : null}
+                                {summaryText && summaryText !== whyText ? (
+                                  <div className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-foreground line-clamp-4">
+                                    <span className="text-muted-foreground font-medium">Summary: </span>
+                                    {summaryText}
+                                  </div>
+                                ) : null}
+                              </div>
+                            )
+                          })()}
 
-                          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                            <Clock3 className="h-3.5 w-3.5" />
-                            <span>{formatDateTime(cb.createdAt)}</span>
-                            {cb.scheduledTime && (
-                              <>
-                                <span>·</span>
-                                <span className="font-medium text-foreground">Scheduled: {formatDateTime(cb.scheduledTime)}</span>
-                              </>
+                          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">
+                              <Clock3 className="h-3.5 w-3.5" />
+                              Last contact {formatDateTime(cb.lastContactAt || cb.createdAt)}
+                            </span>
+                            {cb.leadStage && (
+                              <span className="capitalize">Stage: {cb.leadStage}</span>
+                            )}
+                            {cb.aiRepliesEnabled === false && (
+                              <span className="text-warning">AI replies off</span>
                             )}
                           </div>
 
-                          {isPending && canManageCalls && (
+                          {isPending && (
                             <div className="mt-3 flex items-center gap-2">
-                              <button
-                                type="button"
-                                disabled={markingCalledId === cbId}
-                                onClick={() => handleMarkCalled(cbId)}
-                                className="flex-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--studio-primary)] text-white text-xs font-medium hover:brightness-95 disabled:opacity-60"
-                              >
+                              <span className="flex-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--studio-primary)] text-white text-xs font-medium">
                                 <PhoneForwarded className="h-3.5 w-3.5" />
-                                {markingCalledId === cbId ? 'Updating…' : 'Mark as Called'}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={cancellingCallbackId === cbId}
-                                onClick={() => handleCancelCallback(cbId)}
-                                className="flex-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-background text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
-                              >
-                                <PhoneMissed className="h-3.5 w-3.5" />
-                                {cancellingCallbackId === cbId ? 'Cancelling…' : 'Cancel'}
-                              </button>
+                                Open & contact
+                              </span>
+                              {canManageCalls && (
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleCancelCallback(cbId)
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.stopPropagation()
+                                      handleCancelCallback(cbId)
+                                    }
+                                  }}
+                                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs text-muted-foreground hover:text-foreground"
+                                >
+                                  {cancellingCallbackId === cbId ? '…' : 'Cancel'}
+                                </span>
+                              )}
                             </div>
                           )}
-                          {isPending && !canManageCalls && (
-                            <p className="mt-3 text-xs text-muted-foreground">
-                              View only — Call Center write or edit is required to update callbacks.
-                            </p>
-                          )}
-                        </div>
+                        </button>
                       )
                     })}
                   </div>
                 )}
+
+                {callbackTotal > CALLBACK_PAGE_SIZE && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                    <p className="text-xs text-muted-foreground">
+                      Showing{' '}
+                      {callbackTotal === 0
+                        ? 0
+                        : (callbackPage - 1) * CALLBACK_PAGE_SIZE + 1}
+                      –
+                      {Math.min(callbackPage * CALLBACK_PAGE_SIZE, callbackTotal)} of{' '}
+                      {callbackTotal}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={callbackPage <= 1 || callbacksLoading}
+                        onClick={() => {
+                          const next = Math.max(1, callbackPage - 1)
+                          setCallbackPage(next)
+                          fetchCallbacks({ silent: false, page: next })
+                        }}
+                        className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground disabled:opacity-40"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-xs text-muted-foreground">
+                        Page {callbackPage} of{' '}
+                        {Math.max(1, Math.ceil(callbackTotal / CALLBACK_PAGE_SIZE))}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={
+                          callbacksLoading ||
+                          callbackPage * CALLBACK_PAGE_SIZE >= callbackTotal
+                        }
+                        onClick={() => {
+                          const next = callbackPage + 1
+                          setCallbackPage(next)
+                          fetchCallbacks({ silent: false, page: next })
+                        }}
+                        className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground disabled:opacity-40"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              <CallbackContactDialog
+                open={Boolean(selectedCallback) && !callbackOutboundCall}
+                onClose={() => setSelectedCallback(null)}
+                item={selectedCallback}
+                canManage={canManageCalls}
+                preferredChannel={selectedCallback?.channel || 'call'}
+                onUpdated={() => fetchCallbacks({ silent: true })}
+                onPlaceCall={placeCallbackCall}
+              />
             </section>
           )
         ) : loading ? (

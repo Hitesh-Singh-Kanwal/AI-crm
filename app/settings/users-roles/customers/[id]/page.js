@@ -4679,7 +4679,19 @@ function EnrollmentsTab({
                                                   new Date(b.startDateTime) -
                                                   new Date(a.startDateTime),
                                               );
-                                            if (svcEvents.length === 0)
+                                            // Completed count can exceed the lessons listed: a
+                                            // migration's "Sessions Taken" has no dated lesson
+                                            // behind it. Show the gap instead of leaving it unexplained.
+                                            const untracked = Math.max(
+                                              0,
+                                              sessUsed -
+                                                svcEvents.filter(
+                                                  (e) =>
+                                                    e.status === "completed" ||
+                                                    e.status === "no_show_charged",
+                                                ).length,
+                                            );
+                                            if (svcEvents.length === 0 && untracked === 0)
                                               return (
                                                 <p className="text-[12px] text-muted-foreground px-1 py-2">
                                                   No lessons scheduled yet for
@@ -4737,6 +4749,19 @@ function EnrollmentsTab({
                                                     </span>
                                                   </div>
                                                 ))}
+                                                {untracked > 0 && (
+                                                  <div
+                                                    className={`grid grid-cols-[1fr_140px_150px] gap-2 items-center px-3 py-2 ${svcEvents.length > 0 ? "border-t border-border/50" : ""}`}
+                                                  >
+                                                    <span className="text-[12px] text-foreground">
+                                                      {untracked} imported session{untracked === 1 ? "" : "s"} (no lesson date on record)
+                                                    </span>
+                                                    <span className="text-[12px] text-muted-foreground">—</span>
+                                                    <span className="inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase leading-tight bg-info/10 text-info">
+                                                      imported
+                                                    </span>
+                                                  </div>
+                                                )}
                                               </div>
                                             );
                                           })()}

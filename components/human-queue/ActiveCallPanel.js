@@ -32,7 +32,7 @@ function CallActionButton({ icon: Icon, label, active, danger, disabled, onClick
       className={cn(
         'flex flex-col items-center justify-center gap-1.5 rounded-2xl px-3 py-3 transition-all disabled:opacity-50',
         danger
-          ? 'bg-destructive/10 text-white hover:bg-destructive/10'
+          ? 'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90'
           : active
             ? 'bg-[var(--studio-primary)] text-white shadow-md'
             : 'bg-muted/80 text-foreground hover:bg-muted',
@@ -55,6 +55,7 @@ export default function ActiveCallPanel({
   callStatus = 'connecting',
   canManage = true,
   mode = 'queue', // 'queue' | 'outbound'
+  layerZIndex = 60,
 }) {
   const [minimized, setMinimized] = useState(false)
   const [muted, setMuted] = useState(false)
@@ -107,16 +108,19 @@ export default function ActiveCallPanel({
 
   const callerName = call?.leadName || call?.callerName || call?.name || 'Unknown caller'
   const callerPhone = call?.phone || call?.callerPhone || call?.phoneNumber || 'Unknown number'
-  const metaLine =
-    mode === 'outbound'
-      ? call?.fromNumber
-        ? `From studio ${call.fromNumber}`
-        : 'Outbound studio call'
-      : `Escalated ${formatDateTime(call?.createdAt)}`
+  const metaLine = `Escalated ${formatDateTime(call?.createdAt)}`
+  const showHold = mode === 'outbound' || canManage
+  const statusLabel = callStatus === 'connecting'
+    ? 'Connecting…'
+    : callStatus === 'ended'
+      ? 'Call ended'
+      : callerOnHold
+        ? 'Caller on hold'
+        : 'Live call'
 
   if (minimized) {
     return (
-      <div className="fixed bottom-6 right-6 z-[60]">
+      <div className="fixed bottom-6 right-6" style={{ zIndex: layerZIndex }}>
         <button
           type="button"
           onClick={() => setMinimized(false)}
@@ -137,7 +141,7 @@ export default function ActiveCallPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center p-4 sm:items-center sm:p-6">
+    <div className="fixed inset-0 flex items-end justify-center p-4 sm:items-center sm:p-6" style={{ zIndex: layerZIndex }}>
       <div
         className="absolute inset-0 bg-background/70 backdrop-blur-sm"
         onClick={isConnected ? undefined : onClose}
@@ -163,7 +167,7 @@ export default function ActiveCallPanel({
                     )}
                   />
                 </span>
-                {callStatus === 'connecting' ? 'Connecting…' : callerOnHold ? 'Caller on hold' : 'Live call'}
+                {statusLabel}
               </div>
               <p className="mt-1 text-2xl font-bold tabular-nums">{callDuration}</p>
             </div>
@@ -202,7 +206,7 @@ export default function ActiveCallPanel({
         </div>
 
         <div className="space-y-4 p-5">
-          {mode === 'queue' && (call?.escalationReason || call?.lastMessage || call?.aiSummary) && (
+          {(call?.escalationReason || call?.lastMessage || call?.aiSummary) && (
             <div className="rounded-xl border border-border bg-muted/30 p-3">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reason for call</p>
               <p className="mt-1 text-sm text-foreground">
@@ -216,7 +220,7 @@ export default function ActiveCallPanel({
             </div>
           )}
 
-          <div className={cn('grid gap-2', canManage ? 'grid-cols-3' : 'grid-cols-2')}>
+          <div className={cn('grid gap-2', showHold ? 'grid-cols-3' : 'grid-cols-2')}>
             <CallActionButton
               icon={muted ? MicOff : Mic}
               label={muted ? 'Unmute' : 'Mute'}
@@ -224,7 +228,7 @@ export default function ActiveCallPanel({
               disabled={!isConnected && callStatus !== 'connecting'}
               onClick={handleToggleMute}
             />
-            {canManage && (
+            {showHold && (
               <CallActionButton
                 icon={callerOnHold ? Play : Pause}
                 label={callerOnHold ? 'Resume' : 'Hold'}
@@ -241,30 +245,32 @@ export default function ActiveCallPanel({
             />
           </div>
 
-          <div className="flex gap-2">
-            {canManage && (
+          {mode !== 'outbound' && (
+            <div className="flex gap-2">
+              {canManage && (
+                <button
+                  type="button"
+                  disabled={resolving}
+                  onClick={() => onResolve?.()}
+                  className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-success text-sm font-semibold text-white hover:bg-success disabled:opacity-60"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  {resolving ? 'Resolving…' : 'Resolve & close'}
+                </button>
+              )}
               <button
                 type="button"
-                disabled={resolving}
-                onClick={() => onResolve?.()}
-                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-success text-sm font-semibold text-white hover:bg-success disabled:opacity-60"
+                onClick={handleHangUp}
+                className={cn(
+                  'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-medium text-muted-foreground hover:text-foreground',
+                  !canManage && 'flex-1',
+                )}
               >
-                <CheckCircle2 className="h-4 w-4" />
-                {resolving ? 'Resolving…' : 'Resolve & close'}
+                <Phone className="h-4 w-4" />
+                Leave call
               </button>
-            )}
-            <button
-              type="button"
-              onClick={handleHangUp}
-              className={cn(
-                'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-medium text-muted-foreground hover:text-foreground',
-                !canManage && 'flex-1',
-              )}
-            >
-              <Phone className="h-4 w-4" />
-              Leave call
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

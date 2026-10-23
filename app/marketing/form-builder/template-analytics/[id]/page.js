@@ -259,7 +259,7 @@ function FormAnalyticsContent() {
                             <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.visitors) || 0}</td>
                             <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(p.submits) || 0}</td>
                             <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                              {Number(p.submitRate || 0).toFixed(1)}%
+                              {Number(p.views) > 0 ? `${Number(p.submitRate || 0).toFixed(1)}%` : '—'}
                             </td>
                           </tr>
                         ))}

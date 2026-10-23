@@ -576,6 +576,8 @@ function EnrollmentServiceSelector({
   selectedServiceId,
   allServices,
   onOpenEnrollmentWizard,
+  hasPurchasedIntro = false,
+  introLookupSettled = true,
 }) {
   // An unallocated booking must not carry any package/enrollment selection, or
   // the backend funds the session from that enrollment's credits. Clear the
@@ -627,6 +629,11 @@ function EnrollmentServiceSelector({
   }, [customerId, selectedEnrollmentId, onlyBookableId]);
 
   if (!customerId) return null;
+
+  // A paid intro is already a purchase. The "book ahead, nothing is charged"
+  // warning is only for a student who has bought nothing — no package and no intro.
+  // Wait for the intro lookup so the warning does not flash first.
+  if (bookableEnrollments.length === 0 && (!introLookupSettled || hasPurchasedIntro)) return null;
 
   if (enrollments.length === 0) {
     return (
@@ -1095,6 +1102,7 @@ function WhoSection({
   enrollments,
   allServices,
   introSummary,
+  introLookupSettled = true,
 }) {
   const selectedCustomer = rawCustomers?.find((c) => String(c._id) === form.customer_id);
   const selectedMembers = selectedCustomer?.members || [];
@@ -1231,6 +1239,12 @@ function WhoSection({
           selectedServiceId={form.service_id}
           allServices={allServices}
           onOpenEnrollmentWizard={onOpenEnrollmentWizard}
+          hasPurchasedIntro={Boolean(
+            introSummary?.purchased ||
+            introSummary?.purchase ||
+            (Array.isArray(introSummary?.openPurchases) && introSummary.openPurchases.length > 0),
+          )}
+          introLookupSettled={introLookupSettled}
         />
       )}
 
@@ -2039,6 +2053,7 @@ function AppointmentFields({
   enrollments,
   allServices,
   introSummary,
+  introLookupSettled = true,
 }) {
   const customerEnrollments = enrollments[form.customer_id] || [];
   const selectedEnr = customerEnrollments.find((e) => String(e._id) === form.enrollment_id);
@@ -2077,6 +2092,7 @@ function AppointmentFields({
         enrollments={enrollments}
         allServices={allServices}
         introSummary={introSummary}
+        introLookupSettled={introLookupSettled}
       />
       <WhenSection
         form={form}
@@ -2543,8 +2559,10 @@ export default function AppointmentComposerPanel({
     const typeFilter = SERVICE_TYPE_MAP[activeTab];
     return allServices
       .filter((s) => {
+        // Intros are booked from the paid-intro option, not this list. Offering
+        // them here books a normal lesson and drops the purchase already paid.
         if (activeTab === "Appointment")
-          return !s.type || s.type === "private" || s.type === "intro";
+          return !s.type || s.type === "private";
         return !typeFilter || s.type === typeFilter;
       })
       .map((s) => ({
@@ -3230,7 +3248,7 @@ export default function AppointmentComposerPanel({
 
   const privateServices = useMemo(
     () =>
-      allServices.filter((s) => !s.type || s.type === "private" || s.type === "intro"),
+      allServices.filter((s) => !s.type || s.type === "private"),
     [allServices],
   );
 
@@ -3301,6 +3319,9 @@ export default function AppointmentComposerPanel({
     onNewCustomer: handleNewCustomer,
     onOpenEnrollmentWizard: (open = true) => setShowEnrollmentWizard(Boolean(open)),
     introSummary: introSummaries[form.customer_id] || null,
+    introLookupSettled:
+      !form.customer_id ||
+      Object.prototype.hasOwnProperty.call(introSummaries, form.customer_id),
   };
 
   const tabContent = useMemo(() => {
@@ -3409,6 +3430,7 @@ export default function AppointmentComposerPanel({
     allServices,
     enrollments,
     rawCustomers,
+    introSummaries,
   ]);
 
   const slotCount = form.selected_time_slots?.length ?? 0;
