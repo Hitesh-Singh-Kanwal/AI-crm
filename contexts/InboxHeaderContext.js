@@ -16,7 +16,8 @@ export function InboxHeaderProvider({ children }) {
     customers: 0,
     leads: 0,
     teachers: 0,
-    unread: { everyone: 0, customers: 0, leads: 0, teachers: 0 },
+    other: 0,
+    unread: { everyone: 0, customers: 0, leads: 0, teachers: 0, other: 0 },
   })
 
   const setInboxTeachersCount = (n) => {

@@ -199,6 +199,8 @@ const INBOX_FILTERS = [
   { value: "all", label: "Customers", countKey: "customers" },
   { value: "leads", label: "Leads", countKey: "leads" },
   { value: "teachers", label: "Teachers", countKey: "teachers" },
+  // Numbers texted from the Inbox that aren't a lead, customer or teacher.
+  { value: "other", label: "Other", countKey: "other" },
 ];
 
 export default function Header({

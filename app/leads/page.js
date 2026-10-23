@@ -51,7 +51,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { hasPermission } from '@/lib/permissions'
 import { isViewingAllBranches, getBranchQueryParam } from '@/lib/branch-filter'
 import StatusColorBadge from '@/components/shared/StatusColorBadge'
-import { cn, nameWithMembers, formatDate } from '@/lib/utils'
+import { cn, nameWithMembers, formatDate, formatDateTime } from '@/lib/utils'
 
 const LEAD_CSV_FIELDS = [
   { key: 'name', header: 'name', sample: 'John Doe' },
@@ -73,6 +73,26 @@ const DEFAULT_ROWS_PER_PAGE = 10
 
 // Remembers filters/page/pageSize across back/forward navigation.
 const LEADS_LIST_STATE_KEY = 'leads-list-state'
+
+function studioLabelForLead(lead, locations = []) {
+  const raw = lead?.locationID
+  const ids = Array.isArray(raw) ? raw : raw ? [raw] : []
+  const names = []
+  for (const item of ids) {
+    if (item && typeof item === 'object' && item.name) {
+      names.push(String(item.name).trim())
+      continue
+    }
+    const id = String(item?._id ?? item ?? '')
+    const match = locations.find((loc) => String(loc._id) === id)
+    if (match?.name) names.push(String(match.name).trim())
+  }
+  const unique = [...new Set(names.filter(Boolean))]
+  if (unique.length) return unique.join(', ')
+  const text = String(lead?.location || '').trim()
+  if (text && !/^[a-f0-9]{24}$/i.test(text)) return text
+  return ''
+}
 
 function toRecipientLead(lead) {
   if (!lead?._id) return null
@@ -662,7 +682,8 @@ function LeadsPageInner() {
               leads.map((lead) => {
                 const stageKey = (lead.stage || 'new').toLowerCase()
                 const createdAt = lead.createdAt ? new Date(lead.createdAt) : null
-                const createdLabel = createdAt ? formatDate(createdAt) : '-'
+                const createdLabel = createdAt ? formatDateTime(createdAt) : '-'
+                const studioLabel = studioLabelForLead(lead, locations)
                 const lastActiveLabel = lead.updatedAt
                   ? formatDate(lead.updatedAt)
                   : createdLabel
@@ -697,9 +718,9 @@ function LeadsPageInner() {
                             </span>
                           )}
                         </p>
-                        {lead.location && (
+                        {studioLabel && (
                           <p className="text-xs font-normal text-muted-foreground leading-tight mt-0.5">
-                            {lead.location}
+                            {studioLabel}
                           </p>
                         )}
                       </div>

@@ -94,7 +94,8 @@ function resolveLeadProfileInboxType(lead = {}, previousType = null) {
 }
 
 function inboxFilterParamForType(contactTypeLabel) {
-  if (contactTypeLabel === 'Other' || contactTypeLabel === 'Everyone') return 'everyone'
+  if (contactTypeLabel === 'Everyone') return 'everyone'
+  if (contactTypeLabel === 'Other') return 'other'
   if (contactTypeLabel === 'Teachers') return 'teachers'
   if (contactTypeLabel === 'Customers') return 'all'
   return 'leads'
@@ -256,6 +257,7 @@ const INBOX_FILTER_MAP = {
   customers: 'Customers',
   leads: 'Leads',
   teachers: 'Teachers',
+  other: 'Other',
 }
 
 function InboxPageContent() {
@@ -801,11 +803,12 @@ function InboxPageContent() {
       customers: 0,
       leads: 0,
       teachers: 0,
-      unread: { everyone: 0, customers: 0, leads: 0, teachers: 0 },
+      other: 0,
+      unread: { everyone: 0, customers: 0, leads: 0, teachers: 0, other: 0 },
     }
     for (const c of filteredConversations) {
       const t = normalizeContactType(c.contact.type)
-      const key = t === 'Customers' ? 'customers' : t === 'Leads' ? 'leads' : t === 'Teachers' ? 'teachers' : null
+      const key = t === 'Customers' ? 'customers' : t === 'Leads' ? 'leads' : t === 'Teachers' ? 'teachers' : t === 'Other' ? 'other' : null
       if (key) counts[key] += 1
       if (isUnread(c)) {
         counts.unread.everyone += 1
@@ -1314,13 +1317,22 @@ function InboxPageContent() {
     }
   }
 
-  const handleNewMessageSend = async ({ recipient, channel, message, subject, inboxName }) => {
+  const handleNewMessageSend = async ({ recipient: pickedRecipient, channel, message, subject, inboxName }) => {
+    const recipient = pickedRecipient
     let convId
     let contact
     if (recipient.kind === 'contact') {
       const c = recipient.contact
       convId = `lead-${c._id}`
-      contact = {
+      // The same person can be a lead and a customer (two ids); the list shows one row,
+      // keyed by the lead. Reuse it instead of opening a second thread under the other id.
+      const ids = new Set([c._id, c.convertedCustomerID, c.leadSourceID].filter(Boolean).map(String))
+      const existingConv = conversations.find((conv) => {
+        const k = conv.contact || {}
+        return [k.id, k.linkedCustomerID, k.convertedCustomerID, k.leadSourceID].some((v) => v && ids.has(String(v)))
+      })
+      if (existingConv) convId = existingConv.id
+      contact = existingConv ? { ...existingConv.contact } : {
         id: c._id,
         name: getContactDisplayName(c),
         type: resolveContactType(c),
@@ -1363,7 +1375,7 @@ function InboxPageContent() {
     // Make sure the new thread is visible under the current header tab.
     const typeLabel = normalizeContactType(contact.type) || 'Leads'
     if (contactFilter !== 'Everyone' && typeLabel !== contactFilter) {
-      setContactFilter(typeLabel === 'Other' ? 'Everyone' : typeLabel)
+      setContactFilter(typeLabel)
       const params = new URLSearchParams(searchParams?.toString() || '')
       params.set('filter', inboxFilterParamForType(typeLabel))
       router.replace(`${pathname}?${params.toString()}`)
@@ -1385,8 +1397,12 @@ function InboxPageContent() {
   const handleRenameContact = async (name) => {
     const conv = conversations.find((c) => c.id === selectedConversation)
     const phoneNumber = conv?.contact?.phoneNumber
-    if (!phoneNumber) return false
-    const res = await api.put('/api/inbox/contacts', { phoneNumber, name })
+    const leadId = conv?.contact?.id
+    if (!phoneNumber && !leadId) return false
+    // A lead is renamed on the lead record; a bare number on its inbox contact.
+    const res = leadId
+      ? await api.put(`/api/lead/${leadId}`, { name })
+      : await api.put('/api/inbox/contacts', { phoneNumber, name })
     if (!res.success) {
       toast.error({ title: 'Name not saved', message: res.error || 'Try again.' })
       return false
