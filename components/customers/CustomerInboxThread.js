@@ -20,6 +20,7 @@ import {
 import {
   last10Digits,
   mapAiCallToMessage,
+  mapForwardedCallToMessage,
   mapHumanCallToMessage,
   mapSmsHistoryMessages,
   mergeSmsPages,
@@ -420,18 +421,29 @@ export default function CustomerInboxThread({
         if (leadId && isMongoId(leadId)) humanParams.set('leadID', String(leadId))
         else humanParams.set('phoneNumber', phoneNumber)
 
-        const [humanRes, aiRes] = await Promise.all([
+        const forwardParams = new URLSearchParams({ limit: '100', phoneNumber })
+        if (customerId && isMongoId(customerId)) {
+          forwardParams.set('customerID', String(customerId))
+        }
+
+        const [humanRes, aiRes, forwardRes] = await Promise.all([
           api.get(`/api/human-call/history?${humanParams.toString()}`),
           leadId && isMongoId(leadId)
             ? api.get(`/api/ai-calling?leadID=${encodeURIComponent(leadId)}&limit=100`)
             : Promise.resolve({ success: false, data: [] }),
+          api.get(`/api/inbound-call/history?${forwardParams.toString()}`).catch(() => ({
+            success: false,
+            data: [],
+          })),
         ])
 
         const humanCalls = Array.isArray(humanRes.data) ? humanRes.data : []
         const aiCalls = Array.isArray(aiRes.data) ? aiRes.data : []
+        const forwardedCalls = Array.isArray(forwardRes.data) ? forwardRes.data : []
         const callMsgs = [
           ...humanCalls.map(mapHumanCallToMessage),
           ...aiCalls.map(mapAiCallToMessage),
+          ...forwardedCalls.map(mapForwardedCallToMessage),
         ].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
 
         mergeChannel(({ smsOnly, emailOnly, callOnly }) => {
@@ -460,7 +472,7 @@ export default function CustomerInboxThread({
         setCallLogsLoading(false)
       }
     },
-    [contact.phoneNumber, customer.phoneNumber, leadId, mergeChannel],
+    [contact.phoneNumber, customer.phoneNumber, leadId, customerId, mergeChannel],
   )
 
   const scheduleCallLogRefresh = useCallback(() => {

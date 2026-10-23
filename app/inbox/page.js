@@ -57,6 +57,7 @@ import {
 } from '@/lib/inbox-contact-filters'
 import {
   mapAiCallToMessage,
+  mapForwardedCallToMessage,
   mapHumanCallToMessage,
   mergeSmsPages,
   mergeThreadByTimestamp,
@@ -1536,21 +1537,36 @@ function InboxPageContent() {
       if (leadID) humanParams.set('leadID', String(leadID))
       else humanParams.set('phoneNumber', phoneNumber)
 
-      const [humanRes, aiRes] = await Promise.all([
+      const forwardParams = new URLSearchParams({ limit: '100', phoneNumber })
+      const customerId =
+        conv?.contact?.type === 'Customer' || conv?.contact?.type === 'customer'
+          ? String(conv?.contact?.id || conv?.contact?._id || '').trim()
+          : ''
+      if (customerId && /^[a-f\d]{24}$/i.test(customerId)) {
+        forwardParams.set('customerID', customerId)
+      }
+
+      const [humanRes, aiRes, forwardRes] = await Promise.all([
         api.get(`/api/human-call/history?${humanParams.toString()}`),
         leadID
           ? api.get(`/api/ai-calling?leadID=${encodeURIComponent(leadID)}&limit=100`)
           : Promise.resolve({ success: false, data: [] }),
+        api.get(`/api/inbound-call/history?${forwardParams.toString()}`).catch(() => ({
+          success: false,
+          data: [],
+        })),
       ])
 
       if (callHistoryRequestIdRef.current[conversationId] !== requestId) return
 
       const humanCalls = Array.isArray(humanRes.data) ? humanRes.data : []
       const aiCalls = Array.isArray(aiRes.data) ? aiRes.data : []
+      const forwardedCalls = Array.isArray(forwardRes.data) ? forwardRes.data : []
 
       const callMsgs = [
         ...humanCalls.map(mapHumanCallToMessage),
         ...aiCalls.map(mapAiCallToMessage),
+        ...forwardedCalls.map(mapForwardedCallToMessage),
       ].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
 
       setThreadMessages((prev) => {
