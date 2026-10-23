@@ -15,6 +15,7 @@ import EventDetailPanel from "./components/EventDetailPanel";
 import api from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { toStudioLocalDate } from "@/lib/studioLocalDate";
+import { deriveEffectiveStatus } from "@/lib/eventStatus";
 import { buildPackageSessionOrder, resolveEventPayment } from "@/lib/event-payment";
 import { getCurrentUserId, getEffectiveBranch } from "@/lib/auth";
 import { isOwnScope } from "@/lib/permissions";
@@ -261,20 +262,6 @@ function buildColorMap(instructors) {
     map[inst.key] = inst.color;
   });
   return map;
-}
-
-// If an event has no explicit terminal status and its end time is in the past,
-// treat it as visually "completed" without writing to the backend.
-function deriveEffectiveStatus(appt) {
-  const explicit = appt.status;
-  if (explicit && explicit !== "scheduled") return explicit;
-  // An unallocated lesson is deliberately held back from completion, on the
-  // server (calendarEvent.scheduler.js) and here. Showing a past one as
-  // "completed" would hide the very thing staff have to act on: a delivered
-  // lesson that no package has paid for.
-  if (appt.allocation?.status === "unallocated") return explicit || "scheduled";
-  if (appt.endDateTime && new Date(appt.endDateTime) < new Date()) return "completed";
-  return explicit || "scheduled";
 }
 
 function transformAppointments(appointments, colorMap, memberSelections = {}, membershipCoverageSet = new Set(), studioTz = null) {
@@ -2075,6 +2062,9 @@ function TutorDayCalendar({
     [...dayTimedEvents, ...dayAllDayEvents].forEach((event) => {
       eventTutorKeys(event).forEach((key) => {
         if (knownKeys.has(key) || orphanNames.has(key)) return;
+        // A lesson/booking whose teacher isn't a column belongs to a hidden teacher: leave it off
+        // the day view. Only to-dos and unassigned events get the fallback column.
+        if (!event.extendedProps?.isTodo && key !== "unknown" && key !== UNASSIGNED_KEY) return;
         orphanNames.set(key, event.extendedProps?.tutorName || "Unassigned");
       });
     });

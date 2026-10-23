@@ -14,7 +14,7 @@ export default function RevenueByTeacherReportPage() {
       showGroupBy
       TableComponent={RevenueByTeacherTable}
       drillTitle="Performance Detail"
-      summaryKeys={[{ key: 'totalRevenue', label: 'Total Revenue' }]}
+      summaryKeys={[{ key: 'totalRevenue', label: 'Total Revenue', currency: true }]}
       renderDrill={(detail) => (
         <div className="space-y-2 p-4 text-sm">
           <p><strong>Name:</strong> {detail.entityName}</p>

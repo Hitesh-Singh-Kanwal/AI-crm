@@ -13,7 +13,7 @@ export default function OutstandingBalanceReportPage() {
       showLeadSource={false}
       TableComponent={OutstandingBalanceTable}
       drillTitle="Balance Detail"
-      summaryKeys={[{ key: 'totalOutstandingBalance', label: 'Total Outstanding' }]}
+      summaryKeys={[{ key: 'totalOutstandingBalance', label: 'Total Outstanding', currency: true }]}
       renderDrill={(detail) => (
         <div className="space-y-2 p-4 text-sm">
           <p><strong>Student:</strong> {detail.studentName}</p>
