@@ -5,13 +5,9 @@ import api from '@/lib/api'
 import { useCloverDevices } from '@/app/settings/payments/clover/useCloverDevices'
 import { resolveLocationID } from '@/app/settings/payments/clover/useCloverConnection'
 
-// Staff's "ask for a tip" choice, shared by every payment form so each submit handler can
-// spread `terminalTipPayload()` without threading state through. Resets to on on reload.
-const tipPref = { ask: true }
-
-/** Spread into a terminal payment payload: only an explicit `promptTip: false` skips the tip screen. */
+/** Spread into a terminal payment payload. The reader always shows its own tip screen. */
 export function terminalTipPayload() {
-  return tipPref.ask ? {} : { promptTip: false }
+  return {}
 }
 
 /**
@@ -22,7 +18,6 @@ export function terminalTipPayload() {
  *
  * The reader runs its own tip screen (configured on the device); whatever the customer
  * taps arrives on the PaymentIntent and is booked as its own Tip record at settlement.
- * The checkbox only lets staff turn that screen off for a payment (Stripe readers).
  */
 export default function TerminalDeviceField({
   method,
@@ -34,7 +29,6 @@ export default function TerminalDeviceField({
   const { devices, loading } = useCloverDevices(locationID)
   const resolved = resolveLocationID(locationID)
   const [stripeReaders, setStripeReaders] = useState(null)
-  const [askTip, setAskTip] = useState(tipPref.ask)
 
   useEffect(() => {
     if (method !== 'terminal' || !resolved || (devices && devices.length > 0)) { setStripeReaders(null); return }
@@ -82,14 +76,6 @@ export default function TerminalDeviceField({
           <option key={o.id} value={o.id}>{o.label}</option>
         ))}
       </select>
-      <label className="flex items-center gap-2 text-[12px]">
-        <input
-          type="checkbox"
-          checked={askTip}
-          onChange={(e) => { tipPref.ask = e.target.checked; setAskTip(e.target.checked) }}
-        />
-        Ask customer for a tip on the reader
-      </label>
     </div>
   )
 }
