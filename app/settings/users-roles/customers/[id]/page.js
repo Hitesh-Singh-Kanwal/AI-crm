@@ -58,6 +58,7 @@ import PayInstallmentDialog from "@/components/payments/PayInstallmentDialog";
 import PaymentDueCard from "@/components/payments/PaymentDueCard";
 import api from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
+import { deriveEffectiveStatus } from "@/lib/eventStatus";
 import { resolveLocationID } from "@/app/settings/payments/clover/useCloverConnection";
 import { useCardProcessor } from "@/app/settings/payments/useCardProcessor";
 import {
@@ -6315,18 +6316,8 @@ function PaymentsTab({ customerID }) {
 
 // ─── Lessons Tab ──────────────────────────────────────────────────────────────
 
-function deriveEventStatus(ev) {
-  const explicit = ev.status;
-  if (explicit && explicit !== "scheduled") return explicit;
-  // Same rule as deriveEffectiveStatus() in app/calendar/page.js: an
-  // unallocated lesson is held back from completion on the server too, so
-  // ageing it into "Completed" here would hide the thing staff must act on —
-  // a delivered lesson no package has paid for.
-  if (ev.allocation?.status === "unallocated") return explicit || "scheduled";
-  if (ev.endDateTime && new Date(ev.endDateTime) < new Date())
-    return "completed";
-  return explicit || "scheduled";
-}
+// Same rule as the calendar, so the two always show the same status.
+const deriveEventStatus = deriveEffectiveStatus;
 
 // Lessons brought in by a migration import. They were taken and settled in the old
 // system, so they carry no package charge (resolveEventPayment reads them as paid).

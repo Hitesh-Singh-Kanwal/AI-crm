@@ -13,9 +13,9 @@ export default function TipPoolReportPage() {
       showLeadSource={false}
       TableComponent={TipPoolTable}
       summaryKeys={[
-        { key: 'totalAmount', label: 'Pool Total' },
+        { key: 'totalAmount', label: 'Pool Total', currency: true },
         { key: 'tipCount', label: 'Tips' },
-        { key: 'averageTip', label: 'Average Tip' },
+        { key: 'averageTip', label: 'Average Tip', currency: true },
       ]}
     />
   )

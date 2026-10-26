@@ -38,7 +38,17 @@ const navItems = [
   },
   { name: 'Leads', href: '/leads', iconSrc: '/figma/sidebar/leads.svg', iconSize: 20, labelStyle: 'regular' },
   { name: 'Customers', href: '/settings/users-roles/customers', iconSrc: '/figma/sidebar/customers.svg', iconSize: 20, labelStyle: 'regular' },
-  { name: 'Calendar', href: '/calendar', iconSrc: '/figma/sidebar/calendar.svg', iconSize: 20, labelStyle: 'regular' },
+  {
+    name: 'Calendar',
+    href: '/calendar',
+    iconSrc: '/figma/sidebar/calendar.svg',
+    iconSize: 20,
+    labelStyle: 'regular',
+    children: [
+      { name: 'Calendar', href: '/calendar' },
+      { name: 'Group Classes', href: '/calendar/group-classes' },
+    ],
+  },
   {
     name: 'Marketing',
     href: '/marketing/form-builder',
@@ -543,10 +553,13 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
             <div className="flex flex-col">
               {item.children
                 .filter((child) => (child.href ? canAccessRoute(child.href) : true))
-                .map((child) => {
+                .map((child, _, children) => {
+                  // Only the most specific match is active, so /reports doesn't
+                  // light up alongside /reports/teacher-commissions.
+                  const matches = (href) => pathname === href || pathname.startsWith(`${href}/`)
                   const isChildActive =
-                    pathname === child.href ||
-                    pathname.startsWith(`${child.href}/`)
+                    matches(child.href) &&
+                    !children.some((other) => other.href?.length > child.href.length && matches(other.href))
                   return (
                     <Link
                       key={child.href}

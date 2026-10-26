@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import MainLayout from '@/components/layout/MainLayout'
+import { formatCurrency } from '@/lib/utils'
 import { BackToReportsLink } from '@/components/reports/BackToReportsLink'
 import { ReportFilterPanel } from '@/components/reports/ReportFilterPanel'
 import { ReportActiveFiltersBar } from '@/components/reports/ReportActiveFiltersBar'
@@ -178,9 +179,9 @@ function ReportPageShellContent({
 
       {summaryKeys.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-4 text-sm text-muted-foreground">
-          {summaryKeys.map(({ key, label }) => (
+          {summaryKeys.map(({ key, label, currency }) => (
             <span key={key}>
-              {label}: {summary[key] ?? 0}
+              {label}: {currency ? formatCurrency(summary[key] ?? 0) : summary[key] ?? 0}
             </span>
           ))}
           {isValidating && !isLoading && <span>Updating…</span>}
