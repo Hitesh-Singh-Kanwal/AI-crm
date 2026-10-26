@@ -13,16 +13,16 @@ function statusTone(status) {
   if (['ended', 'completed', 'answered'].includes(s)) {
     return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
   }
-  if (['failed', 'busy', 'no-answer', 'canceled', 'cancelled'].includes(s)) {
+  if (['failed', 'busy', 'no-answer', 'canceled', 'cancelled', 'missed'].includes(s)) {
     return 'bg-destructive/10 text-destructive border-destructive/20'
   }
-  if (['initiated', 'queued', 'ringing', 'in-progress'].includes(s)) {
+  if (['initiated', 'queued', 'ringing', 'in-progress', 'voicemail'].includes(s)) {
     return 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
   }
   return 'bg-muted text-muted-foreground border-border'
 }
 
-function HumanRecordingPlayer({ callRecordId }) {
+function HumanRecordingPlayer({ callRecordId, recordingPath = 'human-call' }) {
   const [audioUrl, setAudioUrl] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -43,8 +43,10 @@ function HumanRecordingPlayer({ callRecordId }) {
         const headers = {}
         if (token) headers.Authorization = `Bearer ${token}`
         if (branch) headers['x-location-id'] = branch
+        const basePath =
+          recordingPath === 'inbound-call' ? 'inbound-call' : 'human-call'
         const res = await fetch(
-          `${getApiBaseUrl()}/api/human-call/${encodeURIComponent(callRecordId)}/recording`,
+          `${getApiBaseUrl()}/api/${basePath}/${encodeURIComponent(callRecordId)}/recording`,
           { headers },
         )
         if (!res.ok) {
@@ -69,7 +71,7 @@ function HumanRecordingPlayer({ callRecordId }) {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [callRecordId, started, retryKey])
+  }, [callRecordId, recordingPath, started, retryKey])
 
   if (!started) {
     return (
@@ -124,6 +126,7 @@ export default function CallLogList({ calls = [], contactName = 'Contact' }) {
     <div className="space-y-3 py-1">
       {calls.map((call) => {
         const isAi = call.callKind === 'ai'
+        const isForwarded = call.callKind === 'forwarded'
         const isInbound = call.direction === 'inbound'
         const Icon = isAi ? Bot : isInbound ? PhoneIncoming : PhoneOutgoing
         return (
@@ -145,7 +148,13 @@ export default function CallLogList({ calls = [], contactName = 'Contact' }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-medium text-foreground">
-                    {isAi ? 'AI call' : isInbound ? 'Inbound call' : 'Outbound call'}
+                    {isAi
+                      ? 'AI call'
+                      : isForwarded
+                        ? 'Forwarded call'
+                        : isInbound
+                          ? 'Inbound call'
+                          : 'Outbound call'}
                   </p>
                   <Badge
                     variant="outline"
@@ -159,7 +168,13 @@ export default function CallLogList({ calls = [], contactName = 'Contact' }) {
                       AI
                     </Badge>
                   )}
-                  {!isAi && (
+                  {isForwarded && (
+                    <Badge variant="outline" className="text-[10px]">
+                      <Phone className="h-3 w-3 mr-1" />
+                      Studio phone
+                    </Badge>
+                  )}
+                  {!isAi && !isForwarded && (
                     <Badge variant="outline" className="text-[10px]">
                       <User className="h-3 w-3 mr-1" />
                       Human
@@ -179,7 +194,10 @@ export default function CallLogList({ calls = [], contactName = 'Contact' }) {
                   </p>
                 )}
                 {!isAi && call.hasRecording && call.callRecordId ? (
-                  <HumanRecordingPlayer callRecordId={call.callRecordId} />
+                  <HumanRecordingPlayer
+                    callRecordId={call.callRecordId}
+                    recordingPath={isForwarded ? 'inbound-call' : 'human-call'}
+                  />
                 ) : null}
                 {isAi && call.callDetailId && call.recordingUrl ? (
                   <div className="mt-2">

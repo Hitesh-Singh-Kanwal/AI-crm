@@ -191,7 +191,15 @@ const emptyLocation = () => ({
   defaultLessonMinutes: 60,
   admin: '',
   operatingHours: [...DEFAULT_OPERATING_HOURS],
+  customerCallForwardEnabled: false,
+  customerCallForwardNumbers: ['', ''],
+  customerCallForwardTimeoutSeconds: 20,
 })
+
+function normalizeForwardNumbers(numbers) {
+  const list = Array.isArray(numbers) ? numbers.map((n) => String(n || '').trim()) : []
+  return [list[0] || '', list[1] || '']
+}
 
 export default function LocationsDialog({ open, onClose, locations = [], onRefresh, initialLocationId = null }) {
   const [editingLocation, setEditingLocation] = useState(null)
@@ -213,6 +221,12 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
           timezone: found.timezone || DEFAULT_LOCATION_TIMEZONE,
           defaultLessonMinutes: found.defaultLessonMinutes ?? 60,
           operatingHours: normalizeOperatingHours(found.operatingHours),
+          customerCallForwardEnabled: Boolean(found.customerCallForwardEnabled),
+          customerCallForwardNumbers: normalizeForwardNumbers(found.customerCallForwardNumbers),
+          customerCallForwardTimeoutSeconds:
+            [15, 20, 30].includes(Number(found.customerCallForwardTimeoutSeconds))
+              ? Number(found.customerCallForwardTimeoutSeconds)
+              : 20,
         })
         setMode('edit')
       }
@@ -247,6 +261,19 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
 
     setLoading(true)
     try {
+      const forwardNumbers = normalizeForwardNumbers(editingLocation.customerCallForwardNumbers)
+        .map((n) => n.trim())
+        .filter(Boolean)
+
+      if (editingLocation.customerCallForwardEnabled && forwardNumbers.length === 0) {
+        toast.error({
+          title: 'Validation Error',
+          message: 'Enter a phone number to ring for customer call forwarding.',
+        })
+        setLoading(false)
+        return
+      }
+
       const payload = {
         name: editingLocation.name,
         address: editingLocation.address,
@@ -267,6 +294,12 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
         defaultLessonMinutes: Number(editingLocation.defaultLessonMinutes) || 60,
         admin: String(editingLocation.admin || '').trim() || null,
         operatingHours: normalizeOperatingHours(editingLocation.operatingHours),
+        customerCallForwardEnabled: Boolean(editingLocation.customerCallForwardEnabled),
+        customerCallForwardNumbers: forwardNumbers,
+        customerCallForwardTimeoutSeconds:
+          [15, 20, 30].includes(Number(editingLocation.customerCallForwardTimeoutSeconds))
+            ? Number(editingLocation.customerCallForwardTimeoutSeconds)
+            : 20,
       }
 
       const result = editingLocation._id
@@ -753,6 +786,89 @@ export default function LocationsDialog({ open, onClose, locations = [], onRefre
                   />
                 </div>
               </div>
+
+              {editingLocation.phoneStatus === 'connected' ? (
+                <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">Forward customer calls</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Active, inactive, no-sale, and archived customers skip the AI and ring this phone.
+                        Leads and trial students still get the phone menu.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={Boolean(editingLocation.customerCallForwardEnabled)}
+                      onCheckedChange={(checked) =>
+                        setEditingLocation((p) => ({ ...p, customerCallForwardEnabled: Boolean(checked) }))
+                      }
+                    />
+                  </div>
+
+                  {editingLocation.customerCallForwardEnabled && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1.5">
+                          Phone to ring
+                        </label>
+                        <Input
+                          value={normalizeForwardNumbers(editingLocation.customerCallForwardNumbers)[0]}
+                          onChange={(e) =>
+                            setEditingLocation((p) => {
+                              const next = normalizeForwardNumbers(p.customerCallForwardNumbers)
+                              next[0] = e.target.value
+                              return { ...p, customerCallForwardNumbers: next }
+                            })
+                          }
+                          placeholder="+15551234567"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1.5">
+                          Also ring <span className="font-normal text-muted-foreground">(optional)</span>
+                        </label>
+                        <Input
+                          value={normalizeForwardNumbers(editingLocation.customerCallForwardNumbers)[1]}
+                          onChange={(e) =>
+                            setEditingLocation((p) => {
+                              const next = normalizeForwardNumbers(p.customerCallForwardNumbers)
+                              next[1] = e.target.value
+                              return { ...p, customerCallForwardNumbers: next }
+                            })
+                          }
+                          placeholder="+15557654321"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-foreground mb-1.5">
+                          Ring for
+                        </label>
+                        <Select
+                          value={String(editingLocation.customerCallForwardTimeoutSeconds || 20)}
+                          onChange={(e) =>
+                            setEditingLocation((p) => ({
+                              ...p,
+                              customerCallForwardTimeoutSeconds: Number(e.target.value) || 20,
+                            }))
+                          }
+                        >
+                          <option value="15">15 seconds</option>
+                          <option value="20">20 seconds</option>
+                          <option value="30">30 seconds</option>
+                        </Select>
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          If nobody answers, the caller can leave a voicemail saved on that customer.
+                          Keep this shorter than the phone&apos;s own voicemail.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Connect the studio phone number before forwarding customer calls.
+                </p>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
