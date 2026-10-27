@@ -277,7 +277,7 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
             const total = Number(m.totalPaid ?? 0)
             const outstanding = Math.max(0, total - collected)
             // A balance no pending installment covers — a renewal, or a sale left unpaid.
-            const scheduled = plan?.status === 'active' &&
+            const scheduled = ['active', 'past_due'].includes(plan?.status) &&
               plan.installments.some((i) => i.status === 'pending' || i.status === 'payment_pending')
             const showDue = outstanding > 0 && !scheduled && m.status !== 'cancelled' && m.paymentStatus !== 'payment_pending'
             return (
@@ -437,7 +437,8 @@ export default function CustomerMembershipsTab({ customerID, locationID }) {
                         </div>
                         <div className="flex items-center gap-2">
                           <p className="text-[13px] font-semibold text-foreground">${Number(inst.amount).toFixed(2)}</p>
-                          {inst.status === 'pending' && plan.status === 'active' && m.status === 'active' && (
+                          {/* An expired or used-up membership can still owe money — only cancelling ends it. */}
+                          {inst.status === 'pending' && ['active', 'past_due'].includes(plan.status) && m.status !== 'cancelled' && (
                             <>
                               {cloverReady && (
                                 <SendPaymentLinkMenu

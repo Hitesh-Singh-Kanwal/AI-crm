@@ -2727,7 +2727,7 @@ export default function AppointmentComposerPanel({
     const method = billing.method || "cash";
     // Which reader to charge — without it the backend refuses a terminal payment.
     const terminal =
-      method === "terminal" ? { deviceID: billing.deviceID, promptTip: billing.promptTip } : {};
+      method === "terminal" ? { deviceID: billing.deviceID } : {};
     // The enrollment already exists by now, so say the payment failed rather than
     // letting staff assume the reader was charged.
     const reportFailure = (payRes) => {
@@ -2828,7 +2828,7 @@ export default function AppointmentComposerPanel({
               // Collect-now off (or a payment link going out instead) leaves it unpaid.
               ...(payload.billing?.collectNow === false ? { collectNow: false } : {}),
               ...(payload.billing?.method === "terminal"
-                ? { deviceID: payload.billing?.deviceID, promptTip: payload.billing?.promptTip }
+                ? { deviceID: payload.billing?.deviceID }
                 : {}),
               ...(payload.billing?.method === "saved_card"
                 ? { savedCardID: payload.billing?.savedCardID }

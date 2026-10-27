@@ -1062,14 +1062,24 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                       <div className="rounded-xl border border-border p-4 flex flex-col gap-3">
                         <label className="flex items-center justify-between gap-2 text-sm font-medium">
                           <span className="flex items-center gap-2">
-                            <input type="checkbox" checked={useWallet} onChange={(e) => setUseWallet(e.target.checked)} disabled={walletBalance == null} />
+                            <input
+                              type="checkbox"
+                              checked={useWallet}
+                              onChange={(e) => {
+                                setUseWallet(e.target.checked)
+                                // Fill in what the wallet will cover, as the membership and program
+                                // forms do — a placeholder looked filled in but applied $0.
+                                setWalletAmount(e.target.checked ? String(Math.min(payable, walletBalance).toFixed(2)) : '')
+                              }}
+                              disabled={walletBalance == null}
+                            />
                             Use account wallet balance
                           </span>
                           <span className="text-xs font-normal text-muted-foreground">{walletBalance == null ? 'no wallet' : `available ${money(walletBalance)}`}</span>
                         </label>
                         {useWallet && walletBalance != null && (
                           <>
-                            <Input type="number" min="0" step="0.01" placeholder={String(Math.min(payable, walletBalance))} value={walletAmount} onChange={(e) => setWalletAmount(e.target.value)} className="w-[180px]" />
+                            <Input type="number" min="0" step="0.01" max={Math.min(payable, walletBalance)} value={walletAmount} onChange={(e) => setWalletAmount(e.target.value)} className="w-[180px]" />
                             {walletOver && <p className="text-xs text-destructive">Exceeds the wallet balance.</p>}
                           </>
                         )}
