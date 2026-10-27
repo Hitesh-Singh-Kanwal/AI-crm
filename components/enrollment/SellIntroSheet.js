@@ -85,13 +85,14 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
 
   const locationIntros = useMemo(
     () =>
-      introCatalog.filter(
-        (s) =>
-          s.isActive !== false &&
-          locationMatches(s, locationID) &&
-          Number(s.price) > 0 &&
-          s.isChargeable !== false,
-      ),
+      introCatalog.filter((s) => {
+        if (s.isActive === false) return false
+        if (!locationMatches(s, locationID)) return false
+        const price = Number(s.price)
+        // $0 Setup intros are complimentary and sellable from Sell Intro.
+        if (Number.isFinite(price) && price === 0) return true
+        return price > 0 && s.isChargeable !== false
+      }),
     [introCatalog, locationID],
   )
 
@@ -99,6 +100,10 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
     () => locationIntros.find((s) => String(s._id) === String(selectedIntroID)) || null,
     [locationIntros, selectedIntroID],
   )
+  const isFreeIntro =
+    selectedIntro != null &&
+    Number.isFinite(Number(selectedIntro.price)) &&
+    Number(selectedIntro.price) === 0
 
   useEffect(() => {
     if (!open) return
@@ -295,11 +300,13 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
       setError('Select an intro from Setup before selling.')
       return
     }
-    if (!(Number(selectedIntro.price) > 0) || selectedIntro.isChargeable === false) {
+    const introPrice = Number(selectedIntro.price)
+    const freeIntro = Number.isFinite(introPrice) && introPrice === 0
+    if (!freeIntro && (!(introPrice > 0) || selectedIntro.isChargeable === false)) {
       setError('That intro is not chargeable. Fix the price in Settings → Setup → Intro.')
       return
     }
-    if (method === 'link') {
+    if (!freeIntro && method === 'link') {
       if (channel !== 'email' && !selectedContact?.phoneNumber) {
         setError('This contact has no phone number — pick Email or add a phone first.')
         return
@@ -309,7 +316,7 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
         return
       }
     }
-    if (method === 'terminal' && !deviceID) {
+    if (!freeIntro && method === 'terminal' && !deviceID) {
       setError('Select a terminal to charge.')
       return
     }
@@ -348,14 +355,17 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
 
     const body = {
       calendarServiceID: selectedIntro._id,
-      amount: Number(selectedIntro.price),
+      amount: introPrice,
       description: selectedIntro.serviceName,
-      method,
+      // Complimentary intros skip payment collection — backend ignores method.
+      method: freeIntro ? 'cash' : method,
       confirmOverride: confirmOverride || undefined,
       ...(selectedContact.leadID ? { leadID: selectedContact.leadID } : {}),
       ...(selectedContact.customerID ? { customerID: selectedContact.customerID } : {}),
-      ...(method === 'link' ? { channel } : {}),
-      ...(method === 'terminal' ? { billing: { deviceID, ...terminalTipPayload() } } : {}),
+      ...(!freeIntro && method === 'link' ? { channel } : {}),
+      ...(!freeIntro && method === 'terminal'
+        ? { billing: { deviceID, ...terminalTipPayload() } }
+        : {}),
       ...(slotPayload ? { slot: slotPayload } : {}),
     }
 
@@ -385,14 +395,15 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
       const data = res.data || {}
       setWarning(null)
       setResult({
-        method,
+        method: freeIntro ? 'free' : method,
         message: res.message || 'Done',
         checkoutUrl: data.checkoutUrl || null,
         customerID: data.customerID || selectedContact.customerID || null,
         pending: Boolean(data.pending),
       })
 
-      if (method === 'link') toast.success('Payment link sent.')
+      if (freeIntro) toast.success('Complimentary intro booked.')
+      else if (method === 'link') toast.success('Payment link sent.')
       else if (method === 'cash') toast.success('Trial sold — cash collected.')
       else if (method === 'card') toast.success('Checkout opened — complete payment on the card page.')
       else if (data.pending) toast.success('Charge sent to the reader — waiting for the card.')
@@ -564,7 +575,9 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
                             </span>
                           </div>
                           <span className="text-[12px] font-semibold shrink-0 ml-2">
-                            ${Number(intro.price).toFixed(2)}
+                            {Number(intro.price) === 0
+                              ? 'Free'
+                              : `$${Number(intro.price).toFixed(2)}`}
                           </span>
                         </button>
                       )
@@ -580,51 +593,63 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
 
               <div className="rounded-xl border border-border bg-card p-3 space-y-3">
                 <p className="text-[11px] font-medium text-muted-foreground">Payment</p>
-                <PaymentMethodPicker
-                  methods={INTRO_PAYMENT_METHODS}
-                  value={method}
-                  onChange={(v) => {
-                    setMethod(v)
-                    setDeviceID('')
-                  }}
-                />
-
-                {method === 'link' && (
-                  <div>
-                    <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Send via</p>
-                    <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
-                      {LINK_CHANNELS.map((c) => (
-                        <button
-                          key={c.value}
-                          type="button"
-                          onClick={() => setChannel(c.value)}
-                          className={[
-                            'h-8 px-3 rounded-md text-[12px] font-medium transition-colors',
-                            channel === c.value
-                              ? 'bg-brand text-brand-foreground'
-                              : 'text-muted-foreground hover:text-foreground',
-                          ].join(' ')}
-                        >
-                          {c.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {method === 'terminal' && (
-                  <TerminalDeviceField
-                    method="terminal"
-                    locationID={locationID}
-                    deviceID={deviceID}
-                    onDeviceChange={setDeviceID}
-                  />
-                )}
-
-                {method === 'card' && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Opens a hosted checkout page you can show the lead (or share) while they&apos;re here.
+                {isFreeIntro ? (
+                  <p className="text-[12px] text-muted-foreground">
+                    Complimentary intro — no payment to collect. Booking converts the lead the same
+                    way a paid sale does.
                   </p>
+                ) : (
+                  <>
+                    <PaymentMethodPicker
+                      methods={INTRO_PAYMENT_METHODS}
+                      value={method}
+                      onChange={(v) => {
+                        setMethod(v)
+                        setDeviceID('')
+                      }}
+                    />
+
+                    {method === 'link' && (
+                      <div>
+                        <p className="text-[11px] font-medium text-muted-foreground mb-1.5">
+                          Send via
+                        </p>
+                        <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
+                          {LINK_CHANNELS.map((c) => (
+                            <button
+                              key={c.value}
+                              type="button"
+                              onClick={() => setChannel(c.value)}
+                              className={[
+                                'h-8 px-3 rounded-md text-[12px] font-medium transition-colors',
+                                channel === c.value
+                                  ? 'bg-brand text-brand-foreground'
+                                  : 'text-muted-foreground hover:text-foreground',
+                              ].join(' ')}
+                            >
+                              {c.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {method === 'terminal' && (
+                      <TerminalDeviceField
+                        method="terminal"
+                        locationID={locationID}
+                        deviceID={deviceID}
+                        onDeviceChange={setDeviceID}
+                      />
+                    )}
+
+                    {method === 'card' && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Opens a hosted checkout page you can show the lead (or share) while
+                        they&apos;re here.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -696,6 +721,8 @@ export default function SellIntroSheet({ open, onClose, onSuccess }) {
                   <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
                   Working…
                 </>
+              ) : isFreeIntro ? (
+                'Book free intro'
               ) : method === 'link' ? (
                 'Send payment link'
               ) : method === 'cash' ? (

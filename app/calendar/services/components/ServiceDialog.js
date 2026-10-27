@@ -259,6 +259,11 @@ export default function ServiceDialog({ open, onClose, service, onRefresh, defau
                 value={form.price}
                 onChange={(e) => set("price", e.target.value)}
               />
+              {form.type === "intro" && (
+                <p className="text-[11px] text-muted-foreground">
+                  $0 is a complimentary intro — staff can book it from Sell Intro with no payment.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">
