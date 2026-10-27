@@ -1355,9 +1355,11 @@ function PaymentSchedule({
                             discount
                           </span>
                         )}
+                        {/* A balance stays payable after the lessons are used up or the
+                            package expires — only a cancellation ends it. */}
                         {inst.status === "pending" &&
-                          plan.status === "active" &&
-                          cpStatus === "active" && (
+                          ["active", "past_due"].includes(plan.status) &&
+                          cpStatus !== "cancelled" && (
                             <>
                               <Button
                                 size="sm"
@@ -1407,7 +1409,7 @@ function PaymentSchedule({
           )}
           {billingType === "flexible" &&
             plan.status !== "cancelled" &&
-            cpStatus === "active" && (
+            cpStatus !== "cancelled" && (
               <Button
                 size="sm"
                 variant="outline"
@@ -4282,8 +4284,8 @@ function EnrollmentsTab({
                           : outstanding;
                       return (
                         (!cp.billingType || cp.billingType === "one_time") &&
-                        enr.status === "active" &&
-                        cp.status === "active" &&
+                        enr.status !== "cancelled" &&
+                        cp.status !== "cancelled" &&
                         !plansMap[String(enr._id)] &&
                         schedulable > 0 && (
                           <div className="mt-5 border-t border-border pt-5">
@@ -4327,7 +4329,8 @@ function EnrollmentsTab({
                         completed/absent schedule with a balance still owed
                         falls through to here. */}
                     {cp.billingType === "flexible" &&
-                      enr.status === "active" &&
+                      enr.status !== "cancelled" &&
+                      cp.status !== "cancelled" &&
                       cp.paymentStatus !== "paid" &&
                       !plansMap[String(enr._id)]?.installments?.some(
                         (i) => i.status === "pending",

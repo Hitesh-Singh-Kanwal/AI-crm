@@ -1044,31 +1044,23 @@ function showGroupEventTooltip(e, props, raw) {
       (attending.length ? ` <span style="opacity:.6">& ${attending.join(", ")}</span>` : "");
 
     let credits = "";
-    const svcEntry = (() => {
-      if (charge?.method === "package") {
-        const code = charge.serviceCode || serviceCode;
-        const services =
-          charge.customerPackageID?.services ||
-          charge.enrollmentID?.package?.services;
-        if (services) {
-          return (
-            services.find((s) => s.serviceCode === code) ??
-            services.find((s) => (s.pricePerSession ?? 0) > 0)
-          );
-        }
-      }
+    // Same rule as the lesson panel: a package's "N left" is its paid credit for
+    // this service (hidden at 0), and the dot is green only when this student's
+    // lesson is actually paid — not merely charged to a package.
+    const payment = charge ? resolveEventPayment(raw, { customerID: cid }) : null;
+    const left = (() => {
+      if (charge?.method === "package") return payment?.creditBalance ?? payment?.sessionsRemaining;
       if (charge?.method === "membership" && charge.customerMembershipID?.services) {
         const code = charge.serviceCode || serviceCode;
-        return charge.customerMembershipID.services.find((s) => s.serviceCode === code);
+        return charge.customerMembershipID.services.find((s) => s.serviceCode === code)?.sessionsRemaining;
       }
       return null;
     })();
-    if (svcEntry?.sessionsRemaining != null) {
-      const r = svcEntry.sessionsRemaining;
-      credits = `<span style="color:${r <= 1 ? "#ef4444" : "#22c55e"};font-size:10px">${r} left</span>`;
+    if (left > 0) {
+      credits = `<span style="color:${left <= 1 ? "#ef4444" : "#22c55e"};font-size:10px">${left} left</span>`;
     }
 
-    const paid = Boolean(charge);
+    const paid = Boolean(charge) && payment?.paid !== false;
     const methodLabel = charge
       ? charge.method === "package" ? "Package"
         : charge.method === "membership" ? "Membership"

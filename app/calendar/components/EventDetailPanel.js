@@ -408,22 +408,22 @@ function GroupStudentRoster({
       if (ch.method === "package") {
         const services =
           ch.customerPackageID?.services || ch.enrollmentID?.package?.services;
-        svc = services?.find((s) => s.serviceCode === code)
-          ?? services?.find((s) => (s.pricePerSession ?? 0) > 0);
+        // This service's own line — "N left" must not show another service's count.
+        svc = code
+          ? services?.find((s) => s.serviceCode === code)
+          : services?.find((s) => (s.pricePerSession ?? 0) > 0);
         packageName = ch.enrollmentID?.package?.packageName || svc?.serviceName || "";
       } else if (ch.method === "membership") {
         svc = ch.customerMembershipID?.services?.find((s) => s.serviceCode === code);
       }
       if (svc) {
         let sessionsRemaining = svc.sessionsRemaining;
-        // "N left" is what the package had left right after THIS lesson, so two lessons
-        // in a row read 7 then 6 — not the package's balance today on both. Falls back to
-        // today's balance when the lesson's position in the package can't be resolved.
+        // A package's "N left" is its paid credit for this service (the profile's
+        // Credit Balance), not the sessions it holds — sessions nobody has paid for
+        // are not "left" to use. A free service has no credit and keeps its count.
         if (ch.method === "package") {
-          const pos = resolveEventPayment(evRes.data, { ...paymentContext, customerID: cid });
-          if (pos.pkgSessionNumber != null && pos.totalSessions != null) {
-            sessionsRemaining = Math.max(0, pos.totalSessions - pos.pkgSessionNumber);
-          }
+          const { creditBalance } = resolveEventPayment(evRes.data, { ...paymentContext, customerID: cid });
+          if (creditBalance != null) sessionsRemaining = creditBalance;
         }
         chargeSMap[cid] = { sessionsRemaining, packageName };
       }
@@ -1227,7 +1227,7 @@ function GroupStudentRoster({
                       </p>
                     )}
                   </div>
-                  {remaining != null && !(remaining === 0 && isCharged) && (
+                  {remaining > 0 && (
                     <span
                       className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${remaining <= 2 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}
                     >

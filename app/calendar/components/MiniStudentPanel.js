@@ -328,7 +328,7 @@ export default function MiniStudentPanel({
     // Flexible enrollments that carry a tracked schedule surface as plan installments,
     // so exclude them from the single-due-date flexible cards to avoid double-counting.
     const activePlans = planResult.success
-      ? (planResult.data || []).filter((p) => p.status === "active")
+      ? (planResult.data || []).filter((p) => ["active", "past_due"].includes(p.status))
       : [];
     const enrollmentsWithPlan = new Set(
       activePlans.map((p) => String(p.enrollmentID?._id ?? p.enrollmentID)).filter(Boolean),
@@ -352,7 +352,7 @@ export default function MiniStudentPanel({
       const due = allFlex.filter(
         (e) =>
           e.package?.paymentStatus !== "paid" &&
-          e.status === "active" &&
+          e.status !== "cancelled" &&
           e.package?.status !== "cancelled" &&
           !enrollmentsWithPlan.has(String(e._id)),
       );
@@ -407,7 +407,7 @@ export default function MiniStudentPanel({
         (e) =>
           e.package?.billingType === "flexible" &&
           e.package?.paymentStatus !== "paid" &&
-          e.status === "active" &&
+          e.status !== "cancelled" &&
           e.package?.status !== "cancelled" &&
           !enrollmentsWithPlan.has(String(e._id)),
       )
@@ -435,8 +435,8 @@ export default function MiniStudentPanel({
       .filter(
         (e) =>
           (!e.package?.billingType || e.package?.billingType === "one_time") &&
-          e.status === "active" &&
-          e.package?.status === "active" &&
+          e.status !== "cancelled" &&
+          e.package?.status !== "cancelled" &&
           !enrollmentsWithPlan.has(String(e._id)),
       )
       .forEach((e) => {
@@ -458,7 +458,7 @@ export default function MiniStudentPanel({
       const plans = planResult.data || [];
       const planForms = {};
       plans
-        .filter((p) => p.status === "active")
+        .filter((p) => ["active", "past_due"].includes(p.status))
         .forEach((plan) => {
           (plan.installments || []).forEach((inst, idx) => {
             if (inst.status !== "pending") return;
@@ -634,7 +634,7 @@ export default function MiniStudentPanel({
       setPurchaseNamesById(purchaseNameById);
 
       const activePlans = planResult.success
-        ? (planResult.data || []).filter((p) => p.status === "active")
+        ? (planResult.data || []).filter((p) => ["active", "past_due"].includes(p.status))
         : [];
       const enrollmentsWithPlan = new Set(
         activePlans.map((p) => String(p.enrollmentID?._id ?? p.enrollmentID)).filter(Boolean),
@@ -658,7 +658,7 @@ export default function MiniStudentPanel({
         const due = allFlex.filter(
           (e) =>
             e.package?.paymentStatus !== "paid" &&
-            e.status === "active" &&
+            e.status !== "cancelled" &&
             e.package?.status !== "cancelled" &&
             !enrollmentsWithPlan.has(String(e._id)),
         );
@@ -717,7 +717,7 @@ export default function MiniStudentPanel({
           (e) =>
             e.package?.billingType === "flexible" &&
             e.package?.paymentStatus !== "paid" &&
-            e.status === "active" &&
+            e.status !== "cancelled" &&
             e.package?.status !== "cancelled" &&
             !enrollmentsWithPlan.has(String(e._id)),
         )
@@ -744,8 +744,8 @@ export default function MiniStudentPanel({
         .filter(
           (e) =>
             (!e.package?.billingType || e.package?.billingType === "one_time") &&
-            e.status === "active" &&
-            e.package?.status === "active" &&
+            e.status !== "cancelled" &&
+            e.package?.status !== "cancelled" &&
             !enrollmentsWithPlan.has(String(e._id)),
         )
         .forEach((e) => {
@@ -770,7 +770,7 @@ export default function MiniStudentPanel({
         plans
           .filter(
             (p) =>
-              p.status === "active" &&
+              ["active", "past_due"].includes(p.status) &&
               p.enrollmentID?.package?.status !== "cancelled",
           )
           .forEach((plan) => {
