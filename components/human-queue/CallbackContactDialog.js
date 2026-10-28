@@ -261,7 +261,9 @@ export default function CallbackContactDialog({
         if (!result.success) throw new Error(result.error || 'Could not send SMS.')
         toast.success({
           title: 'SMS sent',
-          message: 'Message sent. Queue status stays pending until you resolve it.',
+          message: queueStatus === 'pending'
+            ? 'Message sent. Queue status stays pending until you resolve it.'
+            : 'Message sent.',
         })
       } else {
         if (!email) throw new Error('This lead has no email address.')
@@ -290,14 +292,15 @@ export default function CallbackContactDialog({
         if (!result.success) throw new Error(result.error || 'Could not send email.')
         toast.success({
           title: 'Email sent',
-          message: 'Email sent. Queue status stays pending until you resolve it.',
+          message: queueStatus === 'pending'
+            ? 'Email sent. Queue status stays pending until you resolve it.'
+            : 'Email sent.',
         })
       }
 
       if (item?.id || item?._id) {
         await api
           .patch(`/api/callback-requests/${item.id || item._id}/status`, {
-            status: queueStatus || 'pending',
             touchLastContact: true,
           })
           .catch(() => {})
@@ -335,7 +338,6 @@ export default function CallbackContactDialog({
         name: displayName,
         locationIDs,
         callbackId: item?.id || item?._id,
-        status: queueStatus || 'pending',
         reason: String(item?.reason || item?.ivrLabel || '').trim(),
         aiSummary: String(item?.aiSummary || '').trim(),
       })
@@ -361,11 +363,15 @@ export default function CallbackContactDialog({
     try {
       const r = await api.patch(`/api/callback-requests/${cbId}/status`, { status: next })
       if (!r.success) throw new Error(r.error || 'Could not update status.')
+      const savedStatus = r.data?.status === 'called' ? 'resolved' : r.data?.status
+      if (savedStatus && savedStatus !== next) {
+        throw new Error(`Status stayed ${savedStatus}.`)
+      }
       toast.success({
         title: 'Queue updated',
         message: next === 'resolved' ? 'Marked resolved.' : `Status set to ${next}.`,
       })
-      onUpdated?.()
+      onUpdated?.(r.data ? { ...r.data, status: savedStatus || next } : { id: cbId, status: next })
       if (next === 'resolved' || next === 'cancelled') onClose?.()
     } catch (err) {
       toast.error({ title: 'Update failed', message: err.message })
@@ -392,12 +398,13 @@ export default function CallbackContactDialog({
         stage: next,
       })
       if (!r.success) throw new Error(r.error || 'Could not update lead stage.')
-      if (r.data?.stage) setLeadStage(r.data.stage)
+      const savedStage = r.data?.stage || next
+      setLeadStage(savedStage)
       toast.success({
         title: 'Stage updated',
-        message: `Lead stage set to ${formatLeadStageLabel(next, stageOptions)}.`,
+        message: `Lead stage set to ${formatLeadStageLabel(savedStage, stageOptions)}.`,
       })
-      onUpdated?.()
+      onUpdated?.({ id: callbackId, _id: callbackId, leadStage: savedStage })
     } catch (err) {
       toast.error({ title: 'Stage update failed', message: err.message })
       setLeadStage(previous || lead?.stage || item?.leadStage || '')
