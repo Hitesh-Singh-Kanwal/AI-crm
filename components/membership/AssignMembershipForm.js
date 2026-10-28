@@ -10,14 +10,18 @@ import { Label } from '@/components/ui/label'
 import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
 import { openCheckoutTab, navigateCheckoutTab, closeCheckoutTab, CHECKOUT_TOAST } from '@/lib/clover'
 
-import { PURCHASE_METHODS, SHARE_LINK_METHOD } from '@/lib/paymentMethods'
+import { NO_DEVICE_PAYMENT_METHODS, SHARE_LINK_METHOD, SHORTFALL_METHODS } from '@/lib/paymentMethods'
+import WalletShortfallField, { walletShortfall } from '@/components/payments/WalletShortfallField'
 import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
 import CheckNumberField from '@/components/payments/CheckNumberField'
 import { SendLinkChannelPicker, sendPaymentLink } from '@/components/payments/SendPaymentLinkMenu'
 import { dateInputToISO, todayDateInput } from '@/lib/studioLocalDate'
 import { formatDate } from '@/lib/utils'
 
-const MEMBERSHIP_METHODS = [...PURCHASE_METHODS, SHARE_LINK_METHOD]
+// Wallet sits beside the other methods; a balance too small asks how to collect the rest.
+const MEMBERSHIP_METHODS = [...NO_DEVICE_PAYMENT_METHODS, SHARE_LINK_METHOD]
+// A schedule's card charge takes the whole installment, so only these can share one with the wallet.
+const PLAN_SHORTFALL_METHODS = SHORTFALL_METHODS.filter((m) => ['cash', 'cheque'].includes(m.value))
 
 function todayISO() {
   const d = new Date()
@@ -47,7 +51,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [walletBalance, setWalletBalance] = useState(null)
-  const [useWallet, setUseWallet] = useState(false)
+  const [shortfallMethod, setShortfallMethod] = useState('cash')
   const [walletAmount, setWalletAmount] = useState('')
   const { ready: cloverReady } = useCardProcessor(locationID)
   // Set while a "Review and Pay" agreement session is pending acceptance —
@@ -99,26 +103,30 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
     : ''
   const periodEnded = Boolean(periodEnd) && periodEnd <= todayDateInput()
 
-  // How much of the one-time price is paid from the wallet vs. the chosen method.
-  const walletEligible = billingType === 'one_time' && useWallet && walletBalance != null && !isLink
-  const walletEntered = walletEligible ? Number(walletAmount) || 0 : 0
-  const walletApplied = Math.min(walletEntered, price, walletBalance ?? 0)
-  const remaining = Math.max(0, price - walletApplied)
-  const walletOver = walletEligible && walletEntered > (walletBalance ?? 0)
-
   const flexInitialAmountN = Number(flexInitialAmount || 0)
   const flexFutureTotal = flexFuturePayments.reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
   const flexAmountLeftToSchedule = price - flexInitialAmountN - flexFutureTotal
   const flexBalanced = Math.abs(flexAmountLeftToSchedule) < 0.01
   const collectingFlexInitial = billingType === 'flexible' && flexInitialAmountN > 0 && collectInitialNow
 
+  // What is collected today and how much of it the wallet pays (Wallet is a method;
+  // it pays all it can unless staff set an amount, and shortfallMethod collects the rest).
+  const collectToday = billingType === 'one_time' ? price : collectingFlexInitial ? flexInitialAmountN : 0
+  const paysByWallet = method === 'wallet' && !isLink
+  const walletSplit = walletShortfall(walletBalance, collectToday, walletAmount)
+  const walletApplied = paysByWallet ? walletSplit.walletApplied : 0
+  const remaining = Math.max(0, collectToday - walletApplied)
+  const walletOver = paysByWallet && walletSplit.over
+  // The method that actually collects money; the wallet's share goes as walletAmount.
+  const chargeMethod = paysByWallet ? (remaining > 0 ? shortfallMethod : 'cash') : method
+
   // One-time card purchases, and a flexible schedule's collected-now initial
   // payment, settle through Clover's hosted page; everything else (cash,
   // wallet, future-dated installments) is recorded directly.
   const payWithClover =
-    ((billingType === 'one_time' && remaining > 0) || collectingFlexInitial) && method === 'card' && cloverReady
+    (billingType === 'one_time' || collectingFlexInitial) && remaining > 0 && chargeMethod === 'card' && cloverReady
   const cloverNotConnected =
-    ((billingType === 'one_time' && remaining > 0) || collectingFlexInitial) && method === 'card' && !cloverReady
+    (billingType === 'one_time' || collectingFlexInitial) && remaining > 0 && chargeMethod === 'card' && !cloverReady
 
   // Adding/removing a row (or changing the initial payment) changes how many
   // ways the remaining balance splits, so re-spread it evenly across all rows
@@ -161,7 +169,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
     if (!customerID) { toast.error('Select a student first'); return }
     if (!membershipID) { toast.error('Select a membership'); return }
     if (walletOver) {
-      toast.error('Insufficient wallet balance', { description: `Wallet has $${walletBalance.toFixed(2)} but you entered $${walletEntered.toFixed(2)}.` })
+      toast.error('Insufficient wallet balance', { description: `Wallet has $${(walletBalance ?? 0).toFixed(2)} but you entered $${Number(walletAmount).toFixed(2)}.` })
       return
     }
 
@@ -225,8 +233,8 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
     if (billingType === 'one_time') {
       if (isLink) billing.collectNow = false
       else {
-        billing.method = method
-        if (method === 'cheque') billing.checkNumber = checkNumber
+        billing.method = chargeMethod
+        if (chargeMethod === 'cheque') billing.checkNumber = checkNumber
         if (walletApplied > 0) billing.walletAmount = walletApplied
       }
     }
@@ -246,8 +254,9 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
       if (scheduleRows.length === 0) { toast.error('Add at least one payment'); return }
 
       billing.customInstallments = scheduleRows
-      if (!isLink) billing.method = method
-      if (method === 'cheque') billing.checkNumber = checkNumber
+      if (!isLink) billing.method = chargeMethod
+      if (chargeMethod === 'cheque') billing.checkNumber = checkNumber
+      if (walletApplied > 0) billing.walletAmount = walletApplied
       if (flexInitialAmountN > 0) billing.collectNow = collectInitialNow && !isLink
     }
     if (!isLink) billing.collectDate = dateInputToISO(paymentDate)
@@ -409,58 +418,20 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
 
       {billingType === 'one_time' && (
         <div className="space-y-3">
-          {walletBalance != null && walletBalance > 0 && !isLink && (
-            <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-              <label className="flex items-center justify-between gap-2 cursor-pointer">
-                <span className="text-[12px] font-medium text-foreground">
-                  Use wallet balance
-                  <span className="text-muted-foreground font-normal"> (${walletBalance.toFixed(2)} available)</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={useWallet}
-                  onChange={(e) => {
-                    setUseWallet(e.target.checked)
-                    setWalletAmount(e.target.checked ? String(Math.min(price, walletBalance).toFixed(2)) : '')
-                  }}
-                  className="h-4 w-4 accent-brand"
-                />
-              </label>
-              {useWallet && (
-                <>
-                  <div className="relative">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">$</span>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      max={Math.min(price, walletBalance)}
-                      value={walletAmount}
-                      onChange={(e) => setWalletAmount(e.target.value)}
-                      className="h-8 pl-5"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-muted-foreground">From wallet</span>
-                    <span className="font-medium text-foreground">${walletApplied.toFixed(2)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-muted-foreground">Remaining ({method})</span>
-                    <span className="font-semibold text-foreground">${remaining.toFixed(2)}</span>
-                  </div>
-                  {walletOver && (
-                    <p className="text-[10px] text-destructive">Amount exceeds wallet balance.</p>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {remaining > 0 && (
+          {price > 0 && (
             <div className="flex flex-col gap-1.5">
-              <Label>{walletApplied > 0 ? 'Remaining payment method' : 'Payment Method'}</Label>
-              <PaymentMethodPicker methods={MEMBERSHIP_METHODS} value={method} onChange={setMethod} />
-              <CheckNumberField method={method} checkNumber={checkNumber} onChange={setCheckNumber} />
+              <Label>Payment Method</Label>
+              <PaymentMethodPicker methods={MEMBERSHIP_METHODS} value={method} onChange={(m) => { setMethod(m); setWalletAmount('') }} />
+              <WalletShortfallField
+                method={method}
+                balance={walletBalance}
+                amountDue={collectToday}
+                walletAmount={walletAmount}
+                onWalletAmountChange={setWalletAmount}
+                shortfallMethod={shortfallMethod}
+                onShortfallMethodChange={setShortfallMethod}
+              />
+              <CheckNumberField method={chargeMethod} checkNumber={checkNumber} onChange={setCheckNumber} />
               {isLink && <SendLinkChannelPicker value={linkChannel} onChange={setLinkChannel} />}
             </div>
           )}
@@ -538,8 +509,18 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
               {collectInitialNow && (
                 <div className="flex flex-col gap-1.5">
                   <Label>Payment Method</Label>
-                  <PaymentMethodPicker methods={MEMBERSHIP_METHODS} value={method} onChange={setMethod} />
-                  <CheckNumberField method={method} checkNumber={checkNumber} onChange={setCheckNumber} />
+                  <PaymentMethodPicker methods={MEMBERSHIP_METHODS} value={method} onChange={(m) => { setMethod(m); setWalletAmount('') }} />
+                  <WalletShortfallField
+                    method={method}
+                    balance={walletBalance}
+                    amountDue={collectToday}
+                    walletAmount={walletAmount}
+                    onWalletAmountChange={setWalletAmount}
+                    shortfallMethod={shortfallMethod}
+                    onShortfallMethodChange={setShortfallMethod}
+                    methods={PLAN_SHORTFALL_METHODS}
+                  />
+                  <CheckNumberField method={chargeMethod} checkNumber={checkNumber} onChange={setCheckNumber} />
                   {isLink ? (
                     <SendLinkChannelPicker value={linkChannel} onChange={setLinkChannel} />
                   ) : (

@@ -22,7 +22,7 @@ const METHOD_ICONS = {
 // else in a caller's `methods` list sits behind "More" instead of crowding the
 // default view. A caller's own list still decides what's offered at all — this
 // only decides what's shown first, and in what order.
-const PRIMARY_ORDER = ['terminal', 'saved_card', 'cash', 'ach', 'link']
+const PRIMARY_ORDER = ['terminal', 'saved_card', 'cash', 'wallet', 'ach', 'link']
 
 export default function PaymentMethodPicker({ methods, value, onChange, className }) {
   const primary = PRIMARY_ORDER.map((v) => methods.find((m) => m.value === v)).filter(Boolean)

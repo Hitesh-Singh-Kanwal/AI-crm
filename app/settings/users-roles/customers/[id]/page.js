@@ -185,8 +185,8 @@ function FormField({ label, required, children }) {
 
 const refIdOf = (ref) => ref?._id ?? ref ?? null;
 
-// Where the refunded money goes. Anything originally taken on a card is returned to that
-// card by Clover regardless of this choice; it decides what happens to the rest.
+// Where the refunded money goes. Wallet keeps it with the studio as store credit, so
+// nothing goes back to the card; Cash or Card returns card-taken money to that card.
 const REFUND_DESTINATIONS = [
   { value: "wallet", label: "Wallet (store credit)" },
   { value: "cash", label: "Cash" },

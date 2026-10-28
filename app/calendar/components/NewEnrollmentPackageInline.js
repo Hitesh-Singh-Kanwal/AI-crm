@@ -10,6 +10,7 @@ import { toast } from "@/components/ui/toast";
 import SearchableSelect from "@/components/ui/searchable-select";
 
 import { PAYMENT_METHODS_WITH_SAVED_CARD, SHARE_LINK_METHOD, TIP_METHODS } from "@/lib/paymentMethods";
+import WalletShortfallField, { walletShortfall } from "@/components/payments/WalletShortfallField";
 import { SendLinkChannelPicker } from "@/components/payments/SendPaymentLinkMenu";
 import TerminalDeviceField, { terminalTipPayload } from "@/components/payments/TerminalDeviceField";
 import SavedCardField from "@/components/payments/SavedCardField";
@@ -74,8 +75,10 @@ const BLANK_FORM = {
     collectAmount: "",
     collectDate: todayISO(),
     sendLinkChannel: "email",
-    useWallet: false,
+    // Wallet is a payment method: walletAmount is what it pays ("" = all it can), and
+    // shortfallMethod collects whatever it does not cover.
     walletAmount: "",
+    shortfallMethod: "cash",
   },
   tip: {
     enabled: false,
@@ -407,40 +410,20 @@ export default function NewEnrollmentPackageInline({
 
   const isLink = form.billing.method === SHARE_LINK_METHOD.value;
 
-  // Wallet split is offered only for one-time billing (the path wired for it).
+  // Wallet sits beside the other methods. It pays what staff set (all it can by default);
+  // when it falls short, shortfallMethod collects the rest. Terminal is offered too —
+  // this endpoint dispatches to the paired Clover/Stripe reader the same way
+  // PaymentDueCard's balance payments do.
   const collectAmt = Number(form.billing.collectAmount || 0);
-  const walletEligible =
-    form.billingType === "one_time" &&
-    form.billing.collectNow &&
-    !isLink &&
-    form.billing.useWallet &&
-    walletBalance != null;
-  const walletEntered = walletEligible ? Number(form.billing.walletAmount) || 0 : 0;
-  const walletApplied = Math.min(walletEntered, collectAmt, walletBalance ?? 0);
+  const paysByWallet = form.billing.method === "wallet" && form.billing.collectNow && !isLink;
+  const walletSplit = walletShortfall(walletBalance, collectAmt, form.billing.walletAmount);
+  const walletApplied = paysByWallet ? walletSplit.walletApplied : 0;
   const walletRemaining = Math.max(0, collectAmt - walletApplied);
-  const walletOver = walletEligible && walletEntered > (walletBalance ?? 0);
-
-  // One-time uses the wallet-split control below, so wallet is excluded from the
-  // method dropdown there. Other billing types collect a single payment, so they
-  // can pay it straight from the wallet by choosing it as the method. Terminal is
-  // included for both — this endpoint dispatches to the paired Clover/Stripe
-  // reader the same way PaymentDueCard's balance payments do (see
-  // customerPackage.controller.js#addPackageToCustomer and
-  // paymentPlan.controller.js#processInstallmentPayment).
-  const collectMethodOptions = [
-    ...(form.billingType === "one_time"
-      ? PAYMENT_METHODS_WITH_SAVED_CARD.filter((m) => m.value !== "wallet")
-      : PAYMENT_METHODS_WITH_SAVED_CARD),
-    SHARE_LINK_METHOD,
-  ];
-
-  // Non-one-time collection paid directly from the wallet via the method dropdown.
-  const collectFromWallet =
-    form.billingType !== "one_time" &&
-    form.billing.collectNow &&
-    form.billing.method === "wallet" &&
-    walletBalance != null;
-  const collectWalletShort = collectFromWallet && collectAmt > walletBalance;
+  const walletOver = paysByWallet && walletSplit.over;
+  // The method that actually collects money; the wallet's share goes as walletAmount.
+  const chargeMethod =
+    form.billing.method === "wallet" ? (walletRemaining > 0 ? form.billing.shortfallMethod : "cash") : form.billing.method;
+  const collectMethodOptions = [...PAYMENT_METHODS_WITH_SAVED_CARD, SHARE_LINK_METHOD];
 
   const chargeableServices = form.services.filter((s) => s.isChargeable !== false);
 
@@ -520,21 +503,20 @@ export default function NewEnrollmentPackageInline({
   const collectAmountIsFixed =
     collectsFirstInstallment || form.billingType === "one_time" || form.billingType === "flexible";
 
-  // The wallet split settles part of a one-time balance already, so the card only ever
-  // charges what's left for the chosen method.
-  const cardChargeAmount = walletEligible ? walletRemaining : collectAmt;
+  // The wallet settles its share already, so the card only ever charges what's left.
+  const cardChargeAmount = walletRemaining;
   const payWithClover =
     step === 2 &&
     form.billingType !== "pay_per_session" &&
     form.billing.collectNow &&
-    form.billing.method === "card" &&
+    chargeMethod === "card" &&
     cardChargeAmount > 0 &&
     cardProcessorReady;
   const cloverNotConnected =
     step === 2 &&
     form.billingType !== "pay_per_session" &&
     form.billing.collectNow &&
-    form.billing.method === "card" &&
+    chargeMethod === "card" &&
     cardChargeAmount > 0 &&
     !cardProcessorReady;
   const terminalNotSelected =
@@ -628,14 +610,16 @@ export default function NewEnrollmentPackageInline({
       billing: {
         ...form.billing,
         // "link" is not a method the backend records; the creator sends the link instead.
-        method: isLink ? undefined : form.billing.method,
+        method: isLink ? undefined : chargeMethod,
+        useWallet: walletApplied > 0,
+        walletAmount: walletApplied > 0 ? walletApplied : "",
         sendLinkChannel: sendLink ? form.billing.sendLinkChannel : undefined,
         collectNow: collect,
         collectAmount: collect ? Number(form.billing.collectAmount) : 0,
         collectDate: effectiveCollectDate || undefined,
         ...(collect && form.billing.method === "terminal" ? { deviceID, ...terminalTipPayload() } : {}),
         ...(collect && form.billing.method === "saved_card" ? { savedCardID } : {}),
-        ...(collect && form.billing.method === "cheque" ? { checkNumber } : {}),
+        ...(collect && chargeMethod === "cheque" ? { checkNumber } : {}),
       },
     };
     if (form.tip.enabled && form.tip.amount && !readerCollectsTip) {
@@ -1372,17 +1356,20 @@ export default function NewEnrollmentPackageInline({
                               cardToken={savedCardID}
                               onCardChange={setSavedCardID}
                             />
-                            <CheckNumberField
+                            <WalletShortfallField
                               method={form.billing.method}
+                              balance={walletBalance}
+                              amountDue={collectAmt}
+                              walletAmount={form.billing.walletAmount}
+                              onWalletAmountChange={(v) => setForm((p) => ({ ...p, billing: { ...p.billing, walletAmount: v } }))}
+                              shortfallMethod={form.billing.shortfallMethod}
+                              onShortfallMethodChange={(v) => setForm((p) => ({ ...p, billing: { ...p.billing, shortfallMethod: v } }))}
+                            />
+                            <CheckNumberField
+                              method={chargeMethod}
                               checkNumber={checkNumber}
                               onChange={setCheckNumber}
                             />
-                            {collectFromWallet && (
-                              <p className={`text-[11px] ${collectWalletShort ? "text-destructive" : "text-muted-foreground"}`}>
-                                Wallet balance: ${walletBalance.toFixed(2)}
-                                {collectWalletShort && ` — not enough to cover $${collectAmt.toFixed(2)}`}
-                              </p>
-                            )}
                           </>
                         )}
                       </div>
@@ -1495,8 +1482,19 @@ export default function NewEnrollmentPackageInline({
                     />
                   )}
                   {form.billing.collectNow && !isLink && (
-                    <CheckNumberField
+                    <WalletShortfallField
                       method={form.billing.method}
+                      balance={walletBalance}
+                      amountDue={collectAmt}
+                      walletAmount={form.billing.walletAmount}
+                      onWalletAmountChange={(v) => setForm((p) => ({ ...p, billing: { ...p.billing, walletAmount: v } }))}
+                      shortfallMethod={form.billing.shortfallMethod}
+                      onShortfallMethodChange={(v) => setForm((p) => ({ ...p, billing: { ...p.billing, shortfallMethod: v } }))}
+                    />
+                  )}
+                  {form.billing.collectNow && !isLink && (
+                    <CheckNumberField
+                      method={chargeMethod}
                       checkNumber={checkNumber}
                       onChange={setCheckNumber}
                     />
@@ -1518,75 +1516,6 @@ export default function NewEnrollmentPackageInline({
                       />
                     </div>
                   )}
-                  {collectFromWallet && !isLink && (
-                    <p className={`text-[11px] ${collectWalletShort ? "text-destructive" : "text-muted-foreground"}`}>
-                      Wallet balance: ${walletBalance.toFixed(2)}
-                      {collectWalletShort && ` — not enough to cover $${collectAmt.toFixed(2)}`}
-                    </p>
-                  )}
-                  {form.billingType === "one_time" &&
-                    form.billing.collectNow &&
-                    !isLink &&
-                    walletBalance != null &&
-                    walletBalance > 0 && (
-                      <div className="rounded-lg border border-border bg-muted/20 p-2.5 space-y-2">
-                        <label className="flex items-center justify-between gap-2 cursor-pointer">
-                          <span className="text-[11px] font-medium text-foreground">
-                            Use wallet balance
-                            <span className="text-muted-foreground font-normal"> (${walletBalance.toFixed(2)} available)</span>
-                          </span>
-                          <input
-                            type="checkbox"
-                            checked={form.billing.useWallet}
-                            onChange={(e) =>
-                              setForm((p) => ({
-                                ...p,
-                                billing: {
-                                  ...p.billing,
-                                  useWallet: e.target.checked,
-                                  walletAmount: e.target.checked
-                                    ? String(Math.min(collectAmt, walletBalance).toFixed(2))
-                                    : "",
-                                },
-                              }))
-                            }
-                            className="h-3.5 w-3.5 accent-primary"
-                          />
-                        </label>
-                        {form.billing.useWallet && (
-                          <>
-                            <div className="relative">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">$</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                max={Math.min(collectAmt, walletBalance)}
-                                value={form.billing.walletAmount}
-                                onChange={(e) =>
-                                  setForm((p) => ({
-                                    ...p,
-                                    billing: { ...p.billing, walletAmount: e.target.value },
-                                  }))
-                                }
-                                className="h-8 w-full rounded-md border border-border bg-background pl-5 pr-2.5 text-[12px] outline-none focus:border-primary"
-                              />
-                            </div>
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="text-muted-foreground">From wallet</span>
-                              <span className="font-medium text-foreground">${walletApplied.toFixed(2)}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="text-muted-foreground">Remaining ({form.billing.method})</span>
-                              <span className="font-semibold text-foreground">${walletRemaining.toFixed(2)}</span>
-                            </div>
-                            {walletOver && (
-                              <p className="text-[10px] text-destructive">Amount exceeds wallet balance.</p>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
                 </>
               )}
             </div>
@@ -1697,7 +1626,7 @@ export default function NewEnrollmentPackageInline({
             type="button"
             className="h-8 px-3 rounded-lg bg-brand text-brand-foreground text-[11px] font-semibold disabled:opacity-60"
             onClick={() => handleSubmit()}
-            disabled={loading || (serviceOnly ? form.services.length === 0 : !form.packageID) || walletOver || collectWalletShort || cloverNotConnected || terminalNotSelected || savedCardNotSelected}
+            disabled={loading || (serviceOnly ? form.services.length === 0 : !form.packageID) || walletOver || cloverNotConnected || terminalNotSelected || savedCardNotSelected}
           >
             {loading ? "Creating…" : payWithClover ? "Pay by card" : serviceOnly ? "Create Enrollment & Services" : "Create Enrollment & Package"}
           </button>
