@@ -447,6 +447,7 @@ function HumanQueuePageContent() {
   const [selectedCallback, setSelectedCallback] = useState(null)
   const [callbackPage, setCallbackPage] = useState(1)
   const [callbackTotal, setCallbackTotal] = useState(0)
+  const callbackFetchGenRef = useRef(0)
 
   // -- Agent availability toggling --
   const [togglingAgentId, setTogglingAgentId] = useState(null)
@@ -560,6 +561,7 @@ function HumanQueuePageContent() {
     filter = callbackFilter,
     page = callbackPage,
   } = {}) => {
+    const gen = ++callbackFetchGenRef.current
     try {
       if (!silent) setCallbacksLoading(true)
 
@@ -576,6 +578,7 @@ function HumanQueuePageContent() {
         api.get('/api/callback-requests/stats'),
         api.get('/api/human-queue/agents'),
       ])
+      if (gen !== callbackFetchGenRef.current) return
 
       if (listResult.success) {
         let total = Number(listResult.data?.total) || 0
@@ -587,6 +590,7 @@ function HumanQueuePageContent() {
           const lastPage = Math.max(1, Math.ceil(total / CALLBACK_PAGE_SIZE) || 1)
           setCallbackPage(lastPage)
           listResult = await api.get(buildUrl(lastPage))
+          if (gen !== callbackFetchGenRef.current) return
           if (listResult.success) {
             total = Number(listResult.data?.total) || 0
             items = Array.isArray(listResult.data?.items) ? listResult.data.items : []
@@ -609,9 +613,36 @@ function HumanQueuePageContent() {
     } catch (error) {
       console.error(error)
     } finally {
-      if (!silent) setCallbacksLoading(false)
+      if (gen === callbackFetchGenRef.current) setCallbacksLoading(false)
     }
   }, [callbackFilter, callbackPage, applyAgentsPermissionPayload])
+
+  const applyCallbackUpdate = useCallback((updated) => {
+    if (!updated) return
+    const id = String(updated.id || updated._id || '')
+    if (!id) return
+    const status = updated.status === 'called' ? 'resolved' : updated.status || ''
+    setCallbacks((prev) => {
+      if (status) {
+        const staysVisible =
+          !callbackFilter ||
+          status === callbackFilter ||
+          (callbackFilter === 'resolved' && status === 'resolved')
+        if (!staysVisible) return prev.filter((c) => String(c.id || c._id) !== id)
+      }
+      return prev.map((c) => (
+        String(c.id || c._id) === id
+          ? { ...c, ...updated, ...(status ? { status } : {}) }
+          : c
+      ))
+    })
+  }, [callbackFilter])
+
+  const commitCallbackChange = useCallback((updated) => {
+    callbackFetchGenRef.current += 1
+    applyCallbackUpdate(updated)
+    fetchCallbacks({ silent: true })
+  }, [applyCallbackUpdate, fetchCallbacks])
 
   useEffect(() => {
     let cancelled = false
@@ -699,7 +730,7 @@ function HumanQueuePageContent() {
       const r = await api.post(`/api/callback-requests/${cbId}/mark-called`, {})
       if (!r.success) throw new Error(r.error || 'Could not mark callback as called.')
       toast.success({ title: 'Done', message: 'Marked as resolved.' })
-      fetchCallbacks({ silent: true })
+      commitCallbackChange({ id: cbId, status: 'resolved' })
     } catch (err) {
       toast.error({ title: 'Failed', message: err.message })
     } finally {
@@ -717,7 +748,7 @@ function HumanQueuePageContent() {
       const r = await api.post(`/api/callback-requests/${cbId}/cancel`, {})
       if (!r.success) throw new Error(r.error || 'Could not cancel callback.')
       toast.success({ title: 'Cancelled', message: 'Removed from the pending queue.' })
-      fetchCallbacks({ silent: true })
+      commitCallbackChange({ id: cbId, status: 'cancelled' })
     } catch (err) {
       toast.error({ title: 'Error', message: err.message })
     } finally {
@@ -812,7 +843,6 @@ function HumanQueuePageContent() {
     name,
     locationIDs,
     callbackId,
-    status,
     reason,
     aiSummary,
   }) => {
@@ -921,10 +951,10 @@ function HumanQueuePageContent() {
 
       if (callbackId) {
         api.patch(`/api/callback-requests/${callbackId}/status`, {
-          status: status || 'pending',
           touchLastContact: true,
         }).catch(() => {})
       }
+      callbackFetchGenRef.current += 1
       fetchCallbacks({ silent: true })
       toast.success({
         title: 'Calling…',
@@ -1481,7 +1511,7 @@ function HumanQueuePageContent() {
                 item={selectedCallback}
                 canManage={canManageCalls}
                 preferredChannel={selectedCallback?.channel || 'call'}
-                onUpdated={() => fetchCallbacks({ silent: true })}
+                onUpdated={commitCallbackChange}
                 onPlaceCall={placeCallbackCall}
               />
             </section>
