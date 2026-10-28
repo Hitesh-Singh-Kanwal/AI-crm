@@ -30,9 +30,13 @@ import CheckNumberField from '@/components/payments/CheckNumberField'
 import TerminalDeviceField, { terminalTipPayload } from '@/components/payments/TerminalDeviceField'
 import PaymentMethodPicker from '@/components/payments/PaymentMethodPicker'
 import { SendLinkChannelPicker, sendPaymentLink } from '@/components/payments/SendPaymentLinkMenu'
-import { PAYMENT_METHODS_WITH_SAVED_CARD, SHARE_LINK_METHOD } from '@/lib/paymentMethods'
+import { PAYMENT_METHODS_WITH_SAVED_CARD, SHARE_LINK_METHOD, SHORTFALL_METHODS } from '@/lib/paymentMethods'
+import WalletShortfallField, { walletShortfall } from '@/components/payments/WalletShortfallField'
 
-const PURCHASE_PAY_METHODS = [...PAYMENT_METHODS_WITH_SAVED_CARD.filter((m) => m.value !== 'wallet'), SHARE_LINK_METHOD]
+// Wallet sits beside the other methods; a balance too small for today's amount asks how to collect the rest.
+const PURCHASE_PAY_METHODS = [...PAYMENT_METHODS_WITH_SAVED_CARD, SHARE_LINK_METHOD]
+// A plan's card/ACH charge takes the whole installment, so only these can share one with the wallet.
+const PLAN_SHORTFALL_METHODS = SHORTFALL_METHODS.filter((m) => ['cash', 'cheque'].includes(m.value))
 import { useCardProcessor } from '@/app/settings/payments/useCardProcessor'
 
 const money = (n) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -635,7 +639,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   const [deviceID, setDeviceID] = useState('')
   const [checkNumber, setCheckNumber] = useState('')
   const [collectDate, setCollectDate] = useState(todayISO())
-  const [useWallet, setUseWallet] = useState(false)
+  const [shortfallMethod, setShortfallMethod] = useState('cash')
   const [walletAmount, setWalletAmount] = useState('')
   const [walletBalance, setWalletBalance] = useState(null)
   // tip
@@ -658,7 +662,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
     setCustomerQuery(''); setEventTypeID(''); setTemplateID('')
     setName(''); setItems([]); setSaveAsTemplate(false); setPurchaseDate(todayISO())
     setBillingType('one_time'); setCollectNow(true); setPayMethod('cash'); setLinkChannel('email'); setSavedCardID(''); setDeviceID(''); setCheckNumber(''); setCollectDate(todayISO())
-    setUseWallet(false); setWalletAmount(''); setWalletBalance(null)
+    setShortfallMethod('cash'); setWalletAmount(''); setWalletBalance(null)
     setTipEnabled(false); setTipTeacherID(''); setTipAmount('')
     setPlanCount('3'); setPlanFreq('monthly'); setPlanStart(todayISO())
     setFlexInitialAmount('0'); setFlexInitialDate(todayISO()); setFlexFuturePayments([{ _key: 'fp-0', dueDate: '', amount: '' }])
@@ -714,16 +718,23 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
 
   const isPlan = billingType === 'payment_plan'
   const isFlex = billingType === 'flexible'
-  const walletEligible = billingType === 'one_time' && collectNow && !isLink && useWallet && walletBalance != null
-  const walletEntered = walletEligible ? Number(walletAmount) || 0 : 0
-  const walletApplied = Math.min(walletEntered, payable, walletBalance ?? 0)
-  const walletOver = walletEligible && walletEntered > (walletBalance ?? 0)
-  const methodCharge = Math.max(0, payable - walletApplied)
 
   const planCountN = Math.max(1, Number(planCount) || 1)
   const perInstallment = payable / planCountN
 
   const flexInitialAmountN = Number(flexInitialAmount || 0)
+
+  // What is collected today: the full balance, the first installment, or the flexible
+  // initial payment. The wallet can pay any of them, in full or in part.
+  const firstCollect = billingType === 'one_time' ? payable : isPlan ? Math.round(perInstallment * 100) / 100 : flexInitialAmountN
+  const paysByWallet = payMethod === 'wallet'
+  const walletSplit = walletShortfall(walletBalance, firstCollect, walletAmount)
+  const walletApplied = paysByWallet && collectNow && !isLink ? walletSplit.walletApplied : 0
+  const walletOver = paysByWallet && walletSplit.over
+  const methodCharge = Math.max(0, firstCollect - walletApplied)
+  // What actually goes to the backend: Wallet itself is sent as walletAmount, and the
+  // method is whatever collects the rest (cash when the wallet covers it all).
+  const chargeMethod = paysByWallet ? (methodCharge > 0 ? shortfallMethod : 'cash') : payMethod
   const flexFutureTotal = flexFuturePayments.reduce((s, r) => s + (Number(r.amount) || 0), 0)
   const flexAmountLeftToSchedule = payable - flexInitialAmountN - flexFutureTotal
   const flexBalanced = Math.abs(flexAmountLeftToSchedule) < 0.01
@@ -797,21 +808,21 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
           await sendPaymentLink({ customerID: customer._id, target: { kind: 'purchase', purchaseID: purchase._id }, channel: linkChannel })
         } else if (collectNow && !walletOver) {
           const tip = tipEnabled && tipTeacherID && Number(tipAmount) > 0
-            ? { teacherID: tipTeacherID, amount: Number(tipAmount), method: payMethod === 'card' ? 'card' : payMethod }
+            ? { teacherID: tipTeacherID, amount: Number(tipAmount), method: chargeMethod === 'card' ? 'card' : chargeMethod }
             : undefined
           const payRes = await api.post('/api/payment', {
             customerID: customer._id, purchaseID: purchase._id, type: 'event_purchase',
-            amount: payable, method: payMethod, paymentDate: dateInputToISO(collectDate),
+            amount: payable, method: chargeMethod, paymentDate: dateInputToISO(collectDate),
             walletAmount: walletApplied > 0 ? walletApplied : undefined, notes: name.trim(),
-            ...(payMethod === 'saved_card' ? { cardToken: savedCardID } : {}),
-            ...(payMethod === 'cheque' ? { checkNumber } : {}),
-            ...(payMethod === 'terminal' ? { deviceID, ...terminalTipPayload() } : {}),
+            ...(chargeMethod === 'saved_card' ? { cardToken: savedCardID } : {}),
+            ...(chargeMethod === 'cheque' ? { checkNumber } : {}),
+            ...(chargeMethod === 'terminal' ? { deviceID, ...terminalTipPayload() } : {}),
             tip,
           })
           if (!payRes.success) toast.error('Purchase saved, but payment failed', { description: payRes.error })
-          else if (payRes.data?.checkoutUrl) { window.open(payRes.data.checkoutUrl, '_blank', 'noopener'); toast.success(payMethod === 'ach' ? 'Bank transfer checkout opened in a new tab' : 'Card checkout opened in a new tab') }
-          else if (payRes.data?.pending && payMethod === 'saved_card') toast.success('Events & products created — card charged, confirming with Stripe')
-          else if (payRes.data?.pending && payMethod === 'terminal') toast.success('Charge sent to the reader — waiting for the card.')
+          else if (payRes.data?.checkoutUrl) { window.open(payRes.data.checkoutUrl, '_blank', 'noopener'); toast.success(chargeMethod === 'ach' ? 'Bank transfer checkout opened in a new tab' : 'Card checkout opened in a new tab') }
+          else if (payRes.data?.pending && chargeMethod === 'saved_card') toast.success('Events & products created — card charged, confirming with Stripe')
+          else if (payRes.data?.pending && chargeMethod === 'terminal') toast.success('Charge sent to the reader — waiting for the card.')
           else toast.success('Events & products created and paid')
         } else {
           toast.success('Events & products created')
@@ -820,7 +831,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
         // payment_plan or flexible → build a payment plan
         let billing
         if (isPlan) {
-          billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}), ...(payMethod === 'terminal' ? { deviceID, ...terminalTipPayload() } : {}) }
+          billing = { numberOfInstallments: planCountN, frequency: planFreq, startDate: planStart, method: chargeMethod, collectDate, ...(chargeMethod === 'saved_card' ? { savedCardID } : {}), ...(chargeMethod === 'cheque' ? { checkNumber } : {}), ...(chargeMethod === 'terminal' ? { deviceID, ...terminalTipPayload() } : {}) }
         } else {
           const scheduleRows = [
             ...(flexInitialAmountN > 0 ? [{ dueDate: flexInitialDate, amount: flexInitialAmountN }] : []),
@@ -828,8 +839,9 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
               .filter((r) => r.dueDate && Number(r.amount) > 0)
               .map((r) => ({ dueDate: r.dueDate, amount: Number(r.amount) })),
           ]
-          billing = { customInstallments: scheduleRows, method: payMethod, collectDate, ...(payMethod === 'saved_card' ? { savedCardID } : {}), ...(payMethod === 'cheque' ? { checkNumber } : {}), ...(payMethod === 'terminal' ? { deviceID, ...terminalTipPayload() } : {}) }
+          billing = { customInstallments: scheduleRows, method: chargeMethod, collectDate, ...(chargeMethod === 'saved_card' ? { savedCardID } : {}), ...(chargeMethod === 'cheque' ? { checkNumber } : {}), ...(chargeMethod === 'terminal' ? { deviceID, ...terminalTipPayload() } : {}) }
         }
+        if (walletApplied > 0) billing.walletAmount = walletApplied
         const effectiveCollectNow = isPlan ? collectNow : flexInitialAmountN > 0 && collectNow
         // "link" is not a method the backend records: the plan is created uncollected and
         // its first installment (flexible: the initial payment) goes out as a link.
@@ -847,7 +859,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
           })
         }
         else if (planRes.data?.checkoutUrl) { window.open(planRes.data.checkoutUrl, '_blank', 'noopener'); toast.success('Plan created — first installment checkout opened') }
-        else if (planRes.data?.pending && payMethod === 'terminal') toast.success('Plan created — charge sent to the reader, waiting for the card.')
+        else if (planRes.data?.pending && chargeMethod === 'terminal') toast.success('Plan created — charge sent to the reader, waiting for the card.')
         else toast.success(`${isPlan ? 'Payment plan' : 'Flexible schedule'} created`)
       }
 
@@ -863,12 +875,14 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
   // ACH is Stripe-only hosted checkout — Clover has no ACH product, same guard as
   // every other payment form (PaymentDueCard, NewEnrollmentPackageInline, …).
   const { provider: cardProvider } = useCardProcessor(chargeLocation)
-  const achNotAvailable = payMethod === 'ach' && cardProvider !== 'stripe'
-  const collectsBySavedCard = payMethod === 'saved_card' && collectNow
+  const achNotAvailable = chargeMethod === 'ach' && cardProvider !== 'stripe'
+  const collectsBySavedCard = chargeMethod === 'saved_card' && collectNow
   const savedCardMissing = collectsBySavedCard && !savedCardID
-  const terminalDeviceMissing = payMethod === 'terminal' && collectNow && !deviceID
+  const terminalDeviceMissing = chargeMethod === 'terminal' && collectNow && !deviceID
 
   const canProceed = customer && name.trim() && items.some((li) => (li.name || '').trim())
+
+  const methodLabel = chargeMethod === 'saved_card' ? 'saved card' : chargeMethod
 
   return (
     <Sheet open={open} onClose={onClose} width="640px">
@@ -1011,8 +1025,28 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                   <PaymentMethodPicker
                     methods={PURCHASE_PAY_METHODS}
                     value={payMethod}
-                    onChange={setPayMethod}
+                    onChange={(m) => {
+                      setPayMethod(m)
+                      setWalletAmount('')
+                      // A flexible schedule with no initial payment yet: the wallet becomes it.
+                      if (m === 'wallet' && isFlex && flexInitialAmountN <= 0 && walletBalance > 0) {
+                        updateFlexInitialAmount(Math.min(payable, walletBalance).toFixed(2))
+                        setCollectNow(true)
+                      }
+                    }}
                   />
+                  {collectNow && firstCollect > 0 && (
+                    <WalletShortfallField
+                      method={payMethod}
+                      balance={walletBalance}
+                      amountDue={firstCollect}
+                      walletAmount={walletAmount}
+                      onWalletAmountChange={setWalletAmount}
+                      shortfallMethod={shortfallMethod}
+                      onShortfallMethodChange={setShortfallMethod}
+                      methods={billingType === 'one_time' ? SHORTFALL_METHODS : PLAN_SHORTFALL_METHODS}
+                    />
+                  )}
                   {isLink && (
                     <>
                       <p className="text-[12px] text-muted-foreground">
@@ -1039,7 +1073,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                     cardToken={savedCardID}
                     onCardChange={setSavedCardID}
                   />
-                  <CheckNumberField method={payMethod} checkNumber={checkNumber} onChange={setCheckNumber} />
+                  <CheckNumberField method={chargeMethod} checkNumber={checkNumber} onChange={setCheckNumber} />
                 </div>
                 {!isLink && (
                   <div className="flex flex-col gap-1.5">
@@ -1060,31 +1094,6 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                   ) : isLink ? null : (
                     <>
                       <div className="rounded-xl border border-border p-4 flex flex-col gap-3">
-                        <label className="flex items-center justify-between gap-2 text-sm font-medium">
-                          <span className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={useWallet}
-                              onChange={(e) => {
-                                setUseWallet(e.target.checked)
-                                // Fill in what the wallet will cover, as the membership and program
-                                // forms do — a placeholder looked filled in but applied $0.
-                                setWalletAmount(e.target.checked ? String(Math.min(payable, walletBalance).toFixed(2)) : '')
-                              }}
-                              disabled={walletBalance == null}
-                            />
-                            Use account wallet balance
-                          </span>
-                          <span className="text-xs font-normal text-muted-foreground">{walletBalance == null ? 'no wallet' : `available ${money(walletBalance)}`}</span>
-                        </label>
-                        {useWallet && walletBalance != null && (
-                          <>
-                            <Input type="number" min="0" step="0.01" max={Math.min(payable, walletBalance)} value={walletAmount} onChange={(e) => setWalletAmount(e.target.value)} className="w-[180px]" />
-                            {walletOver && <p className="text-xs text-destructive">Exceeds the wallet balance.</p>}
-                          </>
-                        )}
-                      </div>
-                      <div className="rounded-xl border border-border p-4 flex flex-col gap-3">
                         <label className="flex items-center gap-2 text-sm font-medium">
                           <input type="checkbox" checked={tipEnabled} onChange={(e) => setTipEnabled(e.target.checked)} />
                           Add a tip for a teacher
@@ -1101,8 +1110,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                       </div>
 
                       <div className="rounded-xl border border-border bg-muted/30 text-sm divide-y divide-border">
-                        {walletApplied > 0 && <div className="flex justify-between px-4 py-2.5"><span className="text-muted-foreground">From wallet</span><span className="tabular-nums">{money(walletApplied)}</span></div>}
-                        <div className="flex justify-between px-4 py-2.5"><span className="text-muted-foreground">{payMethod === 'card' ? 'On card' : `By ${payMethod}`}</span><span className="tabular-nums">{money(methodCharge)}</span></div>
+                        <div className="flex justify-between px-4 py-2.5"><span className="text-muted-foreground">{walletApplied > 0 ? `Rest by ${methodLabel}` : chargeMethod === 'card' ? 'On card' : `By ${methodLabel}`}</span><span className="tabular-nums">{money(methodCharge)}</span></div>
                         {tipEnabled && Number(tipAmount) > 0 && (
                           <div className="flex justify-between px-4 py-2.5"><span className="text-muted-foreground">Teacher tip (recorded separately)</span><span className="tabular-nums">{money(Number(tipAmount))}</span></div>
                         )}
@@ -1240,9 +1248,9 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                     : isFlex
                       ? 'Create schedule'
                       : collectNow
-                        ? isLink ? 'Create & send link' : (payMethod === 'card'
+                        ? isLink ? 'Create & send link' : (chargeMethod === 'card'
                             ? 'Create & open checkout'
-                            : payMethod === 'ach'
+                            : chargeMethod === 'ach'
                               ? 'Create & pay by bank transfer'
                               : 'Create & record payment')
                         : 'Create purchase'}

@@ -2718,6 +2718,11 @@ export default function AppointmentComposerPanel({
     return null;
   };
 
+  // The part of today's payment the wallet covers (the form's Wallet method); billing.method
+  // collects the rest. Without it a Wallet sale was recorded as cash and the wallet never moved.
+  const walletShareOf = (billing) =>
+    billing?.useWallet && Number(billing?.walletAmount) > 0 ? { walletAmount: Number(billing.walletAmount) } : {};
+
   // One-time packages are settled in full at purchase via billing.method, so
   // they need no separate record here. Payment plans collect the first
   // installment; flexible packages collect an ad-hoc initial amount.
@@ -2728,6 +2733,7 @@ export default function AppointmentComposerPanel({
     // Which reader to charge — without it the backend refuses a terminal payment.
     const terminal =
       method === "terminal" ? { deviceID: billing.deviceID } : {};
+    const walletShare = walletShareOf(billing);
     // The enrollment already exists by now, so say the payment failed rather than
     // letting staff assume the reader was charged.
     const reportFailure = (payRes) => {
@@ -2754,6 +2760,7 @@ export default function AppointmentComposerPanel({
       const payRes = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
         installmentIndex: firstPending,
         method,
+        ...walletShare,
         paymentDate: dateInputToISO(billing.collectDate),
         ...terminal,
         ...(method === "saved_card" ? { cardToken: billing.savedCardID } : {}),
@@ -2773,6 +2780,7 @@ export default function AppointmentComposerPanel({
         type: "package_purchase",
         amount: Number(billing.collectAmount),
         method,
+        ...walletShare,
         paymentDate: dateInputToISO(billing.collectDate),
         ...terminal,
         ...(method === "saved_card" ? { cardToken: billing.savedCardID } : {}),
@@ -2827,6 +2835,7 @@ export default function AppointmentComposerPanel({
               collectDate: payload.billing?.collectDate || undefined,
               // Collect-now off (or a payment link going out instead) leaves it unpaid.
               ...(payload.billing?.collectNow === false ? { collectNow: false } : {}),
+              ...walletShareOf(payload.billing),
               ...(payload.billing?.method === "terminal"
                 ? { deviceID: payload.billing?.deviceID }
                 : {}),

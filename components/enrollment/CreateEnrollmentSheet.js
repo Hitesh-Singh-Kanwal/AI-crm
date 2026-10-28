@@ -258,6 +258,11 @@ export default function CreateEnrollmentSheet({
     const collectAmount = Number(payload.billing?.collectAmount || 0)
     const collectNow = Boolean(payload.billing?.collectNow) && collectAmount > 0
     const method = payload.billing?.method || 'cash'
+    // The part of today's payment the wallet covers; `method` collects the rest.
+    const walletShare =
+      payload.billing?.useWallet && Number(payload.billing?.walletAmount) > 0
+        ? { walletAmount: Number(payload.billing.walletAmount) }
+        : {}
 
     if (collectNow && payload.billingType === 'payment_plan') {
       const planRes = await api.get(`/api/payment-plan/customer/${resolvedCustomerID}`)
@@ -272,6 +277,7 @@ export default function CreateEnrollmentSheet({
         const payRes = await api.post(`/api/payment-plan/${plan._id}/pay-installment`, {
           installmentIndex: firstPending,
           method,
+          ...walletShare,
           paymentDate: dateInputToISO(payload.billing?.collectDate),
           ...(method === 'terminal'
             ? {
@@ -294,6 +300,7 @@ export default function CreateEnrollmentSheet({
         type: 'package_purchase',
         amount: collectAmount,
         method,
+        ...walletShare,
         paymentDate: dateInputToISO(payload.billing?.collectDate),
         ...(method === 'terminal'
           ? {
