@@ -639,7 +639,7 @@ export default function PackageEditPage() {
                             <Input
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="any"
                               placeholder="0.00"
                               value={isChargeable ? (svc.pricePerSession ?? "") : 0}
                               disabled={!isChargeable}
@@ -669,7 +669,7 @@ export default function PackageEditPage() {
                           <Input
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="any"
                             placeholder="0"
                             value={svc.discountAmount ?? ""}
                             disabled={!isChargeable || svc.discountType === 'none'}

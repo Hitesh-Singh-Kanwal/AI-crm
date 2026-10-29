@@ -5,7 +5,7 @@ Covers **both repos** — `AI-crm` (frontend) and `DanceStudio-CRM-Backend` (bac
 
 | | |
 |---|---|
-| Last updated | 2026-10-22 |
+| Last updated | 2026-10-29 |
 | Frontend branch | `feat/group-class-source-fe` |
 | Backend branch | `feat/group-class-source-be` |
 | Status | Phases 1–6 and 4b done · Phase 7 (backfill) is last, before deploy |
@@ -240,3 +240,4 @@ Open http://localhost:3100 → Calendar › Group Classes.
 - **2026-10-22** — Found by hand-testing in Postman (backend `c6efa81`): a lead who texted "done!" without paying was told "you're all set". The agent had no payment signal; the prompt now says each turn whether the lead's group class link is unpaid (never confirm) or paid (they are enrolled). Verified unpaid → "I don't see the payment", paid → "you're enrolled".
 - **2026-10-22** — Phase 5: public class schedule endpoint, `embed.js` and a Website embed dialog for staff.
 - **2026-10-21** — Phase 4b (backend `af7e58e`): the agent sells a group class drop-in by payment link and seats the lead on the roster once they pay. Live LLM conversation → link → payment → roster: 14/14; voice via simulated webhook: 5/5; no regressions across 268 payment/agent tests.
+- **2026-10-29** — Editing gaps closed: a schedule's **start date** is now editable (applied "from this date forward"; empty sessions before the new start are removed, booked ones block with a 409). Editing a class's **colour** or **billing service** now updates its upcoming scheduled sessions on the calendar (previously only a rename did). Schedule **location** is still fixed after creation — end the schedule and create a new one.

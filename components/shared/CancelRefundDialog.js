@@ -8,6 +8,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import api from "@/lib/api";
+
+const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 
 const OPTIONS = [
   {
@@ -32,19 +35,40 @@ export default function CancelRefundDialog({
   onClose,
   title,
   itemName,
-  maxRefundable = 0,
+  maxRefundable: maxRefundableProp = 0,
+  // Programs: the server works out the fair refund (lessons already used are kept).
+  quoteUrl = null,
   submitting,
   onConfirm,
 }) {
   const [choice, setChoice] = useState("refund");
   const [amount, setAmount] = useState("");
+  const [quote, setQuote] = useState(null);
+  const [quoteError, setQuoteError] = useState(null);
+  const quoteLoading = Boolean(quoteUrl) && !quote && !quoteError;
+  const maxRefundable = quote ? quote.refundable : maxRefundableProp;
 
   useEffect(() => {
-    if (open) {
-      setChoice(maxRefundable > 0 ? "refund" : "none");
-      setAmount(maxRefundable > 0 ? String(maxRefundable) : "");
-    }
-  }, [open, maxRefundable]);
+    setQuote(null);
+    setQuoteError(null);
+    if (!open || !quoteUrl) return;
+    let live = true;
+    api.get(quoteUrl).then((res) => {
+      if (!live) return;
+      if (res.success) setQuote(res.data);
+      else setQuoteError(res.error || "Could not work out the refund");
+    });
+    return () => {
+      live = false;
+    };
+  }, [open, quoteUrl]);
+
+  useEffect(() => {
+    if (!open || quoteLoading || quoteError) return;
+    const suggested = quote ? quote.suggestedRefund : maxRefundable;
+    setChoice(suggested > 0 ? "refund" : "none");
+    setAmount(suggested > 0 ? String(suggested) : "");
+  }, [open, quote, quoteLoading, quoteError, maxRefundable]);
 
   const needsAmount = choice !== "none";
   const num = parseFloat(amount);
@@ -65,6 +89,34 @@ export default function CancelRefundDialog({
         <p className="text-[13px] text-muted-foreground mt-1">
           Cancel <span className="font-semibold text-foreground">{itemName}</span>?
         </p>
+
+        {quoteLoading && (
+          <p className="mt-2 text-[12px] text-muted-foreground">Working out the refund…</p>
+        )}
+        {quoteError && (
+          <p className="mt-2 text-[12px] text-destructive">{quoteError}. Close and try again.</p>
+        )}
+        {quote && (
+          <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3 text-[12px] space-y-1">
+            <div className="flex justify-between"><span className="text-muted-foreground">Paid</span><span>{money(quote.collected)} of {money(quote.contractValue)}</span></div>
+            {quote.services.map((s) => (
+              <div key={s.serviceCode} className="flex justify-between">
+                <span className="text-muted-foreground">{s.serviceName}: {s.sessionsUsed} of {s.sessionsTotal} used</span>
+                <span>{money(s.usedValue)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between font-medium text-foreground border-t border-border pt-1">
+              <span>Fair refund</span><span>{money(quote.suggestedRefund)}</span>
+            </div>
+            {quote.owedForUsed > 0 && (
+              <p className="text-amber-600">Student has used {money(quote.owedForUsed)} more than they paid; this stays owed.</p>
+            )}
+            {quote.collected > quote.refundable && (
+              <p className="text-muted-foreground">Only {money(quote.refundable)} was paid in Cadance and can be refunded here.</p>
+            )}
+            <p className="text-muted-foreground">Upcoming booked lessons go back to unallocated and are not counted as used.</p>
+          </div>
+        )}
 
         <div className="mt-3 space-y-2">
           {OPTIONS.map((opt) => (
@@ -108,7 +160,7 @@ export default function CancelRefundDialog({
               <input
                 type="number"
                 min="0.01"
-                step="0.01"
+                step="any"
                 max={maxRefundable}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -116,7 +168,9 @@ export default function CancelRefundDialog({
               />
             </div>
             <p className="text-[11px] text-muted-foreground mt-1">
-              Up to ${Number(maxRefundable).toFixed(2)} collected.
+              {quote && num > quote.suggestedRefund
+                ? `More than the fair refund of ${money(quote.suggestedRefund)} — lessons already used would be refunded too.`
+                : `Up to ${money(maxRefundable)} collected.`}
             </p>
           </div>
         )}
@@ -128,7 +182,7 @@ export default function CancelRefundDialog({
           <Button
             variant="destructive"
             size="sm"
-            disabled={submitting || !validAmount}
+            disabled={submitting || !validAmount || quoteLoading || Boolean(quoteError)}
             onClick={handleSubmit}
           >
             {submitting ? "Cancelling…" : "Confirm Cancellation"}

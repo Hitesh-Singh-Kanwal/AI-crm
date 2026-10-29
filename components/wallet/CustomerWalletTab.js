@@ -184,7 +184,7 @@ function AdjustWalletDialog({ open, mode, customerID, locationID, onClose, onSuc
               <input
                 type="number"
                 min="0.01"
-                step="0.01"
+                step="any"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"

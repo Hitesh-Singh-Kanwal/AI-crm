@@ -820,7 +820,7 @@ export default function NewEnrollmentPackageInline({
                         <input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="any"
                           value={s.isChargeable === false ? 0 : s.pricePerSession}
                           disabled={s.isChargeable === false}
                           onChange={(e) =>
@@ -847,7 +847,7 @@ export default function NewEnrollmentPackageInline({
                             <input
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="any"
                               value={s.discountAmount}
                               onChange={(e) =>
                                 updateSvc(
@@ -1087,7 +1087,7 @@ export default function NewEnrollmentPackageInline({
                         type="number"
                         min="0"
                         max={total}
-                        step="0.01"
+                        step="any"
                         placeholder="0.00"
                         value={form.billing.initialAmount}
                         onChange={(e) =>
@@ -1140,7 +1140,7 @@ export default function NewEnrollmentPackageInline({
                           <input
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="any"
                             placeholder="0.00"
                             value={c.amount}
                             onChange={(e) => updateFuturePayment(c._key, "amount", e.target.value)}
@@ -1414,7 +1414,7 @@ export default function NewEnrollmentPackageInline({
                         <input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="any"
                           placeholder="0.00"
                           value={form.billing.collectAmount}
                           readOnly={collectAmountIsFixed}
@@ -1559,7 +1559,7 @@ export default function NewEnrollmentPackageInline({
                 <input
                   type="number"
                   min="0"
-                  step="0.01"
+                  step="any"
                   placeholder="0.00"
                   value={form.tip.amount}
                   onChange={(e) =>

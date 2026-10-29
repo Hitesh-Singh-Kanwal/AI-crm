@@ -429,7 +429,7 @@ export default function MembershipEditPage() {
                                     <Input
                                       type="number"
                                       min="0"
-                                      step="0.01"
+                                      step="any"
                                       placeholder="0.00"
                                       value={sel.pricePerSession ?? ''}
                                       onChange={(e) => updateSelection(svc.serviceCode, 'pricePerSession', e.target.value)}
@@ -452,7 +452,7 @@ export default function MembershipEditPage() {
                                     <Input
                                       type="number"
                                       min="0"
-                                      step="0.01"
+                                      step="any"
                                       placeholder="0"
                                       value={sel.discountAmount ?? ''}
                                       onChange={(e) => updateSelection(svc.serviceCode, 'discountAmount', e.target.value)}
@@ -494,7 +494,7 @@ export default function MembershipEditPage() {
                   id="mem-price"
                   type="number"
                   min="0"
-                  step="0.01"
+                  step="any"
                   placeholder="0.00"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}

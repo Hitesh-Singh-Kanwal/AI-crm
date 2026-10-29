@@ -72,7 +72,7 @@ export default function WalletShortfallField({
           id="wallet-pay-amount"
           type="number"
           min="0"
-          step="0.01"
+          step="any"
           max={Math.min(available, due)}
           value={walletAmount === '' || walletAmount === undefined ? walletApplied.toFixed(2) : walletAmount}
           onChange={(e) => onWalletAmountChange(e.target.value)}

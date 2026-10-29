@@ -56,7 +56,7 @@ function BouncedCheckFeeSettings() {
             <input
               type="number"
               min="0"
-              step="0.01"
+              step="any"
               value={fee}
               onChange={(e) => setFee(e.target.value)}
               className="h-9 w-full rounded-lg border border-border bg-background pl-6 pr-2.5 text-[13px] outline-none focus:border-primary"

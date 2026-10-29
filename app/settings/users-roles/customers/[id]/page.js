@@ -263,7 +263,7 @@ function IssueRefundDialog({ open, onClose, payment, customerID, onSuccess }) {
               <input
                 type="number"
                 min="0.01"
-                step="0.01"
+                step="any"
                 max={payment?.amount}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -2030,7 +2030,7 @@ function AddInstallmentDialog({ open, onClose, plan, outstanding, onSuccess }) {
                     <input
                       type="number"
                       min="0"
-                      step="0.01"
+                      step="any"
                       placeholder="0.00"
                       value={r.amount}
                       onChange={(e) => updateRow(r._key, "amount", e.target.value)}
@@ -2898,6 +2898,7 @@ function PackagesTab({ customerID, locationID }) {
         title="Cancel Package"
         itemName={cancelTarget?.packageName}
         maxRefundable={cancelTarget?.maxRefundable ?? 0}
+        quoteUrl={cancelTarget ? `/api/customer-package/${cancelTarget._id}/cancel-quote` : null}
         submitting={cancelling}
         onConfirm={handleCancel}
       />
@@ -3152,7 +3153,7 @@ function PackagesTab({ customerID, locationID }) {
                             <input
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="any"
                               value={
                                 svc.isChargeable === false
                                   ? 0
@@ -3183,7 +3184,7 @@ function PackagesTab({ customerID, locationID }) {
                               <input
                                 type="number"
                                 min="0"
-                                step="0.01"
+                                step="any"
                                 value={svc.discountAmount}
                                 onChange={(e) =>
                                   updateSvc(i, "discountAmount", e.target.value)
@@ -4862,6 +4863,7 @@ function EnrollmentsTab({
         title="Cancel Package"
         itemName={cancelTarget?.packageName}
         maxRefundable={cancelTarget?.maxRefundable ?? 0}
+        quoteUrl={cancelTarget ? `/api/customer-package/${cancelTarget.enrollmentId}/cancel-quote` : null}
         submitting={cancelling}
         onConfirm={handleEnrCancel}
       />
@@ -5080,7 +5082,7 @@ function EnrollmentsTab({
                                 <input
                                   type="number"
                                   min="0"
-                                  step="0.01"
+                                  step="any"
                                   value={svc.pricePerSession}
                                   onChange={(e) =>
                                     updateEnrSvc(
@@ -5114,7 +5116,7 @@ function EnrollmentsTab({
                                   <input
                                     type="number"
                                     min="0"
-                                    step="0.01"
+                                    step="any"
                                     value={svc.discountAmount}
                                     onChange={(e) =>
                                       updateEnrSvc(
@@ -5336,7 +5338,7 @@ function EnrollmentsTab({
                                   <input
                                     type="number"
                                     min="1"
-                                    step="0.01"
+                                    step="any"
                                     placeholder="e.g. 100"
                                     value={
                                       addForm.billing.installmentAmount ?? ""
@@ -5467,7 +5469,7 @@ function EnrollmentsTab({
                                 <input
                                   type="number"
                                   min="0"
-                                  step="0.01"
+                                  step="any"
                                   placeholder="0.00"
                                   value={addForm.billing.initialPayment}
                                   onChange={(e) =>
@@ -6822,7 +6824,7 @@ function IntroTab({ customer }) {
                     <input
                       type="number"
                       min="0.01"
-                      step="0.01"
+                      step="any"
                       value={editForm.amount}
                       onChange={(e) =>
                         setEditForm((f) => ({ ...f, amount: e.target.value }))

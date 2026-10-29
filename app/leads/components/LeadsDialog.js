@@ -571,7 +571,7 @@ export default function LeadsDialog({
                         <Input
                           type="number"
                           min="1"
-                          step="0.01"
+                          step="any"
                           value={paymentLinkForm.amount}
                           onChange={(e) => setPaymentLinkForm((p) => ({ ...p, amount: e.target.value }))}
                           placeholder="75.00"

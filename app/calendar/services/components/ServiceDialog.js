@@ -254,7 +254,7 @@ export default function ServiceDialog({ open, onClose, service, onRefresh, defau
                 id="svc-price"
                 type="number"
                 min="0"
-                step="0.01"
+                step="any"
                 placeholder="0.00"
                 value={form.price}
                 onChange={(e) => set("price", e.target.value)}

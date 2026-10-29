@@ -142,7 +142,7 @@ function RecordTipDialog({ open, onClose, onSuccess }) {
                 <input
                   type="number"
                   min="0"
-                  step="0.01"
+                  step="any"
                   placeholder="0.00"
                   value={form.amount}
                   onChange={(e) => setField('amount', e.target.value)}

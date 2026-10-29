@@ -861,7 +861,6 @@ function MembershipServiceSelector({
             ? res.data.filter((m) => m.status === "active")
             : [];
         setMemberships(data);
-        onHasMembershipChange?.(data.length > 0);
         // Auto-select if there's only one membership with one matching service
         if (data.length === 1) {
           const lines = (data[0].services || []).filter((svc) =>
@@ -880,7 +879,20 @@ function MembershipServiceSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
 
-  if (!customerId || memberships.length === 0) return null;
+  // Only memberships that cover a service bookable in this tab — a membership
+  // with group classes only has nothing to offer a private-lesson appointment.
+  const usable = memberships.filter((m) =>
+    (m.services ?? []).some((svc) =>
+      allServices.some((cat) => cat.serviceCode === svc.serviceCode),
+    ),
+  );
+  const hasUsable = usable.length > 0;
+  useEffect(() => {
+    onHasMembershipChange?.(hasUsable);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasUsable]);
+
+  if (!customerId || usable.length === 0) return null;
 
   const selectedMembership = memberships.find(
     (m) => String(m._id) === selectedMembershipId,
@@ -913,7 +925,7 @@ function MembershipServiceSelector({
               onSelect(v, "", "");
             }
           }}
-          options={memberships.map((m) => ({
+          options={usable.map((m) => ({
             value: String(m._id),
             label: m.membershipName || "Membership",
           }))}

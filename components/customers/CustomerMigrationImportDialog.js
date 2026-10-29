@@ -928,7 +928,7 @@ export default function CustomerMigrationImportDialog({
                               <td className="px-3 py-1.5 text-right">
                                 <input
                                   type="number"
-                                  step="0.01"
+                                  step="any"
                                   className="w-28 text-right bg-transparent border border-border rounded px-1.5 py-0.5"
                                   value={entered}
                                   onChange={(e) => setOldSystemTotals((prev) => ({ ...prev, [f.key]: e.target.value }))}

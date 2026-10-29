@@ -128,6 +128,7 @@ export default function GroupClassDrawer({ open, onClose, lesson = null, schedul
       daysOfWeek: sched.daysOfWeek,
       startTime: sched.startTime,
       durationMinutes: Number(sched.durationMinutes) || Number(form.duration) || 60,
+      startDate: sched.startDate,
       endDate: sched.endDate || null,
       teacherID: sched.teacherID || null,
       room: sched.room.trim(),
@@ -174,7 +175,6 @@ export default function GroupClassDrawer({ open, onClose, lesson = null, schedul
         const res = await api.post('/api/class-schedule', {
           ...scheduleFields(),
           lessonID: lessonRes.data._id,
-          startDate: sched.startDate,
           locationID: sched.locationID || form.locationID[0],
         })
         if (!res.success) {
@@ -351,7 +351,6 @@ export default function GroupClassDrawer({ open, onClose, lesson = null, schedul
                       id="gc-start"
                       type="date"
                       value={sched.startDate}
-                      disabled={Boolean(schedule)}
                       onChange={(e) => setS('startDate', e.target.value)}
                     />
                   </div>

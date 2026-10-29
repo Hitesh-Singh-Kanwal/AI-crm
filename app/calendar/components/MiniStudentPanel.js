@@ -1447,7 +1447,7 @@ export default function MiniStudentPanel({
                                         <input
                                           type="number"
                                           min="0"
-                                          step="0.01"
+                                          step="any"
                                           value={
                                             svc.isChargeable === false
                                               ? 0
@@ -2151,7 +2151,7 @@ export default function MiniStudentPanel({
                                     <label className="block text-[10px] text-muted-foreground mb-0.5">Due Date</label>
                                     <input type="date" value={af.dueDate} onChange={(e) => updateAdd({ dueDate: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
                                     <label className="block text-[10px] text-muted-foreground mb-0.5 mt-1">Amount ($)</label>
-                                    <input type="number" min="0.01" step="0.01" value={af.amount} onChange={(e) => updateAdd({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
+                                    <input type="number" min="0.01" step="any" value={af.amount} onChange={(e) => updateAdd({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
                                     {af.error && <p className="text-[10px] text-rose-500">{af.error}</p>}
                                     <div className="flex gap-1.5">
                                       <button type="button" onClick={() => updateAdd({ open: false })} className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
@@ -2247,7 +2247,7 @@ export default function MiniStudentPanel({
                         <label className="block text-[10px] text-muted-foreground mb-0.5">Due Date</label>
                         <input type="date" value={af.dueDate} onChange={(e) => updateAdd({ dueDate: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
                         <label className="block text-[10px] text-muted-foreground mb-0.5 mt-1">Amount ($)</label>
-                        <input type="number" min="0.01" step="0.01" value={af.amount} onChange={(e) => updateAdd({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
+                        <input type="number" min="0.01" step="any" value={af.amount} onChange={(e) => updateAdd({ amount: e.target.value })} className="h-7 w-full rounded-md border border-border bg-background px-2.5 text-[11px] outline-none focus:border-primary" />
                         {af.error && <p className="text-[10px] text-rose-500">{af.error}</p>}
                         <div className="flex gap-1.5 mt-1.5">
                           <button type="button" onClick={() => updateAdd({ open: false })} className="flex-1 h-7 rounded-md border border-border bg-background text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>

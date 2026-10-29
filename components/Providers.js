@@ -49,7 +49,21 @@ function ThemedToaster() {
   )
 }
 
+// Scrolling the page while a number field has focus changed its value (prices,
+// refunds, quantities). Dropping focus first lets the wheel scroll the page instead.
+function useNoWheelOnNumberInputs() {
+  useEffect(() => {
+    const onWheel = (e) => {
+      const el = document.activeElement
+      if (el?.type === 'number' && el === e.target) el.blur()
+    }
+    document.addEventListener('wheel', onWheel, { capture: true, passive: true })
+    return () => document.removeEventListener('wheel', onWheel, { capture: true })
+  }, [])
+}
+
 export default function Providers({ children }) {
+  useNoWheelOnNumberInputs()
   return (
     <ThemeProvider>
       <SWRConfig value={analyticsSwrConfig}>

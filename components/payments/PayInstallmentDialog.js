@@ -286,7 +286,7 @@ export default function PayInstallmentDialog({
               <input
                 type="number"
                 min="0.01"
-                step="0.01"
+                step="any"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 readOnly={!amountEditable}

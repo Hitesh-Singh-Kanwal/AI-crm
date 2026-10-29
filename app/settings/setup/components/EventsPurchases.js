@@ -154,7 +154,7 @@ function ProductDialog({ open, onClose, product, onRefresh }) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="p-price">Default price</Label>
-            <Input id="p-price" type="number" min="0" step="0.01" placeholder="0.00" value={form.defaultPrice} onChange={(e) => setForm((f) => ({ ...f, defaultPrice: e.target.value }))} />
+            <Input id="p-price" type="number" min="0" step="any" placeholder="0.00" value={form.defaultPrice} onChange={(e) => setForm((f) => ({ ...f, defaultPrice: e.target.value }))} />
           </div>
           <DialogFooter className="pt-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
@@ -419,8 +419,8 @@ function LineItemsEditor({ items, setItems, products, footerExtra = null, showDa
                   )}
                 </td>
                 <td className="px-1.5 py-2"><Input type="number" min="0" value={li.quantity} onChange={(e) => update(i, { quantity: e.target.value })} className={numInput} /></td>
-                <td className="px-1.5 py-2"><Input type="number" min="0" step="0.01" value={li.unitPrice} onChange={(e) => update(i, { unitPrice: e.target.value })} className={numInput} /></td>
-                <td className="px-1.5 py-2"><Input type="number" min="0" step="0.01" value={li.discount} onChange={(e) => update(i, { discount: e.target.value })} className={numInput} /></td>
+                <td className="px-1.5 py-2"><Input type="number" min="0" step="any" value={li.unitPrice} onChange={(e) => update(i, { unitPrice: e.target.value })} className={numInput} /></td>
+                <td className="px-1.5 py-2"><Input type="number" min="0" step="any" value={li.discount} onChange={(e) => update(i, { discount: e.target.value })} className={numInput} /></td>
                 <td className="px-3 py-2 text-right text-sm font-semibold tabular-nums whitespace-nowrap">{money(lineTotal(li))}</td>
                 {showDate && (
                   <td className="px-1.5 py-2">
@@ -1104,7 +1104,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                               <option value="">Select teacher…</option>
                               {teachers.map((t) => <option key={t._id} value={t._id}>{t.name || t.email}</option>)}
                             </select>
-                            <Input type="number" min="0" step="0.01" placeholder="Tip amount" value={tipAmount} onChange={(e) => setTipAmount(e.target.value)} />
+                            <Input type="number" min="0" step="any" placeholder="Tip amount" value={tipAmount} onChange={(e) => setTipAmount(e.target.value)} />
                           </div>
                         )}
                       </div>
@@ -1162,7 +1162,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                   <div className="flex flex-col gap-1.5">
                     <Label>Initial payment <span className="font-normal text-muted-foreground">(optional — enter $0 if none)</span></Label>
                     <div className="grid grid-cols-2 gap-2">
-                      <Input type="number" min="0" max={payable} step="0.01" placeholder="0.00" value={flexInitialAmount} onChange={(e) => updateFlexInitialAmount(e.target.value)} />
+                      <Input type="number" min="0" max={payable} step="any" placeholder="0.00" value={flexInitialAmount} onChange={(e) => updateFlexInitialAmount(e.target.value)} />
                       <Input type="date" value={flexInitialDate} onChange={(e) => setFlexInitialDate(e.target.value)} />
                     </div>
                   </div>
@@ -1178,7 +1178,7 @@ export function CreateEventPurchaseDialog({ open, onClose, onCreated, initialCus
                         <div key={r._key} className="flex items-center gap-2">
                           <span className="w-5 shrink-0 text-xs text-muted-foreground">{i + 1}.</span>
                           <Input type="date" value={r.dueDate} onChange={(e) => updateFlexFuturePayment(r._key, 'dueDate', e.target.value)} className="flex-1" />
-                          <Input type="number" min="0" step="0.01" placeholder="0.00" value={r.amount} onChange={(e) => updateFlexFuturePayment(r._key, 'amount', e.target.value)} className="w-28" />
+                          <Input type="number" min="0" step="any" placeholder="0.00" value={r.amount} onChange={(e) => updateFlexFuturePayment(r._key, 'amount', e.target.value)} className="w-28" />
                           <button type="button" onClick={() => removeFlexFuturePayment(r._key)} disabled={flexFuturePayments.length === 1}
                             className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed"
                             aria-label="Remove payment">

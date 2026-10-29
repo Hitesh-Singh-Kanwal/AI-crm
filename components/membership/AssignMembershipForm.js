@@ -455,7 +455,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
           <div className="flex flex-col gap-1.5">
             <Label>Initial payment <span className="font-normal text-muted-foreground">(optional — enter $0 if none)</span></Label>
             <div className="grid grid-cols-2 gap-2">
-              <Input type="number" min="0" max={price} step="0.01" placeholder="0.00" value={flexInitialAmount} onChange={(e) => updateFlexInitialAmount(e.target.value)} />
+              <Input type="number" min="0" max={price} step="any" placeholder="0.00" value={flexInitialAmount} onChange={(e) => updateFlexInitialAmount(e.target.value)} />
               <Input type="date" value={flexInitialDate} onChange={(e) => setFlexInitialDate(e.target.value)} />
             </div>
           </div>
@@ -471,7 +471,7 @@ export default function AssignMembershipForm({ customerID, locationID, onSuccess
                 <div key={r._key} className="flex items-center gap-2">
                   <span className="w-5 shrink-0 text-xs text-muted-foreground">{i + 1}.</span>
                   <Input type="date" value={r.dueDate} onChange={(e) => updateFlexFuturePayment(r._key, 'dueDate', e.target.value)} className="flex-1" />
-                  <Input type="number" min="0" step="0.01" placeholder="0.00" value={r.amount} onChange={(e) => updateFlexFuturePayment(r._key, 'amount', e.target.value)} className="w-28" />
+                  <Input type="number" min="0" step="any" placeholder="0.00" value={r.amount} onChange={(e) => updateFlexFuturePayment(r._key, 'amount', e.target.value)} className="w-28" />
                   <button type="button" onClick={() => removeFlexFuturePayment(r._key)} disabled={flexFuturePayments.length === 1}
                     className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed"
                     aria-label="Remove payment">

@@ -281,7 +281,7 @@ export default function PaymentDueCard({
                   <input
                     type="number"
                     min="0.01"
-                    step="0.01"
+                    step="any"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className="h-10 w-full rounded-lg border border-border bg-background pl-6 pr-2.5 text-[14px] font-medium outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
