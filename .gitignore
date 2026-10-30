@@ -38,3 +38,6 @@ next-env.d.ts
 # Design docs and implementation plans — kept locally, not in the repo
 docs/superpowers/
 .env
+
+pnpm-lock.yaml
+pnpm-workspace.yaml
