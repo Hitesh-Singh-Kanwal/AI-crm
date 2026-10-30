@@ -697,6 +697,10 @@ const STATUS_STYLES = {
   cancelled_charged: { bg: "bg-destructive/10", text: "text-destructive", label: "Cancelled – Charged" },
   no_show_no_charge:  { bg: "bg-warning/10", text: "text-warning", label: "No Show" },
   no_show_charged:    { bg: "bg-warning/20", text: "text-warning", label: "No Show – Charged" },
+  // Slot reserved by a payment link; released automatically if the lead doesn't pay.
+  held:               { bg: "bg-warning/15", text: "text-warning", label: "Held – awaiting payment" },
+  // AI agreed the lead can pay in person; kept until staff confirm (no auto-release).
+  held_pay_at_studio: { bg: "bg-warning/25", text: "text-warning", label: "Held – pay at studio" },
 };
 
 function PaymentStatusBadge({ collected }) {
@@ -1267,6 +1271,7 @@ function showEventTooltip(e, props) {
     scheduled: "#3b82f6", completed: "#22c55e",
     cancelled_no_charge: "#6b7280", cancelled_charged: "#ef4444",
     no_show_no_charge: "#f97316", no_show_charged: "#f97316",
+    held: "#f59e0b",
   };
   const statusColor = statusColors[status] || "#6b7280";
   const statusLabel = status.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
@@ -1297,8 +1302,13 @@ function showEventTooltip(e, props) {
         chargeMethod === "mixed" ||
         chargeMethod === "membership" ||
         raw.payment?.collected;
-  const paymentStatus = isPaid ? "Paid" : "Unpaid";
-  const paymentStatusColor = isPaid ? "#22c55e" : "#ef4444";
+  const isHeld = status === "held";
+  const paymentStatus = isPaid
+    ? "Paid"
+    : isHeld
+      ? raw.payAtStudio ? "Paying at studio" : "Awaiting payment"
+      : "Unpaid";
+  const paymentStatusColor = isPaid ? "#22c55e" : isHeld ? "#f59e0b" : "#ef4444";
 
   const divider = `<div style="border-top:1px solid hsl(var(--border));margin:6px 0"></div>`;
 
@@ -1309,7 +1319,7 @@ function showEventTooltip(e, props) {
     </div>` : "";
 
   const html = `
-    <div style="font-weight:700;font-size:12px;margin-bottom:2px">${customerNames.join(", ") || "Unknown"}</div>
+    <div style="font-weight:700;font-size:12px;margin-bottom:2px">${customerNames.join(", ") || raw.title || "Unknown"}</div>
     ${customerEmails.length ? `<div style="color:hsl(var(--muted-foreground));font-size:10px;margin-bottom:6px">${customerEmails.join(", ")}</div>` : ""}
     ${divider}
     ${section("Instructor", teacher)}
@@ -1450,11 +1460,16 @@ function AppointmentTimedEventRows({ event, compact = false }) {
     return `${remaining}/${totalSessions}`;
   })();
 
+  // A payment-link hold has no student yet (the lead isn't a customer until they
+  // pay). Without this it fell through to the teacher's name + "Unpaid" and read
+  // as a real lesson nobody had charged for.
+  const isHeld = effectiveStatus === "held";
+
   const primaryLabel = isTodo
     ? event.title || "To-do"
     : isGroupClass
       ? event.title || "Group class"
-      : firstCustomer;
+      : firstCustomer || event.title || null;
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-px overflow-hidden">
@@ -1480,7 +1495,7 @@ function AppointmentTimedEventRows({ event, compact = false }) {
       <div
         className={`flex items-center gap-1 shrink-0 mt-auto min-w-0 pt-px ${compact ? "flex-nowrap overflow-hidden pr-[54px]" : "flex-wrap"}`}
       >
-        <StatusBadge status={effectiveStatus} />
+        <StatusBadge status={isHeld && ep.raw?.payAtStudio ? "held_pay_at_studio" : effectiveStatus} />
         {isUnallocated && (
           <span
             className="shrink-0 inline-flex items-center text-[8px] font-semibold rounded px-1 py-0.5 leading-none bg-warning/25 text-warning"
@@ -1489,7 +1504,7 @@ function AppointmentTimedEventRows({ event, compact = false }) {
             Unallocated
           </span>
         )}
-        <PaymentStatusBadge collected={paymentCollected} />
+        {!isHeld && <PaymentStatusBadge collected={paymentCollected} />}
         {coveredByMembership && (
           <span className="shrink-0 inline-flex items-center gap-0.5 text-[8px] font-semibold rounded px-1 py-0.5 leading-none bg-violet-500/20 text-violet-700 dark:text-violet-300">
             Membership
